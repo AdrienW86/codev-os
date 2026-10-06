@@ -52,3 +52,8 @@ export async function uploadImage(form:FormData):Promise<{message:string}>{
  const registered=await db.rpc("publication_register_image",{p_publication_id:id,p_revision_id:revision,p_asset_id:asset,p_path:path,p_hash:createHash("sha256").update(bytes).digest("hex"),p_mime:mime,p_provenance:provenance.trim(),p_actor_id:userId});
  if(registered.error){await db.storage.from(IMAGE_BUCKET).remove([path]);return {message:failed};}return {message:"Image privée ajoutée. Associez-la à une variante en créant une nouvelle révision."};
 }
+// Current revision after a manual save, so the new revision can be submitted to human review.
+export async function currentRevision(id:string):Promise<{revision_id:string|null;status:string}|null>{
+ await requireAdmin();if(!isPublicationUuid(id))return null;const {data,error}=await getSupabaseServerClient().from("publications").select("current_revision_id,status").eq("id",id).maybeSingle();
+ if(error)throw new Error(failed);return data?{revision_id:data.current_revision_id,status:data.status}:null;
+}

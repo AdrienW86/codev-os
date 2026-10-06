@@ -17,6 +17,6 @@ export function AgentPrepareForm({projectId,placeholders,publicationId,regenerat
  const [state,action,pending]=useActionState(prepareAgentAction,{});const unavailable=disabled||!publicationId&&!placeholders?.length;
  return <form action={action} className="mt-5 space-y-4"><input type="hidden" name="project_id" value={projectId}/>{publicationId?<input type="hidden" name="publication_id" value={publicationId}/>:<label className="block">Créneau à préparer<select className={input} name="publication_id" required disabled={unavailable}><option value="">Choisir un créneau</option>{placeholders?.map(p=><option value={p.id} key={p.id}>{p.label??p.date}</option>)}</select></label>}
  <p className="text-sm text-muted">Préparation manuelle d’une seule publication, avec un budget plafonné. Une nouvelle version sera soumise à votre validation.</p>
- <label className="block"><input type="checkbox" name="authorize_ai" required disabled={unavailable}/> J’autorise un appel IA réel pour cette publication et la lecture de ses photos Drive.</label>
+ <label className="block"><input type="checkbox" name="authorize_ai" required disabled={unavailable}/> {regenerate?'J’autorise un appel IA réel pour régénérer cette publication':'J’autorise un appel IA réel pour cette publication et la lecture de ses photos Drive.'}</label>
  <button disabled={pending||unavailable} className="rounded-lg bg-accent px-4 py-2 text-background">{pending?'Préparation…':regenerate?'Régénérer':'Préparer les publications'}</button>{state.message&&<p role="status">{state.message}</p>}</form>;
 }

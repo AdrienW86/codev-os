@@ -50,7 +50,9 @@ function mocks(project=social,overrides={}){const calls=[];return {calls,mocks:{
  '@/lib/recommendations/data':{listRecommendations:async()=>[]},'@/lib/actions/data':{listActions:async()=>[]},
  '@/lib/agents/project-assignments':{listAgentProjectAssignments:async()=>[{agent_id:ids.agent,enabled:true,agent:{name:'Agent Publications'}}]},
  '@/lib/reporting/data':{buildClientMonthlySummaryContext:async()=>({projects:[]})},'@/lib/reporting/period':{previousSummaryMonth:()=>'2026-09'},
- '@/components/work/project-context':{ProjectContext:()=>null},'@/lib/format-date':{formatDate:value=>String(value).slice(0,10)},
+ '@/components/work/project-context':{ProjectContext:()=>null},
+ '@/lib/publications/review-cards':{buildReviewCards:async(list,options)=>{calls.push(['cards',list,options]);return list.filter(p=>['pending_review','rejected'].includes(p.status)).map(p=>({publicationId:p.id,status:p.status,subject:p.subject,debug:options.debug?{project_id:ids.project,publication_id:p.id}:null}));}},
+ '@/components/publications/review-queue':{ReviewQueue:({cards,showContext})=>{calls.push(['queue',cards,showContext]);return jsx.jsx('section',{children:cards.map(c=>jsx.jsxs('article',{'data-card':c.status,children:[c.subject,c.debug?jsx.jsx('details',{'data-debug':'true',children:JSON.stringify(c.debug)}):null]},c.publicationId))});}},'@/lib/format-date':{formatDate:value=>String(value).slice(0,10)},
 }};}
 const props=(search={})=>({params:Promise.resolve({id:ids.project}),searchParams:Promise.resolve(search)});
 async function page(file,project=social,search={},overrides={}){const m=mocks(project,overrides);const Page=load(file,m.mocks).default;return {html:renderToStaticMarkup(await Page(props(search))),calls:m.calls};}
@@ -92,8 +94,9 @@ test('Agent Publications keeps the existing forms and data, with readable slot l
  assert.ok(!text.includes(config.drive_folder_id));assert.equal(technical(html),false);
  const inactive=await page(pages.agent,social,{},{agent:{ready:true,config:{...config,enabled:false},placeholders:[]}});assert.equal(inactive.calls.find(c=>c[0]==='AgentPrepareForm')[1].disabled,true);
  const unconfigured=await page(pages.agent,social,{},{agent:{ready:true,config:null,placeholders:[]}});assert.match(unconfigured.html,/<details open=""[^>]*><summary[^>]*>Configuration de l’agent/);});
-test('review tab lists pending and rejected publications with readable dates and statuses only',async()=>{const {html}=await page(pages.review);const text=visible(html);
- assert.ok(text.includes('Création de site web : les points à vérifier'));assert.ok(text.includes('SEO local'));assert.ok(text.includes('À valider'));assert.ok(text.includes('Rejeté'));assert.ok(html.includes(`/publications/${ids.pending}`));assert.ok(html.includes('/publications/review'));assert.equal(technical(html),false);});
+test('review tab renders the shared review queue with the project publications',async()=>{const {html,calls}=await page(pages.review);const text=visible(html);
+ const built=calls.find(c=>c[0]==='cards');assert.equal(built[1],publications);assert.equal(built[2].debug,false);assert.ok(calls.some(c=>c[0]==='publications'&&c[2]===ids.project));
+ const queue=calls.find(c=>c[0]==='queue');assert.equal(queue[1].length,2);assert.ok(!queue[2]);assert.ok(text.includes('Création de site web : les points à vérifier'));assert.ok(text.includes('SEO local'));assert.equal(technical(html),false);});
 test('history gathers activity, runs, publications and metrics with readable run summaries',async()=>{const {html}=await page(pages.history);const text=visible(html);
  for(const expected of ['Activité du projet','Agent Publications','Préparation interrompue, aucun contenu soumis.','Publications du projet','À valider','Rejeté','Métriques enregistrées'])assert.ok(text.includes(expected),expected);
  assert.ok(!text.includes('preparation_failed'));assert.equal(technical(html),false);});

@@ -23,3 +23,10 @@ export async function getGenerationDetails(revisionId:string|null){
  if(result.error?.code==='PGRST205'||result.error?.code==='42P01')return null;
  if(result.error)throw Error('Justification de préparation indisponible.');return result.data;
 }
+// Debug view only: the AI run that produced a revision (model, tokens, estimated cost).
+export async function getAiRunForRevision(revisionId:string){
+ await requireAdmin();if(!isPublicationUuid(revisionId))return null;
+ const result=await getSupabaseServerClient().from('publication_ai_runs').select('id,model,input_tokens,output_tokens,estimated_cost_eur,status').eq('revision_id',revisionId).maybeSingle();
+ if(result.error?.code==='PGRST205'||result.error?.code==='42P01')return null;
+ if(result.error)throw Error('Run de préparation indisponible.');return result.data;
+}

@@ -21,7 +21,7 @@ for(const file of files){const path=resolve(root,file);if(!existsSync(path)||!st
    if(name.startsWith('@/')||name.startsWith('.')){const target=name.startsWith('@/')?resolve(root,name.slice(2)):resolve(dirname(path),name);for(const suffix of ['.ts','.tsx','/index.ts','/index.tsx'])if(existsSync(target+suffix)){imports.push(relative(root,target+suffix).replaceAll('\\','/'));break;}}
   }
  }
- modules.set(file,{imports,client,serverAction,serverOnly,privileged:/getSupabaseServerClient|SUPABASE_SECRET_KEY|OPENAI_API_KEY|GOOGLE_DRIVE_READ_ACCESS_TOKEN/.test(text)});
+ modules.set(file,{imports,client,serverAction,serverOnly,privileged:/getSupabaseServerClient|SUPABASE_SECRET_KEY|OPENAI_API_KEY|GOOGLE_DRIVE_CLIENT_SECRET|GOOGLE_DRIVE_REFRESH_TOKEN/.test(text)});
  if(serverAction)for(const s of ast.statements)if(ts.isFunctionDeclaration(s)&&s.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword))guardInventory.push({file,fn:s.name?.text,directAdminGuard:/await\s+requireAdmin\(/.test(s.getText(ast))});
 }
 const boundaryFindings=[];

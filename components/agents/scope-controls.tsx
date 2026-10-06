@@ -1,0 +1,15 @@
+"use client";
+import {useActionState} from "react";
+import {changeScopeAction,assignProjectAction,createProjectTestRunAction} from "@/app/(cockpit)/agents/[id]/scope-actions";
+import type {AgentTestRunState} from "@/lib/agents/types";
+export function ScopeControls({agentId,scope,review,projects}:{agentId:string;scope:"client"|"project";review:boolean;projects:Array<{id:string;name:string;clientName:string;enabled:boolean}>}) {
+ const [scopeState,scopeAction,scopePending]=useActionState<AgentTestRunState,FormData>(changeScopeAction,{});
+ const [assignmentState,assignmentAction,assignmentPending]=useActionState<AgentTestRunState,FormData>(assignProjectAction,{});
+ const [runState,runAction,runPending]=useActionState<AgentTestRunState,FormData>(createProjectTestRunAction,{});
+ const available=projects.filter(p=>p.enabled);
+ return <div className="space-y-5 text-sm"><p>Portée : <strong>{scope==="client"?"Client entier / Account Manager":"Projet / spécialiste"}</strong>{review&&" · Classification à vérifier manuellement"}</p>
+ <form action={scopeAction} className="flex flex-wrap gap-3"><input type="hidden" name="agent_id" value={agentId}/><label>Portée <select name="scope" defaultValue={scope} className="rounded border border-border p-2"><option value="client">Client entier</option><option value="project">Projet</option></select></label><button disabled={scopePending} className="rounded border border-border px-3" type="submit">Confirmer la portée</button><p role="status" className="basis-full">{scopeState.message}</p></form>
+ {scope==="project"&&<><p className="text-xs text-muted">Le rattachement au client doit être actif. Désactiver une autorisation conserve son historique.</p>{projects.length?<form action={assignmentAction} className="flex flex-wrap gap-3"><input type="hidden" name="agent_id" value={agentId}/><label>Projet <select name="project_id" className="rounded border border-border p-2">{projects.map(p=><option key={p.id} value={p.id}>{p.clientName} / {p.name} {p.enabled?"(autorisé)":""}</option>)}</select></label><label>Autorisation <select name="enabled" className="rounded border border-border p-2"><option value="true">Activer</option><option value="false">Retirer</option></select></label><button disabled={assignmentPending} type="submit" className="rounded border border-border px-3">Enregistrer</button><p role="status" className="basis-full">{assignmentState.message}</p></form>:<p>Aucun projet pour les clients rattachés.</p>}
+ {available.length>0&&!review&&<form action={runAction} className="flex flex-wrap gap-3"><input type="hidden" name="agent_id" value={agentId}/><label>Projet de test <select name="project_id" className="rounded border border-border p-2">{available.map(p=><option key={p.id} value={p.id}>{p.clientName} / {p.name}</option>)}</select></label><button type="submit" disabled={runPending} className="rounded border border-border px-3">Run de test interne</button><p role="status" className="basis-full">{runState.message}</p></form>}</>}
+ </div>;
+}

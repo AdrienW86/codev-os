@@ -1,0 +1,1805 @@
+{
+  "tables": [
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "clients",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "projects",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "tasks",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "agents",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "agent_client_assignments",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "recommendations",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "client_events",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "agent_runs",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "actions",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "agent_messages",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "client_services",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "client_connections",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "audit_logs",
+      "owner": "postgres",
+      "force_rls": false
+    }
+  ],
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "clients",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "clients",
+      "default": "now()",
+      "not_null": true,
+      "position": 10
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "clients",
+      "default": "now()",
+      "not_null": true,
+      "position": 11
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "projects",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "projects",
+      "default": "'À démarrer'::text",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "priority",
+      "type": "text",
+      "table": "projects",
+      "default": "'Normale'::text",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "progress",
+      "type": "integer",
+      "table": "projects",
+      "default": "0",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "projects",
+      "default": "now()",
+      "not_null": true,
+      "position": 10
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "projects",
+      "default": "now()",
+      "not_null": true,
+      "position": 11
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "tasks",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "tasks",
+      "default": "'À faire'::text",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "priority",
+      "type": "text",
+      "table": "tasks",
+      "default": "'Normale'::text",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "assignee_type",
+      "type": "text",
+      "table": "tasks",
+      "default": "'none'::text",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "tasks",
+      "default": "now()",
+      "not_null": true,
+      "position": 10
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "tasks",
+      "default": "now()",
+      "not_null": true,
+      "position": 11
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "agents",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "agents",
+      "default": "'inactive'::text",
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "instructions",
+      "type": "text",
+      "table": "agents",
+      "default": "''::text",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "autonomy_level",
+      "type": "smallint",
+      "table": "agents",
+      "default": "0",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "enabled",
+      "type": "boolean",
+      "table": "agents",
+      "default": "false",
+      "not_null": true,
+      "position": 9
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "agents",
+      "default": "now()",
+      "not_null": true,
+      "position": 11
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "agents",
+      "default": "now()",
+      "not_null": true,
+      "position": 12
+    },
+    {
+      "name": "enabled",
+      "type": "boolean",
+      "table": "agent_client_assignments",
+      "default": "true",
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "agent_client_assignments",
+      "default": "now()",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "recommendations",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "severity",
+      "type": "text",
+      "table": "recommendations",
+      "default": "'info'::text",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "recommendations",
+      "default": "'pending'::text",
+      "not_null": true,
+      "position": 7
+    },
+    {
+      "name": "payload",
+      "type": "jsonb",
+      "table": "recommendations",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "recommendations",
+      "default": "now()",
+      "not_null": true,
+      "position": 9
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "recommendations",
+      "default": "now()",
+      "not_null": true,
+      "position": 10
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "client_events",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb",
+      "table": "client_events",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "client_events",
+      "default": "now()",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "agent_runs",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "agent_runs",
+      "default": "'running'::text",
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "started_at",
+      "type": "timestamp with time zone",
+      "table": "agent_runs",
+      "default": "now()",
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb",
+      "table": "agent_runs",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 11
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "actions",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "parameters",
+      "type": "jsonb",
+      "table": "actions",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "actions",
+      "default": "'draft'::text",
+      "not_null": true,
+      "position": 7
+    },
+    {
+      "name": "requires_approval",
+      "type": "boolean",
+      "table": "actions",
+      "default": "true",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "actions",
+      "default": "now()",
+      "not_null": true,
+      "position": 13
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "actions",
+      "default": "now()",
+      "not_null": true,
+      "position": 14
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "agent_messages",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb",
+      "table": "agent_messages",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 7
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "agent_messages",
+      "default": "now()",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "audit_logs",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb",
+      "table": "audit_logs",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 9
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "audit_logs",
+      "default": "now()",
+      "not_null": true,
+      "position": 10
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "client_services",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "client_services",
+      "default": "'active'::text",
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "client_services",
+      "default": "now()",
+      "not_null": true,
+      "position": 7
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "client_connections",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "status",
+      "type": "text",
+      "table": "client_connections",
+      "default": "'not_connected'::text",
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "metadata",
+      "type": "jsonb",
+      "table": "client_connections",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "client_connections",
+      "default": "now()",
+      "not_null": true,
+      "position": 8
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "table": "client_connections",
+      "default": "now()",
+      "not_null": true,
+      "position": 9
+    },
+    {
+      "name": "before_data",
+      "type": "jsonb",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "monthly_fee_eur",
+      "type": "numeric(10,2)",
+      "table": "client_services",
+      "default": null,
+      "not_null": false,
+      "position": 5
+    },
+    {
+      "name": "recommendation_id",
+      "type": "uuid",
+      "table": "agent_messages",
+      "default": null,
+      "not_null": false,
+      "position": 2
+    },
+    {
+      "name": "type",
+      "type": "text",
+      "table": "projects",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "actor_id",
+      "type": "text",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": false,
+      "position": 3
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "recommendations",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "summary",
+      "type": "text",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "due_date",
+      "type": "date",
+      "table": "projects",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "tasks",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "action_type",
+      "type": "text",
+      "table": "actions",
+      "default": null,
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "output_tokens",
+      "type": "integer",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 9
+    },
+    {
+      "name": "responsible",
+      "type": "text",
+      "table": "projects",
+      "default": null,
+      "not_null": false,
+      "position": 9
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "title",
+      "type": "text",
+      "table": "recommendations",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "action",
+      "type": "text",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "table": "projects",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 3
+    },
+    {
+      "name": "resource_id",
+      "type": "text",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": false,
+      "position": 6
+    },
+    {
+      "name": "error_message",
+      "type": "text",
+      "table": "actions",
+      "default": null,
+      "not_null": false,
+      "position": 12
+    },
+    {
+      "name": "agent_id",
+      "type": "uuid",
+      "table": "agent_client_assignments",
+      "default": null,
+      "not_null": true,
+      "position": 1
+    },
+    {
+      "name": "provider",
+      "type": "text",
+      "table": "client_connections",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "event_type",
+      "type": "text",
+      "table": "client_events",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "executed_at",
+      "type": "timestamp with time zone",
+      "table": "actions",
+      "default": null,
+      "not_null": false,
+      "position": 10
+    },
+    {
+      "name": "recommendation_id",
+      "type": "uuid",
+      "table": "actions",
+      "default": null,
+      "not_null": false,
+      "position": 2
+    },
+    {
+      "name": "email",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 5
+    },
+    {
+      "name": "result",
+      "type": "jsonb",
+      "table": "actions",
+      "default": null,
+      "not_null": false,
+      "position": 11
+    },
+    {
+      "name": "client_instructions",
+      "type": "text",
+      "table": "agent_client_assignments",
+      "default": null,
+      "not_null": false,
+      "position": 4
+    },
+    {
+      "name": "last_checked_at",
+      "type": "timestamp with time zone",
+      "table": "client_connections",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "input_tokens",
+      "type": "integer",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 8
+    },
+    {
+      "name": "max_monthly_budget_eur",
+      "type": "numeric(10,2)",
+      "table": "agents",
+      "default": null,
+      "not_null": false,
+      "position": 10
+    },
+    {
+      "name": "completed_at",
+      "type": "timestamp with time zone",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 6
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "client_services",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "table": "client_events",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "table": "agents",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "sender_type",
+      "type": "text",
+      "table": "agent_messages",
+      "default": null,
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "after_data",
+      "type": "jsonb",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": false,
+      "position": 8
+    },
+    {
+      "name": "approved_at",
+      "type": "timestamp with time zone",
+      "table": "actions",
+      "default": null,
+      "not_null": false,
+      "position": 9
+    },
+    {
+      "name": "message",
+      "type": "text",
+      "table": "agent_messages",
+      "default": null,
+      "not_null": true,
+      "position": 6
+    },
+    {
+      "name": "geographic_area",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 8
+    },
+    {
+      "name": "agent_id",
+      "type": "uuid",
+      "table": "actions",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "client_connections",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "client_events",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "resource_type",
+      "type": "text",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": true,
+      "position": 5
+    },
+    {
+      "name": "reason",
+      "type": "text",
+      "table": "recommendations",
+      "default": null,
+      "not_null": false,
+      "position": 5
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "agent_client_assignments",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "phone",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 6
+    },
+    {
+      "name": "schedule",
+      "type": "text",
+      "table": "agents",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "table": "agents",
+      "default": null,
+      "not_null": false,
+      "position": 3
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "actions",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "service_type",
+      "type": "text",
+      "table": "client_services",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "actor_type",
+      "type": "text",
+      "table": "audit_logs",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "agent_id",
+      "type": "uuid",
+      "table": "recommendations",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "agent_id",
+      "type": "uuid",
+      "table": "agent_messages",
+      "default": null,
+      "not_null": true,
+      "position": 3
+    },
+    {
+      "name": "title",
+      "type": "text",
+      "table": "tasks",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "activity",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 4
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "projects",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "due_date",
+      "type": "date",
+      "table": "tasks",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "agent_id",
+      "type": "uuid",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": true,
+      "position": 2
+    },
+    {
+      "name": "notes",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 9
+    },
+    {
+      "name": "client_id",
+      "type": "uuid",
+      "table": "agent_messages",
+      "default": null,
+      "not_null": true,
+      "position": 4
+    },
+    {
+      "name": "notes",
+      "type": "text",
+      "table": "client_services",
+      "default": null,
+      "not_null": false,
+      "position": 6
+    },
+    {
+      "name": "assignee_id",
+      "type": "uuid",
+      "table": "tasks",
+      "default": null,
+      "not_null": false,
+      "position": 9
+    },
+    {
+      "name": "model",
+      "type": "text",
+      "table": "agents",
+      "default": null,
+      "not_null": false,
+      "position": 6
+    },
+    {
+      "name": "website",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 7
+    },
+    {
+      "name": "estimated_cost_eur",
+      "type": "numeric(12,6)",
+      "table": "agent_runs",
+      "default": null,
+      "not_null": false,
+      "position": 10
+    },
+    {
+      "name": "company_name",
+      "type": "text",
+      "table": "clients",
+      "default": null,
+      "not_null": false,
+      "position": 3
+    },
+    {
+      "name": "project_id",
+      "type": "uuid",
+      "table": "tasks",
+      "default": null,
+      "not_null": false,
+      "position": 3
+    },
+    {
+      "name": "external_account_id",
+      "type": "text",
+      "table": "client_connections",
+      "default": null,
+      "not_null": false,
+      "position": 5
+    }
+  ],
+  "indexes": [
+    {
+      "name": "clients_pkey",
+      "table": "clients",
+      "definition": "CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "projects_pkey",
+      "table": "projects",
+      "definition": "CREATE UNIQUE INDEX projects_pkey ON public.projects USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "projects_client_id_idx",
+      "table": "projects",
+      "definition": "CREATE INDEX projects_client_id_idx ON public.projects USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "projects_status_idx",
+      "table": "projects",
+      "definition": "CREATE INDEX projects_status_idx ON public.projects USING btree (status)",
+      "constraint_index": false
+    },
+    {
+      "name": "tasks_pkey",
+      "table": "tasks",
+      "definition": "CREATE UNIQUE INDEX tasks_pkey ON public.tasks USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "tasks_client_id_idx",
+      "table": "tasks",
+      "definition": "CREATE INDEX tasks_client_id_idx ON public.tasks USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "tasks_project_id_idx",
+      "table": "tasks",
+      "definition": "CREATE INDEX tasks_project_id_idx ON public.tasks USING btree (project_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "tasks_status_idx",
+      "table": "tasks",
+      "definition": "CREATE INDEX tasks_status_idx ON public.tasks USING btree (status)",
+      "constraint_index": false
+    },
+    {
+      "name": "agents_pkey",
+      "table": "agents",
+      "definition": "CREATE UNIQUE INDEX agents_pkey ON public.agents USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "agents_name_key",
+      "table": "agents",
+      "definition": "CREATE UNIQUE INDEX agents_name_key ON public.agents USING btree (name)",
+      "constraint_index": true
+    },
+    {
+      "name": "agent_client_assignments_pkey",
+      "table": "agent_client_assignments",
+      "definition": "CREATE UNIQUE INDEX agent_client_assignments_pkey ON public.agent_client_assignments USING btree (agent_id, client_id)",
+      "constraint_index": true
+    },
+    {
+      "name": "agent_client_assignments_client_id_idx",
+      "table": "agent_client_assignments",
+      "definition": "CREATE INDEX agent_client_assignments_client_id_idx ON public.agent_client_assignments USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "recommendations_pkey",
+      "table": "recommendations",
+      "definition": "CREATE UNIQUE INDEX recommendations_pkey ON public.recommendations USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "recommendations_client_id_idx",
+      "table": "recommendations",
+      "definition": "CREATE INDEX recommendations_client_id_idx ON public.recommendations USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "recommendations_agent_id_idx",
+      "table": "recommendations",
+      "definition": "CREATE INDEX recommendations_agent_id_idx ON public.recommendations USING btree (agent_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "recommendations_status_idx",
+      "table": "recommendations",
+      "definition": "CREATE INDEX recommendations_status_idx ON public.recommendations USING btree (status)",
+      "constraint_index": false
+    },
+    {
+      "name": "client_events_pkey",
+      "table": "client_events",
+      "definition": "CREATE UNIQUE INDEX client_events_pkey ON public.client_events USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "client_events_client_id_idx",
+      "table": "client_events",
+      "definition": "CREATE INDEX client_events_client_id_idx ON public.client_events USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "agent_runs_pkey",
+      "table": "agent_runs",
+      "definition": "CREATE UNIQUE INDEX agent_runs_pkey ON public.agent_runs USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "agent_runs_agent_id_idx",
+      "table": "agent_runs",
+      "definition": "CREATE INDEX agent_runs_agent_id_idx ON public.agent_runs USING btree (agent_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "agent_runs_client_id_idx",
+      "table": "agent_runs",
+      "definition": "CREATE INDEX agent_runs_client_id_idx ON public.agent_runs USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "actions_pkey",
+      "table": "actions",
+      "definition": "CREATE UNIQUE INDEX actions_pkey ON public.actions USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "actions_recommendation_id_idx",
+      "table": "actions",
+      "definition": "CREATE INDEX actions_recommendation_id_idx ON public.actions USING btree (recommendation_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "actions_agent_id_idx",
+      "table": "actions",
+      "definition": "CREATE INDEX actions_agent_id_idx ON public.actions USING btree (agent_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "actions_client_id_idx",
+      "table": "actions",
+      "definition": "CREATE INDEX actions_client_id_idx ON public.actions USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "actions_status_idx",
+      "table": "actions",
+      "definition": "CREATE INDEX actions_status_idx ON public.actions USING btree (status)",
+      "constraint_index": false
+    },
+    {
+      "name": "agent_messages_pkey",
+      "table": "agent_messages",
+      "definition": "CREATE UNIQUE INDEX agent_messages_pkey ON public.agent_messages USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "agent_messages_recommendation_id_idx",
+      "table": "agent_messages",
+      "definition": "CREATE INDEX agent_messages_recommendation_id_idx ON public.agent_messages USING btree (recommendation_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "agent_messages_client_id_idx",
+      "table": "agent_messages",
+      "definition": "CREATE INDEX agent_messages_client_id_idx ON public.agent_messages USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "agent_messages_agent_id_idx",
+      "table": "agent_messages",
+      "definition": "CREATE INDEX agent_messages_agent_id_idx ON public.agent_messages USING btree (agent_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "client_services_pkey",
+      "table": "client_services",
+      "definition": "CREATE UNIQUE INDEX client_services_pkey ON public.client_services USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "client_services_client_id_service_type_key",
+      "table": "client_services",
+      "definition": "CREATE UNIQUE INDEX client_services_client_id_service_type_key ON public.client_services USING btree (client_id, service_type)",
+      "constraint_index": true
+    },
+    {
+      "name": "client_services_client_id_idx",
+      "table": "client_services",
+      "definition": "CREATE INDEX client_services_client_id_idx ON public.client_services USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "client_connections_pkey",
+      "table": "client_connections",
+      "definition": "CREATE UNIQUE INDEX client_connections_pkey ON public.client_connections USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "client_connections_client_id_provider_key",
+      "table": "client_connections",
+      "definition": "CREATE UNIQUE INDEX client_connections_client_id_provider_key ON public.client_connections USING btree (client_id, provider)",
+      "constraint_index": true
+    },
+    {
+      "name": "client_connections_client_id_idx",
+      "table": "client_connections",
+      "definition": "CREATE INDEX client_connections_client_id_idx ON public.client_connections USING btree (client_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "audit_logs_pkey",
+      "table": "audit_logs",
+      "definition": "CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (id)",
+      "constraint_index": true
+    },
+    {
+      "name": "audit_logs_resource_idx",
+      "table": "audit_logs",
+      "definition": "CREATE INDEX audit_logs_resource_idx ON public.audit_logs USING btree (resource_type, resource_id)",
+      "constraint_index": false
+    },
+    {
+      "name": "audit_logs_created_at_idx",
+      "table": "audit_logs",
+      "definition": "CREATE INDEX audit_logs_created_at_idx ON public.audit_logs USING btree (created_at DESC)",
+      "constraint_index": false
+    }
+  ],
+  "policies": null,
+  "triggers": [
+    {
+      "name": "clients_set_updated_at",
+      "table": "clients",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER clients_set_updated_at BEFORE UPDATE ON public.clients FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "projects_set_updated_at",
+      "table": "projects",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER projects_set_updated_at BEFORE UPDATE ON public.projects FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "tasks_set_updated_at",
+      "table": "tasks",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER tasks_set_updated_at BEFORE UPDATE ON public.tasks FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "agents_set_updated_at",
+      "table": "agents",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER agents_set_updated_at BEFORE UPDATE ON public.agents FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "recommendations_set_updated_at",
+      "table": "recommendations",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER recommendations_set_updated_at BEFORE UPDATE ON public.recommendations FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "actions_set_updated_at",
+      "table": "actions",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER actions_set_updated_at BEFORE UPDATE ON public.actions FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "client_connections_set_updated_at",
+      "table": "client_connections",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER client_connections_set_updated_at BEFORE UPDATE ON public.client_connections FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "audit_logs_no_update_delete",
+      "table": "audit_logs",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER audit_logs_no_update_delete BEFORE DELETE OR UPDATE ON public.audit_logs FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation()"
+    }
+  ],
+  "functions": [
+    {
+      "acl": [
+        "=X/postgres",
+        "postgres=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "set_updated_at",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "=X/postgres",
+        "postgres=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "prevent_audit_log_mutation",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION public.prevent_audit_log_mutation()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  raise exception 'audit_logs is append-only';\nend;\n$function$\n"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "agent_runs_agent_id_fkey",
+      "type": "f",
+      "table": "agent_runs",
+      "validated": true,
+      "definition": "FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_runs_client_id_fkey",
+      "type": "f",
+      "table": "agent_runs",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "actions_pkey",
+      "type": "p",
+      "table": "actions",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "actions_recommendation_id_fkey",
+      "type": "f",
+      "table": "actions",
+      "validated": true,
+      "definition": "FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE SET NULL"
+    },
+    {
+      "name": "actions_agent_id_fkey",
+      "type": "f",
+      "table": "actions",
+      "validated": true,
+      "definition": "FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "actions_client_id_fkey",
+      "type": "f",
+      "table": "actions",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_messages_sender_type_check",
+      "type": "c",
+      "table": "agent_messages",
+      "validated": true,
+      "definition": "CHECK ((sender_type = ANY (ARRAY['admin'::text, 'agent'::text, 'system'::text])))"
+    },
+    {
+      "name": "agent_messages_pkey",
+      "type": "p",
+      "table": "agent_messages",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "agent_messages_recommendation_id_fkey",
+      "type": "f",
+      "table": "agent_messages",
+      "validated": true,
+      "definition": "FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_messages_agent_id_fkey",
+      "type": "f",
+      "table": "agent_messages",
+      "validated": true,
+      "definition": "FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_messages_client_id_fkey",
+      "type": "f",
+      "table": "agent_messages",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "clients_pkey",
+      "type": "p",
+      "table": "clients",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "projects_progress_check",
+      "type": "c",
+      "table": "projects",
+      "validated": true,
+      "definition": "CHECK (((progress >= 0) AND (progress <= 100)))"
+    },
+    {
+      "name": "projects_pkey",
+      "type": "p",
+      "table": "projects",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "projects_client_id_fkey",
+      "type": "f",
+      "table": "projects",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "tasks_assignee_type_check",
+      "type": "c",
+      "table": "tasks",
+      "validated": true,
+      "definition": "CHECK ((assignee_type = ANY (ARRAY['admin'::text, 'agent'::text, 'none'::text])))"
+    },
+    {
+      "name": "tasks_pkey",
+      "type": "p",
+      "table": "tasks",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "tasks_client_id_fkey",
+      "type": "f",
+      "table": "tasks",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "tasks_project_id_fkey",
+      "type": "f",
+      "table": "tasks",
+      "validated": true,
+      "definition": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL"
+    },
+    {
+      "name": "agents_autonomy_level_check",
+      "type": "c",
+      "table": "agents",
+      "validated": true,
+      "definition": "CHECK (((autonomy_level >= 0) AND (autonomy_level <= 3)))"
+    },
+    {
+      "name": "agents_pkey",
+      "type": "p",
+      "table": "agents",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "agents_name_key",
+      "type": "u",
+      "table": "agents",
+      "validated": true,
+      "definition": "UNIQUE (name)"
+    },
+    {
+      "name": "agent_client_assignments_pkey",
+      "type": "p",
+      "table": "agent_client_assignments",
+      "validated": true,
+      "definition": "PRIMARY KEY (agent_id, client_id)"
+    },
+    {
+      "name": "agent_client_assignments_agent_id_fkey",
+      "type": "f",
+      "table": "agent_client_assignments",
+      "validated": true,
+      "definition": "FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_client_assignments_client_id_fkey",
+      "type": "f",
+      "table": "agent_client_assignments",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "recommendations_pkey",
+      "type": "p",
+      "table": "recommendations",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "recommendations_agent_id_fkey",
+      "type": "f",
+      "table": "recommendations",
+      "validated": true,
+      "definition": "FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "recommendations_client_id_fkey",
+      "type": "f",
+      "table": "recommendations",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "client_events_pkey",
+      "type": "p",
+      "table": "client_events",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "client_events_client_id_fkey",
+      "type": "f",
+      "table": "client_events",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "agent_runs_pkey",
+      "type": "p",
+      "table": "agent_runs",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "audit_logs_pkey",
+      "type": "p",
+      "table": "audit_logs",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "client_services_pkey",
+      "type": "p",
+      "table": "client_services",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "client_services_client_id_service_type_key",
+      "type": "u",
+      "table": "client_services",
+      "validated": true,
+      "definition": "UNIQUE (client_id, service_type)"
+    },
+    {
+      "name": "client_services_client_id_fkey",
+      "type": "f",
+      "table": "client_services",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "client_connections_pkey",
+      "type": "p",
+      "table": "client_connections",
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "client_connections_client_id_provider_key",
+      "type": "u",
+      "table": "client_connections",
+      "validated": true,
+      "definition": "UNIQUE (client_id, provider)"
+    },
+    {
+      "name": "client_connections_client_id_fkey",
+      "type": "f",
+      "table": "client_connections",
+      "validated": true,
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    }
+  ],
+  "default_acl": [
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=arwdDxtm/postgres",
+        "authenticated=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "role": "postgres",
+      "type": "r"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "role": "postgres",
+      "type": "f"
+    },
+    {
+      "acl": [
+        "postgres=rwU/postgres",
+        "anon=rwU/postgres",
+        "authenticated=rwU/postgres",
+        "service_role=rwU/postgres"
+      ],
+      "role": "postgres",
+      "type": "S"
+    },
+    {
+      "acl": [
+        "postgres=rwU/supabase_admin",
+        "anon=rwU/supabase_admin",
+        "authenticated=rwU/supabase_admin",
+        "service_role=rwU/supabase_admin"
+      ],
+      "role": "supabase_admin",
+      "type": "S"
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/supabase_admin",
+        "anon=arwdDxtm/supabase_admin",
+        "authenticated=arwdDxtm/supabase_admin",
+        "service_role=arwdDxtm/supabase_admin"
+      ],
+      "role": "supabase_admin",
+      "type": "r"
+    },
+    {
+      "acl": [
+        "postgres=X/supabase_admin",
+        "anon=X/supabase_admin",
+        "authenticated=X/supabase_admin",
+        "service_role=X/supabase_admin"
+      ],
+      "role": "supabase_admin",
+      "type": "f"
+    }
+  ]
+}

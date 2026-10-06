@@ -1,0 +1,27 @@
+# Local identifier only. No linked project reference or remote credentials.
+project_id = "codev-os-local"
+
+[api]
+enabled = false
+port = 54321
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = false
+
+[auth]
+enabled = false
+
+[storage]
+enabled = false
+
+[realtime]
+enabled = false
+
+# CLI/Docker not installed here: configuration prepared, not runtime-validated.
+# Do not use db reset on the full migrations directory without the legacy baseline.
+# Lot 1 is reconstructed by scripts/test-publications-local.ps1 instead.

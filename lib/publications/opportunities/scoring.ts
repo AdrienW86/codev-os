@@ -1,0 +1,2 @@
+import type {Opportunity} from './types';
+export function scoreOpportunity(o:Opportunity):Opportunity{const d=o.dimensions;for(const n of Object.values(d))if(!Number.isFinite(n)||n<0||n>1)throw Error('Invalid opportunity score');const score=Math.round(100*Math.max(0,Math.min(1,d.seo_potential*.18+d.business_relevance*.16+d.seasonality*.1+d.local_relevance*.08+d.freshness*.08+d.media_match*.24+d.factual_confidence*.16-d.history_penalty*.35)));return {...o,score,reasons:Object.entries(d).map(([key,value])=>`${key}: ${Math.round(value*100)} %`)};}

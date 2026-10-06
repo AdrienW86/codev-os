@@ -1,0 +1,2 @@
+import {candidate,type OpportunityProvider} from './types';
+export function businessProfileProvider(signals:{service:string;description:string;measuredAt:string}[]):OpportunityProvider{return {source:'business_profile',async collect(c){return signals.filter(s=>c.services.includes(s.service)).map(s=>{const o=candidate(s.service,'business_profile',s.description,{local_relevance:.8});o.sources[0].measured_at=s.measuredAt;return o;});}};}

@@ -1,0 +1,2 @@
+import {candidate,type OpportunityProvider} from './types';
+export const historyProvider:OpportunityProvider={source:'history',async collect(c){return c.services.map(service=>candidate(service,'history','Prestation confirmée ; comparaison aux sujets récents.',{history_penalty:c.recentSubjects.some(s=>s.toLocaleLowerCase('fr').includes(service.toLocaleLowerCase('fr')))?1:0,freshness:c.recentSubjects.some(s=>s.includes(service))?0:1}));}};

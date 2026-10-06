@@ -1,0 +1,14 @@
+import type {GeneratedContent,GenerationContext} from './provider';
+const string={type:'string'},nullableString={type:['string','null']};
+const channel={anyOf:[{type:'null'},{type:'object',additionalProperties:false,properties:{text:string,title:nullableString,cta:nullableString},required:['text','title','cta']}]};
+export const SAFE_GENERATION_SUMMARY='Sujet et photo compatibles ; validation humaine requise.';
+export const generationSchema={type:'object',additionalProperties:false,properties:{internal_title:string,subject:string,source_content:string,selected_opportunity:string,selected_asset_id:string,facebook:channel,instagram:channel,google_business_profile:channel,factual_basis:{type:'array',items:string},generation_summary:{type:'string',enum:[SAFE_GENERATION_SUMMARY]}},required:['internal_title','subject','source_content','selected_opportunity','selected_asset_id','facebook','instagram','google_business_profile','factual_basis','generation_summary']};
+export const analysisSchema={type:'object',additionalProperties:false,properties:{photos:{type:'array',items:{type:'object',additionalProperties:false,properties:{id:string,scene:{type:'string',enum:['roof','pests','paint','facade','other']},confidence:{type:'number',minimum:0,maximum:1},usable:{type:'boolean'}},required:['id','scene','confidence','usable']}}},required:['photos']};
+export function validateGeneratedContent(input:unknown,c:GenerationContext):GeneratedContent{
+ if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Invalid output');const g=input as GeneratedContent;
+ if(Object.keys(g).sort().join(',')!==generationSchema.required.slice().sort().join(',')||g.internal_title!==c.subject||g.subject!==c.subject||g.selected_asset_id!==c.photo.id||g.selected_opportunity!==c.opportunity.id||typeof g.source_content!=='string'||g.source_content.length>20000||g.generation_summary!==SAFE_GENERATION_SUMMARY||!Array.isArray(g.factual_basis)||!g.factual_basis.every(f=>typeof f==='string'&&c.approved_sentences.includes(f)))throw Error('Unverified output');
+ const allowed=new Set(c.approved_sentences);const validateText=(text:string)=>typeof text==='string'&&text.trim().length>0&&text.length<=10000&&text.split('\n').every(s=>!s.trim()||allowed.has(s.trim()))&&text.split('\n').filter(s=>s.trim()).every(s=>g.factual_basis.includes(s.trim()));
+ if(!validateText(g.source_content))throw Error('Unsupported factual source');
+ for(const p of ['facebook','instagram','google_business_profile'] as const){const v=g[p];if(!c.platforms.includes(p)){if(v!==null)throw Error('Unexpected channel');continue;}if(!v||Object.keys(v).sort().join(',')!=='cta,text,title'||!validateText(v.text)||v.title!==null&&v.title!==c.subject||v.cta!==null&&v.cta!=='Contactez-nous pour parler de votre besoin.')throw Error('Unsupported claim');}
+ return g;
+}

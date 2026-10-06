@@ -1,0 +1,5 @@
+{
+  "auth_access_control": {
+    "sign_up_mode": "restricted"
+  }
+}

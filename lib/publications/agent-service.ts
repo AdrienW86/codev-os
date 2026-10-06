@@ -8,6 +8,7 @@ import {validateGeneratedContent} from './ai/schemas';
 import {MANUAL_RUN_RESERVE_EUR,type PublicationsAIProvider,type GenerationContext,type Usage} from './ai/provider';
 import {adaptImage} from './media/transform';
 import {selectSubjectPhoto} from './media/matching';
+import {category} from './opportunities/types';
 import type {MediaProvider} from './media/types';
 import {buildPublicationAgentContext} from './agent-context';
 import {isPublicationUuid} from './validation';
@@ -22,6 +23,8 @@ export async function preparePublication(projectId:string,publicationId:string,a
  const accumulate=(u:Usage)=>{if(!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)throw Error('Invalid usage');usage.input_tokens+=u.input_tokens;usage.output_tokens+=u.output_tokens;usage.estimated_cost_eur+=u.estimated_cost_eur;if(usage.estimated_cost_eur>MANUAL_RUN_RESERVE_EUR)throw Error('Cost reservation exceeded');};
  try{
   const started=await db.rpc('publication_ai_begin',{p_publication:publicationId,p_expected:context.workspace.publication.current_revision_id,p_actor:userId});if(started.error)throw Error('Preparation guard refused');const state=started.data as {run_id:string;reused:boolean;status:string};if(state.reused)return {message:state.status==='completed'?'Cette préparation est déjà enregistrée.':'Une préparation est déjà en cours.'};run=state.run_id;
+  // No confirmed service maps to a supported photo category: stop before Drive, OpenAI, reservation and Storage.
+  if(!context.opportunities.some(o=>category(o.service)!=='other')){const failed=await db.rpc('publication_ai_fail',{p_run:run,p_error:'needs_review',p_cost:0,p_input:0,p_output:0});if(failed.error)throw Error('Failure not confirmed');return {message:'needs_review : aucune prestation confirmée ne correspond à une catégorie photo prise en charge. Aucun appel Drive ni IA.'};}
   const media=providers?.media??driveReadProvider(),ai=providers?.ai??openaiPublicationsProvider();
   const candidates=await media.list(context.config.drive_folder_id,context.client.id,projectId);if(candidates.some(p=>p.client_id!==context.client.id||p.project_id!==projectId))throw Error('Cross-client media');
   const catalog=await db.rpc('publication_ai_catalog',{p_run:run,p_photos:json(candidates)});if(catalog.error)throw Error('Catalog unavailable');const mapped=catalog.data as {id:string;drive_file_id:string;used:boolean}[];

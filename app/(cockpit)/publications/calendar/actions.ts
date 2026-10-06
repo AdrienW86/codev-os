@@ -9,10 +9,10 @@ export async function configurePlanning(_previous:{message:string},form:FormData
  const enabled=checkbox("enabled"),autoCreateSlots=checkbox("auto_create_slots");
  if(enabled===null||autoCreateSlots===null)return {message:"Valeur de case à cocher invalide. Rechargez le formulaire."};
  const result=await saveCadence(field("project_id"),{enabled,posts_per_week:n,preferred_weekdays:Array.from({length:n===1?1:2},(_,i)=>Number(field(`day_${i}`))),preferred_times:Array.from({length:n===1?1:2},(_,i)=>field(`time_${i}`)),timezone:field("timezone"),planning_horizon_weeks:Number(field("planning_horizon_weeks")),auto_create_slots:autoCreateSlots,require_manual_approval:true});
- if(result.ok){revalidatePath("/publications/calendar");revalidatePath(`/projects/${field("project_id")}`);}return {message:result.message};
+ if(result.ok){revalidatePath("/publications/calendar");revalidatePath(`/projects/${field("project_id")}`);revalidatePath(`/projects/${field("project_id")}/calendar`);}return {message:result.message};
 }
 export async function generatePlanning(_previous:{message:string},form:FormData){
  await requireAdmin();const project=form.get("project_id");if(!isPublicationUuid(project))return {message:"Projet invalide."};
  const result=await ensureCalendar(project,String(form.get("start_week")??""),form.get("placeholders")==="on");
- if(result.ok){revalidatePath("/publications");revalidatePath("/publications/calendar");revalidatePath(`/projects/${project}`);}return {message:result.message};
+ if(result.ok){revalidatePath("/publications");revalidatePath("/publications/calendar");revalidatePath(`/projects/${project}`);revalidatePath(`/projects/${project}/calendar`);revalidatePath(`/projects/${project}/agent`);}return {message:result.message};
 }

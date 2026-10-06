@@ -1,10 +1,7 @@
-import Link from "next/link";
-import {Panel} from "@/components/ui/primitives";
-import {getProjectCadence} from "@/lib/publications/planning";
-import {defaultCadence,editorialMonday,parisToday} from "@/lib/publications/calendar";
-import {allowedPlatforms} from "@/lib/publications/editor";
 import {PlanningForm} from "./planning-form";
-export async function EditorialPlanningSection({project}:{project:{id:string;type:string|null}}){
- if(!allowedPlatforms(project.type).length)return null;let cadence;try{cadence=await getProjectCadence(project.id);}catch{return <Panel className="mt-6 p-6"><h2 className="font-semibold">Planification éditoriale</h2><p className="mt-3 text-sm">Planification indisponible. Vérifiez l’accès au stockage et l’installation du calendrier.</p></Panel>;}
- return <Panel className="mt-6 p-6"><h2 className="font-semibold">Planification éditoriale</h2><Link className="mt-2 inline-block text-accent" href={`/publications/calendar?project=${project.id}`}>Voir le calendrier du projet</Link><PlanningForm key={cadence?.updated_at??project.id} projectId={project.id} cadence={cadence??defaultCadence(project.type)} startWeek={editorialMonday(parisToday())}/></Panel>;
+import type {CadenceConfig} from "@/lib/publications/types";
+// Collapsible cadence settings; the planning form and its Server Actions are unchanged.
+export function PlanningSettings({projectId,cadence,cadenceKey,startWeek,unavailable,open=false}:{projectId:string;cadence:CadenceConfig;cadenceKey:string;startWeek:string;unavailable:boolean;open?:boolean}){
+ return <details open={open} className="mt-6 rounded-lg border border-border p-5"><summary className="cursor-pointer font-semibold">Paramètres du planning</summary>
+ {unavailable?<p className="mt-3 text-sm">Planification indisponible. Vérifiez l’accès au stockage et l’installation du calendrier.</p>:<PlanningForm key={cadenceKey} projectId={projectId} cadence={cadence} startWeek={startWeek}/>}</details>;
 }

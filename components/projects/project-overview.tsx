@@ -1,0 +1,17 @@
+import Link from "next/link";
+import {Panel,Badge} from "@/components/ui/primitives";
+import {DebugDetails} from "./debug-details";
+import {agentStatusLabels,formatDay,slotDisplayLabels,type AgentStatus,type SlotDisplay} from "@/lib/projects/workspace-view";
+export type OverviewPublications={next:{date:string;time:string|null;subject:string;display:SlotDisplay;publicationId:string|null}|null;pendingCount:number;agent:AgentStatus;alerts:string[]};
+export function ProjectOverview({projectId,progress,status,tasks,publications,debug}:{projectId:string;progress:number;status:string;tasks:{id:string;title:string;status:string;due_date:string|null}[];publications:OverviewPublications|null;debug:{enabled:boolean;data:Record<string,unknown>}}){
+ const shown=tasks.slice(0,5);
+ return <>
+ <div className="mt-6 grid gap-4 md:grid-cols-3">
+  <Panel className="p-5"><p className="text-xs text-muted">Statut du projet</p><p className="mt-2 font-semibold">{status}</p><div className="mt-3 h-2 rounded-full bg-border" aria-label={`Progression ${progress} %`}><div className="h-2 rounded-full bg-accent" style={{width:`${Math.max(0,Math.min(100,progress))}%`}}/></div><p className="mt-1 text-xs text-muted">Progression {progress} %</p></Panel>
+  {publications&&<Panel className="p-5"><p className="text-xs text-muted">Prochain contenu</p>{publications.next?<><p className="mt-2 font-semibold">{formatDay(publications.next.date)}{publications.next.time?` · ${publications.next.time}`:""}</p><p className="mt-1 text-sm">{publications.next.publicationId?<Link className="text-accent" href={`/publications/${publications.next.publicationId}`}>{publications.next.subject}</Link>:publications.next.subject}</p><Badge>{slotDisplayLabels[publications.next.display]}</Badge></>:<p className="mt-2 text-sm text-muted">Aucun contenu planifié dans les 8 prochaines semaines.</p>}<Link className="mt-3 block text-sm text-accent" href={`/projects/${projectId}/calendar`}>Ouvrir le calendrier</Link></Panel>}
+  {publications&&<Panel className="p-5"><p className="text-xs text-muted">Publications à valider</p><p className="mt-2 text-2xl font-semibold">{publications.pendingCount}</p><Link className="text-sm text-accent" href={`/projects/${projectId}/review`}>Ouvrir la validation</Link><p className="mt-4 text-xs text-muted">Agent Publications</p><p className="mt-1 font-medium">{agentStatusLabels[publications.agent]}</p><Link className="text-sm text-accent" href={`/projects/${projectId}/agent`}>Gérer l’agent</Link></Panel>}
+ </div>
+ {publications&&publications.alerts.length>0&&<Panel className="mt-6 p-5"><h2 className="font-semibold">À surveiller</h2><ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{publications.alerts.map(a=><li key={a}>{a}</li>)}</ul></Panel>}
+ <Panel className="mt-6 p-5"><h2 className="font-semibold">Tâches <span className="text-sm font-normal text-muted">({tasks.length})</span></h2>{shown.length?<ul className="mt-3 divide-y divide-border text-sm">{shown.map(t=><li key={t.id} className="flex flex-wrap justify-between gap-2 py-2"><Link className="hover:text-accent" href={`/tasks/${t.id}/edit`}>{t.title}</Link><span className="text-muted">{t.status} · {t.due_date?formatDay(t.due_date):"Sans échéance"}</span></li>)}</ul>:<p className="mt-3 text-sm text-muted">Aucune tâche.</p>}{tasks.length>shown.length&&<p className="mt-2 text-xs text-muted">{tasks.length-shown.length} autre(s) tâche(s) non affichée(s).</p>}</Panel>
+ <DebugDetails enabled={debug.enabled} data={debug.data}/></>;
+}

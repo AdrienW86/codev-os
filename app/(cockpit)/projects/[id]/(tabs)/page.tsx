@@ -6,12 +6,13 @@ import {listPublications} from "@/lib/publications/data";
 import {getPublicationsAgentProject} from "@/lib/publications/agent-data";
 import {getCalendar,getProjectCadence} from "@/lib/publications/planning";
 import {addDays,parisToday} from "@/lib/publications/calendar";
-import {allowedPlatforms} from "@/lib/publications/editor";
+import {getPublicationProjectChannels} from "@/lib/publications/project-channels";
+import {projectSupportsPublications} from "@/lib/publications/channels";
 import {agentStatus,isDebugView,projectAlerts,slotDisplay} from "@/lib/projects/workspace-view";
 export default async function ProjectOverviewPage({params,searchParams}:PageProps<"/projects/[id]">){
  const {id}=await params,debug=isDebugView(await searchParams),project=await getProjectById(id);if(!project)notFound();
  const tasks=await listTasksByProject(id);let publications:OverviewPublications|null=null;const technical:Record<string,unknown>={project_id:project.id,client_id:project.client_id,project_type:project.type};
- if(allowedPlatforms(project.type).length){
+ if(projectSupportsPublications(await getPublicationProjectChannels(project))){
   const today=parisToday();
   const [list,agent,cadence,calendar]=await Promise.all([listPublications(project.client_id,id),getPublicationsAgentProject(id).catch(()=>null),getProjectCadence(id).catch(()=>undefined),getCalendar({from:today,to:addDays(today,56),project:id}).catch(()=>null)]);
   const upcoming=(calendar??[]).map(e=>({...e,display:slotDisplay(e)})).sort((a,b)=>a.date.localeCompare(b.date)||(a.time??"").localeCompare(b.time??""));

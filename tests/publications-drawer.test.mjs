@@ -69,6 +69,7 @@ function pageSetup(){const calls=[];let props=null;
   '@/lib/publications/data':{getPublicationSettingsState:async()=>null},'@/lib/publications/board':{listPublicationBoardRows:async()=>({rows:[],total:0,page:1,pageCount:1,counts:{all:0,to_prepare:0,draft:0,ready:0,rejected:0,published:0}})},
   '@/lib/publications/drawer':{loadPublicationDetail:async(id,options)=>{calls.push(['detail',id,options.debug]);return {state:'not_found'};}},'@/lib/clients/data':{listClients:async()=>[]},'@/lib/projects/data':{listProjects:async()=>[]},
   '@/components/ui/primitives':{PageHeading:()=>null},'@/components/publications/settings-panel':{PublicationSettingsPanel:()=>null},'@/components/publications/publications-board':{PublicationsBoard:()=>null,PublicationsNav:()=>null},
+  '@/lib/publications/project-channels':{publicationProjectOptions:async()=>[]},
   '@/components/publications/publication-drawer':{PublicationDrawer:p=>{props=p;return jsx.jsx('div',{'data-drawer-open':p.closeHref});}}});
  return {page,calls,props:()=>props};}
 test('a shared URL opens the drawer directly; no param or an invalid uuid never opens it',async()=>{

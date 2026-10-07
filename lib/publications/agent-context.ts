@@ -4,7 +4,7 @@ import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {validateAgentContext} from '@/lib/agents/scope';
 import {getWorkspace} from './workspace';
 import {getProjectCadence,planningRows} from './planning';
-import {allowedPlatforms} from './editor';
+import {getPublicationProjectChannels} from './project-channels';
 import {isPublicationUuid} from './validation';
 import {collectOpportunities} from './opportunities/service';
 import type {MediaUse} from './agent-types';
@@ -22,5 +22,5 @@ export async function buildPublicationAgentContext(projectId:string,publicationI
  const [variants,reviews]=await Promise.all([planningRows<PublicationVariant>(()=>db.from('publication_variants').select('*').eq('client_id',c.client_id).order('id')),planningRows<PublicationReview>(()=>db.from('publication_reviews').select('*').eq('client_id',c.client_id).order('id'))]);
  const context={clientId:c.client_id,projectId,services:services as string[],date:slot.data.local_date,zone:client.data.geographic_area,recentSubjects:history.slice(0,30).flatMap(r=>r.internal_title?[r.internal_title]:[]),rules:c.editorial_rules};
  const opportunities=await collectOpportunities(context);
- return {config:c,agent:agent.data,client:client.data,project:project.data,cadence,slot:slot.data,workspace,history:history.slice(0,30),historyVariants:variants.filter(v=>revisionIds.has(v.revision_id)),historyReviews:reviews.filter(v=>revisionIds.has(v.revision_id)),mediaUses,opportunities,platforms:allowedPlatforms(project.data.type),rules:[c.editorial_rules,rules.data?.editorial_brief??'',assignment.data.client_instructions??'',agent.data.instructions].join('\n')};
+ return {config:c,agent:agent.data,client:client.data,project:project.data,cadence,slot:slot.data,workspace,history:history.slice(0,30),historyVariants:variants.filter(v=>revisionIds.has(v.revision_id)),historyReviews:reviews.filter(v=>revisionIds.has(v.revision_id)),mediaUses,opportunities,platforms:(await getPublicationProjectChannels(project.data)).platforms,rules:[c.editorial_rules,rules.data?.editorial_brief??'',assignment.data.client_instructions??'',agent.data.instructions].join('\n')};
 }

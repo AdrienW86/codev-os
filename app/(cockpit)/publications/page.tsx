@@ -4,7 +4,7 @@ import {getPublicationSettingsState} from "@/lib/publications/data";
 import {listPublicationBoardRows} from "@/lib/publications/board";
 import {loadPublicationDetail} from "@/lib/publications/drawer";
 import {closeDrawerHref,parseBoardQuery} from "@/lib/publications/board-query";
-import {allowedPlatforms} from "@/lib/publications/editor";
+import {publicationProjectOptions} from "@/lib/publications/project-channels";
 import {listClients} from "@/lib/clients/data";
 import {listProjects} from "@/lib/projects/data";
 import {PageHeading} from "@/components/ui/primitives";
@@ -20,6 +20,6 @@ export default async function PublicationsPage({searchParams}:PageProps<"/public
  return <><PageHeading title="Publications" eyebrow="Contenus clients" description="Tableau opérationnel de toutes les publications. Aucun contenu n’est publié." action={<div className="flex flex-wrap items-center gap-3"><PublicationsNav current="board"/><Link href="/publications/review" className="rounded-lg border border-border px-4 py-2 text-sm">File de validation</Link><Link href="/publications/new" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background">Nouvelle publication</Link></div>}/>
  <PublicationSettingsPanel settings={settings}/>
  {invalidLink&&<p role="alert" data-invalid-publication-link="true" className="mt-4 rounded-lg border border-border p-3 text-sm">Lien de publication invalide : le panneau n’a pas été ouvert.</p>}
- <PublicationsBoard result={result} query={query} clients={clients.map(c=>({id:c.id,name:c.name}))} projects={projects.filter(p=>allowedPlatforms(p.type).length).map(p=>({id:p.id,name:p.name,client_id:p.client_id}))}/>
+ <PublicationsBoard result={result} query={query} clients={clients.map(c=>({id:c.id,name:c.name}))} projects={(await publicationProjectOptions(projects)).map(p=>({id:p.id,name:p.name,client_id:p.client_id}))}/>
  {drawer&&<PublicationDrawer key={query.publication} load={drawer} closeHref={closeDrawerHref(query)}/>}</>;
 }

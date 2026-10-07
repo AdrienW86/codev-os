@@ -3,7 +3,7 @@ import {requireAdmin} from "@/lib/require-admin";
 import {getSupabaseServerClient} from "@/lib/supabase/server";
 import {safeSupabaseReadError} from "@/lib/supabase/read-error";
 import {isPublicationUuid} from "./validation";
-import {allowedPlatforms} from "./editor";
+import {getPublicationCapabilitiesForProjects} from "./project-channels";
 import {buildEditorialCalendar,calendarStatusLabels,editorialMonday,entryStatus,filterCalendar,validateCadence,type CalendarEntry} from "./calendar";
 import {reviewDecisions} from "./review-decisions";
 import {listPublications} from "./data";
@@ -27,6 +27,7 @@ export async function getCalendar(filter:{from:string;to:string;client?:string;p
   planningRows<PublicationEvent>(()=>db.from("publication_events").select("*").eq("action","publication.reviewed").order("id")),
   planningRows<PublicationVariant>(()=>db.from("publication_variants").select("*").order("id")),
   planningRows<PublicationDelivery>(()=>db.from("publication_deliveries").select("*").order("id"))]);
+ const capabilities=await getPublicationCapabilitiesForProjects(projects),platformsOf=(projectId:string|null|undefined)=>(projectId?capabilities.get(projectId)?.platforms:undefined)??[];
  const decisions=reviewDecisions(reviews,events,variants);const entries:CalendarEntry[]=[];const covered=new Set<string>();
  const make=(s:{key:string;local_date:string;local_time:string|null;timezone:string;client_id:string;project_id:string|null;platforms:CalendarEntry["platforms"];publication_id:string|null},conflict=false)=>{
   const p=publications.find(p=>p.id===s.publication_id),project=projects.find(p=>p.id===s.project_id),revision=revisions.find(r=>r.id===p?.current_revision_id),decision=decisions.find(r=>r.revision_id===p?.current_revision_id);
@@ -34,12 +35,12 @@ export async function getCalendar(filter:{from:string;to:string;client?:string;p
  };
  for(const s of slots)make({...s,key:s.id});
  for(const c of cadences){const project=projects.find(p=>p.id===c.project_id);if(!project)continue;
-  const week=editorialMonday(filter.from);for(const s of buildEditorialCalendar({id:c.client_id},project,c,{start_week:week},publications,slots))if(!s.reservation_id){
+  const week=editorialMonday(filter.from);for(const s of buildEditorialCalendar({id:c.client_id},project,platformsOf(project.id),c,{start_week:week},publications,slots))if(!s.reservation_id){
    if(s.state==="conflict")make({...s,publication_id:null},true);
    else make({...s,local_time:s.publication_id?null:s.local_time});
   }
  }
- for(const p of publications){if(covered.has(p.id))continue;const project=projects.find(pr=>pr.id===p.project_id);make({key:p.id,local_date:p.target_date??p.editorial_week,local_time:null,timezone:"Europe/Paris",client_id:p.client_id,project_id:p.project_id,platforms:variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform).length?variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform):allowedPlatforms(project?.type??null),publication_id:p.id});}
+ for(const p of publications){if(covered.has(p.id))continue;const project=projects.find(pr=>pr.id===p.project_id);make({key:p.id,local_date:p.target_date??p.editorial_week,local_time:null,timezone:"Europe/Paris",client_id:p.client_id,project_id:p.project_id,platforms:variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform).length?variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform):platformsOf(project?.id),publication_id:p.id});}
  return filterCalendar(entries,filter);
 }
 export async function projectPlanningJobs(projectId:string):Promise<PlanningJob[]>{await requireAdmin();if(!isPublicationUuid(projectId))throw Error("Projet invalide.");const db=getSupabaseServerClient();return planningRows<PlanningJob>(()=>db.from("publication_planning_jobs").select("*").eq("project_id",projectId).order("created_at").order("id"));}

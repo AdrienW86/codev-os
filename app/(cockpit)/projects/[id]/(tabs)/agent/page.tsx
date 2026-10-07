@@ -3,10 +3,11 @@ import {AgentWorkspace} from "@/components/publications/agent-section";
 import {DebugDetails} from "@/components/projects/debug-details";
 import {getProjectById} from "@/lib/projects/data";
 import {getPublicationsAgentProject} from "@/lib/publications/agent-data";
-import {allowedPlatforms} from "@/lib/publications/editor";
+import {getPublicationProjectChannels} from "@/lib/publications/project-channels";
+import {projectSupportsPublications} from "@/lib/publications/channels";
 import {agentStatus,formatDay,isDebugView} from "@/lib/projects/workspace-view";
 export default async function ProjectAgentPage({params,searchParams}:PageProps<"/projects/[id]/agent">){
- const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project||!allowedPlatforms(project.type).length)notFound();
+ const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project||!projectSupportsPublications(await getPublicationProjectChannels(project)))notFound();
  const state=await getPublicationsAgentProject(id).catch(()=>null),status=agentStatus(state);
  const placeholders=(state?.placeholders??[]).map(p=>({id:p.id,date:p.target_date??p.editorial_week}));
  // Two placeholders on the same day are told apart by their position, never by an identifier.

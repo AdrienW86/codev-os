@@ -223,7 +223,7 @@ function boardFrom(context){return {listPublicationBoardRows:async()=>{const row
 test("publications page renders true empty state, flags and kill switch", async () => {
   const context = setup();
   const page = load("app/(cockpit)/publications/page.tsx", {
-    "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
+    "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/project-channels":{publicationProjectOptions:async()=>[]},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
     "@/lib/projects/data":{listProjects:async()=>[]},
     "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
     "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel,
@@ -243,7 +243,7 @@ test("page refuses non-admin and renders existing publications without demo fall
   for (const deny of [false, true]) {
     const context = setup({ deny, rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
     const page = load("app/(cockpit)/publications/page.tsx", {
-      "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
+      "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/project-channels":{publicationProjectOptions:async()=>[]},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
       "@/lib/projects/data":{listProjects:async()=>[]},
       "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
       "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel, "@/lib/format-date": date,

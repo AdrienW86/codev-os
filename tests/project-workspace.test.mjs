@@ -38,7 +38,7 @@ const entry=(key,date,status,revision,publication_id)=>({key,date,time:'12:00',t
 const entries=[entry('free',inDays(1),'free',null,null),entry('empty',inDays(2),'draft',null,ids.placeholder),entry('draft',inDays(4),'draft',1,'40000000-0000-4000-8000-000000000004'),entry('pending',inDays(5),'pending_review',1,ids.pending),entry('approved',inDays(6),'approved',2,'40000000-0000-4000-8000-000000000005'),entry('rejected',inDays(6),'rejected',1,ids.rejected),entry('published',inDays(7),'published',1,'40000000-0000-4000-8000-000000000006')];
 const cadence={project_id:ids.project,client_id:ids.client,enabled:true,posts_per_week:2,preferred_weekdays:[1,5],preferred_times:['12:00','12:00'],timezone:'Europe/Paris',planning_horizon_weeks:4,auto_create_slots:true,require_manual_approval:true,updated_at:'2026-10-06T10:00:00Z'};
 function mocks(project=social,overrides={}){const calls=[];return {calls,mocks:{
- 'next/link':Link,'next/navigation':navigation,
+ 'next/link':Link,'next/navigation':navigation,'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_test'})},
  '@/lib/projects/data':{getProjectById:async id=>{calls.push(['project',id]);return id===project.id?project:null;}},
  '@/lib/tasks/data':{listTasksByProject:async()=>[{id:'80000000-0000-4000-8000-000000000001',title:'Préparer le brief',status:'À faire',due_date:inDays(10)}]},
  '@/lib/publications/data':{listPublications:async(client,project)=>{calls.push(['publications',client,project]);return publications;}},

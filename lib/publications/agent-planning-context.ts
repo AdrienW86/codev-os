@@ -6,6 +6,7 @@ import {isPublicationUuid} from "./validation";
 import {getProjectCadence,planningRows,projectPlanningJobs} from "./planning";
 import {listPublications} from "./data";
 import {buildEditorialCalendar} from "./calendar";
+import {getPublicationProjectChannels} from "./project-channels";
 import type {PublicationAsset,CalendarSlot,PublicationReview,PublicationRevision,PublicationVariant} from "./types";
 
 // Context preparation only. This function does not create agents, runs or text.
@@ -23,5 +24,5 @@ export async function buildPublicationsAgentContext(agentId:string,projectId:str
   planningRows<PublicationVariant>(()=>db.from("publication_variants").select("*").eq("client_id",clientId).order("id"))]);
  if(client.error||rules.error)throw Error("Contexte indisponible.");
  const projectReviews=reviews.filter(r=>revisions.some(revision=>revision.id===r.revision_id));
- return {client:client.data,project:project.data,rules:rules.data,cadence,calendar:reservations,publications,revisions,variants:variants.filter(v=>revisions.some(r=>r.id===v.revision_id)),photos:photos.map(({id,provenance,mime_type,width,height})=>({id,provenance,mime_type,width,height})),reviews:projectReviews,jobs,slots_to_fill:cadence?buildEditorialCalendar({id:clientId},project.data,cadence,{start_week:startWeek},publications,reservations).filter(s=>!s.publication_id||publications.find(p=>p.id===s.publication_id)?.current_revision_id===null):[],manual_approval_required:true as const,execution_enabled:false as const};
+ return {client:client.data,project:project.data,rules:rules.data,cadence,calendar:reservations,publications,revisions,variants:variants.filter(v=>revisions.some(r=>r.id===v.revision_id)),photos:photos.map(({id,provenance,mime_type,width,height})=>({id,provenance,mime_type,width,height})),reviews:projectReviews,jobs,slots_to_fill:cadence?buildEditorialCalendar({id:clientId},project.data,(await getPublicationProjectChannels(project.data)).platforms,cadence,{start_week:startWeek},publications,reservations).filter(s=>!s.publication_id||publications.find(p=>p.id===s.publication_id)?.current_revision_id===null):[],manual_approval_required:true as const,execution_enabled:false as const};
 }

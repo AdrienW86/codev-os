@@ -4,7 +4,6 @@ export const platformLabels: Record<PublicationPlatform,string> = {facebook:"Fac
 export type EditorialVariant={platform:PublicationPlatform;text_content:string;asset_ids:string[];metadata:{title?:string;cta?:string}};
 export type EditorialDraft={publication_id:string|null;expected_revision_id:string|null;client_id:string;project_id:string;title:string;angle:string;source:string;target_date:string|null;week:string|null;slot:1|2|null;variants:EditorialVariant[]};
 function date(value:string){const d=new Date(value+"T00:00:00Z");return /^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===value;}
-export function allowedPlatforms(type:string|null):PublicationPlatform[]{return type==="Réseaux sociaux"?["facebook","instagram"]:type==="Google Business Profile"?["google_business_profile"]:[];}
 export function parseEditorialForm(form:FormData):EditorialDraft|null{
  const field=(key:string)=>{const entries=form.getAll(key);return entries.length===1&&typeof entries[0]==="string"?entries[0].trim():"";};
  const publication=field("publication_id"),revision=field("revision_id"),client=field("client_id"),project=field("project_id"),title=field("title"),angle=field("angle"),source=field("source"),target=field("target_date"),week=field("week"),slot=field("slot");

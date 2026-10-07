@@ -5,7 +5,9 @@ import {getSupabaseServerClient} from "@/lib/supabase/server";
 import {isPublicationUuid} from "./validation";
 import {reviewDecisions} from "./review-decisions";
 import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from "./media-rule";
-import {allowedPlatforms,IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm} from "./editor";
+import {getPublicationProjectChannels} from "./project-channels";
+import {projectAllowsPlatform} from "./channels";
+import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
 const failed="Opération non confirmée. Rechargez la fiche et réessayez. Vérifiez aussi que les migrations du Lot 2 sont appliquées.";
@@ -17,18 +19,25 @@ export async function publicationSummaries(ids:string[]){
  for(let offset=0;offset<ids.length;offset+=100){const batch=ids.slice(offset,offset+100);if(batch.some(id=>!isPublicationUuid(id)))throw new Error(failed);const [revisions,variants]=await Promise.all([db.from("publication_revisions").select("id,revision_number,angle,source_content").in("id",batch),db.from("publication_variants").select("revision_id,platform,text_content").in("revision_id",batch)]);if(revisions.error||variants.error)throw new Error(failed);for(const r of revisions.data??[]){const vv=(variants.data??[]).filter(v=>v.revision_id===r.id);result[r.id]={version:r.revision_number,platforms:vv.map(v=>v.platform),search:[r.angle,r.source_content,...vv.map(v=>v.text_content)].join(" ")};}}
  return result;
 }
+function uploadedAsset(event:PublicationEvent):string|null{
+ if(event.action!=="publication.media_uploaded"||!event.metadata||typeof event.metadata!=="object"||Array.isArray(event.metadata))return null;
+ const asset=(event.metadata as Record<string,unknown>).asset_id;return isPublicationUuid(asset)?asset:null;
+}
 export async function getWorkspace(id:string):Promise<Workspace|null>{
  await requireAdmin();if(!isPublicationUuid(id))return null;const db=getSupabaseServerClient();const root=await db.from("publications").select("*").eq("id",id).maybeSingle();if(root.error)throw new Error(failed);if(!root.data)return null;
  const clientId=root.data.client_id;
- const [revisions,variants,reviews,events,assets]=await Promise.all([
+ const [revisions,variants,reviews,events]=await Promise.all([
   allRows<PublicationRevision>(()=>db.from("publication_revisions").select("*").eq("publication_id",id).order("revision_number",{ascending:false})),
   allRows<PublicationVariant>(()=>db.from("publication_variants").select("*").eq("publication_id",id).order("id")),
   allRows<PublicationReview>(()=>db.from("publication_reviews").select("*").eq("publication_id",id).order("id")),
-  allRows<PublicationEvent>(()=>db.from("publication_events").select("*").eq("resource_id",id).order("created_at",{ascending:false}).order("id")),
-  allRows<PublicationAsset>(()=>db.from("publication_assets").select("*").eq("client_id",clientId).like("storage_path",`${clientId}/${id}/%`).order("id"))]);
+  allRows<PublicationEvent>(()=>db.from("publication_events").select("*").eq("resource_id",id).order("created_at",{ascending:false}).order("id"))]);
  // Only the links of this publication's variants (previously every link of the client, filtered afterwards).
  const variantIds=variants.map(v=>v.id),links:PublicationVariantAsset[]=[];
  for(let offset=0;offset<variantIds.length;offset+=100){const batch=variantIds.slice(offset,offset+100);links.push(...await allRows<PublicationVariantAsset>(()=>db.from("publication_variant_assets").select("*").eq("client_id",clientId).in("variant_id",batch).order("variant_id").order("asset_id")));}
+ // Media ownership comes from database relations only, never from the storage path: assets linked to this
+ // publication's variants, plus images uploaded for it (audited media_uploaded events) and not yet attached.
+ const assetIds=[...new Set([...links.map(l=>l.asset_id),...events.flatMap(e=>uploadedAsset(e)??[])])],assets:PublicationAsset[]=[];
+ for(let offset=0;offset<assetIds.length;offset+=100){const batch=assetIds.slice(offset,offset+100);assets.push(...await allRows<PublicationAsset>(()=>db.from("publication_assets").select("*").eq("client_id",clientId).in("id",batch).order("id")));}
  const previews=await Promise.all(assets.map(async asset=>{const signed=await db.storage.from(IMAGE_BUCKET).createSignedUrl(asset.storage_path,IMAGE_URL_TTL);return {...asset,preview:signed.error?null:signed.data.signedUrl};}));
  return {publication:root.data,revisions,variants,reviews:reviewDecisions(reviews,events,variants),events,assets:previews,links:links.filter(l=>variants.some(v=>v.id===l.variant_id))};
 }
@@ -37,8 +46,8 @@ function lockedMessage(message:string|undefined):string{return /rescheduling/i.t
 export async function saveDraft(form:FormData):Promise<{id?:string;message?:string}>{
  const {userId}=await requireAdmin();const input=parseEditorialForm(form);if(!input)return {message:"Vérifiez les champs obligatoires, les dates et les variantes."};const db=getSupabaseServerClient();
  const project=await db.from("projects").select("id,client_id,type").eq("id",input.project_id).eq("client_id",input.client_id).maybeSingle();
- const projectType=project.data?.type??null;
- if(project.error||!project.data||input.variants.some(v=>!allowedPlatforms(projectType).includes(v.platform)))return {message:"Le projet doit appartenir au client et autoriser toutes les plateformes choisies."};
+ const capabilities=project.data?await getPublicationProjectChannels(project.data):null;
+ if(project.error||!project.data||!capabilities||input.variants.some(v=>!projectAllowsPlatform(capabilities,v.platform)))return {message:"Le projet doit appartenir au client et autoriser toutes les plateformes choisies."};
  const result=await db.rpc("publication_save_draft",{p_publication_id:input.publication_id,p_expected_revision_id:input.expected_revision_id,p_client_id:input.client_id,p_project_id:input.project_id,p_title:input.title,p_angle:input.angle,p_source:input.source,p_target_date:input.target_date,p_week:input.week,p_slot:input.slot,p_variants:input.variants,p_actor_id:userId});
  if(result.error)return {message:result.error.code==="23505"?"Ce créneau est occupé ou les deux créneaux de cette semaine sont déjà utilisés.":result.error.code==="40001"?"La publication a changé. Rechargez avant de modifier.":result.error.code==="55000"?lockedMessage(result.error.message):failed};return {id:result.data};
 }

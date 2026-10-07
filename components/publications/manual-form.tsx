@@ -1,15 +1,16 @@
 "use client";
 import {useActionState,useState} from "react";
 import {savePublicationAction} from "@/app/(cockpit)/publications/actions";
-import {allowedPlatforms,platformLabels} from "@/lib/publications/editor";
+import {platformLabels} from "@/lib/publications/editor";
+import type {PublicationProjectOption} from "@/lib/publications/project-channels";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationAsset,PublicationVariantAsset} from "@/lib/publications/types";
 const input="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm";
-export function ManualPublicationForm({clients,projects,publication,revision,variants=[],assets=[],links=[]}:{clients:{id:string;name:string}[];projects:{id:string;client_id:string;name:string;type:string|null}[];publication?:Publication;revision?:PublicationRevision;variants?:PublicationVariant[];assets?:PublicationAsset[];links?:PublicationVariantAsset[]}){
- const [state,action,pending]=useActionState(savePublicationAction,{});const [client,setClient]=useState(publication?.client_id??"");const [project,setProject]=useState(publication?.project_id??"");const selected=projects.find(p=>p.id===project);const platforms=allowedPlatforms(selected?.type??null);
+export function ManualPublicationForm({clients,projects,publication,revision,variants=[],assets=[],links=[]}:{clients:{id:string;name:string}[];projects:PublicationProjectOption[];publication?:Publication;revision?:PublicationRevision;variants?:PublicationVariant[];assets?:PublicationAsset[];links?:PublicationVariantAsset[]}){
+ const [state,action,pending]=useActionState(savePublicationAction,{});const [client,setClient]=useState(publication?.client_id??"");const [project,setProject]=useState(publication?.project_id??"");const selected=projects.find(p=>p.id===project);const platforms=selected?.platforms??[];
  return <form action={action} className="space-y-6">
  {publication&&<><input type="hidden" name="publication_id" value={publication.id}/><input type="hidden" name="revision_id" value={publication.current_revision_id??""}/><input type="hidden" name="client_id" value={client}/></>}
  <div className="grid gap-5 md:grid-cols-2"><label>Client<select className={input} name={publication?undefined:"client_id"} required value={client} disabled={Boolean(publication)} onChange={e=>{setClient(e.target.value);setProject("");}}><option value="">Choisir un client</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
- <label>Projet<select className={input} name="project_id" required value={project} onChange={e=>setProject(e.target.value)}><option value="">Choisir un projet</option>{projects.filter(p=>p.client_id===client&&allowedPlatforms(p.type).length).map(p=><option key={p.id} value={p.id}>{p.name} · {p.type}</option>)}</select><span className="text-xs text-muted">Créez d’abord un projet Réseaux sociaux ou Google Business Profile pour ce client.</span></label></div>
+ <label>Projet<select className={input} name="project_id" required value={project} onChange={e=>setProject(e.target.value)}><option value="">Choisir un projet</option>{projects.filter(p=>p.client_id===client&&p.platforms.length).map(p=><option key={p.id} value={p.id}>{p.name} · {p.type}</option>)}</select><span className="text-xs text-muted">Créez d’abord un projet Réseaux sociaux ou Google Business Profile pour ce client.</span></label></div>
  <label className="block">Titre interne<input className={input} name="title" required maxLength={300} defaultValue={revision?.internal_title??publication?.subject??""}/></label>
  <label className="block">Sujet / angle<textarea className={input} name="angle" required maxLength={3000} defaultValue={revision?.angle??publication?.subject??""}/></label>
  <label className="block">Contenu source<textarea className={input} name="source" rows={6} required maxLength={20000} defaultValue={revision?.source_content??variants[0]?.text_content??""}/></label>

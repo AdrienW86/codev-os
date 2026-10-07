@@ -94,7 +94,13 @@ export type PublicationChannelScheduleRow = Updated & { client_id: string; proje
 export type PublicationChannelScheduleSlotRow = Updated & {
   client_id: string; project_id: string; project_channel_id: string; schedule_id: string; weekday: number; local_time: string; enabled: boolean;
 };
+// Dated occurrence of a channel schedule slot (Lot 4.3 P3). Created only by publication_channel_occurrences_ensure.
+export type PublicationChannelOccurrenceRow = Updated & {
+  client_id: string; project_id: string; project_channel_id: string; schedule_id: string; schedule_slot_id: string; platform: PublicationPlatform;
+  local_date: string; local_time: string; timezone: string; scheduled_for: string; publication_id: string | null; skipped_at: string | null; skipped_reason: string | null;
+};
 export type PublicationTables = {
+  publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "schedule_slot_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
   publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
   publication_channel_schedules: Table<PublicationChannelScheduleRow, "client_id" | "project_id" | "project_channel_id">;
   publication_channel_schedule_slots: Table<PublicationChannelScheduleSlotRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "weekday" | "local_time">;
@@ -124,6 +130,7 @@ export type PublicationTables = {
   publication_events: Table<PublicationEvent, "actor_type" | "action" | "resource_type" | "resource_id">;
 };
 export type PublicationFunctions = {
+  publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};
   publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
   publication_channel_save:{Args:{p_project_id:string;p_platform:string;p_enabled:boolean;p_publication_account_id:string|null;p_editorial_rules:string|null;p_actor_id:string};Returns:string};
   publication_agent_configure:{Args:{p_project:string;p_folder:string;p_services:Json;p_rules:string;p_enabled:boolean;p_rights:boolean;p_actor:string};Returns:string};

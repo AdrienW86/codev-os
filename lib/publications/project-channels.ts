@@ -55,6 +55,15 @@ export async function projectProductionBlock(projectId:string,target:'calendar'|
  try{const project=await projectRef(projectId);if(!project)return 'Projet invalide.';return legacyProductionBlock(await getPublicationProjectChannels(project),target);}
  catch{return 'Vérification des canaux impossible : action bloquée par sécurité.';}
 }
+// Legacy calendar generation (publication_calendar_slots): never for an explicitly configured project, whose
+// calendar is made of channel occurrences since Lot 4.3 P3. Legacy projects keep the historical rules.
+export async function legacyCalendarBlock(projectId:string):Promise<string|null>{
+ await requireAdmin();if(!isPublicationUuid(projectId))return 'Projet invalide.';
+ try{const project=await projectRef(projectId);if(!project)return 'Projet invalide.';const capabilities=await getPublicationProjectChannels(project);
+  if(capabilities.source==='configured')return 'Ce projet utilise le planning par canal : utilisez « Préparer les prochaines semaines » dans le calendrier.';
+  return legacyProductionBlock(capabilities,'calendar');}
+ catch{return 'Vérification des canaux impossible : action bloquée par sécurité.';}
+}
 // Server guard for every write on an existing publication (save, media, regeneration, approval): its current
 // revision must only target enabled channels of its project. Unscoped historical content is not concerned.
 export async function publicationChannelLock(publicationId:string):Promise<string|null>{

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import {useActionState,useState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {confirmChannelsAction,saveChannelScheduleAction,setChannelEnabledAction,type ConfigurationState} from '@/app/(cockpit)/publications/configuration-actions';
@@ -18,6 +19,7 @@ export function ChannelConfiguration({projectId,view}:{projectId:string;view:Cha
    <p className="mt-2 text-sm text-muted">Canaux de diffusion du projet et planning hebdomadaire de chacun. Le nombre de publications par semaine découle des créneaux actifs. Aucune publication n’est diffusée depuis cette page.</p>
    {view.legacy&&<LegacyBanner projectId={projectId}/>}
    {view.suspended&&<p role="status" data-channel-state="suspended" className="mt-4 rounded-lg border border-amber-500 p-3 text-sm">{view.suspended}</p>}
+   {!view.legacy&&<p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${projectId}/calendar`}>Préparer les prochaines semaines depuis le calendrier →</Link></p>}
    {view.calendarNotice&&<p role="status" data-channel-transition="calendar" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.calendarNotice}</p>}
    {view.agentNotice&&<p role="status" data-channel-transition="agent" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.agentNotice}</p>}
   </Panel>

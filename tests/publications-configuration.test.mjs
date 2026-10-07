@@ -20,7 +20,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
 const json=value=>JSON.parse(JSON.stringify(value));
 const src=file=>readFileSync(resolve(root,file),'utf8');
 const uid=(prefix,n)=>`${prefix}0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
-const C=uid(1,1),P=uid(3,1),FB=uid(6,1),IG=uid(6,2),GB=uid(6,3),S1=uid(8,1),ACC=uid(9,1);
+const C=uid(1,1),P=uid(3,1),FB=uid(6,1),IG=uid(6,2),S1=uid(8,1),ACC=uid(9,1);
 const model=load('lib/publications/channel-configuration-model.ts'),channels=load('lib/publications/channels.ts');
 const caps=(source,platforms,aligned=true)=>({...channels.publicationCapabilities(platforms.map(platform=>({platform,enabled:true})),source),legacyAligned:aligned});
 const sched=(slots,enabled=true,timezone='Europe/Paris')=>({scheduleId:S1,projectChannelId:FB,enabled,timezone,slots});
@@ -55,7 +55,7 @@ test('view model: FB / IG / GBP cards, sorted enabled slots, inactive history, d
  const fb=v.cards[0];assert.deepEqual(json(fb.schedule.slots),[{weekday:1,localTime:'12:00'},{weekday:5,localTime:'12:00'}],'Monday → Sunday then time');
  assert.deepEqual(json(fb.schedule.inactiveSlots),[{weekday:3,localTime:'18:00'}]);assert.equal(fb.postsPerWeek,2);assert.equal(fb.rules,'Ton');assert.equal(fb.accountConnected,true);
  assert.equal(v.cards[1].schedule.enabled,false,'disabled channel keeps its (disabled) schedule');assert.equal(v.cards[2].schedule,null,'no schedule yet');
- assert.equal(v.calendarNotice,'Le nouveau planning par canal sera disponible après la migration du calendrier.');assert.equal(v.agentNotice,'L’agent Publications sera disponible pour cette configuration après sa migration multi-canal.');
+ assert.equal(v.calendarNotice,null,'P3: per-channel calendar available, no calendar transition notice');assert.equal(v.agentNotice,'L’agent Publications sera disponible pour cette configuration après sa migration multi-canal.');
  assert.equal(model.postsPerWeekLabel(1),'1 publication / semaine');assert.equal(model.postsPerWeekLabel(0),'0 publication / semaine');assert.equal(model.postsPerWeekLabel(2),'2 publications / semaine');
  const aligned=model.buildChannelConfiguration(caps('configured',['facebook','instagram']),[]);assert.equal(aligned.calendarNotice,null);assert.equal(aligned.agentNotice,null);
  const suspended=model.buildChannelConfiguration({...caps('configured',[]),channels:[{platform:'facebook',enabled:false}]},[{platform:'facebook',enabled:false,accountConnected:false,rules:null,schedule:null}]);
@@ -131,7 +131,7 @@ test('component: legacy banner, FB/IG/GBP cards, one save button per channel, sl
  assert.ok(fb.indexOf('<option value="1" selected')<fb.lastIndexOf('<option value="5" selected'),'Monday row before Friday row');
  const ig=html.slice(html.indexOf('data-channel="instagram"'),html.indexOf('data-channel="google_business_profile"'));
  assert.match(ig,/>Inactif</);assert.match(ig,/Planning désactivé/);assert.match(ig,/Aucun créneau/);assert.match(ig,/Canal inactif : ce planning est conservé mais n’est pas utilisé/);assert.match(ig,/0 publication \/ semaine/);
- assert.match(html,/Le nouveau planning par canal sera disponible après la migration du calendrier\./);assert.match(html,/L’agent Publications sera disponible pour cette configuration après sa migration multi-canal\./);
+ assert.doesNotMatch(html,/Le nouveau planning par canal sera disponible/);assert.match(html,new RegExp(`href="/projects/${P}/calendar">Préparer les prochaines semaines depuis le calendrier`));assert.match(html,/L’agent Publications sera disponible pour cette configuration après sa migration multi-canal\./);
  for(const id of [FB,IG,S1,ACC])assert.ok(!html.includes(id),'no channel, schedule or account identifier rendered (only the project id of the URL)');
  assert.ok(!/resource_type|project_channel|legacy_materialized|source=/.test(html),'no internal value rendered');
  const suspended=renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:model.buildChannelConfiguration({...caps('configured',[]),channels:[{platform:'facebook',enabled:false}]},[{platform:'facebook',enabled:false,accountConnected:false,rules:null,schedule:null}])}));
@@ -152,8 +152,8 @@ test('page: admin guard, workspace rule (0 active channel keeps the tab), no wri
  assert.match(renderToStaticMarkup(await page(caps('legacy',['facebook']))(props({debug:'1'}))),/data-debug="true"/);});
 
 test('P2-b scope: no migration, no client-side database access, no P3 / occurrences, tab under the project',()=>{
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,11);
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,12,'P2-b added none; 12 after P3');
  const client=src('components/publications/channel-configuration.tsx');assert.match(client,/^'use client';/);assert.doesNotMatch(client,/@\/lib\/supabase|getSupabaseServerClient|\.rpc\(|\.from\(|process\.env|server-only|@\/lib\/publications\/channel-configuration'/);
- for(const f of ['components/publications/channel-configuration.tsx','lib/publications/channel-configuration.ts','lib/publications/channel-configuration-model.ts','app/(cockpit)/publications/configuration-actions.ts'])assert.doesNotMatch(src(f),/occurrence|openai|drive|publish_now|cron/i,f);
+ for(const f of ['components/publications/channel-configuration.tsx','lib/publications/channel-configuration.ts','lib/publications/channel-configuration-model.ts','app/(cockpit)/publications/configuration-actions.ts'])assert.doesNotMatch(src(f),/openai|drive|publish_now|cron/i,f);// occurrences exist since P3
  const service=src('lib/publications/channel-configuration.ts');assert.deepEqual([...new Set([...service.matchAll(/rpc\('([a-z_]+)'/g)].map(m=>m[1]))],['publication_channel_save']);assert.match(service,/saveChannelSchedule\(/);assert.doesNotMatch(service,/\.insert\(|\.update\(|\.delete\(/);
  assert.match(src('lib/projects/workspace-view.ts'),/\{key:'configuration',label:'Configuration',segment:'configuration',publications:true\}/);});

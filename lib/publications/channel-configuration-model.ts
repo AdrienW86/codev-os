@@ -26,7 +26,8 @@ export function buildChannelConfiguration(capabilities:PublicationCapabilities,e
    postsPerWeek:postsPerWeek(s)};});
  const legacyCards=legacy?cards.filter(c=>capabilities.platforms.includes(c.platform)):cards;
  return {legacy,cards:legacyCards,suspended:!legacy&&!projectSupportsPublications(capabilities)?SUSPENDED_PUBLICATIONS_MESSAGE:null,
-  calendarNotice:!legacy&&projectSupportsPublications(capabilities)?legacyProductionBlock(capabilities,'calendar'):null,
+  // Lot 4.3 P3: configured projects now have their per-channel calendar (occurrences); no calendar transition notice.
+ calendarNotice:null,
   agentNotice:!legacy&&projectSupportsPublications(capabilities)?legacyProductionBlock(capabilities,'agent'):null};
 }
 

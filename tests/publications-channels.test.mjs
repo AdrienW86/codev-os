@@ -98,13 +98,14 @@ test('server guards: production block and publication channel lock fail closed',
  assert.equal(await notAligned.m.projectProductionBlock('bad','agent'),'Projet invalide.');});
 
 function planningWith(tables){const db=mockDb(tables);return {db,m:load('lib/publications/planning.ts',{...admin,'@/lib/supabase/server':{getSupabaseServerClient:()=>db},'./data':{listPublications:async()=>[]},'@/lib/projects/data':{listProjects:async()=>[]}})};}
-test('legacy calendar: no ensure_calendar call for a suspended or non-aligned configuration; aligned projects unchanged',async()=>{
- for(const [spec,message] of [[{facebook:true,instagram:true,google_business_profile:true},channels.CALENDAR_TRANSITION_MESSAGE],[{facebook:false,instagram:true},channels.CALENDAR_TRANSITION_MESSAGE],[{facebook:false,instagram:false},channels.SUSPENDED_PUBLICATIONS_MESSAGE]]){
+test('legacy calendar: no ensure_calendar call for any configured project (P3 occurrences replace it); legacy projects unchanged',async()=>{
+ const configuredMessage='Ce projet utilise le planning par canal : utilisez « Préparer les prochaines semaines » dans le calendrier.';
+ for(const [spec,message] of [[{facebook:true,instagram:true,google_business_profile:true},configuredMessage],[{facebook:false,instagram:true},configuredMessage],[{facebook:false,instagram:false},configuredMessage],[{facebook:true,instagram:true},configuredMessage]]){
   const {m,db}=planningWith({projects:projectRows,publication_project_channels:channelRows(SOCIAL,spec)});const r=await m.ensureCalendar(SOCIAL,'2026-10-12',true);
   assert.deepEqual(json(r),{ok:false,message},JSON.stringify(spec));assert.ok(!db.log.some(x=>x[0]==='rpc'),'no RPC, no slot');}
- const ok=planningWith({projects:projectRows,publication_project_channels:channelRows(SOCIAL,{facebook:true,instagram:true})});assert.equal((await ok.m.ensureCalendar(SOCIAL,'2026-10-12',true)).ok,true);assert.deepEqual(json(ok.db.log.filter(x=>x[0]==='rpc')),[['rpc','publication_ensure_calendar']]);
- const planning=src('lib/publications/planning.ts');assert.ok(planning.indexOf('projectProductionBlock(projectId,"calendar")')<planning.indexOf('rpc("publication_ensure_calendar"'),'guard before the RPC');
- assert.match(planning,/if\(!project\|\|!projectable\(project\.id\)\)continue;/,'no legacy projection for non-aligned projects; real slots stay listed');});
+ const ok=planningWith({projects:projectRows,publication_project_channels:[]});assert.equal((await ok.m.ensureCalendar(SOCIAL,'2026-10-12',true)).ok,true,'legacy project: historical generation kept');assert.deepEqual(json(ok.db.log.filter(x=>x[0]==='rpc')),[['rpc','publication_ensure_calendar']]);
+ const planning=src('lib/publications/planning.ts');assert.ok(planning.indexOf('legacyCalendarBlock(projectId)')>0&&planning.indexOf('legacyCalendarBlock(projectId)')<planning.indexOf('rpc("publication_ensure_calendar"'),'guard before the RPC');
+ assert.match(planning,/if\(!project\|\|!projectable\(project\.id\)\)continue;/,'no legacy projection for configured projects; real slots stay listed');assert.match(planning,/c\.source==="legacy"&&!legacyProductionBlock/);});
 
 test('Agent v1: refused before context, begin, reservation, Drive or AI for a non-aligned configuration',async()=>{
  const run=async spec=>{const db=mockDb({projects:projectRows,publications:[{id:PUB,project_id:SOCIAL,client_id:C,current_revision_id:REV}],publication_variants:[{revision_id:REV,client_id:C,platform:'facebook'}],publication_project_channels:channelRows(SOCIAL,spec)});const hits=[];
@@ -196,7 +197,7 @@ test('getWorkspace finds media through database relations only, never through th
  assert.doesNotMatch(src('lib/publications/workspace.ts'),/\.like\(/);assert.match(src('lib/publications/workspace.ts'),/path=`\$\{pub\.data\.client_id\}\/\$\{id\}\/\$\{asset\}`/,'upload path format unchanged');});
 
 test('P1 migration: single file, explicit grants, no publication_events change, transitional guards documented',()=>{
- const dir=resolve(root,'supabase/migrations'),list=readdirSync(dir).sort();assert.equal(list.length,11);assert.equal(list[9],'20261007120000_publications_project_channels.sql');
+ const dir=resolve(root,'supabase/migrations'),list=readdirSync(dir).sort();assert.equal(list.length,12);assert.equal(list[9],'20261007120000_publications_project_channels.sql');
  const sql=src('supabase/migrations/20261007120000_publications_project_channels.sql');
  const code=sql.replace(/--[^\n]*/g,'');assert.doesNotMatch(code,/alter table public\.publication_events|security definer|drop table|delete from|client_connections|publication_accounts\s+(add|alter|drop)/i);
  assert.match(sql,/revoke all on public\.publication_project_channels from public,anon,authenticated,service_role;\ngrant select,insert,update on public\.publication_project_channels to service_role;/);

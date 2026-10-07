@@ -1,7 +1,7 @@
 // Pure presentation helpers for the project workspace tabs. No data access, safe for tests.
 import type {CalendarStatus} from '@/lib/publications/calendar';
 
-export type ProjectTabKey='overview'|'calendar'|'agent'|'review'|'history';
+export type ProjectTabKey='overview'|'calendar'|'agent'|'review'|'configuration'|'history';
 export type ProjectTab={key:ProjectTabKey;label:string;href:string;segment:string|null};
 
 const tabs:{key:ProjectTabKey;label:string;segment:string|null;publications:boolean}[]=[
@@ -9,6 +9,7 @@ const tabs:{key:ProjectTabKey;label:string;segment:string|null;publications:bool
  {key:'calendar',label:'Calendrier',segment:'calendar',publications:true},
  {key:'agent',label:'Agent Publications',segment:'agent',publications:true},
  {key:'review',label:'Validation',segment:'review',publications:true},
+ {key:'configuration',label:'Configuration',segment:'configuration',publications:true},
  {key:'history',label:'Historique',segment:'history',publications:false},
 ];
 // Publication tabs only exist for project types that actually have publication platforms.

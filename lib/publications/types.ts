@@ -84,7 +84,13 @@ type Table<Row, Required extends keyof Row, Writable extends keyof Row = never, 
   Update: [Writable] extends [never] ? never : Partial<Pick<Row, Writable>>;
   Relationships: Relations;
 };
+// Explicit channel of a project (Lot 4.3 P1). Written only through publication_channel_save.
+export type PublicationProjectChannelRow = Updated & {
+  client_id: string; project_id: string; platform: PublicationPlatform; enabled: boolean;
+  publication_account_id: string | null; editorial_rules: string | null;
+};
 export type PublicationTables = {
+  publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
   publication_agent_projects: Table<PublicationsAgentProject,'project_id'|'client_id'|'agent_id'|'drive_folder_id'|'verified_services'>;
   publication_ai_runs: Table<PublicationsAIRun,'agent_run_id'|'agent_id'|'client_id'|'project_id'|'publication_id'|'idempotency_key'|'attempt'>;
   publication_drive_media: Table<DriveMedia,'client_id'|'drive_file_id'|'drive_folder_id'|'name'|'mime_type'|'modified_at'|'file_size'>;
@@ -111,6 +117,7 @@ export type PublicationTables = {
   publication_events: Table<PublicationEvent, "actor_type" | "action" | "resource_type" | "resource_id">;
 };
 export type PublicationFunctions = {
+  publication_channel_save:{Args:{p_project_id:string;p_platform:string;p_enabled:boolean;p_publication_account_id:string|null;p_editorial_rules:string|null;p_actor_id:string};Returns:string};
   publication_agent_configure:{Args:{p_project:string;p_folder:string;p_services:Json;p_rules:string;p_enabled:boolean;p_rights:boolean;p_actor:string};Returns:string};
   publication_ai_begin:{Args:{p_publication:string;p_expected:string|null;p_actor:string};Returns:Json};
   publication_ai_catalog:{Args:{p_run:string;p_photos:Json};Returns:Json};

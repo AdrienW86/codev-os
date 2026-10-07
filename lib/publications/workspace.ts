@@ -5,7 +5,7 @@ import {getSupabaseServerClient} from "@/lib/supabase/server";
 import {isPublicationUuid} from "./validation";
 import {reviewDecisions} from "./review-decisions";
 import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from "./media-rule";
-import {getPublicationProjectChannels} from "./project-channels";
+import {getPublicationProjectChannels,publicationChannelLock} from "./project-channels";
 import {projectAllowsPlatform} from "./channels";
 import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
@@ -45,6 +45,7 @@ export async function getWorkspace(id:string):Promise<Workspace|null>{
 function lockedMessage(message:string|undefined):string{return /rescheduling/i.test(message??"")?"Cette date est pilotée par le calendrier.":/deliveries/i.test(message??"")?"Un envoi est en cours ou terminé : modification impossible.":failed;}
 export async function saveDraft(form:FormData):Promise<{id?:string;message?:string}>{
  const {userId}=await requireAdmin();const input=parseEditorialForm(form);if(!input)return {message:"Vérifiez les champs obligatoires, les dates et les variantes."};const db=getSupabaseServerClient();
+ if(input.publication_id){const lock=await publicationChannelLock(input.publication_id);if(lock)return {message:lock};}
  const project=await db.from("projects").select("id,client_id,type").eq("id",input.project_id).eq("client_id",input.client_id).maybeSingle();
  const capabilities=project.data?await getPublicationProjectChannels(project.data):null;
  if(project.error||!project.data||!capabilities||input.variants.some(v=>!projectAllowsPlatform(capabilities,v.platform)))return {message:"Le projet doit appartenir au client et autoriser toutes les plateformes choisies."};
@@ -55,6 +56,7 @@ export async function submitOrReview(form:FormData):Promise<{message:string}>{
  const {userId}=await requireAdmin();const id=form.get("publication_id"),revision=form.get("revision_id"),decision=form.get("decision"),reason=form.get("reason");
  if(!isPublicationUuid(id)||!isPublicationUuid(revision)||!["submit","approved","rejected"].includes(String(decision))|| (decision==="rejected"&&(typeof reason!=="string"||!reason.trim()||reason.length>3000)))return {message:"Identifiant, révision ou motif de refus invalide."};
  const db=getSupabaseServerClient();
+ if(decision==="approved"){const lock=await publicationChannelLock(id);if(lock)return {message:lock};}
  if(decision==="approved"){const missing=await revisionChannelsWithoutMedia(db as unknown as MediaRuleDb,revision);if(missing===null)return {message:failed};if(missing.length)return {message:missingMediaMessage(missing)};}
  const result=decision==="submit"?await db.rpc("publication_submit_manual",{p_publication_id:id,p_revision_id:revision,p_actor_id:userId}):await db.rpc("publication_review_manual",{p_publication_id:id,p_revision_id:revision,p_decision:String(decision),p_reason:typeof reason==="string"?reason.trim()||null:null,p_actor_id:userId});
  return {message:result.error?failed:decision==="submit"?"Révision soumise à validation.":decision==="approved"?"Révision approuvée.":"Révision refusée. Créez une nouvelle révision pour la retravailler."};
@@ -64,6 +66,7 @@ export type StagedMedia={assetId:string;previewUrl:string|null;mime:string};
 export async function uploadImage(form:FormData):Promise<{message:string;staged?:StagedMedia}>{
  const {userId}=await requireAdmin();const id=form.get("publication_id"),revision=form.get("revision_id"),file=form.get("image"),provenance=form.get("provenance");
  if(!isPublicationUuid(id)||!isPublicationUuid(revision)||!(file instanceof File)||file.size<12||file.size>MAX_IMAGE_BYTES||form.get("rights")!=="on"||typeof provenance!=="string"||!provenance.trim()||provenance.length>2000)return {message:"Image requise (JPEG, PNG ou WebP, 768 Ko maximum), provenance et droits confirmés obligatoires."};
+ const lock=await publicationChannelLock(id);if(lock)return {message:lock};
  const db=getSupabaseServerClient();const pub=await db.from("publications").select("client_id,current_revision_id").eq("id",id).single();if(pub.error||pub.data.current_revision_id!==revision)return {message:"Révision périmée. Rechargez la publication."};
  const bytes=new Uint8Array(await file.arrayBuffer());const mime=imageMime(bytes);if(!mime||mime!==file.type)return {message:"Le contenu du fichier ne correspond pas à un format image accepté."};
  const asset=randomUUID(),path=`${pub.data.client_id}/${id}/${asset}`;const upload=await db.storage.from(IMAGE_BUCKET).upload(path,bytes,{contentType:mime,upsert:false});if(upload.error)return {message:"Upload impossible. Vérifiez le stockage privé Publications."};

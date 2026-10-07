@@ -30,6 +30,8 @@ $savedCalendarUrl=$env:PUBLICATIONS_CALENDAR_TEST_DATABASE_URL
 $savedCalendarPsql=$env:PUBLICATIONS_CALENDAR_TEST_PSQL
 $savedAgentUrl=$env:PUBLICATIONS_AGENT_TEST_DATABASE_URL
 $savedAgentPsql=$env:PUBLICATIONS_AGENT_TEST_PSQL
+$savedChannelsUrl=$env:PUBLICATIONS_CHANNELS_TEST_DATABASE_URL
+$savedChannelsPsql=$env:PUBLICATIONS_CHANNELS_TEST_PSQL
 $savedTelemetry=$env:NEXT_TELEMETRY_DISABLED
 $savedClerkTelemetry=$env:CLERK_TELEMETRY_DISABLED
 $savedApplicationEnv=@{}
@@ -101,6 +103,12 @@ try {
   $env:PUBLICATIONS_AGENT_TEST_PSQL=Join-Path $binRoot 'psql.exe'
   & node --test tests/publications-agent-db.test.mjs
   if ($LASTEXITCODE -ne 0) { throw 'Lot 4 agent SQL failed. No remote migration permitted.' }
+  & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database publications_channels_test owner postgres;'
+  if ($LASTEXITCODE -ne 0) { throw 'Dedicated channels database creation failed.' }
+  $env:PUBLICATIONS_CHANNELS_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/publications_channels_test"
+  $env:PUBLICATIONS_CHANNELS_TEST_PSQL=Join-Path $binRoot 'psql.exe'
+  & node --test tests/publications-channels-db.test.mjs
+  if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P1 channels SQL failed. No remote migration permitted.' }
   & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database remote_schema_test owner postgres;'
   if ($LASTEXITCODE -ne 0) { throw 'Dedicated local replay database creation failed.' }
   $env:REMOTE_SCHEMA_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/remote_schema_test"
@@ -149,6 +157,8 @@ try {
   $env:PUBLICATIONS_CALENDAR_TEST_PSQL=$savedCalendarPsql
   $env:PUBLICATIONS_AGENT_TEST_DATABASE_URL=$savedAgentUrl
   $env:PUBLICATIONS_AGENT_TEST_PSQL=$savedAgentPsql
+  $env:PUBLICATIONS_CHANNELS_TEST_DATABASE_URL=$savedChannelsUrl
+  $env:PUBLICATIONS_CHANNELS_TEST_PSQL=$savedChannelsPsql
   $env:NEXT_TELEMETRY_DISABLED=$savedTelemetry
   $env:CLERK_TELEMETRY_DISABLED=$savedClerkTelemetry
   foreach($name in $savedPg.Keys) { [Environment]::SetEnvironmentVariable($name,$savedPg[$name],'Process') }

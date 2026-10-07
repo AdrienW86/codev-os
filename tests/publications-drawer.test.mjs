@@ -283,10 +283,10 @@ test('read-only server guard: a locked publication can never get a new revision,
 test('loader: strict id, admin first, one publication only, targeted reads, debug data only on request, no secret in props',async()=>{
  const w=workspace();const calls=[];const tables={publications:[{id:PUB,client:{name:'Jrenov'},project:{name:'Réseaux Jrenov'}}],publication_calendar_slots:[{publication_id:PUB,platforms:['facebook','instagram']}],publication_deliveries:[]};
  const fake=fakeDb(tables);const loader=(deny=false)=>load('lib/publications/drawer.ts',{'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');if(deny)throw Error('denied');}},'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},
-  './workspace':{getWorkspace:async id=>{calls.push(['workspace',id]);return json(w);}},'./agent-data':{getGenerationDetails:async()=>{calls.push('details');return {run_id:'run-1'};},getAiRunForRevision:async()=>{calls.push('run');return {model:'gpt-4.1-mini-2025-04-14',input_tokens:10};}}});
+  './workspace':{getWorkspace:async id=>{calls.push(['workspace',id]);return json(w);}},'./project-channels':{publicationChannelLock:async id=>{calls.push(['channel-lock',id]);return null;}},'./agent-data':{getGenerationDetails:async()=>{calls.push('details');return {run_id:'run-1'};},getAiRunForRevision:async()=>{calls.push('run');return {model:'gpt-4.1-mini-2025-04-14',input_tokens:10};}}});
  assert.deepEqual(json(await loader().loadPublicationDetail('nope',{debug:false})),{state:'not_found'});assert.deepEqual(calls,['admin']);
  await assert.rejects(()=>loader(true).loadPublicationDetail(PUB,{debug:false}),/denied/);
- calls.length=0;const result=await loader().loadPublicationDetail(PUB,{debug:false});assert.equal(result.state,'ok');assert.deepEqual(json(calls),['admin',['workspace',PUB]]);
+ calls.length=0;const result=await loader().loadPublicationDetail(PUB,{debug:false});assert.equal(result.state,'ok');assert.deepEqual(json(calls),['admin',['workspace',PUB],['channel-lock',PUB]],'channel lock of this publication only');
  assert.equal(result.detail.dateEditable,false,'slot-bound publication');assert.equal(result.detail.debug,null);
  const props=JSON.stringify(result),unsigned=props.replace(/https:\/\/project\.supabase\.co\/storage\/v1\/object\/sign\/[^"]+/g,'');assert.ok(!unsigned.includes(storagePath),'the key only appears inside the short-lived signed URL');
  for(const s of ['storage_path','sb_','secret','credential_reference','refresh','gpt-4.1','estimated_cost'])assert.ok(!props.includes(s),s);
@@ -297,4 +297,4 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,9);});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,10,'9 + Lot 4.3 P1 channels');});

@@ -54,14 +54,15 @@ export function primaryMedia(variants:DetailVariant[]):{state:MediaState;preview
 }
 
 export function buildPublicationDetail(input:{publication:DetailPublication;clientName:string;projectName:string|null;workspace:Workspace;
- slot:{platforms:string[]}|null;deliveries:DetailDelivery[];debug:Record<string,unknown>|null}):PublicationDetailData{
+ slot:{platforms:string[]}|null;deliveries:DetailDelivery[];debug:Record<string,unknown>|null;channelLock?:string|null}):PublicationDetailData{
  const {publication:p,workspace:w}=input,revisionId=p.current_revision_id,revision=w.revisions.find(r=>r.id===revisionId)??null;
  const variants=currentVariants(w,revisionId),variantIds=new Set(w.variants.filter(v=>v.revision_id===revisionId).map(v=>v.id));
  const platforms=variants.length?variants.map(v=>v.platform):(input.slot?.platforms??[]).filter((x):x is PublicationPlatform=>x in platformLabels);
  const published=new Set(input.deliveries.filter(d=>variantIds.has(d.variant_id)&&d.status==='published').map(d=>d.platform));
  const status=boardStatus(p,variants.map(v=>v.platform),published);
  const origin:BoardOrigin=!revision?'planning':w.revisions.some(r=>r.origin!=='manual')?'agent':'manual';
- const lock=deliveryLockMessage(input.deliveries);
+ // Delivery lock first, then the channel lock (current revision targets a disabled channel of its project).
+ const lock=deliveryLockMessage(input.deliveries)??input.channelLock??null;
  const readOnly=status==='published'||lock!==null;
  const rejection=p.status==='rejected'&&revisionId?decisionFor(w,revisionId)?.reason??null:null;
  return {publicationId:p.id,revisionId,clientId:p.client_id,clientName:input.clientName,projectId:p.project_id,projectName:input.projectName,

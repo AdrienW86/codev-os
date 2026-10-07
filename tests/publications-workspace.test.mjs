@@ -5,8 +5,9 @@ import vm from 'node:vm';
 import ts from 'typescript';
 function load(path,mocks={}){const exports={};const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,FormData,File,Uint8Array,Date,Set,console,require:n=>{if(n==='server-only')return {};if(n==='./review-decisions')return reviewModel;if(n==='./media-rule')return mediaRule;if(n==='./project-channels')return projectChannels;if(n==='./channels')return channelsModule;if(n in mocks)return mocks[n];throw Error(n);}});return exports;}
 const reviewModel=load('lib/publications/review-decisions.ts');
-const channelsModule=load('lib/publications/channels.ts',{'./types':load('lib/publications/types.ts')}),legacyChannels=load('lib/publications/legacy-channels.ts');
-const projectChannels={getPublicationProjectChannels:async project=>channelsModule.publicationCapabilities(legacyChannels.legacyPublicationChannelsForType(project.type),'legacy')};
+const channelsModule=load('lib/publications/channels.ts',{'./types':load('lib/publications/types.ts'),'./editor':{platformLabels:{facebook:'Facebook',instagram:'Instagram',google_business_profile:'Google Business Profile'}}}),legacyChannels=load('lib/publications/legacy-channels.ts');
+// No explicit channel row in these fixtures: legacy fallback and no channel lock.
+const projectChannels={publicationChannelLock:async()=>null,getPublicationProjectChannels:async project=>channelsModule.publicationCapabilities(legacyChannels.legacyPublicationChannelsForType(project.type),'legacy')};
 const mediaRule=load('lib/publications/media-rule.ts',{'./editor':{platformLabels:{facebook:'Facebook',instagram:'Instagram',google_business_profile:'Google Business Profile'}}});
 const types=load('lib/publications/types.ts');const validation=load('lib/publications/validation.ts',{'./types':types});const editor=load('lib/publications/editor.ts',{'./validation':validation,'./types':types});
 const id='10000000-0000-4000-8000-000000000001';

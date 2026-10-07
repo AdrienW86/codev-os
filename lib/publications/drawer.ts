@@ -4,6 +4,7 @@ import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {getWorkspace} from './workspace';
 import {getAiRunForRevision,getGenerationDetails} from './agent-data';
 import {isPublicationUuid} from './validation';
+import {publicationChannelLock} from './project-channels';
 import {buildPublicationDetail,deliveryLockMessage,type DetailDelivery,type PublicationDetailData} from './publication-detail';
 
 export type DrawerLoad={state:'ok';detail:PublicationDetailData}|{state:'not_found'}|{state:'unavailable'};
@@ -15,10 +16,10 @@ export async function loadPublicationDetail(id:string,options:{debug:boolean}):P
  try{
   const workspace=await getWorkspace(id);if(!workspace)return {state:'not_found'};
   const db=getSupabaseServerClient();
-  const [root,slot,deliveries]=await Promise.all([
+  const [root,slot,deliveries,channelLock]=await Promise.all([
    db.from('publications').select('client:clients(name),project:projects(name)').eq('id',id).maybeSingle(),
    db.from('publication_calendar_slots').select('platforms').eq('publication_id',id).maybeSingle(),
-   db.from('publication_deliveries').select('variant_id,platform,status').eq('publication_id',id)]);
+   db.from('publication_deliveries').select('variant_id,platform,status').eq('publication_id',id),publicationChannelLock(id)]);
   if(root.error||slot.error||deliveries.error)return {state:'unavailable'};
   const names=(root.data??{client:null,project:null}) as unknown as Root,p=workspace.publication,revisionId=p.current_revision_id;
   let debug:Record<string,unknown>|null=null;
@@ -28,7 +29,7 @@ export async function loadPublicationDetail(id:string,options:{debug:boolean}):P
     run_id:details?.run_id??run?.id??null,model:run?.model??null,input_tokens:run?.input_tokens??null,output_tokens:run?.output_tokens??null,estimated_cost_eur:run?.estimated_cost_eur??null,
     asset_ids:assetIds,storage_paths:assetIds.map(a=>workspace.assets.find(x=>x.id===a)?.storage_path??null)};}
   return {state:'ok',detail:buildPublicationDetail({publication:p,clientName:names.client?.name??'Client',projectName:names.project?.name??null,workspace,
-   slot:slot.data?{platforms:(slot.data as {platforms:string[]}).platforms??[]}:null,deliveries:(deliveries.data??[]) as DetailDelivery[],debug})};
+   slot:slot.data?{platforms:(slot.data as {platforms:string[]}).platforms??[]}:null,deliveries:(deliveries.data??[]) as DetailDelivery[],debug,channelLock})};
  }catch{console.error('[publications] Lecture du panneau indisponible.');return {state:'unavailable'};}
 }
 

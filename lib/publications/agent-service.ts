@@ -11,6 +11,7 @@ import {selectSubjectPhoto} from './media/matching';
 import {category} from './opportunities/types';
 import type {MediaProvider} from './media/types';
 import {buildPublicationAgentContext} from './agent-context';
+import {projectProductionBlock,publicationChannelLock} from './project-channels';
 import {isPublicationUuid} from './validation';
 import type {Json} from '@/lib/supabase/database.types';
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
@@ -22,6 +23,9 @@ export async function configurePublicationsAgent(form:FormData){const {userId}=a
 
 export async function preparePublication(projectId:string,publicationId:string,authorization:{allowRealAI:boolean},providers?:{ai:PublicationsAIProvider;media:MediaProvider}){
  const {userId}=await requireAdmin();if(!providers&&!authorization.allowRealAI)return {message:'Un appel IA réel doit être explicitement autorisé pour cette publication.'};
+ // TRANSITIONAL (P7): Agent v1 only serves the historical channel set. Checked before any context read, begin,
+ // reservation, Drive or AI call: a refusal costs nothing.
+ const blocked=await projectProductionBlock(projectId,'agent')??await publicationChannelLock(publicationId);if(blocked)return {message:blocked};
  const context=await buildPublicationAgentContext(projectId,publicationId),db=getSupabaseServerClient();let run:string|null=null,calledAI=false,completed=false,stage:PreparationStage='begin';const uploads:{bucket:string;path:string}[]=[];const usage:Usage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
  const accumulate=(u:Usage)=>{if(!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)throw Error('Invalid usage');usage.input_tokens+=u.input_tokens;usage.output_tokens+=u.output_tokens;usage.estimated_cost_eur+=u.estimated_cost_eur;if(usage.estimated_cost_eur>MANUAL_RUN_RESERVE_EUR)throw Error('Cost reservation exceeded');};
  try{

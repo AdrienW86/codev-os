@@ -6,15 +6,17 @@ import {getProjectById} from "@/lib/projects/data";
 import {getCalendar,getProjectCadence} from "@/lib/publications/planning";
 import {addDays,calendarPeriod,defaultCadence,editorialMonday,parisToday,validDate} from "@/lib/publications/calendar";
 import {getPublicationProjectChannels} from "@/lib/publications/project-channels";
-import {projectSupportsPublications} from "@/lib/publications/channels";
+import {legacyProductionBlock,projectHasPublicationsWorkspace} from "@/lib/publications/channels";
 import {isDebugView,slotDisplay} from "@/lib/projects/workspace-view";
 function monthShift(date:string,months:number){const d=new Date(date.slice(0,7)+"-01T00:00:00Z");d.setUTCMonth(d.getUTCMonth()+months);return d.toISOString().slice(0,10);}
 export default async function ProjectCalendarPage({params,searchParams}:PageProps<"/projects/[id]/calendar">){
- const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project)notFound();const capabilities=await getPublicationProjectChannels(project);if(!projectSupportsPublications(capabilities))notFound();
+ const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project)notFound();const capabilities=await getPublicationProjectChannels(project);if(!projectHasPublicationsWorkspace(capabilities))notFound();
+ // TRANSITIONAL (P3): existing slots stay visible; no new legacy slot is generated (refused server-side too).
+ const blocked=legacyProductionBlock(capabilities,"calendar");
  const field=(key:string)=>typeof search[key]==="string"?search[key] as string:"",mode=field("mode")==="month"?"month":"week",date=validDate(field("date"))?field("date"):parisToday(),period=calendarPeriod(date,mode);
  const [calendar,cadence]=await Promise.all([getCalendar({...period,project:id}).catch(()=>null),getProjectCadence(id).catch(()=>undefined)]);
  const entries:ProjectCalendarEntry[]=(calendar??[]).map(e=>({key:e.key,date:e.date,time:e.time,subject:e.subject,platforms:e.platforms,display:slotDisplay(e),publicationId:e.publication_id,conflict:e.conflict})).sort((a,b)=>a.date.localeCompare(b.date)||(a.time??"").localeCompare(b.time??""));
- return <><ProjectCalendar projectId={id} mode={mode} from={period.from} to={period.to} previous={mode==="week"?addDays(period.from,-7):monthShift(period.from,-1)} next={mode==="week"?addDays(period.from,7):monthShift(period.from,1)} entries={entries} error={calendar===null}/>
+ return <>{blocked&&<p role="status" data-channel-transition="calendar" className="mb-4 rounded-lg border border-border p-3 text-sm">{blocked}</p>}<ProjectCalendar projectId={id} mode={mode} from={period.from} to={period.to} previous={mode==="week"?addDays(period.from,-7):monthShift(period.from,-1)} next={mode==="week"?addDays(period.from,7):monthShift(period.from,1)} entries={entries} error={calendar===null}/>
  <PlanningSettings projectId={id} cadence={cadence??defaultCadence(capabilities.platforms)} cadenceKey={cadence?.updated_at??id} startWeek={editorialMonday(parisToday())} unavailable={cadence===undefined} open={cadence===null}/>
  <DebugDetails enabled={isDebugView(search)} data={{project_id:id,period,cadence:cadence??null,entries:(calendar??[]).map(e=>({key:e.key,publication_id:e.publication_id,status:e.status,revision:e.revision,origin:e.origin,validation:e.validation}))}}/></>;
 }

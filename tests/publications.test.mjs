@@ -10,7 +10,7 @@ function load(path, mocks = {}, logs = []) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, process: { env: { SUPABASE_SECRET_KEY: "sb_secret_fixture", SUPABASE_DB_URL: "postgres://user:fixture-password@host/db" } }, console: { error: (...args) => logs.push(args) }, require: (name) => {
+  vm.runInNewContext(code, { exports, URLSearchParams, process: { env: { SUPABASE_SECRET_KEY: "sb_secret_fixture", SUPABASE_DB_URL: "postgres://user:fixture-password@host/db" } }, console: { error: (...args) => logs.push(args) }, require: (name) => {
     if (name === "server-only") return {};
     if (name === "react/jsx-runtime") return jsx;
     if (name === "next/link") return {default:({href,children,...props})=>jsx.jsx("a",{href,...props,children})};
@@ -22,6 +22,7 @@ function load(path, mocks = {}, logs = []) {
 const types = load("lib/publications/types.ts");
 const validation = load("lib/publications/validation.ts", { "./types": types });
 const transitions = load("lib/publications/transitions.ts", { "./types": types });
+const mediaRule = load("lib/publications/media-rule.ts", { "./editor": { platformLabels: { facebook: "Facebook", instagram: "Instagram", google_business_profile: "Google Business Profile" } } });
 const readError = load("lib/supabase/read-error.ts");
 const id = "11111111-1111-4111-8111-111111111111";
 const revisionId = "22222222-2222-4222-8222-222222222222";
@@ -53,7 +54,7 @@ function setup({ deny = false, rows = [], configuration = settings, error = null
     then: (resolve) => resolve({ data: pages ? pages[pageIndex++] : rows, error }),
   };
   const repository = load("lib/publications/data.ts", {
-    "@/lib/require-admin": { requireAdmin: guard }, "./transitions": transitions, "./validation": validation,
+    "@/lib/require-admin": { requireAdmin: guard }, "./transitions": transitions, "./validation": validation, "./media-rule": mediaRule,
     "@/lib/supabase/read-error": readError,
     "@/lib/supabase/server": { getSupabaseServerClient: () => ({
       from: (table) => { calls.push(["from", table]); return query; },
@@ -210,12 +211,20 @@ test("invalid mutations avoid storage; RPC failures return sanitized errors", as
 const primitives = load("components/ui/primitives.tsx");
 const settingsPanel = load("components/publications/settings-panel.tsx", { "@/components/ui/primitives": primitives });
 const date = load("lib/format-date.ts");
+const boardQuery = load("lib/publications/board-query.ts", { "./types": types });
+const boardComponent = load("components/publications/publications-board.tsx", { "@/components/ui/primitives": primitives, "@/components/projects/debug-details": load("components/projects/debug-details.tsx"),
+  "@/lib/publications/editor": { platformLabels: {} }, "@/lib/format-date": date, "@/lib/publications/types": types, "@/lib/publications/board-query": boardQuery,
+  "./board-filter-bar": { BoardFilterBar: () => null }, "@/app/(cockpit)/publications/board-actions": { hideFromBoardAction: async () => {}, restoreToBoardAction: async () => {} } });
 
+// The board loader is backed by the same stored rows: no demo fallback, and it reads only after the admin guard.
+function boardFrom(context){return {listPublicationBoardRows:async()=>{const rows=await context.repository.listPublications();
+ const mapped=rows.map(p=>({id:p.id,clientId:p.client_id,clientName:p.client?.name??"Client",projectId:null,projectName:null,date:p.editorial_week,dateIsWeek:true,status:p.status==="pending_review"?"draft":"to_prepare",rawStatus:p.status,subject:p.subject,preview:"",platforms:[],origin:"manual",edited:false,updatedAt:p.editorial_week,revisionId:null,revisionNumber:null,creationOrigin:"manual",hasMedia:false,missingMedia:[],hidden:false,deliveries:{published:0,total:0},image:null,debug:null}));
+ return {rows:mapped,total:mapped.length,page:1,pageCount:1,counts:{all:mapped.length,to_prepare:0,draft:mapped.length,ready:0,rejected:0,published:0}};}};}
 test("publications page renders true empty state, flags and kill switch", async () => {
   const context = setup();
   const page = load("app/(cockpit)/publications/page.tsx", {
-    "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/workspace":{publicationSummaries:async()=>({})},"@/lib/publications/editor":{platformLabels:{}},"@/lib/publications/types":types,
-    "@/lib/projects/data":{listProjects:async()=>[]},"@/components/publications/project-form":{PublicationProjectForm:()=>null},
+    "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
+    "@/lib/projects/data":{listProjects:async()=>[]},
     "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
     "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel,
     "@/lib/format-date": date,
@@ -234,13 +243,13 @@ test("page refuses non-admin and renders existing publications without demo fall
   for (const deny of [false, true]) {
     const context = setup({ deny, rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
     const page = load("app/(cockpit)/publications/page.tsx", {
-      "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/workspace":{publicationSummaries:async()=>({})},"@/lib/publications/editor":{platformLabels:{}},"@/lib/publications/types":types,
-      "@/lib/projects/data":{listProjects:async()=>[]},"@/components/publications/project-form":{PublicationProjectForm:()=>null},
+      "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
+      "@/lib/projects/data":{listProjects:async()=>[]},
       "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
       "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel, "@/lib/format-date": date,
     });
     if (deny) await assert.rejects(()=>page.default({searchParams:Promise.resolve({})}), /denied/);
-    else { const html = renderToStaticMarkup(await page.default({searchParams:Promise.resolve({})})); assert.match(html, /Contenu réel/); assert.match(html, /Client réel/); assert.match(html, /À valider/); assert.match(html,new RegExp(`/publications/${id}`)); }
+    else { const html = renderToStaticMarkup(await page.default({searchParams:Promise.resolve({})})); assert.match(html, /Contenu réel/); assert.match(html, /Client réel/); assert.match(html, /Brouillon/); assert.match(html,new RegExp(`/publications/${id}`)); assert.equal(context.calls[0], "auth"); }
   }
 });
 

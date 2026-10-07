@@ -1,24 +1,19 @@
 import Link from "next/link";
 import {requireAdmin} from "@/lib/require-admin";
-import {listPublications,getPublicationSettingsState} from "@/lib/publications/data";
-import {publicationSummaries} from "@/lib/publications/workspace";
+import {getPublicationSettingsState} from "@/lib/publications/data";
+import {listPublicationBoardRows} from "@/lib/publications/board";
+import {parseBoardQuery} from "@/lib/publications/board-query";
+import {allowedPlatforms} from "@/lib/publications/editor";
 import {listClients} from "@/lib/clients/data";
 import {listProjects} from "@/lib/projects/data";
-import {platformLabels} from "@/lib/publications/editor";
-import {publicationPlatforms,publicationStatuses,type PublicationPlatform} from "@/lib/publications/types";
-import {PageHeading,Panel,Badge} from "@/components/ui/primitives";
+import {PageHeading} from "@/components/ui/primitives";
 import {PublicationSettingsPanel} from "@/components/publications/settings-panel";
-import {formatDate} from "@/lib/format-date";
-const labels={draft:"Brouillon",pending_review:"À valider",approved:"Approuvée",rejected:"Refusée"};
-export default async function PublicationsPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- await requireAdmin();const search=await searchParams;const field=(name:string)=>typeof search[name]==="string"?search[name] as string:"";
- const [publications,settings,clients,projects]=await Promise.all([listPublications(),getPublicationSettingsState(),listClients(),listProjects()]);
- const summaries=await publicationSummaries(publications.flatMap(p=>p.current_revision_id?[p.current_revision_id]:[]));
- const query=field("q").toLocaleLowerCase("fr"),client=field("client"),project=field("project"),platform=field("platform"),status=field("status"),from=field("from"),to=field("to");
- const rows=publications.filter(p=>{const s=p.current_revision_id?summaries[p.current_revision_id]:undefined;const date=p.target_date??p.editorial_week;return (!client||p.client_id===client)&&(!project||p.project_id===project)&&(!platform||s?.platforms.includes(platform))&&(!status||p.status===status)&&(!from||date>=from)&&(!to||date<=to)&&(!query||[p.subject,p.client?.name,p.project?.name,s?.search].join(" ").toLocaleLowerCase("fr").includes(query));});
- const input="w-full rounded-lg border border-border bg-background p-3 text-sm";
- return <><PageHeading title="Publications" eyebrow="Contenus clients" description="Préparation et validation manuelles. Aucun contenu n’est publié."/><PublicationSettingsPanel settings={settings}/><Link href="/publications/calendar" className="mt-5 mr-4 inline-block rounded-lg border border-border px-4 py-2">Calendrier</Link><Link href="/publications/new" className="mt-5 inline-block rounded-lg bg-accent px-4 py-2 text-background">Nouvelle publication</Link>
- <Link href="/publications/review" className="mt-5 ml-4 inline-block rounded-lg border border-border px-4 py-2">File de validation</Link>
- <Panel className="mt-6 p-5"><form method="get" className="grid gap-3 md:grid-cols-3"><label>Recherche<input className={input} name="q" defaultValue={field("q")}/></label><label>Client<select className={input} name="client" defaultValue={client}><option value="">Tous</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Projet<select className={input} name="project" defaultValue={project}><option value="">Tous</option>{projects.filter(p=>!client||p.client_id===client).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Plateforme<select className={input} name="platform" defaultValue={platform}><option value="">Toutes</option>{publicationPlatforms.map(p=><option key={p} value={p}>{platformLabels[p]}</option>)}</select></label><label>Statut<select className={input} name="status" defaultValue={status}><option value="">Tous</option>{publicationStatuses.map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></label><label>À partir du<input className={input} type="date" name="from" defaultValue={from}/></label><label>Jusqu’au<input className={input} type="date" name="to" defaultValue={to}/></label><button className="self-end rounded-lg border border-border p-3">Filtrer</button><Link href="/publications" className="self-center text-sm text-accent">Réinitialiser</Link></form></Panel>
- <Panel className="mt-6 p-5"><p className="text-sm text-muted">{rows.length} publication(s) · Dernière modification en premier</p>{!rows.length?<p className="mt-5">Aucune publication pour ces critères.</p>:<div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Titre interne","Client / projet","Statut","Plateformes","Révision","Date cible","Modifiée le"].map(t=><th className="border-b border-border p-3" key={t}>{t}</th>)}</tr></thead><tbody>{rows.map(p=>{const s=p.current_revision_id?summaries[p.current_revision_id]:undefined;return <tr key={p.id}><td className="border-b border-border p-3"><Link href={`/publications/${p.id}`} className="text-accent hover:underline">{p.subject}</Link></td><td className="border-b border-border p-3">{p.client?.name}<p className="text-xs text-muted">{p.project?.name??"Historique sans projet"}</p></td><td className="border-b border-border p-3"><Badge>{labels[p.status]}</Badge></td><td className="border-b border-border p-3">{s?.platforms.map(p=>platformLabels[p as PublicationPlatform]).join(", ")??"—"}</td><td className="border-b border-border p-3">{s?.version??"—"}</td><td className="border-b border-border p-3">{p.target_date?formatDate(p.target_date):"Non définie"}</td><td className="border-b border-border p-3">{formatDate(p.updated_at)}</td></tr>;})}</tbody></table></div>}</Panel></>;
+import {PublicationsBoard,PublicationsNav} from "@/components/publications/publications-board";
+// Main operational view: every filter, sort and page lives in the URL (back button, sharing, persistence).
+export default async function PublicationsPage({searchParams}:PageProps<"/publications">){
+ await requireAdmin();const query=parseBoardQuery(await searchParams);
+ const [result,settings,clients,projects]=await Promise.all([listPublicationBoardRows(query),getPublicationSettingsState(),listClients(),listProjects()]);
+ return <><PageHeading title="Publications" eyebrow="Contenus clients" description="Tableau opérationnel de toutes les publications. Aucun contenu n’est publié." action={<div className="flex flex-wrap items-center gap-3"><PublicationsNav current="board"/><Link href="/publications/review" className="rounded-lg border border-border px-4 py-2 text-sm">File de validation</Link><Link href="/publications/new" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background">Nouvelle publication</Link></div>}/>
+ <PublicationSettingsPanel settings={settings}/>
+ <PublicationsBoard result={result} query={query} clients={clients.map(c=>({id:c.id,name:c.name}))} projects={projects.filter(p=>allowedPlatforms(p.type).length).map(p=>({id:p.id,name:p.name,client_id:p.client_id}))}/></>;
 }

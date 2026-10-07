@@ -27,6 +27,8 @@ export function ReviewRejectForm({card,onCancel}:{card:ReviewCardData;onCancel?:
 }
 export function ReviewApproveForm({card}:{card:ReviewCardData}){
  const [state,action,pending]=useActionState<ReviewCardState,FormData>(approveFromCardAction,{});
+ // Same rule as the server: every channel needs a media before approval. The server check remains authoritative.
+ if(card.variants.some(v=>!v.assetIds.length))return <p role="note" data-media-required="true" className="max-w-xs text-sm text-red-700">Média requis : ajoutez une photo avant de valider.</p>;
  return <form action={action}><Ids card={card}/><button disabled={pending} className="rounded-lg bg-accent px-4 py-2 text-background">{pending?'Validation…':'Valider'}</button>{state.message&&<p role="status" className="mt-2 text-sm">{state.message}</p>}</form>;
 }
 export function ReviewCard({card,showContext=false}:{card:ReviewCardData;showContext?:boolean}){

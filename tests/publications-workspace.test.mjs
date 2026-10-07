@@ -3,8 +3,9 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-function load(path,mocks={}){const exports={};const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,FormData,File,Uint8Array,Date,Set,console,require:n=>{if(n==='server-only')return {};if(n==='./review-decisions')return reviewModel;if(n in mocks)return mocks[n];throw Error(n);}});return exports;}
+function load(path,mocks={}){const exports={};const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,FormData,File,Uint8Array,Date,Set,console,require:n=>{if(n==='server-only')return {};if(n==='./review-decisions')return reviewModel;if(n==='./media-rule')return mediaRule;if(n in mocks)return mocks[n];throw Error(n);}});return exports;}
 const reviewModel=load('lib/publications/review-decisions.ts');
+const mediaRule=load('lib/publications/media-rule.ts',{'./editor':{platformLabels:{facebook:'Facebook',instagram:'Instagram',google_business_profile:'Google Business Profile'}}});
 const types=load('lib/publications/types.ts');const validation=load('lib/publications/validation.ts',{'./types':types});const editor=load('lib/publications/editor.ts',{'./validation':validation,'./types':types});
 const id='10000000-0000-4000-8000-000000000001';
 function form(){const f=new FormData();for(const [k,v] of Object.entries({client_id:id,project_id:id,title:'Titre',angle:'Angle',source:'Source',facebook_enabled:'on',facebook_text:'Texte',facebook_title:'Titre canal',facebook_cta:'Nous contacter'}))f.set(k,v);return f;}

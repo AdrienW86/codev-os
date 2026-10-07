@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { safeSupabaseReadError } from "@/lib/supabase/read-error";
 import { PUBLICATION_SETTINGS_ID } from "./transitions";
+import { missingMediaMessage, revisionChannelsWithoutMedia, type MediaRuleDb } from "./media-rule";
 import { isPublicationUuid, validateManualPublication, validateRevision, validateReview } from "./validation";
 import type { PublicationListItem, PublicationSettings, PublicationStatus, PublicationResult } from "./types";
 
@@ -101,6 +102,11 @@ export async function reviewPublication(input: unknown): Promise<PublicationResu
   const valid = validateReview(input);
   if (!valid) return { ok: false, message: invalid };
   try {
+    if (valid.decision === "approved") {
+      const missing = await revisionChannelsWithoutMedia(getSupabaseServerClient() as unknown as MediaRuleDb, valid.revision_id);
+      if (missing === null) throw new Error();
+      if (missing.length) return { ok: false, message: missingMediaMessage(missing) };
+    }
     const { data, error } = await getSupabaseServerClient().rpc("publication_review", {
       p_publication_id: valid.publication_id, p_revision_id: valid.revision_id, p_variant_id: valid.variant_id,
       p_decision: valid.decision, p_reason: valid.reason, p_actor_id: userId,

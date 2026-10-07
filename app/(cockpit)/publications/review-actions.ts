@@ -11,7 +11,7 @@ function refresh(form:FormData){
  const id=form.get("publication_id"),project=form.get("project_id");if(isPublicationUuid(id))revalidatePath(`/publications/${id}`);
  if(isPublicationUuid(project))for(const tab of ["","/review","/calendar","/history"])revalidatePath(`/projects/${project}${tab}`);
 }
-const succeeded=(message:string)=>!message.startsWith("Opération non confirmée")&&!message.startsWith("Identifiant");
+const succeeded=(message:string)=>!message.startsWith("Opération non confirmée")&&!message.startsWith("Identifiant")&&!message.startsWith("Validation impossible");
 export async function approveFromCardAction(_state:ReviewCardState,form:FormData):Promise<ReviewCardState>{
  await requireAdmin();form.set("decision","approved");form.delete("reason");const result=await submitOrReview(form);refresh(form);return {message:result.message,ok:succeeded(result.message)};
 }

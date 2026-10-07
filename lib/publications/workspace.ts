@@ -4,6 +4,7 @@ import {requireAdmin} from "@/lib/require-admin";
 import {getSupabaseServerClient} from "@/lib/supabase/server";
 import {isPublicationUuid} from "./validation";
 import {reviewDecisions} from "./review-decisions";
+import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from "./media-rule";
 import {allowedPlatforms,IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
@@ -40,7 +41,9 @@ export async function saveDraft(form:FormData):Promise<{id?:string;message?:stri
 export async function submitOrReview(form:FormData):Promise<{message:string}>{
  const {userId}=await requireAdmin();const id=form.get("publication_id"),revision=form.get("revision_id"),decision=form.get("decision"),reason=form.get("reason");
  if(!isPublicationUuid(id)||!isPublicationUuid(revision)||!["submit","approved","rejected"].includes(String(decision))|| (decision==="rejected"&&(typeof reason!=="string"||!reason.trim()||reason.length>3000)))return {message:"Identifiant, révision ou motif de refus invalide."};
- const db=getSupabaseServerClient();const result=decision==="submit"?await db.rpc("publication_submit_manual",{p_publication_id:id,p_revision_id:revision,p_actor_id:userId}):await db.rpc("publication_review_manual",{p_publication_id:id,p_revision_id:revision,p_decision:String(decision),p_reason:typeof reason==="string"?reason.trim()||null:null,p_actor_id:userId});
+ const db=getSupabaseServerClient();
+ if(decision==="approved"){const missing=await revisionChannelsWithoutMedia(db as unknown as MediaRuleDb,revision);if(missing===null)return {message:failed};if(missing.length)return {message:missingMediaMessage(missing)};}
+ const result=decision==="submit"?await db.rpc("publication_submit_manual",{p_publication_id:id,p_revision_id:revision,p_actor_id:userId}):await db.rpc("publication_review_manual",{p_publication_id:id,p_revision_id:revision,p_decision:String(decision),p_reason:typeof reason==="string"?reason.trim()||null:null,p_actor_id:userId});
  return {message:result.error?failed:decision==="submit"?"Révision soumise à validation.":decision==="approved"?"Révision approuvée.":"Révision refusée. Créez une nouvelle révision pour la retravailler."};
 }
 export async function uploadImage(form:FormData):Promise<{message:string}>{

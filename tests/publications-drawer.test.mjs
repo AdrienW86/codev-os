@@ -297,4 +297,4 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,10,'9 + Lot 4.3 P1 channels');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,11,'9 + Lot 4.3 P1 channels + P2-a schedules');});

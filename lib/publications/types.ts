@@ -89,8 +89,15 @@ export type PublicationProjectChannelRow = Updated & {
   client_id: string; project_id: string; platform: PublicationPlatform; enabled: boolean;
   publication_account_id: string | null; editorial_rules: string | null;
 };
+// Weekly schedule of an explicit channel and its slots (Lot 4.3 P2-a). Written only through publication_channel_schedule_save.
+export type PublicationChannelScheduleRow = Updated & { client_id: string; project_id: string; project_channel_id: string; timezone: string; enabled: boolean };
+export type PublicationChannelScheduleSlotRow = Updated & {
+  client_id: string; project_id: string; project_channel_id: string; schedule_id: string; weekday: number; local_time: string; enabled: boolean;
+};
 export type PublicationTables = {
   publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
+  publication_channel_schedules: Table<PublicationChannelScheduleRow, "client_id" | "project_id" | "project_channel_id">;
+  publication_channel_schedule_slots: Table<PublicationChannelScheduleSlotRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "weekday" | "local_time">;
   publication_agent_projects: Table<PublicationsAgentProject,'project_id'|'client_id'|'agent_id'|'drive_folder_id'|'verified_services'>;
   publication_ai_runs: Table<PublicationsAIRun,'agent_run_id'|'agent_id'|'client_id'|'project_id'|'publication_id'|'idempotency_key'|'attempt'>;
   publication_drive_media: Table<DriveMedia,'client_id'|'drive_file_id'|'drive_folder_id'|'name'|'mime_type'|'modified_at'|'file_size'>;
@@ -117,6 +124,7 @@ export type PublicationTables = {
   publication_events: Table<PublicationEvent, "actor_type" | "action" | "resource_type" | "resource_id">;
 };
 export type PublicationFunctions = {
+  publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
   publication_channel_save:{Args:{p_project_id:string;p_platform:string;p_enabled:boolean;p_publication_account_id:string|null;p_editorial_rules:string|null;p_actor_id:string};Returns:string};
   publication_agent_configure:{Args:{p_project:string;p_folder:string;p_services:Json;p_rules:string;p_enabled:boolean;p_rights:boolean;p_actor:string};Returns:string};
   publication_ai_begin:{Args:{p_publication:string;p_expected:string|null;p_actor:string};Returns:Json};

@@ -1,8 +1,8 @@
 import 'server-only';
 import {getWorkspace} from './workspace';
 import {getAiRunForRevision,getGenerationDetails} from './agent-data';
-import {platformLabels} from './editor';
-import type {PublicationListItem,PublicationPlatform,PublicationRevision} from './types';
+import {currentVariants,decisionFor,versionHistory,primaryMedia} from './publication-detail';
+import type {PublicationListItem,PublicationPlatform} from './types';
 
 export type ReviewCardVariant={platform:PublicationPlatform;label:string;text:string;title:string|null;cta:string|null;assetIds:string[]};
 export type ReviewCardVersion={number:number;origin:string;date:string;decision:string|null;reason:string|null;current:boolean};
@@ -12,23 +12,19 @@ export type ReviewCardData={
  editorial:{title:string;angle:string;source:string;targetDate:string};rejection:string|null;versions:ReviewCardVersion[];
  debug:Record<string,unknown>|null};
 
-export const originLabels:Record<PublicationRevision['origin'],string>={generated:'IA',regenerated:'Régénération IA',manual:'Modification manuelle'};
-const decisionLabels:Record<string,string>={approved:'Validée',rejected:'Rejetée'};
-const text=(value:unknown)=>typeof value==='string'&&value.trim()?value:null;
+export {originLabels} from './publication-detail';
 
-// Builds the review cards of pending and rejected publications. Previews are the existing short-lived signed URLs of
-// getWorkspace; technical data is only loaded when the debug view is requested.
+// Builds the review cards of pending and rejected publications: a projection of the shared detail logic
+// (variants, media, history). Previews are the short-lived signed URLs of getWorkspace; technical data is only
+// loaded when the debug view is requested.
 export async function buildReviewCards(publications:PublicationListItem[],options:{debug:boolean}):Promise<ReviewCardData[]>{
  const eligible=publications.filter(p=>(p.status==='pending_review'||p.status==='rejected')&&p.current_revision_id&&p.project_id);
  const cards=await Promise.all(eligible.map(async p=>{
   const w=await getWorkspace(p.id);if(!w||w.publication.current_revision_id!==p.current_revision_id)return null;
   const revisionId=p.current_revision_id!,revision=w.revisions.find(r=>r.id===revisionId);
-  const current=w.variants.filter(v=>v.revision_id===revisionId).sort((a,b)=>Object.keys(platformLabels).indexOf(a.platform)-Object.keys(platformLabels).indexOf(b.platform));
-  const variants=current.map(v=>{const m=(v.metadata??{}) as Record<string,unknown>;return {platform:v.platform,label:platformLabels[v.platform],text:v.text_content,title:text(m.title),cta:text(m.cta),
-   assetIds:w.links.filter(l=>l.variant_id===v.id).sort((a,b)=>a.sort_order-b.sort_order).map(l=>l.asset_id)};});
-  const assetIds=[...new Set(variants.flatMap(v=>v.assetIds))],image=assetIds.map(id=>w.assets.find(a=>a.id===id)?.preview).find((url):url is string=>Boolean(url))??null;
-  const decisionOf=(id:string)=>w.reviews.find(r=>r.revision_id===id)??null,rejected=decisionOf(revisionId);
-  const versions=w.revisions.map(r=>{const d=decisionOf(r.id);return {number:r.revision_number,origin:originLabels[r.origin]??'Version',date:r.created_at,decision:d?decisionLabels[d.decision]??null:null,reason:d?.reason??null,current:r.id===revisionId};}).sort((a,b)=>b.number-a.number);
+  const detailed=currentVariants(w,revisionId),variants=detailed.map(v=>({platform:v.platform,label:v.label,text:v.text,title:v.title,cta:v.cta,assetIds:v.assetIds}));
+  const assetIds=[...new Set(variants.flatMap(v=>v.assetIds))],image=primaryMedia(detailed).preview,rejected=decisionFor(w,revisionId);
+  const versions=versionHistory(w,revisionId);
   let debug:Record<string,unknown>|null=null;
   if(options.debug){const [details,run]=await Promise.all([getGenerationDetails(revisionId),getAiRunForRevision(revisionId)]);
    debug={publication_id:p.id,revision_id:revisionId,run_id:details?.run_id??run?.id??null,model:revision?.model??run?.model??null,input_tokens:run?.input_tokens??null,output_tokens:run?.output_tokens??null,estimated_cost_eur:run?.estimated_cost_eur??revision?.estimated_cost??null,

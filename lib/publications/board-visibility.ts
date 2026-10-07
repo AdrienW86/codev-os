@@ -6,14 +6,8 @@ import {isPublicationUuid} from './validation';
 // Interim "remove from board" without migration: an append-only audit event masks the row in the cockpit only.
 // Nothing is deleted or frozen (revisions, reviews, runs, media, jobs and deliveries are untouched); the latest
 // event wins, so a removal is reversible. A real archive (archived_at, frozen workflow) needs a dedicated migration.
-export const BOARD_HIDDEN='publication.board_hidden',BOARD_RESTORED='publication.board_restored';
-export type BoardVisibilityEvent={resource_id:string;action:string;created_at:string};
-
-export function hiddenPublications(events:BoardVisibilityEvent[]):Set<string>{
- const latest=new Map<string,BoardVisibilityEvent>();
- for(const e of events){const seen=latest.get(e.resource_id);if(!seen||e.created_at>=seen.created_at)latest.set(e.resource_id,e);}
- return new Set([...latest.values()].filter(e=>e.action===BOARD_HIDDEN).map(e=>e.resource_id));
-}
+import {BOARD_HIDDEN,BOARD_RESTORED} from './board-visibility-events';
+export {BOARD_HIDDEN,BOARD_RESTORED,hiddenPublications,type BoardVisibilityEvent} from './board-visibility-events';
 
 export async function setBoardVisibility(form:FormData,hidden:boolean):Promise<{ok:boolean;message:string}>{
  const {userId}=await requireAdmin();const id=form.get('publication_id');

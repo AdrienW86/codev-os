@@ -16,7 +16,7 @@ export const boardSortLabels:Record<BoardSort,string>={date_asc:'Date croissante
 export const BOARD_PAGE_SIZE=50;
 
 export type BoardQuery={q:string;client:string;project:string;status:BoardStatus|'';platform:PublicationPlatform|'';origin:typeof boardOrigins[number]|'';
- media:'with'|'without'|'';from:string;to:string;sort:BoardSort;published:boolean;hidden:boolean;page:number;debug:boolean};
+ media:'with'|'without'|'';from:string;to:string;sort:BoardSort;published:boolean;hidden:boolean;page:number;debug:boolean;publication:string};
 // Everything the filters, sorting and the row need. imagePath and search stay server-side.
 // hasMedia: at least one media is linked to the current revision; missingMedia: channels still without media.
 export type BoardRecord={id:string;clientId:string;clientName:string;projectId:string|null;projectName:string|null;date:string;dateIsWeek:boolean;
@@ -36,16 +36,22 @@ export function parseBoardQuery(search:Search):BoardQuery{
  return {q:one(search,'q').slice(0,200),client:uuid.test(one(search,'client'))?one(search,'client'):'',project:uuid.test(one(search,'project'))?one(search,'project'):'',
   status:pick(one(search,'status'),boardStatuses),platform:pick(one(search,'platform'),publicationPlatforms),origin:pick(one(search,'origin'),boardOrigins),
   media:pick(one(search,'media'),['with','without'] as const),from:validDay(one(search,'from')),to:validDay(one(search,'to')),
-  sort:pick(one(search,'sort'),boardSorts)||'date_asc',published:one(search,'published')==='1',hidden:one(search,'hidden')==='1',page:Number.isFinite(page)&&page>=1&&page<=10000?page:1,debug:one(search,'debug')==='1'};
+  sort:pick(one(search,'sort'),boardSorts)||'date_asc',published:one(search,'published')==='1',hidden:one(search,'hidden')==='1',page:Number.isFinite(page)&&page>=1&&page<=10000?page:1,debug:one(search,'debug')==='1',
+  publication:uuid.test(one(search,'publication'))?one(search,'publication').toLowerCase():''};
 }
 
-// Canonical URL of a view: defaults are omitted so shared URLs stay short and stable.
+// Canonical URL of a view: defaults are omitted so shared URLs stay short and stable. Any change returns to page 1
+// and closes the drawer unless the change itself sets them.
 export function boardHref(query:BoardQuery,changes:Partial<BoardQuery>={}):string{
- const q={...query,page:1,...changes},params=new URLSearchParams();
+ const q={...query,page:1,publication:'',...changes},params=new URLSearchParams();
  for(const key of ['q','client','project','status','platform','origin','media','from','to'] as const)if(q[key])params.set(key,q[key]);
- if(q.sort!=='date_asc')params.set('sort',q.sort);if(q.published)params.set('published','1');if(q.hidden)params.set('hidden','1');if(q.page>1)params.set('page',String(q.page));if(q.debug)params.set('debug','1');
+ if(q.sort!=='date_asc')params.set('sort',q.sort);if(q.published)params.set('published','1');if(q.hidden)params.set('hidden','1');if(q.page>1)params.set('page',String(q.page));if(q.debug)params.set('debug','1');if(q.publication)params.set('publication',q.publication);
  const s=params.toString();return s?`/publications?${s}`:'/publications';
 }
+
+// The drawer is the same view plus publication=<id>: opening and closing keep every other param, page included.
+export function drawerHref(query:BoardQuery,publicationId:string):string{return boardHref(query,{page:query.page,publication:publicationId});}
+export function closeDrawerHref(query:BoardQuery):string{return boardHref(query,{page:query.page,publication:''});}
 
 // URL after one filter change: the value is re-validated by parseBoardQuery, the page goes back to 1, and a project
 // that does not belong to a newly selected client is cleared.

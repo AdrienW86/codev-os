@@ -84,7 +84,7 @@ function comboTables(){const t=empty();Object.entries(combos).forEach(([name,pla
 const comboId=name=>uid(5,Object.keys(combos).indexOf(name)+1);
 
 test('query params: defaults, strict parsing of unknown values and canonical URLs',()=>{
- assert.deepEqual(json(q()),{q:'',client:'',project:'',status:'',platform:'',origin:'',media:'',from:'',to:'',sort:'date_asc',published:false,hidden:false,page:1,debug:false});
+ assert.deepEqual(json(q()),{q:'',client:'',project:'',status:'',platform:'',origin:'',media:'',from:'',to:'',sort:'date_asc',published:false,hidden:false,page:1,debug:false,publication:''});
  const bad=q({client:'not-a-uuid',status:'approved',platform:'tiktok',origin:'system',media:'maybe',from:'2026-13-45',sort:'drop table',page:'-2',published:'yes',hidden:'true',q:['a','b']});
  assert.deepEqual(json(bad),json(q()));
  const parsed=q({q:' toiture ',client:C1,status:'ready',platform:'instagram',origin:'agent',media:'with',from:'2026-10-01',to:'2026-10-31',sort:'updated',published:'1',hidden:'1',page:'3',debug:'1'});
@@ -196,17 +196,17 @@ test('normal view exposes no identifiers, storage paths, costs or tokens; debug=
  for(const s of ['storage_path','revision_id','creation_origin','pending_review','approved','gpt-','token','cost'])assert.ok(!text.includes(s),s);assert.ok(!out.includes('data-debug'));
  const debug=await html({debug:'1'});assert.ok(debug.includes('data-debug="true"'));assert.ok(debug.includes('storage_path'));assert.ok(debug.includes('pending_review'));assert.ok(debug.includes('name="debug" value="1"'));});
 
-test('rows are clickable towards the existing detail page; the menu offers navigation and one confirmed removal form',async()=>{
- const out=await html(),row=rowHtml(out,P.pending);
- const links=[...row.matchAll(/<a href="([^"]+)"([^>]*)>/g)];assert.ok(links.filter(l=>l[1]===`/publications/${P.pending}`).length>=10,'every data cell opens the publication');
- assert.equal(links.filter(l=>l[1]===`/publications/${P.pending}`&&!l[2].includes('tabindex="-1"')).length,2,'subject link and menu Ouvrir are focusable');
+test('rows open the drawer on the same view; the menu offers navigation, the full page and one confirmed removal form',async()=>{
+ const out=await html(),row=rowHtml(out,P.pending),drawer=`/publications?publication=${P.pending}`;
+ const links=[...row.matchAll(/<a href="([^"]+)"([^>]*)>/g)];assert.ok(links.filter(l=>l[1]===drawer).length>=10,'every data cell opens the drawer');
+ assert.equal(links.filter(l=>l[1]===drawer&&!l[2].includes('tabindex="-1"')).length,3,'subject link and menu Ouvrir / Modifier are focusable');
  assert.match(row,/<details[\s\S]*<summary aria-label="Actions pour Entretien de toiture avant l’hiver"/);
- for(const href of [`/publications/${P.pending}/edit`,`/projects/${P1}/review`,`/projects/${P1}/calendar`])assert.ok(row.includes(`href="${href}"`),href);
+ for(const href of [`/publications/${P.pending}`,`/projects/${P1}/review`,`/projects/${P1}/calendar`])assert.ok(row.includes(`href="${href}"`),href);assert.ok(visible(row).includes('Fiche complète'));
  const forms=row.match(/<form[\s\S]*?<\/form>/g)??[];assert.equal(forms.length,1,'the only mutation is the board removal');
  assert.match(forms[0],/name="publication_id" value="40000000-0000-4000-8000-000000000002"/);const confirm=forms[0].match(/<input type="checkbox"[^>]*>/)[0];assert.match(confirm,/name="confirm"/);assert.match(confirm,/required=""/);
  for(const s of ['Retirer du tableau','Rien n’est supprimé','versions, validations, médias, coûts et historique sont conservés','Afficher les retirées'])assert.ok(visible(row).includes(s),s);
  assert.doesNotMatch(row,/Supprimer/,'no delete action for a real publication');
- const prepare=rowHtml(out,P.prepare);assert.ok(prepare.includes(`href="/projects/${P1}/agent"`));assert.ok(!prepare.includes('/edit"'));});
+ const prepare=rowHtml(out,P.prepare);assert.ok(prepare.includes(`href="/projects/${P1}/agent"`));assert.ok(!visible(prepare).includes('Modifier'));});
 
 test('removal from the board is an audited, reversible masking that never deletes history',async()=>{
  const tables=fixtures();tables.publication_events=[{resource_type:'publication',resource_id:P.ready,action:'publication.board_hidden',created_at:'2026-10-07T09:00:00Z'},
@@ -273,8 +273,8 @@ test('quick views keep the filters; pagination keeps the filters and changes onl
 
 test('mobile shows compact cards with the same links while the dense table is desktop-only',async()=>{
  const out=await html();assert.match(out,/class="hidden overflow-x-auto md:block" data-board="table"/);assert.match(out,/class="divide-y divide-border md:hidden" data-board="cards"/);
- const card=out.match(new RegExp(`<li data-board-card="${P.pending}"[\\s\\S]*?</form></details></div></details></li>`))[0];
- assert.ok(card.includes(`href="/publications/${P.pending}"`));assert.ok(visible(card).includes('Entretien de toiture avant l’hiver'));assert.ok(visible(card).includes('Brouillon'));assert.ok(card.includes('token=short-lived'));
+ const card=out.match(new RegExp(`<li data-board-card="${P.pending}"[\\s\\S]*?</details></li>`))[0];
+ assert.ok(card.includes(`href="/publications?publication=${P.pending}"`));assert.ok(visible(card).includes('Entretien de toiture avant l’hiver'));assert.ok(visible(card).includes('Brouillon'));assert.ok(card.includes('token=short-lived'));
  const missing=out.match(new RegExp(`<li data-board-card="${P.manual}"[\\s\\S]*?</li>`))[0];assert.ok(visible(missing).includes('Sans média'));});
 
 test('media rule: approval (Brouillon → À publier) is refused server-side while a channel has no media',async()=>{
@@ -289,7 +289,7 @@ test('media rule: approval (Brouillon → À publier) is refused server-side whi
  assert.equal(approved.writes[0][1],'publication_review_manual');assert.equal(approved.writes[0][2].p_decision,'approved');
  const submitted=workspace(tables());await submitted.m.submitOrReview(form('submit'));assert.equal(submitted.writes[0][1],'publication_submit_manual','an incomplete draft can still be submitted');
  const rejected=workspace(tables());const f=form('rejected');f.set('reason','Texte à revoir');await rejected.m.submitOrReview(f);assert.equal(rejected.writes[0][1],'publication_review_manual');
- assert.match(src('app/(cockpit)/publications/review-actions.ts'),/!message\.startsWith\("Validation impossible"\)/,'the card reports the refusal as a failure');
+ assert.match(src('app/(cockpit)/publications/review-actions.ts'),/const succeeded=workflowSucceeded;/);assert.equal(load('lib/publications/workflow-result.ts').workflowSucceeded(message),false,'the card reports the refusal as a failure');
  assert.match(src('lib/publications/data.ts'),/revisionChannelsWithoutMedia/,'the legacy review path applies the same rule');
  const card=load('components/publications/review-card.tsx',{'@/app/(cockpit)/publications/review-actions':{approveFromCardAction:async()=>({}),rejectFromCardAction:async()=>({}),editFromCardAction:async()=>({})},'@/app/(cockpit)/publications/agent-actions':{configureAgentAction:async()=>({}),prepareAgentAction:async()=>({})}});
  const data={publicationId:P.pending,revisionId:R.pending,projectId:P1,variants:[{platform:'facebook',assetIds:['a1']},{platform:'instagram',assetIds:[]}]};

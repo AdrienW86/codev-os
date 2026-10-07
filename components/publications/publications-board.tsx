@@ -4,10 +4,10 @@ import type {ReactNode} from 'react';
 import {Panel} from '@/components/ui/primitives';
 import {DebugDetails} from '@/components/projects/debug-details';
 import {BoardFilterBar} from './board-filter-bar';
-import {hideFromBoardAction,restoreToBoardAction} from '@/app/(cockpit)/publications/board-actions';
+import {BoardVisibilityForm} from './board-visibility-form';
 import {platformLabels} from '@/lib/publications/editor';
 import {formatDate} from '@/lib/format-date';
-import {boardHref,boardOriginLabels,boardStatusClasses,boardStatusLabels,boardStatuses,boardViewLabels,needsMedia,type BoardQuery} from '@/lib/publications/board-query';
+import {boardHref,drawerHref,boardOriginLabels,boardStatusClasses,boardStatusLabels,boardStatuses,boardViewLabels,needsMedia,type BoardQuery} from '@/lib/publications/board-query';
 import type {BoardResult,BoardRow} from '@/lib/publications/board';
 
 type Option={id:string;name:string};
@@ -27,20 +27,15 @@ function Platforms({row}:{row:BoardRow}){return <>{row.platforms.length?row.plat
 function Origin({row}:{row:BoardRow}){return <>{boardOriginLabels[row.origin]}{row.edited&&<span className="text-muted"> · modifiée</span>}</>;}
 
 // Navigation to existing, already-guarded screens, plus the board-only removal (explicit confirmation required).
-export function RowMenu({row}:{row:BoardRow}){
- const links:[string,string][]=[['Ouvrir',`/publications/${row.id}`]];
- if(row.status!=='published'&&row.status!=='to_prepare')links.push(['Modifier',`/publications/${row.id}/edit`]);
+export function RowMenu({row,query}:{row:BoardRow;query:BoardQuery}){
+ const links:[string,string][]=[['Ouvrir',drawerHref(query,row.id)],['Fiche complète',`/publications/${row.id}`]];
+ if(row.status!=='published'&&row.status!=='to_prepare')links.push(['Modifier',drawerHref(query,row.id)]);
  if(row.projectId&&row.status==='to_prepare')links.push(['Préparer avec l’agent',`/projects/${row.projectId}/agent`]);
  if(row.projectId&&(row.status==='draft'||row.status==='rejected'))links.push(['Valider ou régénérer',`/projects/${row.projectId}/review`]);
  if(row.projectId)links.push(['Calendrier du projet',`/projects/${row.projectId}/calendar`]);
  return <details className="relative"><summary aria-label={`Actions pour ${row.subject}`} className="cursor-pointer list-none rounded px-2 py-1 text-center hover:bg-border/40">…</summary>
   <div className="absolute right-0 z-10 mt-1 w-64 rounded-lg border border-border bg-background p-1 text-sm shadow-lg"><ul>{links.map(([label,href])=><li key={label}><Link href={href} className="block rounded px-3 py-1.5 hover:bg-border/40">{label}</Link></li>)}</ul>
-  {row.hidden?<form action={restoreToBoardAction} className="border-t border-border p-1"><input type="hidden" name="publication_id" value={row.id}/><button className="w-full rounded px-2 py-1.5 text-left hover:bg-border/40">Remettre dans le tableau</button></form>
-  :<details className="border-t border-border" data-remove-from-board="true"><summary className="cursor-pointer list-none rounded px-3 py-1.5 text-red-700 hover:bg-border/40">Retirer du tableau…</summary>
-   <form action={hideFromBoardAction} className="space-y-2 p-3 text-xs"><input type="hidden" name="publication_id" value={row.id}/>
-    <p>La ligne disparaîtra du tableau. Rien n’est supprimé : versions, validations, médias, coûts et historique sont conservés. Vous pourrez la réafficher avec « Afficher les retirées ».</p>
-    <label className="flex items-start gap-2"><input type="checkbox" name="confirm" required/>Je confirme le retrait de cette publication du tableau.</label>
-    <button className="w-full rounded-lg border border-red-600 px-3 py-1.5 text-red-700">Retirer du tableau</button></form></details>}</div></details>;
+  <div className="border-t border-border"><BoardVisibilityForm publicationId={row.id} hidden={row.hidden}/></div></div></details>;
 }
 
 export function BoardViews({query,counts}:{query:BoardQuery;counts:BoardResult['counts']}){
@@ -58,7 +53,8 @@ export function PublicationsNav({current}:{current:'board'|'calendar'}){
 // Desktop: dense table, every cell links to the publication. Mobile: compact cards with the same link.
 export function PublicationsBoard({result,query,clients,projects}:{result:BoardResult;query:BoardQuery;clients:Option[];projects:(Option&{client_id:string})[]}){
  const {rows,total,page,pageCount}=result;
- const open=(row:BoardRow,children:ReactNode,focusable=false)=><Link href={`/publications/${row.id}`} tabIndex={focusable?undefined:-1} className="block">{children}</Link>;
+ // Every data cell opens the drawer on the same view (publication=<id>), keeping all filters, sort and page.
+ const open=(row:BoardRow,children:ReactNode,focusable=false)=><Link href={drawerHref(query,row.id)} scroll={false} tabIndex={focusable?undefined:-1} className="block">{children}</Link>;
  return <>
   <Panel className="mt-6 space-y-4 p-4"><BoardViews query={query} counts={result.counts}/><BoardFilterBar query={query} clients={clients} projects={projects}/></Panel>
   <Panel className="mt-4 p-0">
@@ -77,14 +73,14 @@ export function PublicationsBoard({result,query,clients,projects}:{result:BoardR
      <td className={`${cell} text-xs`}>{open(row,<Platforms row={row}/>)}</td>
      <td className={`${cell} text-xs`}>{open(row,<Origin row={row}/>)}</td>
      <td className={`${cell} whitespace-nowrap text-xs text-muted`}>{open(row,formatDate(row.updatedAt))}</td>
-     <td className={cell}><RowMenu row={row}/></td>
+     <td className={cell}><RowMenu row={row} query={query}/></td>
      {query.debug&&<td className={cell}><DebugDetails enabled={Boolean(row.debug)} data={row.debug??{}} title="Données"/></td>}
     </tr>)}</tbody></table></div>
    <ul className="divide-y divide-border md:hidden" data-board="cards">{rows.map(row=><li key={row.id} data-board-card={row.id} className="flex gap-3 px-4 py-3">
-    <Link href={`/publications/${row.id}`} className="flex min-w-0 flex-1 gap-3"><Thumbnail row={row} size="h-14 w-14"/><span className="min-w-0">
+    <Link href={drawerHref(query,row.id)} scroll={false} className="flex min-w-0 flex-1 gap-3"><Thumbnail row={row} size="h-14 w-14"/><span className="min-w-0">
      <span className="flex flex-wrap items-center gap-2 text-xs"><StatusPill row={row}/><span className="text-muted"><DateLabel row={row}/></span></span>
      <span className="mt-1 block truncate font-medium">{row.subject}</span><span className="block truncate text-xs text-muted">{row.clientName} · <Platforms row={row}/></span></span></Link>
-    <RowMenu row={row}/></li>)}</ul></>}
+    <RowMenu row={row} query={query}/></li>)}</ul></>}
    {pageCount>1&&<nav aria-label="Pagination" className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
     {page>1?<Link href={boardHref(query,{page:page-1})} className="text-accent">← Précédent</Link>:<span/>}<span className="text-muted">Page {page} / {pageCount}</span>
     {page<pageCount?<Link href={boardHref(query,{page:page+1})} className="text-accent">Suivant →</Link>:<span/>}</nav>}

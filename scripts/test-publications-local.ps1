@@ -36,6 +36,8 @@ $savedSchedulesUrl=$env:PUBLICATIONS_SCHEDULES_TEST_DATABASE_URL
 $savedSchedulesPsql=$env:PUBLICATIONS_SCHEDULES_TEST_PSQL
 $savedOccurrencesUrl=$env:PUBLICATIONS_OCCURRENCES_TEST_DATABASE_URL
 $savedOccurrencesPsql=$env:PUBLICATIONS_OCCURRENCES_TEST_PSQL
+$savedGroupsUrl=$env:PUBLICATIONS_GROUPS_TEST_DATABASE_URL
+$savedGroupsPsql=$env:PUBLICATIONS_GROUPS_TEST_PSQL
 $savedTelemetry=$env:NEXT_TELEMETRY_DISABLED
 $savedClerkTelemetry=$env:CLERK_TELEMETRY_DISABLED
 $savedApplicationEnv=@{}
@@ -125,6 +127,12 @@ try {
   $env:PUBLICATIONS_OCCURRENCES_TEST_PSQL=Join-Path $binRoot 'psql.exe'
   & node --test tests/publications-occurrences-db.test.mjs
   if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P3 occurrences SQL failed. No remote migration permitted.' }
+  & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database publications_groups_test owner postgres;'
+  if ($LASTEXITCODE -ne 0) { throw 'Dedicated editorial groups database creation failed.' }
+  $env:PUBLICATIONS_GROUPS_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/publications_groups_test"
+  $env:PUBLICATIONS_GROUPS_TEST_PSQL=Join-Path $binRoot 'psql.exe'
+  & node --test tests/publications-editorial-groups-db.test.mjs
+  if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P4-a editorial groups SQL failed. No remote migration permitted.' }
   & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database remote_schema_test owner postgres;'
   if ($LASTEXITCODE -ne 0) { throw 'Dedicated local replay database creation failed.' }
   $env:REMOTE_SCHEMA_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/remote_schema_test"
@@ -179,6 +187,8 @@ try {
   $env:PUBLICATIONS_SCHEDULES_TEST_PSQL=$savedSchedulesPsql
   $env:PUBLICATIONS_OCCURRENCES_TEST_DATABASE_URL=$savedOccurrencesUrl
   $env:PUBLICATIONS_OCCURRENCES_TEST_PSQL=$savedOccurrencesPsql
+  $env:PUBLICATIONS_GROUPS_TEST_DATABASE_URL=$savedGroupsUrl
+  $env:PUBLICATIONS_GROUPS_TEST_PSQL=$savedGroupsPsql
   $env:NEXT_TELEMETRY_DISABLED=$savedTelemetry
   $env:CLERK_TELEMETRY_DISABLED=$savedClerkTelemetry
   foreach($name in $savedPg.Keys) { [Environment]::SetEnvironmentVariable($name,$savedPg[$name],'Process') }

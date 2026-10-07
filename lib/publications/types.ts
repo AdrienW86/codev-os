@@ -35,7 +35,11 @@ export type Publication = Updated & {
   project_id: string | null;
   client_id: string; editorial_week: string; slot: 1 | 2; subject: string;
   status: PublicationStatus; current_revision_id: string | null;
+  // Lot 4.3 P4-a bindings (NULL on every legacy multi-variant publication; set once, never changed).
+  editorial_group_id?: string | null; occurrence_id?: string | null; platform?: PublicationPlatform | null;
 };
+// Editorial group: one shared idea producing sister mono-platform publications (Lot 4.3 P4-a).
+export type PublicationEditorialGroupRow = Updated & { client_id: string; project_id: string; subject: string; origin: "manual" | "agent" };
 export type PublicationListItem = Publication & { client: { name: string } | null; project: {id:string;name:string} | null };
 export type PublicationRevision = Created & {
   internal_title: string | null; angle: string | null; source_content: string | null; target_date: string | null; actor_id: string | null;
@@ -100,6 +104,7 @@ export type PublicationChannelOccurrenceRow = Updated & {
   local_date: string; local_time: string; timezone: string; scheduled_for: string; publication_id: string | null; skipped_at: string | null; skipped_reason: string | null;
 };
 export type PublicationTables = {
+  publication_editorial_groups: Table<PublicationEditorialGroupRow, "client_id" | "project_id" | "subject">;
   publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "schedule_slot_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
   publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
   publication_channel_schedules: Table<PublicationChannelScheduleRow, "client_id" | "project_id" | "project_channel_id">;

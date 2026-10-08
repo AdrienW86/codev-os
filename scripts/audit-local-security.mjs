@@ -10,7 +10,9 @@ const files=[...new Set(git.stdout.split('\0').filter(Boolean))];
 const secretFindings=[],modules=new Map(),guardInventory=[];
 const patterns=[['API key',/\b(?:sk-proj-|sk-(?:live|test)_|sb_secret_)[A-Za-z0-9_-]{20,}/g],['credential URI',/\bpostgres(?:ql)?:\/\/[^\s'"<>]+:[^\s'"<>]+@[^\s'"<>]+/g],['OAuth refresh token',/\b1\/\/[A-Za-z0-9_-]{40,}/g],['private key',/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g]];
 for(const file of files){const path=resolve(root,file);if(!existsSync(path)||!statSync(path).isFile()||statSync(path).size>2000000)continue;
- if(/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$/i.test(file)||file.startsWith('backups/'))secretFindings.push({file,category:'Sensitive artifact eligible for Git'});
+ // .env.example is the only env file allowed, and only with variable NAMES (empty values) and comments.
+ const namesOnlyExample=file==='.env.example'&&readFileSync(path,'utf8').split(/\r?\n/).every(line=>/^\s*(#.*)?$/.test(line)||/^[A-Z][A-Z0-9_]*=$/.test(line));
+ if(!namesOnlyExample&&(/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$/i.test(file)||file.startsWith('backups/')))secretFindings.push({file,category:'Sensitive artifact eligible for Git'});
  if(!/\.(?:[cm]?[jt]sx?|json|md|sql|ps1|toml|ya?ml)$/.test(file))continue;
  const text=readFileSync(path,'utf8');
  text.split(/\r?\n/).forEach((line,index)=>{for(const [category,pattern] of patterns){pattern.lastIndex=0;for(const hit of line.matchAll(pattern))if(!/fixture|placeholder|example|xxx|fake|local-validation|127\.0\.0\.1|password@host|user:password/i.test(hit[0]))secretFindings.push({file,line:index+1,category});}});

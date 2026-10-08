@@ -78,33 +78,38 @@ test('vault: opaque references, store / read / rotate / delete, invalid input re
  const prod=vault.unconfiguredCredentialVault();for(const op of ['storeCredential','readCredential','rotateCredential','deleteCredential'])await assert.rejects(()=>prod[op](REF,secret),e=>e.kind==='unconfigured',op);
  assert.match(String(new vault.CredentialVaultError('not_found').message),/^Credential vault: not_found$/,'errors never echo a secret');});
 
-test('Meta provider (fake transport): token parsing, pages without page tokens, Instagram linked to its page, expired / revoked mapping',async()=>{
- const m=load('lib/publications/connections/meta.ts',{'./providers':providers});const calls=[];let reply=()=>({status:200,body:{}});
- const p=m.createMetaConnectionProvider({request:async r=>{calls.push(json(r));return reply(r);}});const cred={accessToken:'EAAB-user-token',refreshToken:null,expiresAt:null,scopes:[]};
- reply=()=>({status:200,body:{access_token:'EAAB-long-lived-token',token_type:'bearer',expires_in:5184000}});
- const c=await p.exchangeCode('AQD-auth-code-123','https://cockpit.local/callback');assert.equal(c.accessToken,'EAAB-long-lived-token');assert.equal(c.refreshToken,null);assert.ok(c.expiresAt);
- reply=r=>r.params.fields.startsWith('id,name')?{status:200,body:{data:[{id:'101',name:'Toitures Dupont',access_token:'EAAB-page-token',category:'Couvreur'},{id:'102'}]}}
+test('Meta provider (fake transport, P11-a contract): short → long-lived token, debug_token, pages without page tokens, Instagram linked, expired / revoked',async()=>{
+ const m=load('lib/publications/connections/meta.ts',{'./providers':providers});const calls=[];let reads=()=>({status:200,body:{}});let debug={is_valid:true,app_id:'123456',user_id:'987',scopes:['pages_show_list','instagram_basic'],expires_at:4102444800};
+ const p=m.createMetaConnectionProvider({request:async r=>{calls.push(json(r));
+  if(r.operation==='token')return {status:200,body:{access_token:r.params.grant_type==='fb_exchange_token'?'EAAB-long-lived-token':'EAAB-short-token',token_type:'bearer',expires_in:5184000}};
+  if(r.operation==='debug')return {status:200,body:{data:debug}};return reads(r);}},{appId:'123456'});
+ const cred={accessToken:'EAAB-user-token',refreshToken:null,expiresAt:null,scopes:[]};
+ const c=await p.exchangeCode('AQD-auth-code-123','https://cockpit.local/callback');
+ assert.equal(c.accessToken,'EAAB-long-lived-token');assert.equal(c.refreshToken,null);assert.equal(c.subject,'987');assert.equal(c.provider,'meta');assert.equal(c.expiresAt,'2100-01-01T00:00:00.000Z');
+ assert.deepEqual(calls.map(r=>r.operation),['token','token','debug'],'code → short token → long-lived token → inspection');
+ reads=r=>r.params.fields.startsWith('id,name')?{status:200,body:{data:[{id:'101',name:'Toitures Dupont',access_token:'EAAB-page-token',category:'Couvreur'},{id:'102'}]}}
   :{status:200,body:{data:[{id:'101',instagram_business_account:{id:'201',username:'toitures.dupont'}},{id:'102'}]}};
  assert.deepEqual(json(await p.listFacebookPages(cred)),[{id:'101',name:'Toitures Dupont',category:'Couvreur'}]);
  assert.deepEqual(json(await p.listInstagramAccounts(cred)),[{id:'201',pageId:'101',username:'toitures.dupont',name:null}]);
  assert.ok(calls.filter(r=>r.operation==='read').every(r=>!JSON.stringify(r.params).includes('EAAB')),'token passed as credential, never in query params');
- reply=()=>({status:400,body:{error:{code:190,error_subcode:463,message:'Error validating access token: EAAB-user-token expired'}}});
- assert.deepEqual(json(await p.validateConnection(cred)),{status:'expired',externalIdentity:null});
- reply=()=>({status:400,body:{error:{code:190,error_subcode:460}}});assert.deepEqual(json(await p.validateConnection(cred)),{status:'revoked',externalIdentity:null});
- reply=()=>({status:200,body:{id:'meta-user-1'}});assert.deepEqual(json(await p.validateConnection(cred)),{status:'active',externalIdentity:'meta-user-1'});
- reply=()=>{throw Error('socket EAAB-user-token');};await assert.rejects(()=>p.listFacebookPages(cred),e=>e.kind==='unavailable'&&!e.message.includes('EAAB'),'transport error sanitized');
- reply=()=>({status:200,body:{access_token:'x'}});await assert.rejects(()=>p.refresh(cred),e=>e.kind==='invalid','short / malformed token refused');});
+ debug={is_valid:false,app_id:'123456',error:{code:190,subcode:463}};assert.deepEqual(json(await p.validateConnection(cred)),{status:'expired',externalIdentity:null});
+ debug={is_valid:false,app_id:'123456',error:{code:190,subcode:460}};assert.deepEqual(json(await p.validateConnection(cred)),{status:'revoked',externalIdentity:null});
+ debug={is_valid:true,app_id:'123456',user_id:'meta-user-1',scopes:['pages_show_list']};assert.deepEqual(json(await p.validateConnection(cred)),{status:'active',externalIdentity:'meta-user-1'});
+ debug={is_valid:true,app_id:'999',user_id:'x',scopes:['pages_show_list']};await assert.rejects(()=>p.validateConnection(cred),e=>e.kind==='invalid','token of another app refused');
+ reads=()=>{throw Error('socket EAAB-user-token');};await assert.rejects(()=>p.listFacebookPages(cred),e=>e.kind==='unavailable'&&!e.message.includes('EAAB'),'transport error sanitized');});
 
-test('GBP provider (fake transport): business.manage scope required, refresh, revoked / expired, accounts and locations',async()=>{
- const g=load('lib/publications/connections/google-business-profile.ts',{'./providers':providers});let reply=()=>({status:200,body:{}});
- const p=g.createGoogleBusinessProfileConnectionProvider({request:async r=>reply(r)});const cred={accessToken:'ya29.access-token',refreshToken:'1//refresh-token-value',expiresAt:null,scopes:[]};
+test('GBP provider (fake transport, P11-a contract): business.manage scope required, PKCE verifier, refresh, revoked / expired / permission, accounts and locations',async()=>{
+ const g=load('lib/publications/connections/google-business-profile.ts',{'./providers':providers});let reply=()=>({status:200,body:{}});const calls=[];
+ const p=g.createGoogleBusinessProfileConnectionProvider({request:async r=>{calls.push(json(r));return reply(r);}});const cred={accessToken:'ya29.access-token',refreshToken:'1//refresh-token-value',expiresAt:null,scopes:[]};
  reply=()=>({status:200,body:{access_token:'ya29.new-access',token_type:'Bearer',expires_in:3599,refresh_token:'1//new-refresh-token',scope:'https://www.googleapis.com/auth/business.manage'}});
- const c=await p.exchangeCode('4/0Ab-auth-code','https://cockpit.local/callback');assert.equal(c.refreshToken,'1//new-refresh-token');
+ const c=await p.exchangeCode('4/0Ab-auth-code','https://cockpit.local/callback','v'.repeat(43));assert.equal(c.refreshToken,'1//new-refresh-token');assert.equal(c.provider,'google_business_profile');
+ assert.equal(calls[0].params.code_verifier,'v'.repeat(43),'PKCE verifier sent with the code');
  reply=()=>({status:200,body:{access_token:'ya29.new-access',token_type:'Bearer',expires_in:3599,scope:'https://www.googleapis.com/auth/drive.readonly'}});
- await assert.rejects(()=>p.refresh(cred),e=>e.kind==='invalid','wrong scope refused');
+ await assert.rejects(()=>p.refresh(cred),e=>e.kind==='permission','wrong scope refused');
  reply=()=>({status:400,body:{error:'invalid_grant'}});await assert.rejects(()=>p.refresh(cred),e=>e.kind==='revoked');
  await assert.rejects(()=>p.refresh({...cred,refreshToken:null}),e=>e.kind==='revoked','no refresh token');
  reply=()=>({status:401,body:{}});assert.deepEqual(json(await p.validateConnection(cred)),{status:'expired',externalIdentity:null});
+ reply=()=>({status:403,body:{error:{status:'PERMISSION_DENIED'}}});await assert.rejects(()=>p.validateConnection(cred),e=>e.kind==='permission','403 is a permission problem, not a revocation');
  reply=r=>r.path==='accounts'?{status:200,body:{accounts:[{name:'accounts/1',accountName:'Toitures Dupont'},{name:'nope'}]}}:{status:200,body:{locations:[{name:'locations/7',title:'Lyon'},{name:'x'}]}};
  assert.deepEqual(json(await p.listAccounts(cred)),[{name:'accounts/1',accountName:'Toitures Dupont'}]);
  assert.deepEqual(json(await p.listLocations(cred,'accounts/1')),[{name:'locations/7',title:'Lyon',accountName:'accounts/1'}]);
@@ -141,7 +146,9 @@ function serviceWith({rpc={},tables={}}={}){
    return name==='publication_connections_list'?{data:args.p_client_id===C?listed():[],error:null}:name==='publication_accounts_available'?{data:args.p_client_id===C?available():[],error:null}
     :name==='publication_connection_disconnect'?{data:{connection_id:META,status:'disabled',already:false,previous_reference:REF},error:null}:{data:{inserted:2,updated:0,unavailable:0},error:null};}};
  const m=load('lib/publications/connections/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
-  './vault':vault,'./providers':providers,'./model':model});
+  './vault':vault,'./providers':providers,'./model':model,
+  // P11-a production wiring (environment): doubled here, the services stay under test with explicit deps.
+  '../oauth/service':{productionOAuthDeps:()=>({db:null,vault:null,meta:null,google:null,pkceKey:null}),oauthReadiness:()=>({meta:false,google_business_profile:false})}});
  return {m,log,rpcs:name=>log.filter(x=>x[0]==='rpc'&&x[1]===name).map(x=>x[2])};}
 const leak=v=>{const s=JSON.stringify(v);return ['vault:','credential_reference','ref:legacy','EAAB','fake-access','fake-refresh','101','201','accounts/1'].filter(x=>s.includes(x));};
 
@@ -156,7 +163,7 @@ test('services: admin first, listings and project configuration without any secr
  assert.deepEqual(json([fb.options.length,fb.currentAccountId,fb.publishability,fb.emptyMessage]),[2,FB1,'publishable',null],'Facebook: Facebook accounts only');
  assert.deepEqual(json([ig.options.map(o=>o.platform),ig.publishability]),[['instagram'],'no_account']);
  assert.deepEqual(json([gb.options.length,gb.currentLabel,gb.publishability,gb.emptyMessage]),[0,'Compte — Compte historique','connection_inactive',null],'legacy account visible, never publishable');
- assert.equal(conf.oauthMessage,'Connexion OAuth à configurer dans une prochaine étape.');
+ assert.equal(conf.oauthMessage,'Connexion OAuth non configurée sur le serveur.');
  assert.deepEqual(leak(conf),[],'no secret / reference / external id');
  const legacyRead=s.log.find(x=>x[0]==='select'&&x[1]==='publication_accounts');assert.doesNotMatch(legacyRead[2],/credential|external/,'legacy read never selects the credential');
  const noAccounts=serviceWith({rpc:{publication_accounts_available:()=>({data:[],error:null})},tables:{publication_project_channels:[{project_id:P,client_id:C,platform:'google_business_profile',enabled:true,publication_account_id:null}]}});
@@ -166,7 +173,7 @@ test('services: admin first, listings and project configuration without any secr
 
 test('services: sync = vault read + provider + normalization + ONE RPC; unavailable in production; revoked recorded; nothing leaked',async()=>{
  const prod=serviceWith();const r=await prod.m.syncPublicationAccounts(P,'meta');
- assert.deepEqual(json(r),{ok:false,message:'Connexion OAuth à configurer dans une prochaine étape.'});assert.ok(!prod.log.some(x=>x[0]==='from'||x[0]==='rpc'),'no read without OAuth');
+ assert.deepEqual(json(r),{ok:false,message:'Connexion OAuth non configurée sur le serveur.'});assert.ok(!prod.log.some(x=>x[0]==='from'||x[0]==='rpc'),'no read without OAuth');
  const v=fakes.createMemoryCredentialVault(()=>uid(9,1).replace(/^9/,'9'));const ref=await v.storeCredential({accessToken:'EAAB-secret',refreshToken:null,expiresAt:null,scopes:[]});
  const meta=fakes.createFakeMetaProvider({pages:[{id:'101',name:'Toitures Dupont'},{id:'102',name:'Lyon'}],instagram:[{id:'201',username:'toitures.dupont',name:null,pageId:'101'}]});
  const s=serviceWith({tables:{client_connections:[{id:META,client_id:C,provider:'meta',status:'active',credential_reference:ref}]}});
@@ -228,13 +235,13 @@ test('UI: connection cards, OAuth pending, disconnect, account selector (multipl
  const p=load('components/publications/connections-panel.tsx',{'@/app/(cockpit)/publications/connection-actions':{assignPublicationAccountAction:async()=>({}),disconnectPublicationConnectionAction:async()=>({})}});
  const metaSummary=model.connectionSummary('meta',{status:'active',has_credential:true,expires_at:'2026-12-01T10:00:00Z',accounts:{facebook:2,instagram:1}});
  const gbpSummary=model.connectionSummary('google_business_profile',null),disabled=model.connectionSummary('google_business_profile',{status:'disabled',accounts:{google_business_profile:0}});
- const html=renderToStaticMarkup(jsx.jsx(p.ConnectionsPanel,{projectId:P,connections:[metaSummary,gbpSummary],oauthMessage:'Connexion OAuth à configurer dans une prochaine étape.'}));
+ const html=renderToStaticMarkup(jsx.jsx(p.ConnectionsPanel,{projectId:P,connections:[metaSummary,gbpSummary],oauthMessage:'Connexion OAuth non configurée sur le serveur.',oauthReady:{meta:false,google_business_profile:false}}));
  assert.match(html,/Connexions/);assert.match(html,/data-connection="meta" data-status="active"/);assert.match(html,/2 page\(s\) Facebook · 1 compte\(s\) Instagram/);assert.match(html,/Expire le 01\/12\/2026/);
  assert.match(html,/0 fiche\(s\) Google Business Profile/);assert.match(html,/Non connecté/);
- assert.match(html,/<button[^>]*disabled=""[^>]*>Configurer Meta<\/button>/);assert.match(html,/<button[^>]*disabled=""[^>]*>Configurer Google Business Profile<\/button>/);
- assert.equal((html.match(/Connexion OAuth à configurer dans une prochaine étape\./g)??[]).length,2);
+ assert.match(html,/<button[^>]*disabled=""[^>]*>Connecter Meta<\/button>/);assert.match(html,/<button[^>]*disabled=""[^>]*>Connecter Google Business Profile<\/button>/);
+ assert.equal((html.match(/Connexion OAuth non configurée sur le serveur\./g)??[]).length,2);
  assert.equal((html.match(/>Déconnecter</g)??[]).length,1,'disconnect only for an existing connection');
- assert.doesNotMatch(renderToStaticMarkup(jsx.jsx(p.ConnectionsPanel,{projectId:P,connections:[disabled],oauthMessage:'x'})),/>Déconnecter</,'already disconnected');
+ assert.doesNotMatch(renderToStaticMarkup(jsx.jsx(p.ConnectionsPanel,{projectId:P,connections:[disabled],oauthMessage:'x',oauthReady:{meta:false,google_business_profile:false}})),/>Déconnecter</,'already disconnected');
  const options=[{id:FB1,platform:'facebook',name:'Toitures Dupont',status:'active',statusLabel:'Actif',assignable:true},{id:FB2,platform:'facebook',name:'Toitures Dupont Lyon',status:'unavailable',statusLabel:'Indisponible',assignable:false}];
  const selector=renderToStaticMarkup(jsx.jsx(p.ChannelAccountSelector,{projectId:P,view:{platform:'facebook',platformLabel:'Facebook',currentAccountId:FB1,currentLabel:'Toitures Dupont — Actif',options,emptyMessage:null,publishability:'publishable',publishabilityLabel:'Prêt pour la publication'}}));
  assert.match(selector,/Compte de publication/);assert.match(selector,/Toitures Dupont — Facebook — Actif/);assert.match(selector,new RegExp(`<option value="${FB2}"[^>]*disabled=""[^>]*>Toitures Dupont Lyon — Facebook — Indisponible`));
@@ -252,6 +259,6 @@ test('P9 security: client components and logs never handle secrets; scope of the
  for(const f of readdirSync(resolve(root,'lib/publications/connections'))){const code=src('lib/publications/connections/'+f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/\bfetch\s*\(|https?:\/\/|process\.env|console\.log/,f);
   for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/message|reference|credential|token|error\)/,`${f}: log without provider text`);}
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,19);assert.equal(list[17],'20261009000000_publications_connections.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,20);assert.equal(list[17],'20261009000000_publications_connections.sql');
  const sql=src('supabase/migrations/20261009000000_publications_connections.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|delete from public\.|drop (table|function)|cron|http/i);});

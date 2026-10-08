@@ -70,16 +70,17 @@ export function getChannelPublishability(i:PublishabilityInput):ChannelPublishab
 
 // View models of the "Connexions" section and of the account selector of each channel card.
 export type ConnectionSummary={provider:ConnectionProvider;label:string;status:ConnectionStatus|'none';statusLabel:string;connected:boolean;
- counts:{facebook:number;instagram:number;google_business_profile:number};canDisconnect:boolean;expiresLabel:string|null};
+ counts:{facebook:number;instagram:number;google_business_profile:number};canDisconnect:boolean;expiresLabel:string|null;connectedLabel:string|null};
 export type AccountOption={id:string;platform:PublicationPlatform;name:string;status:AccountStatus;statusLabel:string;assignable:boolean};
 export type ChannelAccountView={platform:PublicationPlatform;platformLabel:string;currentAccountId:string|null;currentLabel:string|null;options:AccountOption[];
  emptyMessage:string|null;publishability:ChannelPublishability;publishabilityLabel:string};
 const day=new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Europe/Paris'});
-export function connectionSummary(provider:ConnectionProvider,row:{status:string;has_credential?:boolean;expires_at?:string|null;accounts?:Record<string,unknown>}|null):ConnectionSummary{
+export function connectionSummary(provider:ConnectionProvider,row:{status:string;has_credential?:boolean;expires_at?:string|null;connected_at?:string|null;accounts?:Record<string,unknown>}|null):ConnectionSummary{
  const status=row&&(CONNECTION_STATUSES as readonly string[]).includes(row.status)?row.status as ConnectionStatus:'none';
  const n=(k:string)=>{const v=row?.accounts?.[k];return typeof v==='number'&&Number.isInteger(v)&&v>=0?v:0;};
  return {provider,label:PROVIDER_LABELS[provider],status,statusLabel:CONNECTION_STATUS_LABELS[status],connected:status==='active',
   counts:{facebook:n('facebook'),instagram:n('instagram'),google_business_profile:n('google_business_profile')},canDisconnect:status!=='none'&&status!=='disabled',
-  expiresLabel:status==='active'&&typeof row?.expires_at==='string'&&!Number.isNaN(Date.parse(row.expires_at))?`Expire le ${day.format(new Date(row.expires_at))}`:null};
+  expiresLabel:status==='active'&&typeof row?.expires_at==='string'&&!Number.isNaN(Date.parse(row.expires_at))?`Expire le ${day.format(new Date(row.expires_at))}`:null,
+  connectedLabel:status!=='none'&&typeof row?.connected_at==='string'&&!Number.isNaN(Date.parse(row.connected_at))?`Connecté le ${day.format(new Date(row.connected_at))}`:null};
 }
 export function accountOptionLabel(o:AccountOption):string{return `${o.name} — ${platformLabels[o.platform]} — ${o.statusLabel}`;}

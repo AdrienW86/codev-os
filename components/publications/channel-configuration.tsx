@@ -15,8 +15,8 @@ const stateBadges={legacy:<Badge tone="amber">Configuration héritée</Badge>,ac
 const initial:ConfigurationState={};
 
 // Lot 4.3 P9: connections of the client and the publication account of each channel (status only, no secret).
-export type ChannelConnectionsView={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string};
-export function ChannelConfiguration({projectId,view,connections=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null}){
+export type ChannelConnectionsView={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string;oauthReady:Record<ConnectionSummary['provider'],boolean>};
+export function ChannelConfiguration({projectId,view,connections=null,oauthBanner=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null;oauthBanner?:{ok:boolean;message:string}|null}){
  if(!view)return <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2><p role="alert" className="mt-3 text-sm">Configuration des canaux indisponible pour le moment. Rechargez la page.</p></Panel>;
  return <>
   <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2>
@@ -27,7 +27,7 @@ export function ChannelConfiguration({projectId,view,connections=null}:{projectI
    {view.calendarNotice&&<p role="status" data-channel-transition="calendar" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.calendarNotice}</p>}
    {view.agentNotice&&<p role="status" data-channel-transition="agent" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.agentNotice}</p>}
   </Panel>
-  {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage}/>
+  {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage} oauthReady={connections.oauthReady} banner={oauthBanner}/>
    :<Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2><p role="alert" className="mt-3 text-sm">Connexions indisponibles pour le moment. Rechargez la page.</p></Panel>}
   <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card} account={connections?.channels.find(c=>c.platform===card.platform)??null}/>)}</div></>;
 }

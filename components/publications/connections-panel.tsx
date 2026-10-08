@@ -1,7 +1,7 @@
 'use client';
 import {useActionState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
-import {assignPublicationAccountAction,disconnectPublicationConnectionAction,type ConnectionActionState} from '@/app/(cockpit)/publications/connection-actions';
+import {assignPublicationAccountAction,disconnectPublicationConnectionAction,startOAuthAction,verifyConnectionAction,type ConnectionActionState} from '@/app/(cockpit)/publications/connection-actions';
 import {accountOptionLabel,type ChannelAccountView,type ConnectionSummary} from '@/lib/publications/connections/model';
 
 // Publication connections (Lot 4.3 P9): status and counts only. No token, no credential reference, no external id
@@ -10,20 +10,39 @@ const initial:ConnectionActionState={};
 const input='rounded-lg border border-border bg-background p-2 text-sm';
 const tones:Record<ConnectionSummary['status'],'green'|'amber'|undefined>={none:undefined,pending:'amber',active:'green',expired:'amber',revoked:'amber',error:'amber',disabled:undefined};
 
-export function ConnectionsPanel({projectId,connections,oauthMessage}:{projectId:string;connections:ConnectionSummary[];oauthMessage:string}){
+// oauthReady: whether the server configuration allows connecting this provider (booleans only, no value).
+export function ConnectionsPanel({projectId,connections,oauthMessage,oauthReady,banner=null}:{projectId:string;connections:ConnectionSummary[];oauthMessage:string;
+ oauthReady:Record<ConnectionSummary['provider'],boolean>;banner?:{ok:boolean;message:string}|null}){
  return <Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2>
   <p className="mt-2 text-sm text-muted">Comptes du client utilisables par les canaux de ce projet. Aucune publication n’est diffusée depuis cette page.</p>
-  <div className="mt-4 grid gap-4 md:grid-cols-2">{connections.map(c=><ConnectionCard key={c.provider} projectId={projectId} connection={c} oauthMessage={oauthMessage}/>)}</div></Panel>;
+  {banner&&<p role={banner.ok?'status':'alert'} data-oauth-result={banner.ok?'success':'failure'} className={`mt-3 rounded-lg border p-3 text-sm ${banner.ok?'border-green-500':'border-red-400 text-red-400'}`}>{banner.message}</p>}
+  <div className="mt-4 grid gap-4 md:grid-cols-2">{connections.map(c=><ConnectionCard key={c.provider} projectId={projectId} connection={c} oauthMessage={oauthMessage} ready={oauthReady[c.provider]}/>)}</div></Panel>;
 }
-function ConnectionCard({projectId,connection:c,oauthMessage}:{projectId:string;connection:ConnectionSummary;oauthMessage:string}){
+function ConnectionCard({projectId,connection:c,oauthMessage,ready}:{projectId:string;connection:ConnectionSummary;oauthMessage:string;ready:boolean}){
+ const existing=c.status!=='none'&&c.status!=='disabled';
  return <article data-connection={c.provider} data-status={c.status} className="rounded-lg border border-border p-4 text-sm">
   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{c.label}</h3><Badge tone={tones[c.status]}>{c.statusLabel}</Badge></div>
-  <p className="mt-2">{c.connected?'Connecté':'Non connecté'}{c.expiresLabel?` · ${c.expiresLabel}`:''}</p>
+  <p className="mt-2">{c.connected?'Connecté':'Non connecté'}{c.connectedLabel?` · ${c.connectedLabel}`:''}{c.expiresLabel?` · ${c.expiresLabel}`:''}</p>
   {c.provider==='meta'?<p className="mt-1 text-muted">{c.counts.facebook} page(s) Facebook · {c.counts.instagram} compte(s) Instagram</p>
    :<p className="mt-1 text-muted">{c.counts.google_business_profile} fiche(s) Google Business Profile</p>}
-  <div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" disabled className="rounded-lg border border-border px-3 py-2 disabled:opacity-60">Configurer {c.label}</button>
-   <span className="text-xs text-muted" data-oauth-pending="true">{oauthMessage}</span></div>
+  {ready?<div className="mt-3 flex flex-wrap items-start gap-2"><ConnectForm projectId={projectId} provider={c.provider} label={`${existing?'Reconnecter':'Connecter'} ${c.label}`}/>
+    {existing&&<VerifyForm projectId={projectId} provider={c.provider}/>}</div>
+   :<div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" disabled className="rounded-lg border border-border px-3 py-2 disabled:opacity-60">Connecter {c.label}</button>
+    <span className="text-xs text-muted" data-oauth-pending="true">{oauthMessage}</span></div>}
   {c.canDisconnect&&<DisconnectForm projectId={projectId} provider={c.provider} label={c.label}/>}</article>;
+}
+// The server builds the consent URL (state, PKCE) and redirects; the browser only sends the project and provider.
+function ConnectForm({projectId,provider,label}:{projectId:string;provider:ConnectionSummary['provider'];label:string}){
+ const [state,start,pending]=useActionState(startOAuthAction,initial);
+ return <form action={start}><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
+  <button disabled={pending} className="rounded-lg bg-accent px-3 py-2 font-semibold text-background disabled:opacity-60">{pending?'Redirection…':label}</button>
+  {state.message&&<p role="alert" className="mt-1 text-red-400">{state.message}</p>}</form>;
+}
+function VerifyForm({projectId,provider}:{projectId:string;provider:ConnectionSummary['provider']}){
+ const [state,verify,pending]=useActionState(verifyConnectionAction,initial);
+ return <form action={verify}><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
+  <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Vérification…':'Vérifier la connexion'}</button>
+  {state.message&&<p role={state.ok?'status':'alert'} className={`mt-1 ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>;
 }
 function DisconnectForm({projectId,provider,label}:{projectId:string;provider:ConnectionSummary['provider'];label:string}){
  const [state,disconnect,pending]=useActionState(disconnectPublicationConnectionAction,initial);

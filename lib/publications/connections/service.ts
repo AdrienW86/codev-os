@@ -6,20 +6,27 @@ import {platformLabels} from '../editor';
 import {publicationPlatforms,type PublicationPlatform} from '../types';
 import {ACCOUNT_STATUSES,ACCOUNT_STATUS_LABELS,CONNECTION_PROVIDERS,PUBLISHABILITY_LABELS,PROVIDER_PLATFORMS,connectFirstMessage,connectionSummary,getChannelPublishability as computeChannelPublishability,PROVIDER_LABELS,
  isConnectionProvider,normalizeGbpAccounts,normalizeMetaAccounts,providerOfPlatform,syncPayload,
- type AccountOption,type AccountStatus,type ChannelAccountView,type ChannelPublishability,type ConnectionSummary,type ExternalPublicationAccount} from './model';
+ type AccountOption,type AccountStatus,type ChannelAccountView,type ChannelPublishability,type ConnectionProvider,type ConnectionSummary,type ExternalPublicationAccount} from './model';
 import {unconfiguredCredentialVault,isCredentialReference,type CredentialVault} from './vault';
 import {ConnectionProviderError,type GoogleBusinessProfileConnectionProvider,type MetaConnectionProvider} from './providers';
+import {oauthReadiness,productionOAuthDeps} from '../oauth/service';
 
 // Publication connections services (Lot 4.3 P9). Admin only, fail closed, every write through the P9 RPCs.
 // Nothing returned here ever contains a credential reference, a token, provider metadata or an external id.
 // The client and the project are always resolved on the server; ids sent by a browser are never trusted.
 export type ConnectionDeps={vault:CredentialVault;meta:MetaConnectionProvider|null;gbp:GoogleBusinessProfileConnectionProvider|null};
-// P9: no OAuth flow and no secret store are configured. Production cannot connect, read or sync anything.
-export function productionConnectionDeps():ConnectionDeps{return {vault:unconfiguredCredentialVault(),meta:null,gbp:null};}
-export const OAUTH_PENDING_MESSAGE='Connexion OAuth à configurer dans une prochaine étape.';
+// P11-a: real encrypted vault and providers when the server configuration is complete; otherwise every piece stays
+// unconfigured (fail closed: nothing can be connected, read or synced).
+export function productionConnectionDeps():ConnectionDeps{
+ const d=productionOAuthDeps();
+ return {vault:d.vault??unconfiguredCredentialVault(),meta:d.meta?.provider??null,gbp:d.google?.provider??null};
+}
+export const OAUTH_PENDING_MESSAGE='Connexion OAuth non configurée sur le serveur.';
 const unavailable='Connexions indisponibles.';
 type Result={ok:boolean;message:string};
 type ListedConnection={id:string;provider:string;status:string;connected_at:string|null;expires_at:string|null;has_credential:boolean;accounts:Record<string,unknown>};
+// Whether each provider can be connected from this server (configuration complete). Booleans only, never values.
+function readiness():Record<ConnectionProvider,boolean>{try{return oauthReadiness(productionOAuthDeps());}catch{return {meta:false,google_business_profile:false};}}
 type ListedAccount={id:string;platform:string;display_name:string|null;status:string;enabled:boolean;connection_status:string;assignable:boolean};
 const isPlatform=(v:unknown):v is PublicationPlatform=>typeof v==='string'&&(publicationPlatforms as readonly string[]).includes(v);
 // Generic server log: operation and error kind only, never a provider message (it may echo a token).
@@ -51,7 +58,7 @@ export async function getAvailablePublicationAccounts(clientId:string):Promise<A
  return (await listAccounts(clientId)).flatMap(toOption);
 }
 
-export type ProjectConnectionConfiguration={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string};
+export type ProjectConnectionConfiguration={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string;oauthReady:Record<ConnectionProvider,boolean>};
 // Everything the "Connexions" section and the per-channel account selectors display. Read only.
 export async function getProjectConnectionConfiguration(projectId:string,now=new Date()):Promise<ProjectConnectionConfiguration>{
  await requireAdmin();const project=await projectRef(projectId);if(!project)throw Error(unavailable);
@@ -79,7 +86,7 @@ export async function getProjectConnectionConfiguration(projectId:string,now=new
   return {platform,platformLabel:platformLabels[platform],currentAccountId:accountId,
    currentLabel:listed?`${listed.display_name??'Compte'} — ${ACCOUNT_STATUS_LABELS[(listed.status as AccountStatus)]??listed.status}`:old?`${old.display_name??'Compte'} — ${ACCOUNT_STATUS_LABELS.legacy}`:null,
    options:own,emptyMessage:own.length||accountId?null:connectFirstMessage(platform),publishability,publishabilityLabel:PUBLISHABILITY_LABELS[publishability]};});
- return {connections:CONNECTION_PROVIDERS.map(p=>connectionSummary(p,connections.find(r=>r.provider===p)??null)),channels:views,oauthMessage:OAUTH_PENDING_MESSAGE};
+ return {connections:CONNECTION_PROVIDERS.map(p=>connectionSummary(p,connections.find(r=>r.provider===p)??null)),channels:views,oauthMessage:OAUTH_PENDING_MESSAGE,oauthReady:readiness()};
 }
 export async function getChannelPublishability(projectId:string,platform:PublicationPlatform):Promise<ChannelPublishability>{
  const configuration=await getProjectConnectionConfiguration(projectId);

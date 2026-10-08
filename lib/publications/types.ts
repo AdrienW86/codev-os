@@ -122,7 +122,12 @@ export type PublicationAgentV2RunRow = {
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
   media_lease_until: string | null; media_attached_at: string | null;
 };
+// Lot 4.3 P11-a: encrypted credential store (server role only; ciphertext as PostgreSQL hex bytea) and OAuth states.
+export type PublicationCredentialSecretRow = { reference: string; provider: "meta" | "google_business_profile"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
+export type PublicationOAuthStateRow = { id: string; state_hash: string; provider: "meta" | "google_business_profile"; client_id: string; project_id: string | null; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
 export type PublicationTables = {
+  publication_credential_secrets: Table<PublicationCredentialSecretRow, "reference" | "provider" | "key_id" | "iv" | "ciphertext" | "auth_tag", never>;
+  publication_oauth_states: Table<PublicationOAuthStateRow, never, never>;
   publication_agent_v2_runs: Table<PublicationAgentV2RunRow, "agent_run_id" | "agent_id" | "client_id" | "project_id" | "occurrence_ids" | "considered_count">;
   publication_editorial_groups: Table<PublicationEditorialGroupRow, "client_id" | "project_id" | "subject">;
   publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "schedule_slot_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
@@ -166,6 +171,9 @@ export type PublicationFunctions = {
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};
   publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
+  publication_oauth_state_create:{Args:{p_provider:string;p_client_id:string;p_project_id:string|null;p_state_hash:string;p_actor_id:string};Returns:string};
+  publication_oauth_state_consume:{Args:{p_provider:string;p_state_hash:string;p_actor_id:string};Returns:Json};
+  publication_oauth_record:{Args:{p_client_id:string;p_provider:string;p_outcome:string;p_code:string|null;p_counts:Json|null;p_actor_id:string};Returns:undefined};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};

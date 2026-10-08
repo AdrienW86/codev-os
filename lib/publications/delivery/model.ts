@@ -54,7 +54,7 @@ const REASON_LABELS:Record<string,string>={...PUBLISHABILITY_LABELS,archived:'Pu
 export function blockedReasonLabel(reason:string|null):string|null{return reason?REASON_LABELS[reason as ChannelPublishability]??'Diffusion bloquée':null;}
 export const DELIVERY_ENGINE_NOTICE='Le moteur de diffusion est en mode local / provider simulé.';
 export type DeliveryView={id:string;platform:PublicationPlatform;platformLabel:string;accountLabel:string;status:DeliveryStatus;statusLabel:string;attempts:number;
- lastError:string|null;blockedReason:string|null;nextRetryAt:string|null;remoteLabel:string|null;canRetry:boolean};
+ lastError:string|null;blockedReason:string|null;nextRetryAt:string|null;remoteLabel:string|null;canRetry:boolean;canReconcile:boolean};
 // Drawer « Diffusion »: deliveries of the publication and whether a preparation can be requested.
 export type DiffusionView={deliveries:DeliveryView[];canPrepare:boolean};
 export type DeliveryRow={id:string;platform:PublicationPlatform;status:string;remote_id:string|null;blocked_reason:string|null;last_error_class:string|null;last_error_code:string|null};
@@ -67,5 +67,7 @@ export function deliveryView(row:DeliveryRow,input:{accountName:string|null;atte
   nextRetryAt:status==='retryable_error'?input.nextRetryAt:null,
   // A simulated identifier is labelled as such; a real remote id is shown only once a real publisher exists.
   remoteLabel:status==='simulated'?'Identifiant simulé (aucune publication réelle)':status==='published'&&row.remote_id?'Publiée chez le fournisseur':null,
-  canRetry:status==='failed'||status==='retryable_error'||status==='blocked'};
+  canRetry:status==='failed'||status==='retryable_error'||status==='blocked',
+  // Uncertain (outcome unknown after a dispatch): only a provider check or an explicit admin decision moves it.
+  canReconcile:status==='uncertain'};
 }

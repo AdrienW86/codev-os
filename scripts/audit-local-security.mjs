@@ -9,10 +9,14 @@ if(git.status!==0)throw Error('Git inventory unavailable');
 const files=[...new Set(git.stdout.split('\0').filter(Boolean))];
 const secretFindings=[],modules=new Map(),guardInventory=[];
 const patterns=[['API key',/\b(?:sk-proj-|sk-(?:live|test)_|sb_secret_)[A-Za-z0-9_-]{20,}/g],['credential URI',/\bpostgres(?:ql)?:\/\/[^\s'"<>]+:[^\s'"<>]+@[^\s'"<>]+/g],['OAuth refresh token',/\b1\/\/[A-Za-z0-9_-]{40,}/g],['private key',/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g]];
+// .env.example is the only env file allowed (eligible or tracked), and only with variable NAMES (empty values) and
+// comments: any value makes it a finding again.
+function namesOnlyEnvExample(file){
+ if(file!=='.env.example')return false;const path=resolve(root,file);if(!existsSync(path))return false;
+ return readFileSync(path,'utf8').split(/\r?\n/).every(line=>/^\s*(#.*)?$/.test(line)||/^[A-Z][A-Z0-9_]*=$/.test(line));
+}
 for(const file of files){const path=resolve(root,file);if(!existsSync(path)||!statSync(path).isFile()||statSync(path).size>2000000)continue;
- // .env.example is the only env file allowed, and only with variable NAMES (empty values) and comments.
- const namesOnlyExample=file==='.env.example'&&readFileSync(path,'utf8').split(/\r?\n/).every(line=>/^\s*(#.*)?$/.test(line)||/^[A-Z][A-Z0-9_]*=$/.test(line));
- if(!namesOnlyExample&&(/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$/i.test(file)||file.startsWith('backups/')))secretFindings.push({file,category:'Sensitive artifact eligible for Git'});
+ if(!namesOnlyEnvExample(file)&&(/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$/i.test(file)||file.startsWith('backups/')))secretFindings.push({file,category:'Sensitive artifact eligible for Git'});
  if(!/\.(?:[cm]?[jt]sx?|json|md|sql|ps1|toml|ya?ml)$/.test(file))continue;
  const text=readFileSync(path,'utf8');
  text.split(/\r?\n/).forEach((line,index)=>{for(const [category,pattern] of patterns){pattern.lastIndex=0;for(const hit of line.matchAll(pattern))if(!/fixture|placeholder|example|xxx|fake|local-validation|127\.0\.0\.1|password@host|user:password/i.test(hit[0]))secretFindings.push({file,line:index+1,category});}});
@@ -29,7 +33,7 @@ for(const file of files){const path=resolve(root,file);if(!existsSync(path)||!st
 const boundaryFindings=[];
 for(const [file,m] of modules)if(m.client){const visited=new Set();const visit=(name,chain)=>{if(visited.has(name))return;visited.add(name);const child=modules.get(name);if(!child||child.serverAction)return;if(child.serverOnly||child.privileged)boundaryFindings.push({client:file,server:name,chain});for(const target of child.imports)visit(target,[...chain,target]);};visit(file,[file]);}
 const tracked=spawnSync('git',['-c',`safe.directory=${root.replaceAll('\\','/')}`,'ls-files','-z'],{encoding:'utf8',windowsHide:true}).stdout.split('\0').filter(Boolean);
-const sensitiveTracked=tracked.filter(f=>/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$|^backups\//i.test(f));
+const sensitiveTracked=tracked.filter(f=>!namesOnlyEnvExample(f)&&/(?:^|\/)\.env(?:\.|$)|\.(?:dump|backup|pem|p12)$|^backups\//i.test(f));
 const report={filesEligibleForGit:files.length,applicationModules:modules.size,clientComponents:[...modules.values()].filter(m=>m.client).length,serverActions:guardInventory,secretFindings,boundaryFindings,sensitiveTracked};
 mkdirSync(resolve(root,'.local'),{recursive:true});writeFileSync(resolve(root,'.local/security-audit.json'),JSON.stringify(report,null,2));
 console.log(JSON.stringify({filesEligibleForGit:files.length,applicationModules:modules.size,clientComponents:report.clientComponents,serverActions:guardInventory.length,actionsWithoutDirectGuard:guardInventory.filter(a=>!a.directAdminGuard),secretFindings,boundaryFindings,sensitiveTracked},null,2));

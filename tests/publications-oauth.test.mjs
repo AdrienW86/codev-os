@@ -320,7 +320,7 @@ test('P11-a security scope: no secret client-side, no provider call in client co
   for(const m of code.matchAll(/console\.(error|log|warn|info)\(([^;]*)\)/g))assert.doesNotMatch(m[2].replace(/instanceof [A-Za-z]+/g,''),/credential|token|code\b|state\b|reference|secret|body|headers/i,`${f}: generic logs only`);
   assert.doesNotMatch(code,/delivery\/(engine|fakes|publisher)|publication_job_|publication_prepare_delivery/,`${f}: no publisher / delivery wiring`);}
  assert.match(src('lib/publications/oauth/service.ts'),/publication_oauth_state_consume[\s\S]*exchangeCode/,'state consumed before any exchange');
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,20);assert.equal(list[19],'20261011000000_publications_oauth.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,21);assert.equal(list[19],'20261011000000_publications_oauth.sql');
  const sql=src('supabase/migrations/20261011000000_publications_oauth.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|create policy|grant [a-z, ]* to (anon|authenticated)|insert into public\.publication_deliveries|http|cron/i);
  assert.match(src('docs/publications-oauth.md'),/\/api\/publications\/oauth\/meta\/callback/);assert.doesNotMatch(src('docs/publications-oauth.md'),/EAAB|ya29\.|GOCSPX-[A-Za-z0-9]/);});

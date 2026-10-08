@@ -174,6 +174,9 @@ export type PublicationFunctions = {
   publication_oauth_state_create:{Args:{p_provider:string;p_client_id:string;p_project_id:string|null;p_state_hash:string;p_actor_id:string};Returns:string};
   publication_oauth_state_consume:{Args:{p_provider:string;p_state_hash:string;p_actor_id:string};Returns:Json};
   publication_oauth_record:{Args:{p_client_id:string;p_provider:string;p_outcome:string;p_code:string|null;p_counts:Json|null;p_actor_id:string};Returns:undefined};
+  publication_delivery_reconcile_context:{Args:{p_delivery_id:string};Returns:Json};
+  publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
+  publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};

@@ -52,6 +52,8 @@ $savedP10Url=$env:PUBLICATIONS_P10_TEST_DATABASE_URL
 $savedP10Psql=$env:PUBLICATIONS_P10_TEST_PSQL
 $savedP11Url=$env:PUBLICATIONS_P11_TEST_DATABASE_URL
 $savedP11Psql=$env:PUBLICATIONS_P11_TEST_PSQL
+$savedP11bUrl=$env:PUBLICATIONS_P11B_TEST_DATABASE_URL
+$savedP11bPsql=$env:PUBLICATIONS_P11B_TEST_PSQL
 $savedTelemetry=$env:NEXT_TELEMETRY_DISABLED
 $savedClerkTelemetry=$env:CLERK_TELEMETRY_DISABLED
 $savedApplicationEnv=@{}
@@ -189,6 +191,12 @@ try {
   $env:PUBLICATIONS_P11_TEST_PSQL=Join-Path $binRoot 'psql.exe'
   & node --test tests/publications-oauth-db.test.mjs
   if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P11-a publication OAuth SQL failed. No remote migration permitted.' }
+  & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database publications_p11b_test owner postgres;'
+  if ($LASTEXITCODE -ne 0) { throw 'Dedicated Meta publisher database creation failed.' }
+  $env:PUBLICATIONS_P11B_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/publications_p11b_test"
+  $env:PUBLICATIONS_P11B_TEST_PSQL=Join-Path $binRoot 'psql.exe'
+  & node --test tests/publications-meta-publisher-db.test.mjs
+  if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P11-b Meta publisher SQL failed. No remote migration permitted.' }
   & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database remote_schema_test owner postgres;'
   if ($LASTEXITCODE -ne 0) { throw 'Dedicated local replay database creation failed.' }
   $env:REMOTE_SCHEMA_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/remote_schema_test"
@@ -259,6 +267,8 @@ try {
   $env:PUBLICATIONS_P10_TEST_PSQL=$savedP10Psql
   $env:PUBLICATIONS_P11_TEST_DATABASE_URL=$savedP11Url
   $env:PUBLICATIONS_P11_TEST_PSQL=$savedP11Psql
+  $env:PUBLICATIONS_P11B_TEST_DATABASE_URL=$savedP11bUrl
+  $env:PUBLICATIONS_P11B_TEST_PSQL=$savedP11bPsql
   $env:NEXT_TELEMETRY_DISABLED=$savedTelemetry
   $env:CLERK_TELEMETRY_DISABLED=$savedClerkTelemetry
   foreach($name in $savedPg.Keys) { [Environment]::SetEnvironmentVariable($name,$savedPg[$name],'Process') }

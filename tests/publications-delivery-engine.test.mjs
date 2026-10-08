@@ -51,7 +51,7 @@ test('model: outcome payload validated (simulated never recorded as published, n
  assert.deepEqual(json(model.outcomePayload({result:'rate_limit',errorCode:'Too many calls for token EAAB',retryAfterSeconds:120.7},5,'bad id!')),{result:'rate_limit',retry_after_seconds:121,duration_ms:5},'raw code and bad request id dropped');
  const row={id:uid(5,1),platform:'instagram',status:'retryable_error',remote_id:null,blocked_reason:null,last_error_class:'provider_unavailable',last_error_code:'http_503'};
  assert.deepEqual(json(model.deliveryView(row,{accountName:'@toitures',attempts:2,nextRetryAt:'2026-10-12T10:00:00Z'})),{id:uid(5,1),platform:'instagram',platformLabel:'Instagram',accountLabel:'@toitures',
-  status:'retryable_error',statusLabel:'Nouvelle tentative prévue',attempts:2,lastError:'Fournisseur indisponible (http_503)',blockedReason:null,nextRetryAt:'2026-10-12T10:00:00Z',remoteLabel:null,canRetry:true});
+  status:'retryable_error',statusLabel:'Nouvelle tentative prévue',attempts:2,lastError:'Fournisseur indisponible (http_503)',blockedReason:null,nextRetryAt:'2026-10-12T10:00:00Z',remoteLabel:null,canRetry:true,canReconcile:false});
  const simulated=model.deliveryView({...row,status:'simulated',remote_id:'simulated-x',last_error_class:null,last_error_code:null},{accountName:null,attempts:1,nextRetryAt:'x'});
  assert.equal(simulated.remoteLabel,'Identifiant simulé (aucune publication réelle)');assert.equal(simulated.nextRetryAt,null);assert.equal(simulated.canRetry,false);assert.ok(!JSON.stringify(simulated).includes('simulated-x'),'remote id not displayed');
  assert.equal(model.deliveryView({...row,status:'blocked',blocked_reason:'emergency_stop'},{accountName:'a',attempts:0,nextRetryAt:null}).blockedReason,'Arrêt d’urgence actif');
@@ -178,6 +178,6 @@ test('P10 scope: no route runs the engine, fakes never imported by the app, no t
  for(const f of readdirSync(resolve(root,'lib/publications/delivery'))){const code=src('lib/publications/delivery/'+f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/\bfetch\s*\(|https?:\/\/|process\.env|console\.log|setInterval|setTimeout|while\s*\(true\)/,f);
   for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/credential|token|message|error\b|payload|text/,`${f}: generic logs only`);}
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,20);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,21);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
  const sql=SQL.replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|delete from public\.|drop table|drop function|cron|http|net\./i);
  assert.match(sql,/for update of j skip locked/,'concurrent claiming');});

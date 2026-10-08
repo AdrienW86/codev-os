@@ -70,7 +70,15 @@ begin
  perform pg_temp.replay_failure(format('insert into public.publications(client_id,project_id,editorial_week,slot,subject) values(%L,%L,''2026-10-12'',3,''Third'')',client,project),'23514','two slot cap');
  perform pg_temp.replay_failure(format('insert into public.publication_cadences(client_id,project_id) values(%L,%L)',client,'30000000-0000-4000-8000-000000000003'),'23503','cross-client cadence denied');
  perform pg_temp.replay_failure(format('insert into public.publication_planning_jobs(type,client_id,project_id,publication_id,idempotency_key) values(''prepare_publication'',%L,%L,%L,''cross-client'')','10000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000003',p),'23503','cross-client job denied');
- perform pg_temp.replay_failure(format('delete from public.clients where id=%L',client),'55000','agent and publication history protected');
+ -- Blocked either by a history guard reached through a cascade (55000) or by a restricting FK (23503): which
+ -- referential trigger fires first follows trigger OIDs, which vary with concurrent work on the cluster.
+ begin
+  delete from public.clients where id=client;
+  raise exception 'client with agent/publication history was deleted' using errcode='P0001';
+ exception when sqlstate '55000' or sqlstate '23503' then
+  perform pg_temp.replay_assert(true,'agent and publication history protected');
+ end;
+ perform pg_temp.replay_assert(exists(select 1 from public.clients where id=client),'client with history kept');
  perform public.publication_save_cadence('30000000-0000-4000-8000-000000000003',jsonb_set(config,'{planning_horizon_weeks}','1'),'user_local');
  perform public.publication_ensure_calendar('30000000-0000-4000-8000-000000000003','2026-10-12',true,'user_local');
  perform pg_temp.replay_failure('delete from public.clients where id=''10000000-0000-4000-8000-000000000002''','23503','publication history FK blocks client without agent history');

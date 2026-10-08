@@ -5,6 +5,7 @@ import {useActionState,useEffect,useRef,useState,type ReactNode} from 'react';
 import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
+import {DeliverySection} from './delivery-section';
 import {DebugDetails} from '@/components/projects/debug-details';
 import {boardOriginLabels,boardStatusClasses,boardStatusLabels} from '@/lib/publications/board-query';
 import {formatDate} from '@/lib/format-date';
@@ -57,6 +58,7 @@ function DrawerBody({detail}:{detail:PublicationDetailData}){
     <p className="mt-1 text-xs text-muted">Une seule publication, en tenant compte du motif du rejet. La nouvelle version sera soumise à votre validation.</p>
     <AgentPrepareForm projectId={detail.projectId} publicationId={detail.publicationId} regenerate/></section>}
    <History detail={detail}/></>}
+  {detail.diffusion&&detail.status!=='to_prepare'&&<DeliverySection publicationId={detail.publicationId} diffusion={detail.diffusion}/>}
   <section className={section}><h3 className="mb-2 text-sm font-semibold">Tableau</h3><BoardVisibilityForm publicationId={detail.publicationId} hidden={detail.hidden}/></section>
   {!detail.archived&&<ArchiveSection detail={detail}/>}
   {detail.debug&&<DebugDetails enabled data={detail.debug}/>}

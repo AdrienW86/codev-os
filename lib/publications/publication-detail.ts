@@ -1,5 +1,6 @@
 // Neutral detail model of one publication, whatever its status. Built from getWorkspace plus targeted reads;
 // shared by the drawer and the review cards (ReviewCardData is a projection of the same variant/history logic).
+import type {DiffusionView} from './delivery/model';
 import {platformLabels} from './editor';
 import {boardStatus,type BoardStatus,type BoardOrigin} from './board-query';
 import {hiddenPublications} from './board-visibility-events';
@@ -18,7 +19,9 @@ export type PublicationDetailData={
  // Lot 4.3 P4: mono-platform publication bound to a channel occurrence (date and platform fixed).
  occurrenceBound:boolean;
  // Lot 4.3 P5: archived publications are read-only and leave the active board.
- archived:boolean};
+ archived:boolean;
+ // Lot 4.3 P10: deliveries of the publication (drawer « Diffusion »), loaded by the drawer only.
+ diffusion?:DiffusionView|null};
 export type DetailPublication={id:string;client_id:string;project_id:string|null;platform?:PublicationPlatform|null;occurrence_id?:string|null;archived_at?:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string};
 export type DetailDelivery={variant_id:string;platform:string;status:string};
 
@@ -34,6 +37,7 @@ export function deliveryLockMessage(deliveries:{status:string}[]):string|null{
  const states=new Set(deliveries.map(d=>d.status).filter(s=>!EDITABLE_DELIVERY_STATES.has(s)));
  if(!states.size)return null;
  if(states.has('published'))return 'Publication déjà publiée : lecture seule.';
+ if(states.has('simulated'))return 'Diffusion simulée effectuée : lecture seule.';
  if(states.has('processing')||states.has('uncertain'))return 'Un envoi est en cours ou incertain : lecture seule par sécurité.';
  if(states.has('retryable_error'))return 'Une tentative de publication est en attente de reprise : lecture seule.';
  if(states.has('scheduled'))return 'Cette publication possède déjà un envoi planifié : lecture seule.';

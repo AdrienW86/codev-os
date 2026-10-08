@@ -3,7 +3,7 @@ import type {PublicationsAgentProject,PublicationsAIRun,DriveMedia,MediaUse,Gene
 
 export const publicationPlatforms = ["google_business_profile", "facebook", "instagram"] as const;
 export const publicationStatuses = ["draft", "pending_review", "approved", "rejected"] as const;
-export const deliveryStatuses = ["scheduled", "processing", "published", "retryable_error", "uncertain", "blocked", "cancelled"] as const;
+export const deliveryStatuses = ["scheduled", "processing", "published", "retryable_error", "uncertain", "blocked", "cancelled", "simulated", "failed"] as const;
 export const jobTypes = ["generate", "regenerate", "deliver", "reconcile"] as const;
 export const jobStatuses = ["pending", "processing", "succeeded", "failed", "cancelled"] as const;
 export type PublicationPlatform = typeof publicationPlatforms[number];
@@ -70,16 +70,21 @@ export type PublicationDelivery = Updated & {
   published_at: string | null;
   publication_id: string; client_id: string; publication_account_id: string; variant_id: string;
   platform: PublicationPlatform; scheduled_for: string; status: DeliveryStatus; idempotency_key: string; remote_id: string | null;
+  // Lot 4.3 P10 engine snapshot (null on legacy rows) and last safe failure.
+  revision_id: string | null; project_channel_id: string | null; text_hash: string | null; asset_ids: string[];
+  blocked_reason: string | null; last_error_class: string | null; last_error_code: string | null;
 };
 export type PublicationJob = Updated & {
   type: JobType; publication_id: string; delivery_id: string | null; revision_id: string | null;
   deduplication_key: string; run_at: string; status: JobStatus; attempts: number; max_attempts: number;
   locked_at: string | null; locked_by: string | null; last_error: string | null;
+  lease_expires_at: string | null; dispatched_at: string | null; last_error_class: string | null;
 };
 export type PublicationAttempt = Created & {
   job_id: string; delivery_id: string | null; attempt_number: number;
   result: "succeeded" | "retryable_error" | "uncertain" | "blocked" | "failed";
   sanitized_error: string | null; request_id: string | null; duration_ms: number | null;
+  error_class: string | null; error_code: string | null; started_at: string | null; simulated: boolean;
 };
 export type PublicationEvent = Created & {
   actor_type: "admin" | "system" | "worker"; actor_id: string | null; action: string;
@@ -161,6 +166,13 @@ export type PublicationFunctions = {
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};
   publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
+  publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
+  publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
+  publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};
+  publication_job_dispatch:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:boolean};
+  publication_job_complete:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number;p_outcome:Json};Returns:Json};
+  publication_delivery_retry:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
+  publication_delivery_cancel:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_connection_register:{Args:{p_client_id:string;p_provider:string;p_credential_reference:string;p_external_identity:string|null;p_expires_at:string|null;p_metadata:Json|null;p_actor_id:string};Returns:Json};
   publication_connection_set_status:{Args:{p_connection_id:string;p_status:string;p_credential_reference:string|null;p_expires_at:string|null;p_actor_id:string};Returns:Json};
   publication_accounts_sync:{Args:{p_client_id:string;p_connection_id:string;p_accounts:Json;p_actor_id:string};Returns:Json};

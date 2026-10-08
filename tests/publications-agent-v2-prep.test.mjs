@@ -33,11 +33,11 @@ test('selection: one idea = earliest open occurrence + the earliest other platfo
 
 test('generator output: exactly one valid publication per selected occurrence, platform and media checked, fail closed',()=>{
  const input={occurrences:[occ(1,'facebook','2026-10-13T10:00:00Z'),occ(2,'instagram','2026-10-14T10:00:00Z')],media:[{id:'m1',categories:['toiture'],used:false},{id:'m2',categories:[],used:true}]};
- const good={idea:{subject:' Toiture ',angle:'Entretien'},publications:[{occurrenceId:uid(5,1),platform:'facebook',text:' Texte FB ',cta:' Appelez ',mediaId:'m1'},{occurrenceId:uid(5,2),platform:'instagram',text:'Texte IG',cta:null,mediaId:null}]};
+ const good={idea:{subject:' Toiture ',angle:'Entretien'},publications:[{occurrenceId:uid(5,1),platform:'facebook',text:' Texte FB ',cta:' Appelez ',mediaId:'m1'},{occurrenceId:uid(5,2),platform:'instagram',text:'Texte IG',cta:null,mediaId:'m1'}]};
  const r=sel.validateGeneratorOutput(input,good);assert.equal(r.ok,true);assert.equal(r.value.idea.subject,'Toiture');assert.equal(r.value.publications[0].text,'Texte FB');assert.equal(r.value.publications[0].cta,'Appelez');
  const cases={invalid_output:null,invalid_idea:{...good,idea:{subject:'',angle:'x'}},publication_count:{...good,publications:[good.publications[0]]},
   unknown_or_duplicate_occurrence:{...good,publications:[good.publications[0],good.publications[0]]},platform_mismatch:{...good,publications:[{...good.publications[0],platform:'instagram'},good.publications[1]]},
-  invalid_text:{...good,publications:[{...good.publications[0],text:' '},good.publications[1]]},invalid_media:{...good,publications:[{...good.publications[0],mediaId:'m2'},good.publications[1]]}};
+  invalid_text:{...good,publications:[{...good.publications[0],text:' '},good.publications[1]]},invalid_media:{...good,publications:[{...good.publications[0],mediaId:'m2'},{...good.publications[1],mediaId:'m2'}]}};
  for(const [reason,output] of Object.entries(cases))assert.deepEqual(json(sel.validateGeneratorOutput(input,output)),{ok:false,reason},reason);});
 
 test('open occurrence loader: admin first, unlinked / not skipped / future only, paginated, fail closed',async()=>{
@@ -51,10 +51,9 @@ test('open occurrence loader: admin first, unlinked / not skipped / future only,
  assert.deepEqual(json(open[0]),{occurrenceId:uid(5,1),projectId:P,clientId:C,platform:'facebook',date:'2026-10-13',time:'12:00',timezone:'Europe/Paris',scheduledFor:'2026-10-13T10:00:00Z'});
  await assert.rejects(()=>make(true).m.getOpenOccurrencesForAgent(P,28,now),/indisponibles/);await assert.rejects(()=>make().m.getOpenOccurrencesForAgent('bad'),/indisponibles/);await assert.rejects(()=>make().m.getOpenOccurrencesForAgent(P,200),/indisponibles/);});
 
-test('P7-prep scope: contract only, no AI / Drive / write / cron, no migration, Agent v1 untouched',()=>{
- const dir=resolve(root,'lib/publications/agent-v2'),files=readdirSync(dir).map(f=>join(dir,f));assert.deepEqual(readdirSync(dir).sort(),['contract.ts','open-occurrences.ts','selection.ts']);
- for(const f of files){const code=readFileSync(f,'utf8').replace(/\/\/[^\n]*/g,'');assert.doesNotMatch(code,/openai|googleapis|drive|\.rpc\(|\.insert\(|\.update\(|\.delete\(|setInterval|cron|fetch\(/i,f);}
- assert.match(src('lib/publications/agent-v2/contract.ts'),/export interface PublicationsAgentV2Generator\{generate\(input:AgentV2GeneratorInput\):Promise<AgentV2GeneratorOutput>\}/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,15,'no migration for P7-prep');
- assert.doesNotMatch(src('lib/publications/agent-service.ts'),/agent-v2/,'Agent v1 unchanged');
- for(const d of ['app','components'])assert.ok(!JSON.stringify(readdirSync(resolve(root,d),{recursive:true})).includes('agent-v2'),'no UI wired yet');});
+test('P7-prep → P7: contract with raw output and usage, the real generator is the only AI entry point, Agent v1 untouched',()=>{
+ assert.match(src('lib/publications/agent-v2/contract.ts'),/export interface PublicationsAgentV2Generator\{generate\(input:AgentV2GeneratorInput\):Promise<\{output:unknown;usage:AgentV2Usage\}>\}/);
+ const dir=resolve(root,'lib/publications/agent-v2');for(const f of readdirSync(dir).filter(f=>f!=='openai-generator.ts')){const code=readFileSync(join(dir,f),'utf8').replace(/\/\/[^\n]*/g,'');
+  assert.doesNotMatch(code,/publications-openai|googleapis|drive-oauth|publications-drive|setInterval|cron|fetch\(/i,f);}
+ assert.match(src('lib/publications/agent-v2/openai-generator.ts'),/structuredResponse\(AGENT_V2_INSTRUCTIONS/);
+ assert.doesNotMatch(src('lib/publications/agent-service.ts'),/agent-v2/,'Agent v1 unchanged');});

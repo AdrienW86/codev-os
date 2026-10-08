@@ -67,7 +67,7 @@ test('save: complete payload validated client-side, actor from the admin session
  const tz=service(tables);tz.db.rpc=async()=>({data:null,error:{code:'22023'}});assert.match((await tz.m.saveChannelSchedule({projectChannelId:FB,timezone:'Mars/Olympus',enabled:true,slots:valid})).message,/fuseau horaire/);});
 
 test('P2-a scope: additive migration, no UI, no occurrence, legacy calendar kept',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,15);assert.equal(list[10],'20261007130000_publications_channel_schedules.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,16);assert.equal(list[10],'20261007130000_publications_channel_schedules.sql');
  const code=src('supabase/migrations/20261007130000_publications_channel_schedules.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(code,/drop (table|column|function|trigger|index)|delete from|truncate (table )?public|security definer|posts_per_week|publication_cadences|publication_calendar_slots|alter table public\.publication_events/i);
  assert.match(code,/revoke all on public\.publication_channel_schedules,public\.publication_channel_schedule_slots from public,anon,authenticated,service_role;\ngrant select,insert,update on public\.publication_channel_schedules,public\.publication_channel_schedule_slots to service_role;/);

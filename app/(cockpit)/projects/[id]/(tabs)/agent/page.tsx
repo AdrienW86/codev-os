@@ -1,5 +1,9 @@
 import {notFound} from "next/navigation";
 import {AgentWorkspace} from "@/components/publications/agent-section";
+import {AgentV2Section} from "@/components/publications/agent-v2-section";
+import {getOpenOccurrencesForAgent} from "@/lib/publications/agent-v2/open-occurrences";
+import {selectIdeaBatch} from "@/lib/publications/agent-v2/selection";
+import {platformLabels} from "@/lib/publications/editor";
 import {DebugDetails} from "@/components/projects/debug-details";
 import {getProjectById} from "@/lib/projects/data";
 import {getPublicationsAgentProject} from "@/lib/publications/agent-data";
@@ -8,9 +12,15 @@ import {legacyProductionBlock,projectHasPublicationsWorkspace} from "@/lib/publi
 import {agentStatus,formatDay,isDebugView} from "@/lib/projects/workspace-view";
 export default async function ProjectAgentPage({params,searchParams}:PageProps<"/projects/[id]/agent">){
  const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project)notFound();const capabilities=await getPublicationProjectChannels(project);if(!projectHasPublicationsWorkspace(capabilities))notFound();
- // TRANSITIONAL (P7): the server refuses the preparation too; this notice only explains why.
- const blocked=legacyProductionBlock(capabilities,"agent");
  const state=await getPublicationsAgentProject(id).catch(()=>null),status=agentStatus(state);
+ // Configured project (Lot 4.3 P7): Agent Publications v2 on channel occurrences. Display never writes.
+ if(capabilities.source==="configured"){
+  const open=(await getOpenOccurrencesForAgent(id).catch(()=>[])).filter(o=>capabilities.platforms.includes(o.platform)),batch=selectIdeaBatch(open,new Date());
+  return <><AgentV2Section projectId={id} status={status} config={state?.config??null} openCount={open.length} upcoming={batch.map(o=>({key:o.occurrenceId,platformLabel:platformLabels[o.platform],date:o.date,time:o.time}))}/>
+   <DebugDetails enabled={isDebugView(search)} data={{project_id:id,client_id:project.client_id,agent:"v2",config:state?.config??null,open_occurrences:open.length,batch:batch.map(o=>o.occurrenceId)}}/></>;
+ }
+ // Legacy project: Agent v1, unchanged.
+ const blocked=legacyProductionBlock(capabilities,"agent");
  const placeholders=(state?.placeholders??[]).map(p=>({id:p.id,date:p.target_date??p.editorial_week}));
  // Two placeholders on the same day are told apart by their position, never by an identifier.
  const labelled=placeholders.map(p=>{const same=placeholders.filter(o=>o.date===p.date);return {...p,label:same.length>1?`${formatDay(p.date)} · créneau ${same.findIndex(o=>o.id===p.id)+1}`:formatDay(p.date)};});

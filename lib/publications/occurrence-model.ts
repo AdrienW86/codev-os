@@ -48,3 +48,8 @@ export function parseEnsureResult(value:unknown):EnsureOccurrencesResult|null{
  if(created===null||existing===null||dst===null||channels===null||!Array.isArray(v.conflicts))return null;
  return {created,existing,dst_conflicts:dst,channels,conflicts:(v.conflicts as EnsureOccurrencesResult['conflicts']).filter(c=>c&&typeof c==='object'&&c.platform in platformLabels)};
 }
+// Overview / alerts display of an occurrence (Lot 4.3 P7): open → to prepare; linked → its publication status.
+const linkedDisplay:Record<string,'draft'|'pending_review'|'approved'|'rejected'>={draft:'draft',pending_review:'pending_review',approved:'approved',rejected:'rejected'};
+export function occurrenceSlotDisplay(e:Pick<OccurrenceEntry,'state'|'publication'>):'empty'|'draft'|'pending_review'|'approved'|'rejected'{
+ return e.state==='linked'&&e.publication?linkedDisplay[e.publication.status]??'draft':'empty';
+}

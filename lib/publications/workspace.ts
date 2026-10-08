@@ -65,6 +65,8 @@ export async function submitOrReview(form:FormData):Promise<{message:string}>{
  if(decision==="approved"){const lock=await publicationChannelLock(id);if(lock)return {message:lock};}
  if(decision==="approved"){const missing=await revisionChannelsWithoutMedia(db as unknown as MediaRuleDb,revision);if(missing===null)return {message:failed};if(missing.length)return {message:missingMediaMessage(missing)};}
  const result=decision==="submit"?await db.rpc("publication_submit_manual",{p_publication_id:id,p_revision_id:revision,p_actor_id:userId}):await db.rpc("publication_review_manual",{p_publication_id:id,p_revision_id:revision,p_decision:String(decision),p_reason:typeof reason==="string"?reason.trim()||null:null,p_actor_id:userId});
+ // The database enforces the media invariant itself (P8): a media removed meanwhile is refused with the same message.
+ if(result.error&&decision==="approved"&&result.error.code==="23514"&&/media required/i.test(result.error.message??""))return {message:missingMediaMessage([])};
  return {message:result.error?failed:decision==="submit"?"Révision soumise à validation.":decision==="approved"?"Révision approuvée.":"Révision refusée. Créez une nouvelle révision pour la retravailler."};
 }
 // Safe description of an uploaded, not yet attached image: no storage path or bucket, only a short-lived preview.

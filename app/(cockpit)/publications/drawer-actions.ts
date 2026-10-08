@@ -44,7 +44,7 @@ async function decide(form:FormData,decision:"approved"|"rejected",reason?:strin
  const pending=await ensurePending(form);if(!pending.ok)return {ok:false,message:pending.message};
  const f=ids(form,decision);if(reason)f.set("reason",reason);const result=await submitOrReview(f);refresh(form);
  if(workflowSucceeded(result.message))return {ok:true,message:decision==="approved"?"Publication passée à « À publier ».":"Publication rejetée."};
- const detail=/^(Validation impossible|Cette publication cible|Vérification des canaux)/.test(result.message)?result.message:decision==="approved"?"Validation non confirmée.":"Rejet non confirmé.";
+ const detail=/^(Validation impossible|Média requis avant validation|Cette publication cible|Vérification des canaux)/.test(result.message)?result.message:decision==="approved"?"Validation non confirmée.":"Rejet non confirmé.";
  return {ok:false,message:pending.submitted?`${detail} La version reste à valider : un nouveau clic relancera uniquement la décision.`:detail};
 }
 export async function approveFromDrawerAction(_state:DrawerState,form:FormData):Promise<DrawerState>{await requireAdmin();return decide(form,"approved");}

@@ -27,13 +27,13 @@ export async function buildAgentV2Context(projectId:string,occurrences:readonly 
  if(client.error||!client.data||config.error||channels.error||!channels.data||settings.error||recent.error||!recent.data)throw new AgentV2ContextError('context_unavailable');
  if(!config.data?.enabled||!config.data.rights_confirmed)throw new AgentV2ContextError('agent_disabled');
  const services=Array.isArray(config.data.verified_services)?config.data.verified_services.filter((s):s is string=>typeof s==='string'):[];
- const media=await db.from('publication_drive_media').select('id,analysis,claimed_run_id').eq('client_id',clientId).eq('drive_folder_id',config.data.drive_folder_id).limit(200);
+ const media=await db.from('publication_drive_media').select('id,analysis,claimed_run_id,claimed_agent_v2_run_id').eq('client_id',clientId).eq('drive_folder_id',config.data.drive_folder_id).limit(200);
  if(media.error||!media.data)throw new AgentV2ContextError('context_unavailable');
  const ids=media.data.map(m=>m.id),uses=ids.length?await db.from('publication_media_uses').select('media_id').eq('client_id',clientId).in('media_id',ids):{data:[],error:null};
  if(uses.error||!uses.data)throw new AgentV2ContextError('context_unavailable');
  const used=new Set(uses.data.map(u=>u.media_id));
  const candidates:AgentMediaCandidate[]=media.data.flatMap(m=>{const a=(m.analysis??null) as Analysis|null;const scene=typeof a?.scene==='string'?a.scene:null;
-  if(!scene||a?.usable!==true||!(scene in descriptions))return [];return [{id:m.id,categories:[scene],description:descriptions[scene],used:used.has(m.id)||m.claimed_run_id!==null}];});
+  if(!scene||a?.usable!==true||!(scene in descriptions))return [];return [{id:m.id,categories:[scene],description:descriptions[scene],used:used.has(m.id)||(m.claimed_run_id??null)!==null||(m.claimed_agent_v2_run_id??null)!==null}];});
  const enabled=(channels.data as {platform:PublicationPlatform;enabled:boolean;editorial_rules:string|null}[]).filter(c=>c.enabled);
  return {clientId,input:{client:{name:client.data.name,activity:client.data.activity?.trim()||null,zone:client.data.geographic_area?.trim()||null},project:{name:project.data.name},services,
   rules:[config.data.editorial_rules,settings.data?.editorial_brief??''].map(r=>r.trim()).filter(Boolean).join('\n').slice(0,8000),

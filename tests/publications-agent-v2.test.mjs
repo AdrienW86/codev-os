@@ -96,13 +96,16 @@ function serviceWith({open=batch,context,generator,rpc={},source='configured',pl
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:[uid(4,1),uid(4,2),uid(4,3)],editorial_group_id:uid(7,1)},error:null}:{data:null,error:null};}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
   '../project-channels':{getPublicationProjectChannels:async()=>({source,channels:[],platforms,legacyAligned:true})},'./open-occurrences':{getOpenOccurrencesForAgent:async()=>{log.push('open');return open;}},
-  './context':{AgentV2ContextError:ContextError,buildAgentV2Context:context??(async(_p,b)=>({clientId:C,input:input({occurrences:b})}))},'./openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}}});
+  './context':{AgentV2ContextError:ContextError,buildAgentV2Context:context??(async(_p,b)=>({clientId:C,input:input({occurrences:b})}))},'./openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},
+  // Media step (P8) doubled here; its own behaviour is covered by publications-agent-v2-media.test.mjs.
+  './media':{attachAgentV2Media:async run=>{log.push(['attach_media',run]);return {state:'attached'};}},'./media-runs':{getAgentV2RunMedia:async()=>null},
+  '../media/source':{driveMediaSource:()=>({fetchMedia:async()=>{throw Error('Drive must not be used in tests');}})},'../media/transform':{adaptImage:async()=>{throw Error('unused');}}});
  return {m,log,generator:generator??{generate:async()=>({output:good(),usage:{input_tokens:1200,output_tokens:400,estimated_cost_eur:.0012,model:'gpt-4.1-mini-2025-04-14'}})}};}
 const now=new Date('2026-10-12T00:00:00Z');
 
 test('service: full batch → begin, strict validation, one atomic finish, drafts with links; no submission, no publication',async()=>{
  const s=serviceWith();const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:s.generator,now});
- assert.equal(s.log[0],'admin');assert.equal(r.ok,true);assert.equal(r.message,'3 brouillons créés avec un média suggéré. À relire et valider manuellement.');assert.equal(r.withMedia,true);
+ assert.equal(s.log[0],'admin');assert.equal(r.ok,true);assert.equal(r.message,'3 brouillons créés avec média. À relire et valider manuellement.');assert.equal(r.withMedia,true);assert.deepEqual(s.log.filter(x=>x[0]==='attach_media'),[['attach_media',RUN]]);
  assert.deepEqual(json(r.publications.map(p=>p.label)),['Facebook','Instagram','Google Business Profile']);
  const begin=s.log.find(x=>x[0]==='publication_agent_v2_begin');assert.deepEqual(begin[1],{p_project_id:P,p_occurrence_ids:batch.map(o=>o.occurrenceId),p_considered:3,p_actor_id:'user_admin'});
  const finish=s.log.find(x=>x[0]==='publication_agent_v2_finish');assert.equal(finish[1].p_media_id,M);assert.deepEqual(finish[1].p_usage,{input_tokens:1200,output_tokens:400,estimated_cost_eur:.0012});
@@ -130,7 +133,7 @@ test('service: fail closed at every step, failures recorded, no AI without expli
  assert.match(rr.message,/Une occurrence a changé/);assert.deepEqual(fails(race),[['occurrence_unavailable',.0012]]);
  const single=serviceWith({open:[batch[2]],rpc:{publication_agent_v2_finish:()=>({data:{publication_ids:[uid(4,3)],editorial_group_id:null},error:null})}});
  const one=await single.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async i=>({output:{idea:{subject:'S',angle:'A'},publications:[{occurrenceId:i.occurrences[0].occurrenceId,platform:'google_business_profile',text:'Texte',cta:null,mediaId:null}]},usage:{input_tokens:1,output_tokens:1,estimated_cost_eur:0,model:'m'}})},now});
- assert.equal(one.message,'1 brouillon créé sans média. À relire et valider manuellement.');});
+ assert.equal(one.message,'1 brouillon créé sans média. Média requis avant validation : ajoutez une photo à chaque brouillon.');assert.ok(!single.log.some(x=>x[0]==='attach_media'),'no media: no media step');});
 
 test('real generator: Responses API integration with strict instructions and schema (mocked, never called for real)',async()=>{
  const calls=[];const g=load('lib/publications/agent-v2/openai-generator.ts',{'@/lib/integrations/publications-openai':{structuredResponse:async(instructions,payload,schema)=>{calls.push({instructions,payload:JSON.parse(payload),schema});
@@ -161,7 +164,7 @@ test('overview: configured projects read their next content from channel occurre
  const page=src('app/(cockpit)/projects/[id]/(tabs)/page.tsx');assert.match(page,/capabilities\.source==="configured"/);assert.match(page,/getUpcomingProjectOccurrences\(id,20\)/);assert.match(page,/getCalendar\(\{from:today,to:addDays\(today,56\),project:id\}\)/,'legacy calendar kept for legacy projects');});
 
 test('P7 scope: one migration, drafts only, no publisher / delivery / cron; agent v2 code never imports Drive or publishes',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,16);assert.equal(list[15],'20261008040000_publications_agent_v2.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,17);assert.equal(list[15],'20261008040000_publications_agent_v2.sql');assert.equal(list[16],'20261008050000_publications_agent_v2_media.sql');
  const sql=src('supabase/migrations/20261008040000_publications_agent_v2.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|index|function)|delete from|truncate (table )?public|security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|status='approved'|publication_submit_manual|publication_review_manual/i);
  for(const f of readdirSync(resolve(root,'lib/publications/agent-v2')))assert.doesNotMatch(src('lib/publications/agent-v2/'+f).replace(/\/\/[^\n]*/g,''),/publications-drive|google-drive|googleapis|setInterval|cron|submitOrReview|publication_deliveries/i,f);});

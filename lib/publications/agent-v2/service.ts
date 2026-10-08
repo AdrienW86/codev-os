@@ -10,14 +10,25 @@ import {selectIdeaBatch,validateGeneratorOutput} from './selection';
 import {AgentV2ContextError,buildAgentV2Context} from './context';
 import {openaiAgentV2Generator} from './openai-generator';
 import {AGENT_V2_LIMITS,type AgentV2Usage,type PublicationsAgentV2Generator} from './contract';
+import {attachAgentV2Media,type AgentV2MediaDb,type ImageAdapter} from './media';
+import {getAgentV2RunMedia} from './media-runs';
+import {agentV2ResultMessage,mediaCategoryLabel,mediaStateOf,retryMessage,type AgentV2MediaView} from './media-view';
+import {driveMediaSource,type PublicationMediaSource} from '../media/source';
+import {adaptImage} from '../media/transform';
 import type {Json} from '@/lib/supabase/database.types';
 import type {PublicationPlatform} from '../types';
 
 // Agent Publications v2 orchestration (Lot 4.3 P7). Explicit admin action only. Order: open occurrences → batch →
 // context → begin (lease, budget, idempotence) → generation → strict validation → ONE atomic finish (all drafts or
 // nothing). Every failure after begin is recorded (fail). Never submits, approves, publishes or schedules.
-export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean};
+// P8: when a media was selected, finish reserves it and the compensable media step attaches it (media.ts). A media
+// failure keeps the drafts (explicit needs_media, never reported as a full success) and can be retried without AI.
+export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView};
+export type AgentV2MediaOptions={mediaSource?:PublicationMediaSource;adapt?:ImageAdapter};
 const result=(ok:boolean,message:string,extra:Partial<AgentV2Result>={}):AgentV2Result=>({ok,message,publications:[],withMedia:false,...extra});
+const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2MediaDb,source:options.mediaSource??driveMediaSource(),adapt:options.adapt??adaptImage});
+// Signed preview of an attached media (display only; any failure simply hides the preview).
+async function previewOf(runId:string):Promise<string|null>{try{return (await getAgentV2RunMedia(runId))?.media.preview??null;}catch{return null;}}
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
 const zeroUsage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
 
@@ -25,7 +36,7 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
  if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.maxCost};
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
 }
-export async function prepareNextPublications(projectId:unknown,options:{allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date}):Promise<AgentV2Result>{
+export async function prepareNextPublications(projectId:unknown,options:{allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date}&AgentV2MediaOptions):Promise<AgentV2Result>{
  const {userId}=await requireAdmin();const now=options.now??new Date();
  if(!isPublicationUuid(projectId))return result(false,'Projet invalide.');
  if(!options.generator&&!options.allowRealAI)return result(false,'Un appel IA réel doit être explicitement autorisé.');
@@ -65,5 +76,24 @@ export async function prepareNextPublications(projectId:unknown,options:{allowRe
  const created=await db.from('publications').select('id,platform,occurrence_id').in('id',ids);
  const publications=(created.data??[]).map(p=>({id:p.id as string,platform:(p.platform??byOccurrence.get(p.occurrence_id as string)) as PublicationPlatform}))
   .map(p=>({...p,label:platformLabels[p.platform]}));
- return result(true,`${ids.length} brouillon${ids.length>1?'s':''} créé${ids.length>1?'s':''}${mediaId?' avec un média suggéré':' sans média'}. À relire et valider manuellement.`,{publications,withMedia:Boolean(mediaId)});
+ // Media step (only when a media was selected): drafts already exist, whatever happens next.
+ const outcome=mediaId?await attachAgentV2Media(run,userId,mediaDeps(db,options)):null;
+ const mediaState=mediaStateOf(outcome);
+ const media:AgentV2MediaView={state:mediaState,category:mediaId?mediaCategoryLabel(context.input.media.find(m=>m.id===mediaId)?.categories[0]):null,preview:mediaState==='attached'?await previewOf(run):null};
+ if(outcome&&outcome.state!=='attached')console.error('[publications-agent-v2] media not attached',{run_id:run,state:outcome.state,code:'code' in outcome?outcome.code:null});
+ return result(true,agentV2ResultMessage(ids.length,mediaState),{publications,withMedia:mediaState==='attached',runId:run,media});
+}
+
+// Explicit retry of the media step of a completed run: never any generation (no OpenAI call), same drafts.
+export type AgentV2MediaRetryResult={ok:boolean;message:string;projectId?:string;media?:AgentV2MediaView};
+export async function retryAgentV2Media(runId:unknown,options:AgentV2MediaOptions={}):Promise<AgentV2MediaRetryResult>{
+ const {userId}=await requireAdmin();if(!isPublicationUuid(runId))return {ok:false,message:'Préparation invalide.'};
+ const db=getSupabaseServerClient();
+ const run=await db.from('publication_agent_v2_runs').select('id,project_id,status,media_status').eq('id',runId).maybeSingle();
+ const row=run.data as {project_id:string;status:string;media_status:string}|null;
+ if(run.error||!row)return {ok:false,message:'Préparation introuvable.'};
+ if(row.status!=='completed'||row.media_status==='none')return {ok:false,message:'Aucun média à attacher pour cette préparation.',projectId:row.project_id};
+ if(row.media_status==='attached')return {ok:true,message:retryMessage('attached'),projectId:row.project_id};
+ const state=mediaStateOf(await attachAgentV2Media(runId,userId,mediaDeps(db,options)));
+ return {ok:state==='attached',message:retryMessage(state),projectId:row.project_id};
 }

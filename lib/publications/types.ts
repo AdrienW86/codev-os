@@ -105,7 +105,17 @@ export type PublicationChannelOccurrenceRow = Updated & {
   client_id: string; project_id: string; project_channel_id: string; schedule_id: string; schedule_slot_id: string; platform: PublicationPlatform;
   local_date: string; local_time: string; timezone: string; scheduled_for: string; publication_id: string | null; skipped_at: string | null; skipped_reason: string | null;
 };
+// Agent v2 run (Lot 4.3 P7) and its media step (P8). Written only through the publication_agent_v2_* RPCs.
+export type PublicationAgentV2RunRow = {
+  id: string; agent_run_id: string; agent_id: string; client_id: string; project_id: string; status: "processing" | "completed" | "failed";
+  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; editorial_group_id: string | null; publication_ids: string[];
+  reserved_cost_eur: number; estimated_cost_eur: number; input_tokens: number; output_tokens: number; model: string; error_code: string | null;
+  created_at: string; completed_at: string | null; lease_until: string;
+  media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
+  media_lease_until: string | null; media_attached_at: string | null;
+};
 export type PublicationTables = {
+  publication_agent_v2_runs: Table<PublicationAgentV2RunRow, "agent_run_id" | "agent_id" | "client_id" | "project_id" | "occurrence_ids" | "considered_count">;
   publication_editorial_groups: Table<PublicationEditorialGroupRow, "client_id" | "project_id" | "subject">;
   publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "schedule_slot_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
   publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
@@ -140,6 +150,9 @@ export type PublicationFunctions = {
   publication_agent_v2_begin:{Args:{p_project_id:string;p_occurrence_ids:string[];p_considered:number;p_actor_id:string};Returns:Json};
   publication_agent_v2_finish:{Args:{p_run_id:string;p_output:Json;p_media_id:string|null;p_usage:Json;p_actor_id:string};Returns:Json};
   publication_agent_v2_fail:{Args:{p_run_id:string;p_error_code:string;p_usage:Json;p_actor_id:string};Returns:undefined};
+  publication_agent_v2_media_claim:{Args:{p_run_id:string;p_actor_id:string};Returns:Json};
+  publication_agent_v2_media_attach:{Args:{p_run_id:string;p_attempt:number;p_original_hash:string;p_assets:Json;p_actor_id:string};Returns:Json};
+  publication_agent_v2_media_fail:{Args:{p_run_id:string;p_attempt:number;p_error_code:string;p_actor_id:string};Returns:Json};
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};

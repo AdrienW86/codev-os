@@ -138,7 +138,15 @@ do $$declare a uuid;root uuid;before_count bigint;begin
  update public.agent_project_assignments set enabled=true where agent_id=a;
  select count(*) into before_count from public.publication_reviews;
  perform pg_temp.replay_failure('delete from public.publication_media_uses','55000','media history append-only');
- perform pg_temp.replay_failure('delete from public.clients where id=''10000000-0000-4000-8000-000000000001''','55000','client with agent/publications history deletion blocked');
+ -- Blocked either by a history guard reached through a cascade (55000) or by a restricting FK (23503): which
+ -- referential trigger fires first follows trigger OIDs, which vary with concurrent work on the cluster.
+ begin
+  delete from public.clients where id='10000000-0000-4000-8000-000000000001';
+  raise exception 'client with agent/publications history was deleted' using errcode='P0001';
+ exception when sqlstate '55000' or sqlstate '23503' then
+  perform pg_temp.replay_assert(true,'client with agent/publications history deletion blocked');
+ end;
+ perform pg_temp.replay_assert(exists(select 1 from public.clients where id='10000000-0000-4000-8000-000000000001'),'client with history kept');
  perform pg_temp.replay_assert((select count(*)=before_count from public.publication_reviews),'reviews preserved');
 end $$;
 do $$declare root uuid;run uuid;replacement uuid;begin

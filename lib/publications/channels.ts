@@ -25,6 +25,13 @@ export function projectHasPublicationsWorkspace(capabilities:PublicationCapabili
 export function projectSupportsPublications(capabilities:PublicationCapabilities):boolean{return capabilities.platforms.length>0;}
 export function projectAllowsPlatform(capabilities:PublicationCapabilities,platform:string):boolean{return (capabilities.platforms as string[]).includes(platform);}
 
+// Media capability per platform (Lot 4.3 P8). Mirrored in SQL by publications_private.platform_requires_media, which
+// enforces it at approval (Brouillon → À publier). Current product rule kept: every platform requires a media.
+// Instagram cannot publish without one; Facebook / Google Business Profile keep the stricter historical rule.
+// Making a platform text-only means changing BOTH this table and the SQL function (a new migration).
+export const PLATFORM_MEDIA_REQUIREMENT:Readonly<Record<PublicationPlatform,boolean>>={facebook:true,instagram:true,google_business_profile:true};
+export function platformRequiresMedia(platform:string):boolean{return (publicationPlatforms as readonly string[]).includes(platform)&&PLATFORM_MEDIA_REQUIREMENT[platform as PublicationPlatform];}
+
 export const SUSPENDED_PUBLICATIONS_MESSAGE='Publications suspendues : aucun canal actif.';
 export const CALENDAR_TRANSITION_MESSAGE='Le nouveau planning par canal sera disponible après la migration du calendrier.';
 export const AGENT_TRANSITION_MESSAGE='L’agent Publications sera disponible pour cette configuration après sa migration multi-canal.';

@@ -125,7 +125,7 @@ test('calendar page: configured project shows occurrences (display never writes)
  for(const f of ['app/(cockpit)/projects/[id]/(tabs)/calendar/page.tsx','components/publications/occurrence-calendar.tsx','lib/publications/occurrence-model.ts'])assert.doesNotMatch(src(f),/occurrences_ensure|ensureProjectOccurrences\(/,`${f}: display never prepares occurrences`);});
 
 test('P3 scope: one additive migration, no P4 objects, no agent / OpenAI / Drive / cron in P3 code',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,16);assert.equal(list[11],'20261008000000_publications_channel_occurrences.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,17);assert.equal(list[11],'20261008000000_publications_channel_occurrences.sql');
  const sql=src('supabase/migrations/20261008000000_publications_channel_occurrences.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|function|trigger|index)|delete from|truncate (table )?public|security definer|editorial_group|insert into public\.publications|publication_deliveries|publication_jobs|alter table public\.publication_events/i);
  for(const f of ['lib/publications/occurrences.ts','lib/publications/occurrence-model.ts','app/(cockpit)/publications/occurrence-actions.ts','components/publications/occurrence-calendar.tsx','components/publications/occurrence-prepare-form.tsx'])

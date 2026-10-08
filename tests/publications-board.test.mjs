@@ -227,7 +227,7 @@ test('removal from the board is an audited, reversible masking that never delete
  const restore=visibility(fixtures());assert.equal((await restore.m.setBoardVisibility(form([['publication_id',P.ready]]),false)).ok,true);assert.equal(restore.writes[0][2].action,'publication.board_restored');
  for(const f of ['lib/publications/board-visibility.ts','app/(cockpit)/publications/board-actions.ts','lib/publications/board.ts','components/publications/publications-board.tsx'])assert.doesNotMatch(src(f),/\.delete\(|\.update\(|\.upsert\(|\.remove\(|\.rpc\(/,f);
  const actions=src('app/(cockpit)/publications/board-actions.ts');assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,2);assert.match(actions,/^"use server";/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,16,'no migration added by this lot (16 = 9 + Lot 4.3 P1 … P5 + P7)');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,17,'no migration added by this lot (17 = 9 + Lot 4.3 P1 … P5 + P7 + P8)');});
 
 test('filter bar: client-only, instant, no Filtrer button, reset kept, debounced search',async()=>{
  const out=await html({client:C1,status:'draft',q:'toiture'});const form=out.match(/<form[^>]*data-board-filters="instant"[^>]*>[\s\S]*?<\/form>/)[0];
@@ -285,7 +285,7 @@ test('media rule: approval (Brouillon → À publier) is refused server-side whi
  const workspace=t=>{const fake=fakeDb(t);return {...fake,m:load('lib/publications/workspace.ts',{'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'./project-channels':{publicationChannelLock:async()=>null,getPublicationProjectChannels:async()=>{throw Error('unused');}}})};};
  const form=decision=>{const f=new FormData();f.set('publication_id',P.pending);f.set('revision_id',R.pending);f.set('decision',decision);return f;};
  const refused=workspace(tables());const message=(await refused.m.submitOrReview(form('approved'))).message;
- assert.match(message,/^Validation impossible : ajoutez une photo/);assert.match(message,/Instagram/);assert.equal(refused.writes.length,0,'no review RPC without media');
+ assert.match(message,/^Média requis avant validation : ajoutez une photo/);assert.match(message,/Instagram/);assert.equal(refused.writes.length,0,'no review RPC without media');
  const complete=tables();complete.publication_variant_assets.push({variant_id:'ig',asset_id:'a1',sort_order:0});const approved=workspace(complete);await approved.m.submitOrReview(form('approved'));
  assert.equal(approved.writes[0][1],'publication_review_manual');assert.equal(approved.writes[0][2].p_decision,'approved');
  const submitted=workspace(tables());await submitted.m.submitOrReview(form('submit'));assert.equal(submitted.writes[0][1],'publication_submit_manual','an incomplete draft can still be submitted');

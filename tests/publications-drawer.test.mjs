@@ -243,7 +243,7 @@ test('À publier: pending_review → decision only; draft → submit then decisi
  const submitFails=actionSetup({current:{revision_id:R2,status:'draft'},submit:'Opération non confirmée. Rechargez.'});assert.equal((await submitFails.m.approveFromDrawerAction({},decisionForm())).ok,false);assert.deepEqual(writes(submitFails.calls),['submitOrReview:submit'],'no decision after a failed submit');
  const secondFails=actionSetup({current:{revision_id:R2,status:'draft'},decision:'Opération non confirmée. Rechargez.'});const second=await secondFails.m.approveFromDrawerAction({},decisionForm());
  assert.equal(second.ok,false);assert.match(second.message,/Validation non confirmée\. La version reste à valider : un nouveau clic relancera uniquement la décision\./);
- const media=actionSetup({decision:'Validation impossible : ajoutez une photo avant de passer à « À publier » (Instagram).'});const noMedia=await media.m.approveFromDrawerAction({},decisionForm());assert.equal(noMedia.ok,false);assert.match(noMedia.message,/^Validation impossible : ajoutez une photo/);
+ const media=actionSetup({decision:'Média requis avant validation : ajoutez une photo avant de passer à « À publier » (Instagram).'});const noMedia=await media.m.approveFromDrawerAction({},decisionForm());assert.equal(noMedia.ok,false);assert.match(noMedia.message,/^Média requis avant validation : ajoutez une photo/);
  assert.doesNotMatch(src('app/(cockpit)/publications/drawer-actions.ts'),/\.update\(|\.from\(|\.rpc\(/,'only the existing workflow functions');});
 
 test('Rejeter: reason of 10 to 3000 characters; pending → rejection; draft → submit then rejection; never for other states',async()=>{
@@ -297,4 +297,4 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,16,'9 + Lot 4.3 P1 … P5 + P7');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,17,'9 + Lot 4.3 P1 … P5 + P7 + P8');});

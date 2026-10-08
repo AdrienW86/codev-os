@@ -22,7 +22,9 @@ function load(path, mocks = {}, logs = []) {
 const types = load("lib/publications/types.ts");
 const validation = load("lib/publications/validation.ts", { "./types": types });
 const transitions = load("lib/publications/transitions.ts", { "./types": types });
-const mediaRule = load("lib/publications/media-rule.ts", { "./editor": { platformLabels: { facebook: "Facebook", instagram: "Instagram", google_business_profile: "Google Business Profile" } } });
+const platformLabelsFixture = { platformLabels: { facebook: "Facebook", instagram: "Instagram", google_business_profile: "Google Business Profile" } };
+const channelsModule = load("lib/publications/channels.ts", { "./editor": platformLabelsFixture, "./types": { publicationPlatforms: ["facebook", "instagram", "google_business_profile"] } });
+const mediaRule = load("lib/publications/media-rule.ts", { "./editor": platformLabelsFixture, "./channels": channelsModule });
 const readError = load("lib/supabase/read-error.ts");
 const id = "11111111-1111-4111-8111-111111111111";
 const revisionId = "22222222-2222-4222-8222-222222222222";

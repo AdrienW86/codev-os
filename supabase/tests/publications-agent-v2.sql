@@ -197,7 +197,7 @@ reset role;
 do $$declare run uuid:=(select id from p7_ids where name='run_full');begin
  perform pg_temp.replay_failure(format('update public.publication_agent_v2_runs set estimated_cost_eur=0 where id=%L',run),'55000','completed run immutable');
  perform pg_temp.replay_failure(format('delete from public.publication_agent_v2_runs where id=%L',run),'55000','runs never deleted');
- perform pg_temp.replay_failure('truncate public.publication_agent_v2_runs','55000','runs never truncated');
+ perform pg_temp.replay_failure('truncate public.publication_agent_v2_runs cascade','55000','runs never truncated (cascade: the guard still fires first)');
 end $$;
 
 -- 9. Atomicity: failure injected on the completion audit, after every creation.

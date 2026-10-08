@@ -3,6 +3,8 @@ import Link from 'next/link';
 import {useActionState,useState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {confirmChannelsAction,saveChannelScheduleAction,setChannelEnabledAction,type ConfigurationState} from '@/app/(cockpit)/publications/configuration-actions';
+import {ChannelAccountSelector,ConnectionsPanel} from './connections-panel';
+import type {ChannelAccountView,ConnectionSummary} from '@/lib/publications/connections/model';
 import {DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS,WEEKDAY_LABELS,postsPerWeekLabel,scheduleSlotsPayload,slotRowsError,sortConfigurationSlots,weekdayLabel,
  type ChannelCard,type ChannelConfigurationView,type ConfigurationSlot} from '@/lib/publications/channel-configuration-model';
 
@@ -12,7 +14,9 @@ const input='rounded-lg border border-border bg-background p-2 text-sm';
 const stateBadges={legacy:<Badge tone="amber">Configuration héritée</Badge>,active:<Badge tone="green">Actif</Badge>,inactive:<Badge>Inactif</Badge>};
 const initial:ConfigurationState={};
 
-export function ChannelConfiguration({projectId,view}:{projectId:string;view:ChannelConfigurationView|null}){
+// Lot 4.3 P9: connections of the client and the publication account of each channel (status only, no secret).
+export type ChannelConnectionsView={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string};
+export function ChannelConfiguration({projectId,view,connections=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null}){
  if(!view)return <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2><p role="alert" className="mt-3 text-sm">Configuration des canaux indisponible pour le moment. Rechargez la page.</p></Panel>;
  return <>
   <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2>
@@ -23,7 +27,9 @@ export function ChannelConfiguration({projectId,view}:{projectId:string;view:Cha
    {view.calendarNotice&&<p role="status" data-channel-transition="calendar" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.calendarNotice}</p>}
    {view.agentNotice&&<p role="status" data-channel-transition="agent" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.agentNotice}</p>}
   </Panel>
-  <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card}/>)}</div></>;
+  {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage}/>
+   :<Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2><p role="alert" className="mt-3 text-sm">Connexions indisponibles pour le moment. Rechargez la page.</p></Panel>}
+  <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card} account={connections?.channels.find(c=>c.platform===card.platform)??null}/>)}</div></>;
 }
 
 function LegacyBanner({projectId}:{projectId:string}){
@@ -34,10 +40,10 @@ function LegacyBanner({projectId}:{projectId:string}){
   {state.message&&<p role="status" className="w-full">{state.message}</p>}</form>;
 }
 
-function ChannelCardView({projectId,card}:{projectId:string;card:ChannelCard}){
+function ChannelCardView({projectId,card,account}:{projectId:string;card:ChannelCard;account:ChannelAccountView|null}){
  return <Panel className="p-5" ><article data-channel={card.platform} data-state={card.state}>
   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{card.label}</h3>{stateBadges[card.state]}</div>
-  <p className="mt-2 text-xs text-muted">{card.accountConnected?'Compte connecté':'Aucun compte connecté'}</p>
+  {account&&card.configured?<ChannelAccountSelector projectId={projectId} view={account}/>:<p className="mt-2 text-xs text-muted">{card.accountConnected?'Compte connecté':'Aucun compte connecté'}</p>}
   {card.rules&&<div className="mt-3 text-sm"><p className="text-xs text-muted">Règles éditoriales</p><p className="whitespace-pre-wrap">{card.rules}</p></div>}
   {card.state!=='legacy'&&<ChannelToggle projectId={projectId} card={card}/>}
   {card.state==='legacy'?<p className="mt-4 text-sm text-muted">Confirmez les canaux pour configurer le planning.</p>

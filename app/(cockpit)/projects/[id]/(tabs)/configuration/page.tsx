@@ -6,11 +6,12 @@ import {getProjectById} from "@/lib/projects/data";
 import {getPublicationProjectChannels} from "@/lib/publications/project-channels";
 import {projectHasPublicationsWorkspace} from "@/lib/publications/channels";
 import {loadChannelConfiguration} from "@/lib/publications/channel-configuration";
+import {getProjectConnectionConfiguration} from "@/lib/publications/connections/service";
 import {isDebugView} from "@/lib/projects/workspace-view";
 // Projet → Publications → Configuration: channels and weekly schedules. Reading this page never writes.
 export default async function ProjectConfigurationPage({params,searchParams}:PageProps<"/projects/[id]/configuration">){
  await requireAdmin();const {id}=await params,search=await searchParams,project=await getProjectById(id);if(!project)notFound();
  const capabilities=await getPublicationProjectChannels(project);if(!projectHasPublicationsWorkspace(capabilities))notFound();
- const loaded=await loadChannelConfiguration(project,capabilities).catch(()=>null);
- return <><ChannelConfiguration projectId={id} view={loaded?.view??null}/><DebugDetails enabled={isDebugView(search)} data={loaded?.debug??{project_id:id,configuration:'unavailable'}}/></>;
+ const [loaded,connections]=await Promise.all([loadChannelConfiguration(project,capabilities).catch(()=>null),getProjectConnectionConfiguration(id).catch(()=>null)]);
+ return <><ChannelConfiguration projectId={id} view={loaded?.view??null} connections={connections}/><DebugDetails enabled={isDebugView(search)} data={loaded?.debug??{project_id:id,configuration:'unavailable'}}/></>;
 }

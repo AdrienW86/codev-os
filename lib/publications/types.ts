@@ -24,10 +24,13 @@ export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
 };
+// Legacy rows (connection_id null) keep the historical statuses and credential model; connection-backed rows
+// (Lot 4.3 P9) use active | unavailable | revoked | disabled and never carry a credential.
 export type PublicationAccount = Updated & {
   client_id: string; platform: PublicationPlatform; external_account_id: string | null;
-  status: "disconnected" | "connected" | "error" | "revoked"; enabled: boolean;
+  status: "disconnected" | "connected" | "error" | "revoked" | "active" | "unavailable" | "disabled"; enabled: boolean;
   credential_reference: string | null; metadata: Json;
+  connection_id: string | null; display_name: string | null; parent_external_id: string | null; last_synced_at: string | null;
 };
 export type Publication = Updated & {
   creation_origin: "manual" | "system" | "agent";
@@ -158,6 +161,13 @@ export type PublicationFunctions = {
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};
   publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
+  publication_connection_register:{Args:{p_client_id:string;p_provider:string;p_credential_reference:string;p_external_identity:string|null;p_expires_at:string|null;p_metadata:Json|null;p_actor_id:string};Returns:Json};
+  publication_connection_set_status:{Args:{p_connection_id:string;p_status:string;p_credential_reference:string|null;p_expires_at:string|null;p_actor_id:string};Returns:Json};
+  publication_accounts_sync:{Args:{p_client_id:string;p_connection_id:string;p_accounts:Json;p_actor_id:string};Returns:Json};
+  publication_channel_assign_account:{Args:{p_project_id:string;p_platform:string;p_account_id:string|null;p_actor_id:string};Returns:string};
+  publication_connection_disconnect:{Args:{p_client_id:string;p_connection_id:string;p_actor_id:string};Returns:Json};
+  publication_connections_list:{Args:{p_client_id:string};Returns:Json};
+  publication_accounts_available:{Args:{p_client_id:string};Returns:Json};
   publication_channel_save:{Args:{p_project_id:string;p_platform:string;p_enabled:boolean;p_publication_account_id:string|null;p_editorial_rules:string|null;p_actor_id:string};Returns:string};
   publication_agent_configure:{Args:{p_project:string;p_folder:string;p_services:Json;p_rules:string;p_enabled:boolean;p_rights:boolean;p_actor:string};Returns:string};
   publication_ai_begin:{Args:{p_publication:string;p_expected:string|null;p_actor:string};Returns:Json};

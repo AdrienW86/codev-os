@@ -62,7 +62,7 @@ test('write lock: every guarded write path refuses an archived publication (save
  for(const [file,needle] of [['lib/publications/workspace.ts','publicationChannelLock(input.publication_id)'],['lib/publications/workspace.ts','publicationChannelLock(id)'],['lib/publications/agent-service.ts','publicationChannelLock(publicationId)']])assert.ok(src(file).includes(needle),`${file}: ${needle}`);});
 
 test('P5 scope: one additive migration, one-way archive, no delete / restore / group or occurrence archive',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,17);assert.equal(list[14],'20261008030000_publications_archiving.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,18);assert.equal(list[14],'20261008030000_publications_archiving.sql');
  const sql=src('supabase/migrations/20261008030000_publications_archiving.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop |delete from|truncate (table )?public|security definer|publication_editorial_groups|publication_channel_occurrences|unarchive|restore/i);
  assert.match(sql,/add column archived_at timestamptz,\s+add column archived_by text/);

@@ -278,7 +278,8 @@ export type Database = {
         ];
       };
       client_connections: {
-        Row: { id: string; client_id: string; provider: string; status: string; external_account_id: string | null; metadata: Json; last_checked_at: string | null; created_at: string; updated_at: string };
+        // credential_reference / connected_at / expires_at: Lot 4.3 P9, written only through the publication connection RPCs.
+        Row: { id: string; client_id: string; provider: string; status: string; external_account_id: string | null; metadata: Json; last_checked_at: string | null; created_at: string; updated_at: string; credential_reference: string | null; connected_at: string | null; expires_at: string | null };
         Insert: { client_id: string; provider: string; status: string; external_account_id?: string | null; metadata: Json; last_checked_at?: string | null };
         Update: { status?: string; external_account_id?: string | null; metadata?: Json; last_checked_at?: string | null };
         Relationships: [];

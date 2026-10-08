@@ -197,7 +197,7 @@ test('getWorkspace finds media through database relations only, never through th
  assert.doesNotMatch(src('lib/publications/workspace.ts'),/\.like\(/);assert.match(src('lib/publications/workspace.ts'),/path=`\$\{pub\.data\.client_id\}\/\$\{id\}\/\$\{asset\}`/,'upload path format unchanged');});
 
 test('P1 migration: single file, explicit grants, no publication_events change, transitional guards documented',()=>{
- const dir=resolve(root,'supabase/migrations'),list=readdirSync(dir).sort();assert.equal(list.length,17);assert.equal(list[9],'20261007120000_publications_project_channels.sql');
+ const dir=resolve(root,'supabase/migrations'),list=readdirSync(dir).sort();assert.equal(list.length,18);assert.equal(list[9],'20261007120000_publications_project_channels.sql');
  const sql=src('supabase/migrations/20261007120000_publications_project_channels.sql');
  const code=sql.replace(/--[^\n]*/g,'');assert.doesNotMatch(code,/alter table public\.publication_events|security definer|drop table|delete from|client_connections|publication_accounts\s+(add|alter|drop)/i);
  assert.match(sql,/revoke all on public\.publication_project_channels from public,anon,authenticated,service_role;\ngrant select,insert,update on public\.publication_project_channels to service_role;/);

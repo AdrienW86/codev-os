@@ -24,7 +24,7 @@ export async function loadChannelConfiguration(project:PublicationProjectRef,cap
  if(accounts.error||!accounts.data)throw Error(unavailable);
  const schedules=await getChannelSchedules(rows.data.map(r=>r.id));
  const view=buildChannelConfiguration(capabilities,rows.data.map(r=>({platform:r.platform,enabled:r.enabled,rules:r.editorial_rules,
-  accountConnected:accounts.data.some(a=>a.id===r.publication_account_id&&a.status==='connected'),schedule:schedules.get(r.id)??null})));
+  accountConnected:accounts.data.some(a=>a.id===r.publication_account_id&&(a.status==='connected'||a.status==='active')),schedule:schedules.get(r.id)??null})));
  // Debug only (?debug=1): identifiers and statuses, never account data.
  return {view,debug:{project_id:project.id,source:capabilities.source,legacy_aligned:capabilities.legacyAligned,
   channels:rows.data.map(r=>({id:r.id,platform:r.platform,enabled:r.enabled,schedule_id:schedules.get(r.id)?.scheduleId??null}))}};

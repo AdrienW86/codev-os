@@ -70,8 +70,8 @@ export async function publicationChannelLock(publicationId:string):Promise<strin
  await requireAdmin();if(!isPublicationUuid(publicationId))return null;
  try{
   const db=getSupabaseServerClient();
-  const pub=await db.from('publications').select('project_id,client_id,current_revision_id').eq('id',publicationId).maybeSingle();
-  if(pub.error)throw Error(unavailable);if(!pub.data?.project_id||!pub.data.current_revision_id)return null;
+  const pub=await db.from('publications').select('project_id,client_id,current_revision_id,archived_at').eq('id',publicationId).maybeSingle();
+  if(pub.error)throw Error(unavailable);if(pub.data?.archived_at)return 'Publication archivée : lecture seule.';if(!pub.data?.project_id||!pub.data.current_revision_id)return null;
   const [project,variants]=await Promise.all([projectRef(pub.data.project_id),db.from('publication_variants').select('platform').eq('revision_id',pub.data.current_revision_id).eq('client_id',pub.data.client_id)]);
   if(!project||project.client_id!==pub.data.client_id||variants.error||!variants.data)throw Error(unavailable);
   return channelLockMessage(await getPublicationProjectChannels(project),variants.data.map(v=>v.platform));

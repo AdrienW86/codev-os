@@ -16,13 +16,15 @@ export const boardSortLabels:Record<BoardSort,string>={date_asc:'Date croissante
 export const BOARD_PAGE_SIZE=50;
 
 export type BoardQuery={q:string;client:string;project:string;status:BoardStatus|'';platform:PublicationPlatform|'';origin:typeof boardOrigins[number]|'';
- media:'with'|'without'|'';from:string;to:string;sort:BoardSort;published:boolean;hidden:boolean;page:number;debug:boolean;publication:string};
+ media:'with'|'without'|'';from:string;to:string;sort:BoardSort;published:boolean;hidden:boolean;page:number;debug:boolean;publication:string;
+ // Lot 4.3 P5: archived publications only appear in the « Archivées » view.
+ archived:boolean};
 // Everything the filters, sorting and the row need. imagePath and search stay server-side.
 // hasMedia: at least one media is linked to the current revision; missingMedia: channels still without media.
 export type BoardRecord={id:string;clientId:string;clientName:string;projectId:string|null;projectName:string|null;date:string;dateIsWeek:boolean;
  status:BoardStatus;rawStatus:string;subject:string;preview:string;search:string;platforms:PublicationPlatform[];origin:BoardOrigin;edited:boolean;
  updatedAt:string;revisionId:string|null;revisionNumber:number|null;creationOrigin:string;imagePath:string|null;hasMedia:boolean;missingMedia:PublicationPlatform[];
- hidden:boolean;deliveries:{published:number;total:number}};
+ hidden:boolean;archived:boolean;deliveries:{published:number;total:number}};
 
 type Search=Record<string,string|string[]|undefined>;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,day=/^\d{4}-\d{2}-\d{2}$/;
@@ -36,7 +38,7 @@ export function parseBoardQuery(search:Search):BoardQuery{
  return {q:one(search,'q').slice(0,200),client:uuid.test(one(search,'client'))?one(search,'client'):'',project:uuid.test(one(search,'project'))?one(search,'project'):'',
   status:pick(one(search,'status'),boardStatuses),platform:pick(one(search,'platform'),publicationPlatforms),origin:pick(one(search,'origin'),boardOrigins),
   media:pick(one(search,'media'),['with','without'] as const),from:validDay(one(search,'from')),to:validDay(one(search,'to')),
-  sort:pick(one(search,'sort'),boardSorts)||'date_asc',published:one(search,'published')==='1',hidden:one(search,'hidden')==='1',page:Number.isFinite(page)&&page>=1&&page<=10000?page:1,debug:one(search,'debug')==='1',
+  sort:pick(one(search,'sort'),boardSorts)||'date_asc',published:one(search,'published')==='1',hidden:one(search,'hidden')==='1',archived:one(search,'archived')==='1',page:Number.isFinite(page)&&page>=1&&page<=10000?page:1,debug:one(search,'debug')==='1',
   publication:uuid.test(one(search,'publication'))?one(search,'publication').toLowerCase():''};
 }
 
@@ -45,7 +47,7 @@ export function parseBoardQuery(search:Search):BoardQuery{
 export function boardHref(query:BoardQuery,changes:Partial<BoardQuery>={}):string{
  const q={...query,page:1,publication:'',...changes},params=new URLSearchParams();
  for(const key of ['q','client','project','status','platform','origin','media','from','to'] as const)if(q[key])params.set(key,q[key]);
- if(q.sort!=='date_asc')params.set('sort',q.sort);if(q.published)params.set('published','1');if(q.hidden)params.set('hidden','1');if(q.page>1)params.set('page',String(q.page));if(q.debug)params.set('debug','1');if(q.publication)params.set('publication',q.publication);
+ if(q.sort!=='date_asc')params.set('sort',q.sort);if(q.published)params.set('published','1');if(q.hidden)params.set('hidden','1');if(q.archived)params.set('archived','1');if(q.page>1)params.set('page',String(q.page));if(q.debug)params.set('debug','1');if(q.publication)params.set('publication',q.publication);
  const s=params.toString();return s?`/publications?${s}`:'/publications';
 }
 
@@ -78,7 +80,7 @@ export function previewText(value:string,max=220):string{const flat=value.replac
 // Every filter except the status ones; quick-view counters are computed on this set.
 function matchesFilters(r:BoardRecord,q:BoardQuery,needle:string):boolean{
  return (!q.client||r.clientId===q.client)&&(!q.project||r.projectId===q.project)&&(!q.platform||r.platforms.includes(q.platform))
-  &&(!q.origin||r.origin===q.origin)&&(!q.media||(q.media==='with')===r.hasMedia)&&(q.hidden||!r.hidden)&&(!q.from||r.date>=q.from)&&(!q.to||r.date<=q.to)&&(!needle||r.search.includes(needle));
+  &&(!q.origin||r.origin===q.origin)&&(!q.media||(q.media==='with')===r.hasMedia)&&(q.hidden||!r.hidden)&&(q.archived?r.archived===true:!r.archived)&&(!q.from||r.date>=q.from)&&(!q.to||r.date<=q.to)&&(!needle||r.search.includes(needle));
 }
 const statusOrder=Object.fromEntries(boardStatuses.map((s,i)=>[s,i])) as Record<BoardStatus,number>;
 const byDate=(a:BoardRecord,b:BoardRecord)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id);

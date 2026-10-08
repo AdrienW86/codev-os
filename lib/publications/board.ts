@@ -11,7 +11,7 @@ import type {PublicationPlatform} from './types';
 export type BoardRow=Omit<BoardRecord,'imagePath'|'search'>&{image:string|null;debug:Record<string,unknown>|null};
 export type BoardResult=Omit<BoardSelection,'rows'>&{rows:BoardRow[]};
 type Page<T>={range:(from:number,to:number)=>PromiseLike<{data:T[]|null;error:unknown}>};
-type PublicationRow={id:string;client_id:string;project_id:string|null;platform:PublicationPlatform|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string;client:{name:string}|null;project:{id:string;name:string}|null};
+type PublicationRow={id:string;client_id:string;project_id:string|null;platform:PublicationPlatform|null;archived_at:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string;client:{name:string}|null;project:{id:string;name:string}|null};
 type RevisionRow={id:string;publication_id:string;origin:string;revision_number:number};
 type VariantRow={id:string;revision_id:string;platform:PublicationPlatform;text_content:string};
 type LinkRow={variant_id:string;asset_id:string;sort_order:number};
@@ -20,7 +20,7 @@ type DeliveryRow={publication_id:string;variant_id:string;platform:string;status
 
 const CHUNK=100,PAGE=500,unavailable='Impossible de charger les publications. Réessayez dans quelques instants.';
 const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
-const publicationColumns='id,client_id,project_id,platform,status,current_revision_id,subject,target_date,editorial_week,creation_origin,updated_at,client:clients(name),project:projects(id,name)';
+const publicationColumns='id,client_id,project_id,platform,archived_at,status,current_revision_id,subject,target_date,editorial_week,creation_origin,updated_at,client:clients(name),project:projects(id,name)';
 
 async function all<T>(query:()=>Page<T>):Promise<T[]>{
  const result:T[]=[];for(let offset=0;;offset+=PAGE){const {data,error}=await query().range(offset,offset+PAGE-1);if(error)throw error;result.push(...(data??[]));if(!data||data.length<PAGE)return result;}
@@ -58,7 +58,7 @@ export async function loadBoardRecords(filters:Pick<BoardQuery,'client'|'project
    status,rawStatus:p.status,subject:p.subject,preview:previewText(own[0]?.text_content??''),search:normalizeSearch([p.subject,p.client?.name,p.project?.name,...own.map(v=>v.text_content)].join(' ')),
    platforms,origin,edited:origin==='agent'&&current?.origin==='manual',updatedAt:p.updated_at,revisionId:current?.id??null,revisionNumber:current?.revision_number??null,
    creationOrigin:p.creation_origin,imagePath:firstAsset,hasMedia:own.some(v=>linksBy.has(v.id)),missingMedia:channelsWithoutMedia(own,own.flatMap(v=>linksBy.get(v.id)??[])),
-   hidden:hidden.has(p.id),deliveries:{published:sent.filter(d=>d.status==='published').length,total:sent.length}} satisfies BoardRecord;
+   hidden:hidden.has(p.id),archived:Boolean(p.archived_at),deliveries:{published:sent.filter(d=>d.status==='published').length,total:sent.length}} satisfies BoardRecord;
  });
 }
 

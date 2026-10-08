@@ -37,6 +37,8 @@ export type Publication = Updated & {
   status: PublicationStatus; current_revision_id: string | null;
   // Lot 4.3 P4-a bindings (NULL on every legacy multi-variant publication; set once, never changed).
   editorial_group_id?: string | null; occurrence_id?: string | null; platform?: PublicationPlatform | null;
+  // Lot 4.3 P5: one-way archive (never deleted).
+  archived_at?: string | null; archived_by?: string | null;
 };
 // Editorial group: one shared idea producing sister mono-platform publications (Lot 4.3 P4-a).
 export type PublicationEditorialGroupRow = Updated & { client_id: string; project_id: string; subject: string; origin: "manual" | "agent" };
@@ -135,6 +137,7 @@ export type PublicationTables = {
   publication_events: Table<PublicationEvent, "actor_type" | "action" | "resource_type" | "resource_id">;
 };
 export type PublicationFunctions = {
+  publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};

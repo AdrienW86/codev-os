@@ -5,6 +5,7 @@ import {currentRevision,saveDraft,submitOrReview,uploadImage,type StagedMedia} f
 import {isPublicationUuid} from "@/lib/publications/validation";
 import {workflowSucceeded} from "@/lib/publications/workflow-result";
 import {deliveryLock} from "@/lib/publications/drawer";
+import {archivePublication} from "@/lib/publications/archive";
 
 // Drawer mutations: thin wrappers over the existing audited workflow (saveDraft, uploadImage, submitOrReview).
 // The status is never updated directly and an old revision is never modified.
@@ -51,4 +52,9 @@ export async function rejectFromDrawerAction(_state:DrawerState,form:FormData):P
  await requireAdmin();const reason=form.get("reason");
  if(typeof reason!=="string"||reason.trim().length<MIN_REASON||reason.length>MAX_REASON)return {ok:false,message:"Indiquez un motif de rejet (10 caractères minimum)."};
  return decide(form,"rejected",reason.trim());
+}
+// Lot 4.3 P5: one-way archive, with an explicit confirmation. The publication stays readable (« Archivées »).
+export async function archiveFromDrawerAction(_state:DrawerState,form:FormData):Promise<DrawerState>{
+ await requireAdmin();if(form.getAll("confirm").length!==1||form.get("confirm")!=="on")return {ok:false,message:"Cochez la confirmation : l’archivage est définitif."};
+ const result=await archivePublication(form.get("publication_id"));if(result.ok)refresh(form);return result;
 }

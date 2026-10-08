@@ -16,8 +16,10 @@ export type PublicationDetailData={
  rejection:string|null;versions:DetailVersion[];editorial:{angle:string;source:string};
  readOnly:boolean;readOnlyReason:string|null;debug:Record<string,unknown>|null;
  // Lot 4.3 P4: mono-platform publication bound to a channel occurrence (date and platform fixed).
- occurrenceBound:boolean};
-export type DetailPublication={id:string;client_id:string;project_id:string|null;platform?:PublicationPlatform|null;occurrence_id?:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string};
+ occurrenceBound:boolean;
+ // Lot 4.3 P5: archived publications are read-only and leave the active board.
+ archived:boolean};
+export type DetailPublication={id:string;client_id:string;project_id:string|null;platform?:PublicationPlatform|null;occurrence_id?:string|null;archived_at?:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string};
 export type DetailDelivery={variant_id:string;platform:string;status:string};
 
 export const originLabels:Record<PublicationRevision['origin'],string>={generated:'IA',regenerated:'Régénération IA',manual:'Modification manuelle'};
@@ -65,7 +67,8 @@ export function buildPublicationDetail(input:{publication:DetailPublication;clie
  const status=boardStatus(p,variants.map(v=>v.platform),published);
  const origin:BoardOrigin=!revision?'planning':w.revisions.some(r=>r.origin!=='manual')?'agent':'manual';
  // Delivery lock first, then the channel lock (current revision targets a disabled channel of its project).
- const lock=deliveryLockMessage(input.deliveries)??input.channelLock??null;
+ const archived=Boolean(p.archived_at);
+ const lock=(archived?'Publication archivée : lecture seule.':null)??deliveryLockMessage(input.deliveries)??input.channelLock??null;
  const readOnly=status==='published'||lock!==null;
  const rejection=p.status==='rejected'&&revisionId?decisionFor(w,revisionId)?.reason??null:null;
  return {publicationId:p.id,revisionId,clientId:p.client_id,clientName:input.clientName,projectId:p.project_id,projectName:input.projectName,
@@ -73,5 +76,5 @@ export function buildPublicationDetail(input:{publication:DetailPublication;clie
   status,origin,edited:origin==='agent'&&revision?.origin==='manual',hidden:hiddenPublications(w.events).has(p.id),
   platforms,variants,media:primaryMedia(variants),missingMedia:variants.filter(v=>v.media.state==='missing').map(v=>v.platform),
   rejection,versions:versionHistory(w,revisionId),editorial:{angle:revision?.angle??p.subject,source:revision?.source_content??variants[0]?.text??p.subject},
-  readOnly,readOnlyReason:status==='published'?'Publication déjà publiée : lecture seule.':lock,debug:input.debug,occurrenceBound};
+  readOnly,readOnlyReason:status==='published'?'Publication déjà publiée : lecture seule.':lock,debug:input.debug,occurrenceBound,archived};
 }

@@ -41,7 +41,7 @@ const combos={fb:['facebook'],ig:['instagram'],gbp:['google_business_profile'],f
 const labels={facebook:'Facebook',instagram:'Instagram',google_business_profile:'Google Business Profile'};
 
 const router={replaced:[],pushed:[],replace(h){this.replaced.push(h);},push(h){this.pushed.push(h);}};
-const drawerActions={saveFromDrawerAction:async()=>({}),stageMediaAction:async()=>({}),approveFromDrawerAction:async()=>({}),rejectFromDrawerAction:async()=>({})};
+const drawerActions={saveFromDrawerAction:async()=>({}),stageMediaAction:async()=>({}),approveFromDrawerAction:async()=>({}),rejectFromDrawerAction:async()=>({}),archiveFromDrawerAction:async()=>({})};
 const drawerUi=()=>load('components/publications/publication-drawer.tsx',{'next/navigation':{useRouter:()=>router},'@/app/(cockpit)/publications/drawer-actions':drawerActions,
  '@/app/(cockpit)/publications/board-actions':{hideFromBoardAction:async()=>{},restoreToBoardAction:async()=>{}},'@/app/(cockpit)/publications/agent-actions':{prepareAgentAction:async()=>({}),configureAgentAction:async()=>({})}});
 const renderDrawer=(load,closeHref='/publications?client='+C1)=>renderToStaticMarkup(jsx.jsx(drawerUi().PublicationDrawer,{load,closeHref}));
@@ -260,8 +260,8 @@ test('Enregistrer and image staging actions delegate to saveDraft and uploadImag
  const refused=actionSetup({upload:{message:'Opération non confirmée. Rechargez la fiche.'}});assert.deepEqual(json(await refused.m.stageMediaAction({},new FormData())),{ok:false,message:'Upload refusé : l’image n’a pas pu être enregistrée.'});});
 
 test('every drawer action requires the admin guard before any workflow call',async()=>{
- for(const name of ['saveFromDrawerAction','stageMediaAction','approveFromDrawerAction','rejectFromDrawerAction']){const r=actionSetup({deny:true});await assert.rejects(()=>r.m[name]({},decisionForm({reason:'Motif suffisamment long'})),/denied/);assert.deepEqual(writes(r.calls),[]);assert.equal(r.calls.some(c=>c[0]==='currentRevision'||c[0]==='lock'),false);}
- const actions=src('app/(cockpit)/publications/drawer-actions.ts');assert.match(actions,/^"use server";/);assert.equal((actions.match(/export async function/g)??[]).length,4);assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,4);});
+ for(const name of ['saveFromDrawerAction','stageMediaAction','approveFromDrawerAction','rejectFromDrawerAction','archiveFromDrawerAction']){const r=actionSetup({deny:true});await assert.rejects(()=>r.m[name]({},decisionForm({reason:'Motif suffisamment long'})),/denied/);assert.deepEqual(writes(r.calls),[]);assert.equal(r.calls.some(c=>c[0]==='currentRevision'||c[0]==='lock'),false);}
+ const actions=src('app/(cockpit)/publications/drawer-actions.ts');assert.match(actions,/^"use server";/);assert.equal((actions.match(/export async function/g)??[]).length,5,'4 drawer actions + archive (P5)');assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,5);});
 
 test('read-only server guard: a locked publication can never get a new revision, media, submission or decision',async()=>{
  for(const name of ['saveFromDrawerAction','stageMediaAction','approveFromDrawerAction','rejectFromDrawerAction']){
@@ -297,4 +297,4 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,14,'9 + Lot 4.3 P1 + P2-a + P3 + P4-a + P4-b');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,15,'9 + Lot 4.3 P1 … P5');});

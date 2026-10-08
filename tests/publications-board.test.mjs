@@ -84,7 +84,7 @@ function comboTables(){const t=empty();Object.entries(combos).forEach(([name,pla
 const comboId=name=>uid(5,Object.keys(combos).indexOf(name)+1);
 
 test('query params: defaults, strict parsing of unknown values and canonical URLs',()=>{
- assert.deepEqual(json(q()),{q:'',client:'',project:'',status:'',platform:'',origin:'',media:'',from:'',to:'',sort:'date_asc',published:false,hidden:false,page:1,debug:false,publication:''});
+ assert.deepEqual(json(q()),{q:'',client:'',project:'',status:'',platform:'',origin:'',media:'',from:'',to:'',sort:'date_asc',published:false,hidden:false,page:1,debug:false,publication:'',archived:false});
  const bad=q({client:'not-a-uuid',status:'approved',platform:'tiktok',origin:'system',media:'maybe',from:'2026-13-45',sort:'drop table',page:'-2',published:'yes',hidden:'true',q:['a','b']});
  assert.deepEqual(json(bad),json(q()));
  const parsed=q({q:' toiture ',client:C1,status:'ready',platform:'instagram',origin:'agent',media:'with',from:'2026-10-01',to:'2026-10-31',sort:'updated',published:'1',hidden:'1',page:'3',debug:'1'});
@@ -227,7 +227,7 @@ test('removal from the board is an audited, reversible masking that never delete
  const restore=visibility(fixtures());assert.equal((await restore.m.setBoardVisibility(form([['publication_id',P.ready]]),false)).ok,true);assert.equal(restore.writes[0][2].action,'publication.board_restored');
  for(const f of ['lib/publications/board-visibility.ts','app/(cockpit)/publications/board-actions.ts','lib/publications/board.ts','components/publications/publications-board.tsx'])assert.doesNotMatch(src(f),/\.delete\(|\.update\(|\.upsert\(|\.remove\(|\.rpc\(/,f);
  const actions=src('app/(cockpit)/publications/board-actions.ts');assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,2);assert.match(actions,/^"use server";/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,14,'no migration added by this lot (14 = 9 + Lot 4.3 P1 + P2-a + P3 + P4-a + P4-b)');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,15,'no migration added by this lot (15 = 9 + Lot 4.3 P1 … P5)');});
 
 test('filter bar: client-only, instant, no Filtrer button, reset kept, debounced search',async()=>{
  const out=await html({client:C1,status:'draft',q:'toiture'});const form=out.match(/<form[^>]*data-board-filters="instant"[^>]*>[\s\S]*?<\/form>/)[0];

@@ -2,7 +2,7 @@
 'use client';
 import {useRouter} from 'next/navigation';
 import {useActionState,useEffect,useRef,useState,type ReactNode} from 'react';
-import {approveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
+import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
 import {DebugDetails} from '@/components/projects/debug-details';
@@ -41,7 +41,8 @@ function Header({detail}:{detail:PublicationDetailData}){
   <p className="flex flex-wrap items-center gap-2 text-xs"><span data-drawer-status={detail.status} className={`rounded-full border px-2 py-0.5 ${boardStatusClasses[detail.status]}`}>{boardStatusLabels[detail.status]}</span>
    <span>{detail.dateIsWeek?`Semaine du ${formatDate(detail.date)}`:formatDate(detail.date)}</span><span>· {boardOriginLabels[detail.origin]}{detail.edited?' (modifiée)':''}</span>
    <span>· {detail.platforms.length?detail.platforms.map(p=>platformLabels[p]).join(' · '):'Plateformes à définir'}</span>
-   {detail.hidden&&<span className="rounded-full border border-border px-2 py-0.5 text-muted">Retirée du tableau</span>}</p></div>;
+   {detail.hidden&&<span className="rounded-full border border-border px-2 py-0.5 text-muted">Retirée du tableau</span>}
+   {detail.archived&&<span data-archived="true" className="rounded-full border border-border px-2 py-0.5 text-muted">Archivée</span>}</p></div>;
 }
 
 function DrawerBody({detail}:{detail:PublicationDetailData}){
@@ -57,6 +58,7 @@ function DrawerBody({detail}:{detail:PublicationDetailData}){
     <AgentPrepareForm projectId={detail.projectId} publicationId={detail.publicationId} regenerate/></section>}
    <History detail={detail}/></>}
   <section className={section}><h3 className="mb-2 text-sm font-semibold">Tableau</h3><BoardVisibilityForm publicationId={detail.publicationId} hidden={detail.hidden}/></section>
+  {!detail.archived&&<ArchiveSection detail={detail}/>}
   {detail.debug&&<DebugDetails enabled data={detail.debug}/>}
  </>;
 }
@@ -150,4 +152,15 @@ function Decision({detail,dirty}:{detail:PublicationDetailData;dirty:boolean}){
 function History({detail}:{detail:PublicationDetailData}){
  return <details className={section} data-history="true"><summary className="cursor-pointer text-sm font-semibold">Historique des versions ({detail.versions.length})</summary>
   <ol className="mt-3 space-y-1 text-sm">{detail.versions.map(v=><li key={v.number}>Version {v.number} · {v.origin} · {formatDate(v.date)}{v.decision?` · ${v.decision}`:''}{v.reason?` · ${v.reason}`:''}{v.current?' · actuelle':''}</li>)}</ol></details>;
+}
+
+// Lot 4.3 P5: archive is explicit and one-way (confirmation checkbox, no modal); history stays readable.
+function ArchiveSection({detail}:{detail:PublicationDetailData}){
+ const [state,archive,pending]=useActionState(archiveFromDrawerAction,{} as DrawerState);
+ return <section className="rounded-lg border border-border p-4" data-archive="true"><h3 className="mb-2 text-sm font-semibold">Archiver</h3>
+  <form action={archive} className="space-y-2 text-sm"><input type="hidden" name="publication_id" value={detail.publicationId}/><input type="hidden" name="project_id" value={detail.projectId??''}/>
+   <p className="text-xs text-muted">La publication quitte le tableau actif mais reste consultable (vue « Archivées »), avec son historique. Aucune suppression.</p>
+   <label className="block"><input type="checkbox" name="confirm" required/> Je confirme l’archivage définitif.</label>
+   <button disabled={pending} className="rounded-lg border border-border px-3 py-1.5">{pending?'Archivage…':'Archiver'}</button>
+   {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-red-700'}>{state.message}</p>}</form></section>;
 }

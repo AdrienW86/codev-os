@@ -3,6 +3,7 @@ import {Panel} from "@/components/ui/primitives";
 import {formatDay} from "@/lib/projects/workspace-view";
 import {occurrenceStateLabels,type OccurrenceEntry,type OccurrenceState} from "@/lib/publications/occurrence-model";
 import {OccurrencePrepareForm} from "./occurrence-prepare-form";
+import {OccurrenceSkipForm} from "./occurrence-skip-form";
 
 // Calendar of a configured project (Lot 4.3 P3): one dated occurrence per channel slot, platforms independent.
 // Presentation only; the single write is the explicit "Préparer les prochaines semaines" form.
@@ -23,7 +24,9 @@ export function OccurrenceCalendar({projectId,mode,from,to,previous,next,entries
    <li key={e.key} data-occurrence={e.state} data-platform={e.platform} className={`rounded-lg border p-3 ${stateClasses[e.state]}`}>
     <div className="flex items-center justify-between gap-2 text-xs"><span>{e.time} · {e.platformLabel}</span><span className="rounded-full border border-current px-2 py-0.5">{e.stateLabel}</span></div>
     <p className="mt-1 text-sm">{e.publication?<Link className="font-medium hover:text-accent" href={`/publications/${e.publication.id}`}>{e.publication.subject}</Link>:e.state==="skipped"?`Ignorée${e.skippedReason?` : ${e.skippedReason}`:""}`:"Aucune publication liée"}</p>
-    {e.publication&&<p className="mt-1 text-xs text-muted">{publicationStatusLabels[e.publication.status]??"Statut inconnu"}</p>}</li>)}</ul></li>)}</ol>}
+    {e.publication&&<p className="mt-1 text-xs text-muted">{publicationStatusLabels[e.publication.status]??"Statut inconnu"}</p>}
+    {(e.state==="open"||e.state==="missed")&&<><Link data-create-publication="true" className="mt-2 inline-block rounded-lg border border-border px-3 py-1 text-xs hover:text-accent" href={`/projects/${projectId}/calendar/occurrences/${e.key}`}>Créer la publication</Link>
+     <OccurrenceSkipForm projectId={projectId} occurrenceId={e.key}/></>}</li>)}</ul></li>)}</ol>}
   <Link className="mt-5 inline-block text-sm text-accent" href={`/publications/calendar?project=${projectId}`}>Calendrier global de tous les projets</Link></Panel>
  <OccurrencePrepareForm projectId={projectId}/>
  {legacy.length>0&&<details className="mt-6 rounded-lg border border-border p-5"><summary className="cursor-pointer font-semibold">Ancien calendrier (historique)</summary>

@@ -11,7 +11,7 @@ import type {PublicationPlatform} from './types';
 export type BoardRow=Omit<BoardRecord,'imagePath'|'search'>&{image:string|null;debug:Record<string,unknown>|null};
 export type BoardResult=Omit<BoardSelection,'rows'>&{rows:BoardRow[]};
 type Page<T>={range:(from:number,to:number)=>PromiseLike<{data:T[]|null;error:unknown}>};
-type PublicationRow={id:string;client_id:string;project_id:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string;client:{name:string}|null;project:{id:string;name:string}|null};
+type PublicationRow={id:string;client_id:string;project_id:string|null;platform:PublicationPlatform|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string;client:{name:string}|null;project:{id:string;name:string}|null};
 type RevisionRow={id:string;publication_id:string;origin:string;revision_number:number};
 type VariantRow={id:string;revision_id:string;platform:PublicationPlatform;text_content:string};
 type LinkRow={variant_id:string;asset_id:string;sort_order:number};
@@ -20,7 +20,7 @@ type DeliveryRow={publication_id:string;variant_id:string;platform:string;status
 
 const CHUNK=100,PAGE=500,unavailable='Impossible de charger les publications. Réessayez dans quelques instants.';
 const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
-const publicationColumns='id,client_id,project_id,status,current_revision_id,subject,target_date,editorial_week,creation_origin,updated_at,client:clients(name),project:projects(id,name)';
+const publicationColumns='id,client_id,project_id,platform,status,current_revision_id,subject,target_date,editorial_week,creation_origin,updated_at,client:clients(name),project:projects(id,name)';
 
 async function all<T>(query:()=>Page<T>):Promise<T[]>{
  const result:T[]=[];for(let offset=0;;offset+=PAGE){const {data,error}=await query().range(offset,offset+PAGE-1);if(error)throw error;result.push(...(data??[]));if(!data||data.length<PAGE)return result;}
@@ -49,7 +49,8 @@ export async function loadBoardRecords(filters:Pick<BoardQuery,'client'|'project
  return publications.map(p=>{
   const history=revisionsBy.get(p.id)??[],current=history.find(r=>r.id===p.current_revision_id)??null;
   const own=(p.current_revision_id?variantsBy.get(p.current_revision_id)??[]:[]).sort((a,b)=>platformOrder.indexOf(a.platform)-platformOrder.indexOf(b.platform));
-  const platforms=own.map(v=>v.platform),variantIds=new Set(own.map(v=>v.id)),sent=(deliveriesBy.get(p.id)??[]).filter(d=>variantIds.has(d.variant_id));
+  // Mono-platform publication (Lot 4.3 P4): its native platform; legacy publication: platforms of its current variants.
+  const platforms=p.platform?[p.platform]:own.map(v=>v.platform),variantIds=new Set(own.map(v=>v.id)),sent=(deliveriesBy.get(p.id)??[]).filter(d=>variantIds.has(d.variant_id));
   const status:BoardStatus=boardStatus(p,platforms,new Set(sent.filter(d=>d.status==='published').map(d=>d.platform)));
   const origin:BoardOrigin=!current?'planning':history.some(r=>r.origin!=='manual')?'agent':'manual';
   const firstAsset=own.flatMap(v=>(linksBy.get(v.id)??[]).sort((a,b)=>a.sort_order-b.sort_order)).map(l=>pathOf.get(l.asset_id)).find((x):x is string=>Boolean(x))??null;

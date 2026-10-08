@@ -135,6 +135,8 @@ export type PublicationTables = {
   publication_events: Table<PublicationEvent, "actor_type" | "action" | "resource_type" | "resource_id">;
 };
 export type PublicationFunctions = {
+  publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
+  publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};
   publication_channel_schedule_save:{Args:{p_project_channel_id:string;p_timezone:string;p_enabled:boolean;p_slots:Json;p_actor_id:string};Returns:string};
   publication_channel_save:{Args:{p_project_id:string;p_platform:string;p_enabled:boolean;p_publication_account_id:string|null;p_editorial_rules:string|null;p_actor_id:string};Returns:string};

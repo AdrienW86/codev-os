@@ -14,8 +14,10 @@ export type PublicationDetailData={
  subject:string;date:string;dateIsWeek:boolean;targetDate:string;dateEditable:boolean;status:BoardStatus;origin:BoardOrigin;edited:boolean;hidden:boolean;
  platforms:PublicationPlatform[];variants:DetailVariant[];media:{state:MediaState;preview:string|null};missingMedia:PublicationPlatform[];
  rejection:string|null;versions:DetailVersion[];editorial:{angle:string;source:string};
- readOnly:boolean;readOnlyReason:string|null;debug:Record<string,unknown>|null};
-export type DetailPublication={id:string;client_id:string;project_id:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string};
+ readOnly:boolean;readOnlyReason:string|null;debug:Record<string,unknown>|null;
+ // Lot 4.3 P4: mono-platform publication bound to a channel occurrence (date and platform fixed).
+ occurrenceBound:boolean};
+export type DetailPublication={id:string;client_id:string;project_id:string|null;platform?:PublicationPlatform|null;occurrence_id?:string|null;status:string;current_revision_id:string|null;subject:string;target_date:string|null;editorial_week:string;creation_origin:string;updated_at:string};
 export type DetailDelivery={variant_id:string;platform:string;status:string};
 
 export const originLabels:Record<PublicationRevision['origin'],string>={generated:'IA',regenerated:'Régénération IA',manual:'Modification manuelle'};
@@ -57,7 +59,8 @@ export function buildPublicationDetail(input:{publication:DetailPublication;clie
  slot:{platforms:string[]}|null;deliveries:DetailDelivery[];debug:Record<string,unknown>|null;channelLock?:string|null}):PublicationDetailData{
  const {publication:p,workspace:w}=input,revisionId=p.current_revision_id,revision=w.revisions.find(r=>r.id===revisionId)??null;
  const variants=currentVariants(w,revisionId),variantIds=new Set(w.variants.filter(v=>v.revision_id===revisionId).map(v=>v.id));
- const platforms=variants.length?variants.map(v=>v.platform):(input.slot?.platforms??[]).filter((x):x is PublicationPlatform=>x in platformLabels);
+ const occurrenceBound=Boolean(p.occurrence_id);
+ const platforms=p.platform?[p.platform]:variants.length?variants.map(v=>v.platform):(input.slot?.platforms??[]).filter((x):x is PublicationPlatform=>x in platformLabels);
  const published=new Set(input.deliveries.filter(d=>variantIds.has(d.variant_id)&&d.status==='published').map(d=>d.platform));
  const status=boardStatus(p,variants.map(v=>v.platform),published);
  const origin:BoardOrigin=!revision?'planning':w.revisions.some(r=>r.origin!=='manual')?'agent':'manual';
@@ -66,9 +69,9 @@ export function buildPublicationDetail(input:{publication:DetailPublication;clie
  const readOnly=status==='published'||lock!==null;
  const rejection=p.status==='rejected'&&revisionId?decisionFor(w,revisionId)?.reason??null:null;
  return {publicationId:p.id,revisionId,clientId:p.client_id,clientName:input.clientName,projectId:p.project_id,projectName:input.projectName,
-  subject:p.subject,date:p.target_date??p.editorial_week,dateIsWeek:!p.target_date,targetDate:p.target_date??'',dateEditable:!input.slot&&!readOnly,
+  subject:p.subject,date:p.target_date??p.editorial_week,dateIsWeek:!p.target_date,targetDate:p.target_date??'',dateEditable:!input.slot&&!occurrenceBound&&!readOnly,
   status,origin,edited:origin==='agent'&&revision?.origin==='manual',hidden:hiddenPublications(w.events).has(p.id),
   platforms,variants,media:primaryMedia(variants),missingMedia:variants.filter(v=>v.media.state==='missing').map(v=>v.platform),
   rejection,versions:versionHistory(w,revisionId),editorial:{angle:revision?.angle??p.subject,source:revision?.source_content??variants[0]?.text??p.subject},
-  readOnly,readOnlyReason:status==='published'?'Publication déjà publiée : lecture seule.':lock,debug:input.debug};
+  readOnly,readOnlyReason:status==='published'?'Publication déjà publiée : lecture seule.':lock,debug:input.debug,occurrenceBound};
 }

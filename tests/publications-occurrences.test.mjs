@@ -82,14 +82,15 @@ test('ensure: explicit period from today (Paris), actor from the admin session, 
  assert.match((await dst.m.ensureProjectOccurrences(P,2,now)).message,/heure inexistante lors du passage à l’heure d’été \(Facebook le 29\/03\/2026 à 02:30\)/);});
 
 test('server action: admin first, weeks parsed, revalidation only on success, no navigation',async()=>{
- const calls=[];const a=load('app/(cockpit)/publications/occurrence-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
+ const calls=[];const a=load('app/(cockpit)/publications/occurrence-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'next/navigation':{redirect:()=>{throw Error('unexpected redirect');}},'@/lib/publications/occurrence-publications':{},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
   '@/lib/publications/occurrences':{ensureProjectOccurrences:async(p,w)=>{calls.push(['ensure',p,w]);return w===4?{ok:true,message:'ok'}:{ok:false,message:'Choisissez une période de 1, 2 ou 4 semaines.'};}}});
  const form=w=>{const f=new FormData();f.set('project_id',P);f.set('weeks',w);return f;};
  assert.deepEqual(json(await a.prepareOccurrencesAction({},form('4'))),{ok:true,message:'ok'});assert.deepEqual(json(calls.slice(0,2)),['admin',['ensure',P,4]]);assert.ok(calls.some(c=>c[1]===`/projects/${P}/calendar`));
  calls.length=0;await a.prepareOccurrencesAction({},form('abc'));assert.deepEqual(json(calls),['admin',['ensure',P,null]],'failure: no revalidation');
- const source=src('app/(cockpit)/publications/occurrence-actions.ts');assert.match(source,/^"use server";/);assert.doesNotMatch(source,/redirect\(|getSupabaseServerClient|\.rpc\(/);});
+ const source=src('app/(cockpit)/publications/occurrence-actions.ts');assert.match(source,/^"use server";/);assert.doesNotMatch(source,/getSupabaseServerClient|\.rpc\(/);
+ const prepare=source.slice(source.indexOf('export async function prepareOccurrencesAction'),source.indexOf('export type OccurrencePublicationState'));assert.doesNotMatch(prepare,/redirect\(/,'preparation never navigates');});
 
-const formStub={prepareOccurrencesAction:async()=>({})};
+const formStub={prepareOccurrencesAction:async()=>({}),skipOccurrenceAction:async()=>({}),createFromOccurrenceAction:async()=>({})};
 test('components: occurrence calendar (independent platforms, states, linked, skipped, empty) and the 1/2/4 weeks form',()=>{
  const {OccurrenceCalendar}=load('components/publications/occurrence-calendar.tsx',{'next/link':{__esModule:true,default:({href,children,...p})=>jsx.jsx('a',{href,...p,children})},'@/app/(cockpit)/publications/occurrence-actions':formStub});
  const entries=model.buildOccurrenceEntries([row(1,'facebook','2026-10-12','12:00'),row(2,'instagram','2026-10-13','18:00'),row(3,'google_business_profile','2026-10-14','12:00'),
@@ -100,7 +101,9 @@ test('components: occurrence calendar (independent platforms, states, linked, sk
  assert.match(html,new RegExp(`href="/publications/${PUB}"[^>]*>Conseils toiture`));assert.match(html,/Validée/);assert.match(html,/Ignorée : Jour férié/);assert.match(html,/Aucune publication liée/);
  assert.match(html,/Préparer les prochaines semaines/);assert.match(html,/<option value="1">1 semaine<\/option><option value="2">2 semaines<\/option><option value="4" selected="">4 semaines<\/option>/,'1 / 2 / 4 weeks, 4 by default');
  assert.doesNotMatch(html,/Ancien calendrier/,'no legacy history block when empty');
- for(const n of [1,2,3,5])assert.ok(!html.includes(uid(5,n)),'occurrence ids are not rendered');
+ // P4-b: open occurrences carry their id only in the creation link and the skip form; linked / skipped ones never do.
+ for(const n of [4,5])assert.ok(!html.includes(uid(5,n)),'linked and skipped occurrence ids are not rendered');
+ assert.ok(html.includes(`/projects/${P}/calendar/occurrences/${uid(5,2)}`),'open occurrence: create link');assert.match(html,/Ignorer ce créneau/);
  const empty=renderToStaticMarkup(jsx.jsx(OccurrenceCalendar,{projectId:P,mode:'week',from:'2026-10-12',to:'2026-10-18',previous:'2026-10-05',next:'2026-10-19',entries:[],error:false,
   legacy:[{key:'l1',date:'2026-10-13',time:'12:00',subject:'Ancien contenu',platforms:'Facebook · Instagram',status:'Validé'}]}));
  assert.match(empty,/Aucune occurrence sur cette période/);assert.match(empty,/Ancien calendrier \(historique\)/);assert.match(empty,/Ancien contenu/);
@@ -122,7 +125,7 @@ test('calendar page: configured project shows occurrences (display never writes)
  for(const f of ['app/(cockpit)/projects/[id]/(tabs)/calendar/page.tsx','components/publications/occurrence-calendar.tsx','lib/publications/occurrence-model.ts'])assert.doesNotMatch(src(f),/occurrences_ensure|ensureProjectOccurrences\(/,`${f}: display never prepares occurrences`);});
 
 test('P3 scope: one additive migration, no P4 objects, no agent / OpenAI / Drive / cron in P3 code',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,13);assert.equal(list[11],'20261008000000_publications_channel_occurrences.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,14);assert.equal(list[11],'20261008000000_publications_channel_occurrences.sql');
  const sql=src('supabase/migrations/20261008000000_publications_channel_occurrences.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|function|trigger|index)|delete from|truncate (table )?public|security definer|editorial_group|insert into public\.publications|publication_deliveries|publication_jobs|alter table public\.publication_events/i);
  for(const f of ['lib/publications/occurrences.ts','lib/publications/occurrence-model.ts','app/(cockpit)/publications/occurrence-actions.ts','components/publications/occurrence-calendar.tsx','components/publications/occurrence-prepare-form.tsx'])

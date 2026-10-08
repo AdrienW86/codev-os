@@ -7,7 +7,7 @@ import {reviewDecisions} from "./review-decisions";
 import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from "./media-rule";
 import {getPublicationProjectChannels,publicationChannelLock} from "./project-channels";
 import {projectAllowsPlatform} from "./channels";
-import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm} from "./editor";
+import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm,platformLabels} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
 const failed="Opération non confirmée. Rechargez la fiche et réessayez. Vérifiez aussi que les migrations du Lot 2 sont appliquées.";
@@ -46,6 +46,12 @@ function lockedMessage(message:string|undefined):string{return /rescheduling/i.t
 export async function saveDraft(form:FormData):Promise<{id?:string;message?:string}>{
  const {userId}=await requireAdmin();const input=parseEditorialForm(form);if(!input)return {message:"Vérifiez les champs obligatoires, les dates et les variantes."};const db=getSupabaseServerClient();
  if(input.publication_id){const lock=await publicationChannelLock(input.publication_id);if(lock)return {message:lock};}
+ // Mono-platform publication (Lot 4.3 P4): one variant on its platform, same project, and the date of its occurrence.
+ if(input.publication_id){const bound=await db.from("publications").select("platform,occurrence_id,target_date,project_id").eq("id",input.publication_id).maybeSingle();
+  if(bound.error)return {message:failed};const b=bound.data as {platform?:PublicationVariant["platform"]|null;occurrence_id?:string|null;target_date?:string|null;project_id?:string|null}|null;
+  if(b?.platform){if(input.variants.length!==1||input.variants[0].platform!==b.platform)return {message:`Publication mono-plateforme : seul le texte ${platformLabels[b.platform]} peut être modifié.`};
+   if(input.project_id!==b.project_id)return {message:"Le projet d’une publication liée à un créneau ne peut pas changer."};
+   if(b.occurrence_id&&input.target_date!==b.target_date)return {message:"La date d’une publication liée à un créneau ne peut pas changer."};}}
  const project=await db.from("projects").select("id,client_id,type").eq("id",input.project_id).eq("client_id",input.client_id).maybeSingle();
  const capabilities=project.data?await getPublicationProjectChannels(project.data):null;
  if(project.error||!project.data||!capabilities||input.variants.some(v=>!projectAllowsPlatform(capabilities,v.platform)))return {message:"Le projet doit appartenir au client et autoriser toutes les plateformes choisies."};

@@ -34,3 +34,5 @@ export async function getEditorialGroup(groupId:string,expectedPlatforms:readonl
  if(error)throw Error(unavailable);if(!data)return null;
  const group=data as EditorialGroup;return buildEditorialGroupView(group,await sisters([group]),expectedPlatforms);
 }
+// Name used by the occurrence creation flow (Lot 4.3 P4-b): same batched, read-only loader.
+export const listEditorialGroupsForProject=getProjectEditorialGroups;

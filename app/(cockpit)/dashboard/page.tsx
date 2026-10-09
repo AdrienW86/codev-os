@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AssistantCommandBox } from "@/components/dashboard/assistant-command-box";
 import { AttentionCard } from "@/components/dashboard/attention-card";
-import { ClientWatchCard } from "@/components/dashboard/client-watch-card";
-import { DayPlan } from "@/components/dashboard/day-plan";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { TechNews } from "@/components/dashboard/tech-news";
+import { demoNews } from "@/lib/news/types";
 import { listClients } from "@/lib/clients/data";
 import { listProjects } from "@/lib/projects/data";
 import { listTasks } from "@/lib/tasks/data";
@@ -16,7 +16,6 @@ import { listActions } from "@/lib/actions/data";
 import { listAgentRuns } from "@/lib/agent-runs/data";
 import { listPublications } from "@/lib/publications/data";
 import { summarizeDashboard } from "@/lib/dashboard/summary";
-import { planTasks, todayInParis, watchClients } from "@/lib/dashboard/home";
 import { actionTypeLabel, countLabel } from "@/lib/presentation/labels";
 import { formatDate } from "@/lib/format-date";
 
@@ -29,7 +28,7 @@ async function firstName() {
 export default async function DashboardPage() {
   await requireAdmin();
   const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications] = await Promise.all([
-    firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 6 }),
+    firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 4 }),
     // Les publications sont facultatives sur la home : leur indisponibilité ne bloque pas la page.
     listPublications().catch(() => null),
   ]);
@@ -39,8 +38,33 @@ export default async function DashboardPage() {
   const activePublications = publications?.filter((item) => !item.archived_at) ?? [];
   const publicationsToReview = activePublications.filter((item) => item.status === "pending_review");
   const publicationsToPrepare = activePublications.filter((item) => item.status === "draft");
-  const plan = planTasks(tasks, todayInParis());
-  const watched = watchClients({ clients, projects, tasks, recommendations, actions });
+  const attention = [
+    {
+      key: "tasks", count: summary.priorityTasks.length, urgent: true, icon: "tasks" as const, href: "/work?view=todo", linkLabel: "Voir les tâches",
+      title: countLabel(summary.priorityTasks.length, "tâche prioritaire", "tâches prioritaires"),
+      items: summary.priorityTasks.slice(0, 3).map((task) => ({ id: task.id, title: task.title, detail: task.client?.name ?? "Client" })),
+    },
+    {
+      key: "recommendations", count: pendingRecommendations.length, urgent: false, icon: "recommendations" as const, href: "/work?view=review", linkLabel: "Examiner",
+      title: countLabel(pendingRecommendations.length, "recommandation à examiner", "recommandations à examiner"),
+      items: pendingRecommendations.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: `${item.client?.name ?? "Client"} · ${item.agent?.name ?? "Agent"}` })),
+    },
+    {
+      key: "actions", count: pendingActions.length, urgent: true, icon: "alert" as const, href: "/actions?status=pending_approval", linkLabel: "Valider",
+      title: countLabel(pendingActions.length, "action à valider", "actions à valider"),
+      items: pendingActions.slice(0, 3).map((item) => ({ id: item.id, title: actionTypeLabel(item.action_type), detail: `${item.client?.name ?? "Client"} · ${formatDate(item.created_at)}` })),
+    },
+    {
+      key: "publications-review", count: publicationsToReview.length, urgent: false, icon: "publications" as const, href: "/publications/review", linkLabel: "Valider les publications",
+      title: countLabel(publicationsToReview.length, "publication à valider", "publications à valider"),
+      items: publicationsToReview.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client" })),
+    },
+    {
+      key: "publications-draft", count: publicationsToPrepare.length, urgent: false, icon: "publications" as const, href: "/publications", linkLabel: "Ouvrir les publications",
+      title: countLabel(publicationsToPrepare.length, "publication à préparer", "publications à préparer"),
+      items: publicationsToPrepare.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client" })),
+    },
+  ].filter((card) => card.count > 0); // Aucune carte vide.
 
   return (
     <>
@@ -52,61 +76,26 @@ export default async function DashboardPage() {
         <AssistantCommandBox />
       </div>
 
-      <section className="mt-12" aria-labelledby="attention-title">
+      <section className="mt-14" aria-labelledby="attention-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <h2 id="attention-title" className="text-lg font-semibold">À traiter maintenant</h2>
           <Link href="/work" className="text-sm text-accent hover:underline">Tout le travail</Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <AttentionCard
-            title={countLabel(summary.priorityTasks.length, "tâche prioritaire", "tâches prioritaires")}
-            count={summary.priorityTasks.length} icon="tasks" href="/work?view=todo" linkLabel="Voir les tâches" urgent
-            items={summary.priorityTasks.slice(0, 3).map((task) => ({ id: task.id, title: task.title, detail: task.client?.name ?? "Client" }))}
-            emptyLabel="Aucune tâche prioritaire ouverte."
-          />
-          <AttentionCard
-            title={countLabel(pendingRecommendations.length, "recommandation à examiner", "recommandations à examiner")}
-            count={pendingRecommendations.length} icon="recommendations" href="/work?view=review" linkLabel="Examiner"
-            items={pendingRecommendations.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: `${item.client?.name ?? "Client"} · ${item.agent?.name ?? "Agent"}` }))}
-            emptyLabel="Aucune recommandation en attente."
-          />
-          <AttentionCard
-            title={countLabel(pendingActions.length, "action à valider", "actions à valider")}
-            count={pendingActions.length} icon="alert" href="/actions?status=pending_approval" linkLabel="Valider" urgent
-            items={pendingActions.slice(0, 3).map((item) => ({ id: item.id, title: actionTypeLabel(item.action_type), detail: `${item.client?.name ?? "Client"} · ${formatDate(item.created_at)}` }))}
-            emptyLabel="Aucune validation en attente."
-          />
-          {publications ? (
-            <AttentionCard
-              title={publicationsToReview.length
-                ? countLabel(publicationsToReview.length, "publication à valider", "publications à valider")
-                : countLabel(publicationsToPrepare.length, "publication à préparer", "publications à préparer")}
-              count={publicationsToReview.length + publicationsToPrepare.length} icon="publications"
-              href={publicationsToReview.length ? "/publications/review" : "/publications"} linkLabel="Ouvrir les publications"
-              items={(publicationsToReview.length ? publicationsToReview : publicationsToPrepare).slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client" }))}
-              emptyLabel="Aucune publication en attente."
-            />
-          ) : (
-            <AttentionCard title="Publications" count={0} icon="publications" href="/publications" linkLabel="Ouvrir les publications" items={[]} emptyLabel="Le suivi des publications est momentanément indisponible." />
-          )}
-        </div>
+        {attention.length ? (
+          <div className={`grid gap-4 sm:grid-cols-2 ${attention.length >= 4 ? "xl:grid-cols-4" : attention.length === 3 ? "xl:grid-cols-3" : ""}`}>
+            {attention.map(({ key, ...card }) => <AttentionCard key={key} {...card} />)}
+          </div>
+        ) : <p className="text-sm text-muted">Rien à traiter pour le moment.</p>}
       </section>
 
-      <div className="mt-10 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <DayPlan overdue={plan.overdue} today={plan.today} week={plan.week} />
-        <section aria-labelledby="watch-title" className="min-w-0">
-          <div className="mb-4 flex items-end justify-between gap-2">
-            <h2 id="watch-title" className="font-semibold">Clients à surveiller</h2>
-            <Link href="/clients" className="text-sm text-accent hover:underline">Tous les clients</Link>
-          </div>
-          {watched.length ? (
-            <ul className="space-y-3">{watched.map((client) => <li key={client.id}><ClientWatchCard client={client} /></li>)}</ul>
-          ) : <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">Aucun client ne demande d’attention particulière.</p>}
-        </section>
-      </div>
+      {runs.length > 0 && (
+        <div className="mt-12">
+          <RecentActivity runs={runs} />
+        </div>
+      )}
 
-      <div className="mt-6">
-        <RecentActivity runs={runs} />
+      <div className="mt-12">
+        <TechNews items={demoNews} demo />
       </div>
     </>
   );

@@ -31,7 +31,7 @@ function ServiceEditor({ clientId, service }: { clientId: string; service: Clien
 export function ClientServicesPanel({ clientId, services }: { clientId: string; services: ClientServiceRecord[] }) {
   const [state, action, pending] = useActionState<ClientServiceFormState, FormData>(createClientServiceAction, {});
   return <section className="mt-8 border-t border-border pt-8" aria-labelledby="client-services">
-    <h2 id="client-services" className="mb-4 text-lg font-semibold">Services <span className="text-sm font-normal text-muted">({services.length})</span></h2>
+    <h2 id="client-services" className="mb-4 text-lg font-semibold">Services enregistrés <span className="text-sm font-normal text-muted">({services.length})</span></h2>
     <Panel className="p-5">
       {services.length ? <ul>{services.map((service) => <ServiceEditor key={service.id} clientId={clientId} service={service} />)}</ul> : <p className="mb-5 text-sm text-muted">Aucun service enregistré.</p>}
       <form action={action} className="grid gap-4 border-t border-border pt-5 sm:grid-cols-2">

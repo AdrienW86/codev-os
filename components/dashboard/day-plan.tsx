@@ -32,10 +32,7 @@ export function DayPlan({ overdue, today, week }: { overdue: TaskRecord[]; today
   const nothing = !overdue.length && !today.length && !week.length;
   return (
     <Panel className="p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Aujourd’hui / cette semaine</h2>
-        <Link href="/agenda" className="text-sm text-accent hover:underline">Ouvrir l’agenda</Link>
-      </div>
+      <h2 className="font-semibold">Échéances</h2>
       {nothing ? (
         <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">Aucune échéance dans les 7 prochains jours. Ajoutez une date à vos tâches pour les voir ici.</p>
       ) : (

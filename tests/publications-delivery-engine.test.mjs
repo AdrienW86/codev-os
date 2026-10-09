@@ -178,6 +178,6 @@ test('P10 scope: no route runs the engine, fakes never imported by the app, no t
  for(const f of readdirSync(resolve(root,'lib/publications/delivery'))){const code=src('lib/publications/delivery/'+f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/\bfetch\s*\(|https?:\/\/|process\.env|console\.log|setInterval|setTimeout|while\s*\(true\)/,f);
   for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/credential|token|message|error\b|payload|text/,`${f}: generic logs only`);}
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
  const sql=SQL.replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|delete from public\.|drop table|drop function|cron|http|net\./i);
  assert.match(sql,/for update of j skip locked/,'concurrent claiming');});

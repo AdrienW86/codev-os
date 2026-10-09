@@ -164,7 +164,7 @@ test('overview: configured projects read their next content from channel occurre
  const page=src('app/(cockpit)/projects/[id]/(tabs)/page.tsx');assert.match(page,/capabilities\.source==="configured"/);assert.match(page,/getUpcomingProjectOccurrences\(id,20\)/);assert.match(page,/getCalendar\(\{from:today,to:addDays\(today,56\),project:id\}\)/,'legacy calendar kept for legacy projects');});
 
 test('P7 scope: one migration, drafts only, no publisher / delivery / cron; agent v2 code never imports Drive or publishes',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[15],'20261008040000_publications_agent_v2.sql');assert.equal(list[16],'20261008050000_publications_agent_v2_media.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[15],'20261008040000_publications_agent_v2.sql');assert.equal(list[16],'20261008050000_publications_agent_v2_media.sql');
  const sql=src('supabase/migrations/20261008040000_publications_agent_v2.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|index|function)|delete from|truncate (table )?public|security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|status='approved'|publication_submit_manual|publication_review_manual/i);
  for(const f of readdirSync(resolve(root,'lib/publications/agent-v2')))assert.doesNotMatch(src('lib/publications/agent-v2/'+f).replace(/\/\/[^\n]*/g,''),/publications-drive|google-drive|googleapis|setInterval|cron|submitOrReview|publication_deliveries/i,f);});

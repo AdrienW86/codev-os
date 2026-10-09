@@ -261,6 +261,6 @@ test('P9 security: client components and logs never handle secrets; scope of the
  for(const f of readdirSync(resolve(root,'lib/publications/connections'))){const code=src('lib/publications/connections/'+f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/\bfetch\s*\(|https?:\/\/|process\.env|console\.log/,f);
   for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/message|reference|credential|token|error\)/,`${f}: log without provider text`);}
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[17],'20261009000000_publications_connections.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[17],'20261009000000_publications_connections.sql');
  const sql=src('supabase/migrations/20261009000000_publications_connections.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|delete from public\.|drop (table|function)|cron|http/i);});

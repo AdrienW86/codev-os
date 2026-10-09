@@ -62,6 +62,9 @@ Action administrateur « Vérifier chez le fournisseur » (lecture seule) :
 - sinon recherche parmi les publications récentes de la Page / du compte Instagram du **texte exact** publié
   après le marqueur d’envoi : 1 résultat → `published` avec l’identifiant Meta ; 0 → « absente » ; plusieurs ou
   lecture impossible → reste `uncertain`.
+- « absente » seulement si toute la période depuis l’envoi a été lue (page de 25 non pleine, ou publication plus
+  ancienne que la période atteinte) ; une page pleine de publications plus récentes donne « inconnu » (correction
+  Gate 4 : un faux « absente » permettrait un doublon après « non publiée » puis « Réessayer »).
 
 Après un résultat « absente », l’administrateur peut confirmer « non publiée » (delivery `failed`), puis
 « Réessayer ». Aucun identifiant n’est jamais inventé ; aucune nouvelle publication n’est envoyée automatiquement.
@@ -74,3 +77,6 @@ Après un résultat « absente », l’administrateur peut confirmer « non publ
 - La réconciliation par texte suppose un texte unique sur la période : deux publications identiques simultanées
   restent `uncertain`.
 - Le déclenchement réel (worker) reste à décider : `runOnePublicationJobInProduction` existe, aucun appelant.
+- Bail (lease) de production : `PRODUCTION_LEASE_SECONDS = 600` s. Le pire cas Instagram (jeton de Page, conteneur,
+  10 vérifications de 20 s au plus, 9 attentes de 3 s, `media_publish`) dure environ 290 s ; avec le bail par défaut
+  de 120 s, une publication réussie aurait été enregistrée `uncertain` (correction Gate 4).

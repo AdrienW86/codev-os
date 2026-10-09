@@ -263,6 +263,9 @@ reset role;
 -- 11. Safety: nothing really published, audit without secret, legacy delivery untouched.
 select pg_temp.replay_assert(not exists(select 1 from public.publication_deliveries where status='published'),'no real publication in this lot');
 select pg_temp.replay_assert((select status='scheduled' and revision_id is null from public.publication_deliveries where id=(select id from p10_ids where name='legacy_delivery')),'legacy delivery untouched (never claimed)');
+-- Meta token prefix matched case-SENSITIVELY: lowercase "eaab" occurs in random UUIDs of the audit metadata.
 select pg_temp.replay_assert(not exists(select 1 from public.publication_events where action like 'publication.delivery_%'
- and (coalesce(before_data::text,'')||coalesce(after_data::text,'')||metadata::text) ~* '(vault:|token|secret|credential|EAAB|https?:)'),'delivery audit without secret or provider text');
-select pg_temp.replay_assert(not exists(select 1 from public.publication_attempts where coalesce(sanitized_error,'')||coalesce(error_code,'') ~* '(token|secret|EAAB| )'),'attempts without provider text');
+ and ((coalesce(before_data::text,'')||coalesce(after_data::text,'')||metadata::text) ~* '(vault:|token|secret|credential|https?:)'
+  or (coalesce(before_data::text,'')||coalesce(after_data::text,'')||metadata::text) ~ 'EAAB')),'delivery audit without secret or provider text');
+select pg_temp.replay_assert(not exists(select 1 from public.publication_attempts where coalesce(sanitized_error,'')||coalesce(error_code,'') ~* '(token|secret| )'
+ or coalesce(sanitized_error,'')||coalesce(error_code,'') ~ 'EAAB'),'attempts without provider text');

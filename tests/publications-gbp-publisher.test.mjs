@@ -185,3 +185,16 @@ test('P12 scope: nothing triggers publishing, OAuth transport still read-only, g
  assert.doesNotMatch(doc,/ya29\.|1\/\/[A-Za-z0-9_-]{10}/);
  const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[21],'20261013000000_publications_gbp_publisher.sql');
  const sql=src('supabase/migrations/20261013000000_publications_gbp_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs|drop /i);});
+
+test('Gate 4: the production lease outlasts the slowest provider call (completion is refused after the lease)',async()=>{
+ const calls=[];const vaultModule=load('lib/publications/connections/vault.ts');
+ const reg=load('lib/publications/delivery/registry.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>({})},
+  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null},'@/lib/integrations/publications-oauth/http':{},'@/lib/integrations/publications-meta-publish':{},
+  '@/lib/integrations/publications-gbp-publish':integration,'../connections/google-business-profile':{},'./gbp-publisher':gbp,'./meta-publisher':{},'../connections/vault':vaultModule,
+  '../oauth/service':{productionOAuthDeps:()=>({vault:{readCredential:async()=>{throw Error('no read');}}})},'./engine':{runOnePublicationJob:async(worker,deps)=>{calls.push([worker,deps.leaseSeconds]);return {state:'idle'};}}});
+ assert.deepEqual(json(await reg.runOnePublicationJobInProduction('worker-1')),{state:'idle'});
+ assert.deepEqual(calls,[['worker-1',600]]);
+ // Instagram worst case: Page token + container + 10 status checks (20 s each) + 9 waits of 3 s + media_publish.
+ const worst=20+20+10*20+9*3+20;assert.ok(reg.PRODUCTION_LEASE_SECONDS>=worst+60&&reg.PRODUCTION_LEASE_SECONDS<=900,`lease ${reg.PRODUCTION_LEASE_SECONDS}s vs worst ${worst}s`);
+ // GBP worst case: token refresh (15 s) + create (20 s).
+ assert.ok(reg.PRODUCTION_LEASE_SECONDS>=15+20);});

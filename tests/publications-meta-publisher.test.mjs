@@ -208,3 +208,14 @@ test('P11-b scope: nothing triggers publishing, OAuth transport still read-only,
  assert.doesNotMatch(doc,/EAAB|appsecret_proof=[a-f0-9]{10}/);
  const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
  const sql=src('supabase/migrations/20261012000000_publications_meta_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs/i);});
+
+test('Gate 4: Meta reconciliation never concludes "missing" from a full page of newer posts (a false missing would allow a duplicate)',async()=>{
+ const rec=script=>{const d=metaDouble(script);return {...d,r:meta.createMetaReconciler(d.transport)};};
+ const base={platform:'facebook',remoteId:null,idempotencyKey:'',credential:{accessToken:USER,refreshToken:null,expiresAt:null,scopes:[],provider:'meta'},
+  account:{externalAccountId:'1001',parentExternalId:null},text:'Texte exact',since:'2029-06-01T10:00:00.000Z'};
+ const newer=n=>Array.from({length:n},(_,i)=>({id:`1001_${i+1}`,message:'Autre texte',created_time:'2029-06-01T11:00:00+0000'}));
+ assert.deepEqual(json(await rec(r=>r.path==='1001'?page():ok({data:newer(25)})).r.reconcile(base)),{status:'unknown',remoteId:null},'full page, window not covered');
+ assert.deepEqual(json(await rec(r=>r.path==='1001'?page():ok({data:newer(3)})).r.reconcile(base)),{status:'missing',remoteId:null},'page not full: whole window read');
+ assert.deepEqual(json(await rec(r=>r.path==='1001'?page():ok({data:[...newer(24),{id:'1001_99',message:'Ancien',created_time:'2029-06-01T09:00:00+0000'}]})).r.reconcile(base)),{status:'missing',remoteId:null},'older post reached: window covered');
+ const ig={...base,platform:'instagram',account:{externalAccountId:'17841400000000001',parentExternalId:'1001'}};
+ assert.deepEqual(json(await rec(r=>r.path==='1001'?page():ok({data:Array.from({length:25},(_,i)=>({id:String(17890000000000100+i),caption:'Autre',timestamp:'2029-06-01T11:00:00+0000'}))})).r.reconcile(ig)),{status:'unknown',remoteId:null},'Instagram: same rule');});

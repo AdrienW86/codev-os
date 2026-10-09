@@ -69,12 +69,15 @@ vérification d’entreprise pour l’accès avancé).
 - **Scope unique** : `https://www.googleapis.com/auth/business.manage` (aucun scope Google Ads / Drive).
 - Comptes : *My Business Account Management API* v1 (`accounts.list`, 20 par page) ; fiches : *My Business
   Business Information API* v1 (`accounts.locations.list`, `readMask=name,title`, 100 par page).
+- Expiration de la connexion : le jeton d’accès Google (≈ 1 h) est renouvelé depuis le jeton de rafraîchissement ;
+  la connexion enregistre donc `expires_at = null` quand un jeton de rafraîchissement existe (sinon la readiness P10
+  bloquerait toute publication une heure après la connexion).
 
 ### Configuration Google Cloud (à faire par l’administrateur)
 
 1. Demander l’accès aux API Business Profile (formulaire officiel ; quota initial à 0 tant que non approuvé).
 2. Activer **My Business Account Management API** et **My Business Business Information API** (la publication de
-   posts, P11-b, demandera aussi l’API Google My Business v4).
+   posts, P12, utilise aussi l’API Google My Business v4 — `mybusiness.googleapis.com`).
 3. Écran de consentement OAuth : type *External* ou *Internal* selon l’organisation, scope `business.manage`,
    utilisateurs de test tant que l’app n’est pas publiée.
 4. Créer un client OAuth **Web application** dédié ; *Authorized redirect URIs* : l’URI exacte ci-dessus.

@@ -112,7 +112,7 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  try{reference=await deps.vault.storeCredential({...credential,provider});}
  catch(error){log(provider,'vault',error);await record(deps,s.client_id,provider,'oauth_failed','vault_unavailable',userId);return back('unavailable');}
  const registered=await deps.db.rpc('publication_connection_register',{p_client_id:s.client_id,p_provider:provider,p_credential_reference:reference,
-  p_external_identity:credential.subject??null,p_expires_at:credential.expiresAt,p_metadata:{},p_actor_id:userId});
+  p_external_identity:credential.subject??null,p_expires_at:connectionExpiry(provider,credential),p_metadata:{},p_actor_id:userId});
  if(registered.error||!registered.data){log(provider,'register');await deps.vault.deleteCredential(reference).catch(()=>log(provider,'vault_cleanup'));
   await record(deps,s.client_id,provider,'oauth_failed','register_failed',userId);return back('unavailable');}
  const r=registered.data as {connection_id:string;replaced_reference?:unknown};
@@ -126,6 +126,12 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  return back('success');
 }
 
+// Expiry recorded on the CONNECTION (publication readiness blocks once it is past). Google access tokens live about
+// one hour but are renewed from the refresh token (explicit verification, in memory at publication time): the
+// connection itself does not expire then. Meta long-lived user tokens do expire (about 60 days): kept.
+export function connectionExpiry(provider:ConnectionProvider,credential:Pick<ProviderCredential,'expiresAt'|'refreshToken'>):string|null{
+ return provider==='google_business_profile'&&credential.refreshToken?null:credential.expiresAt;
+}
 // 3. Explicit verification: refresh when needed (rotation to a new reference), validation, resync. No cron.
 // Network / rate-limit errors never change the status; a provider revocation or expiry is recorded as such;
 // an ambiguous provider answer (permission, invalid) is recorded as error.
@@ -149,12 +155,12 @@ export async function verifyConnection(projectId:unknown,provider:unknown,deps:O
    if(credential.expiresAt&&Date.parse(credential.expiresAt)-now()<=REFRESH_MARGIN_MS[provider]){
     const refreshed=await source.refresh(credential);
     const reference=await deps.vault.rotateCredential(c.credential_reference,{...refreshed,provider});
-    const updated=await setStatus('active',reference,refreshed.expiresAt);if(updated.error)throw Error('status');
+    const updated=await setStatus('active',reference,connectionExpiry(provider,refreshed));if(updated.error)throw Error('status');
     credential=refreshed;await record(deps,project.client_id,provider,'connection_refreshed',null,userId);
    }
    const validation=await source.validateConnection(credential);
    if(validation.status!=='active'){await setStatus(validation.status);return {ok:false,message:validation.status==='revoked'?'Accès révoqué : reconnectez le compte.':'Connexion expirée : reconnectez le compte.'};}
-   if(c.status!=='active'){const restored=await setStatus('active',null,credential.expiresAt);if(restored.error)throw Error('status');}
+   if(c.status!=='active'){const restored=await setStatus('active',null,connectionExpiry(provider,credential));if(restored.error)throw Error('status');}
    const accounts=await discoverAccounts(provider,credential,deps);
    const synced=await deps.db.rpc('publication_accounts_sync',{p_client_id:project.client_id,p_connection_id:c.id,p_accounts:syncPayload(accounts),p_actor_id:userId});
    if(synced.error)throw Error('sync');

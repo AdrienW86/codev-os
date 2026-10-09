@@ -39,10 +39,14 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
   reconcilers.google_business_profile=createGoogleBusinessProfileReconciler(transport,{refresh});}
  return {publishers,reconcilers};
 }
+// Lease of a production job: the completion is refused once the lease is over (the delivery then becomes uncertain),
+// so it must outlast the slowest provider call. Worst case today: Instagram = Page token + container + 10 status
+// checks (20 s timeout each) + 9 waits of 3 s + media_publish ≈ 290 s. 600 s keeps a margin (bound: 900 s).
+export const PRODUCTION_LEASE_SECONDS=600;
 // Explicit, single-job execution for a future worker. Fail closed: no vault → nothing runs.
 export async function runOnePublicationJobInProduction(workerId:string):Promise<ExecutionResult>{
  const deps=productionOAuthDeps();if(!deps.vault)return {state:'idle'};
- return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers)});
+ return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS});
 }
 
 // Reconciliation of an uncertain delivery (admin action). The provider is only READ; the outcome is recorded by

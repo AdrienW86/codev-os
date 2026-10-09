@@ -252,7 +252,8 @@ test('callback refusals: forged / replayed / expired state, provider error, miss
  assert.match(path,/oauth=partial/);assert.equal(h.rpcs('publication_connection_register').length,1,'connection kept');assert.equal(h.rpcs('publication_accounts_sync').length,0);
  ({path,h}=await run(oauthHarness(),{state:'S'.repeat(43),code:'AQD-code-value'},'google_business_profile'));
  assert.match(path,/oauth=success&provider=google_business_profile/);assert.equal(h.gbp.calls[0][3],verifierOf('S'.repeat(43)),'PKCE verifier re-derived on the server');
- assert.deepEqual(h.rpcs('publication_accounts_sync')[0].p_accounts.map(a=>a.external_account_id),['accounts/1/locations/7']);});
+ assert.deepEqual(h.rpcs('publication_accounts_sync')[0].p_accounts.map(a=>a.external_account_id),['accounts/1/locations/7']);
+ assert.equal(h.rpcs('publication_connection_register')[0].p_expires_at,null,'GBP with a refresh token: the connection does not expire with the one-hour access token');});
 
 test('verify: refresh near expiry (rotation), validation, resync; revoked / expired / permission statuses; network keeps the status',async()=>{
  const store=memoryStore(),v=encrypted.createEncryptedCredentialVault(store,{current:{id:'k2026a',key:KEY},previous:null},seq());const r1=await v.storeCredential({accessToken:'EAAB-near-expiry',refreshToken:null,expiresAt:'2030-01-01T00:00:00.000Z',scopes:['pages_show_list'],provider:'meta',subject:'987'});
@@ -324,3 +325,18 @@ test('P11-a security scope: no secret client-side, no provider call in client co
  const sql=src('supabase/migrations/20261011000000_publications_oauth.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|create policy|grant [a-z, ]* to (anon|authenticated)|insert into public\.publication_deliveries|http|cron/i);
  assert.match(src('docs/publications-oauth.md'),/\/api\/publications\/oauth\/meta\/callback/);assert.doesNotMatch(src('docs/publications-oauth.md'),/EAAB|ya29\.|GOCSPX-[A-Za-z0-9]/);});
+
+test('Gate 4: GBP connection expiry follows the refresh token, not the access token; Meta keeps its expiry',async()=>{
+ const m=oauthHarness().m;
+ assert.equal(m.connectionExpiry('google_business_profile',{expiresAt:'2030-01-01T00:00:00Z',refreshToken:'1//r'}),null);
+ assert.equal(m.connectionExpiry('google_business_profile',{expiresAt:'2030-01-01T00:00:00Z',refreshToken:null}),'2030-01-01T00:00:00Z','no refresh token: the access token expiry is the connection expiry');
+ assert.equal(m.connectionExpiry('meta',{expiresAt:'2030-01-01T00:00:00Z',refreshToken:'x'}),'2030-01-01T00:00:00Z');
+ const store=memoryStore(),v=encrypted.createEncryptedCredentialVault(store,{current:{id:'k2026a',key:KEY},previous:null},seq());
+ const ref=await v.storeCredential({accessToken:'ya29.expired-access',refreshToken:'1//refresh-secret',expiresAt:'2029-12-24T23:00:00.000Z',scopes:['https://www.googleapis.com/auth/business.manage'],provider:'google_business_profile'});
+ const gbpProvider={refresh:async c=>({...c,accessToken:'ya29.fresh-access',expiresAt:'2029-12-25T01:00:00.000Z'}),validateConnection:async()=>({status:'active',externalIdentity:null}),
+  listAccounts:async()=>[{name:'accounts/1',accountName:'A'}],listLocations:async(_c,a)=>[{name:'locations/7',title:'Lyon',accountName:a}]};
+ const h=oauthHarness({connection:{id:CONN,status:'active',credential_reference:ref,expires_at:null},vaultImpl:v,gbpProvider});
+ const r=await h.capture(()=>h.m.verifyConnection(P,'google_business_profile',h.deps));
+ assert.equal(r.ok,true);const status=h.rpcs('publication_connection_set_status')[0];
+ assert.equal(status.p_status,'active');assert.equal(status.p_expires_at,null,'refreshed GBP connection: no one-hour expiry recorded');
+ assert.equal((await v.readCredential(status.p_credential_reference)).expiresAt,'2029-12-25T01:00:00.000Z','the access token expiry stays in the vault only');});

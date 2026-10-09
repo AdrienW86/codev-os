@@ -47,6 +47,10 @@ création du post. Le nouveau jeton n’est ni stocké ni journalisé. Un renouv
 écriture : aucun post ne peut exister (révoqué → `auth` / `token_revoked`, quota → `rate_limit`, panne →
 `provider_unavailable`).
 
+L’expiration enregistrée sur la **connexion** (`client_connections.expires_at`, utilisée par la readiness P10)
+n’est pas celle du jeton d’accès d’une heure : avec un jeton de rafraîchissement, la connexion GBP n’expire pas
+(`expires_at = null`, correction Gate 4). L’expiration du jeton d’accès reste uniquement dans le coffre.
+
 ## Au plus une fois (at-most-once)
 
 `localPosts.create` n’offre **aucune clé d’idempotence**. La garantie repose sur P10 : delivery unique par variante
@@ -83,5 +87,7 @@ appartenir à la fiche de la delivery. Après « absente », l’administrateur 
 - Posts « Nouveautés » (`STANDARD`) uniquement : pas d’événement, d’offre, de bouton d’action, d’alerte ni de vidéo.
 - Une seule photo par post.
 - `languageCode` fixé à `fr`.
+- La photo est lue par Google depuis une URL signée valable 5 minutes : si Google la récupérait plus tard (revue
+  asynchrone), le post pourrait être refusé (`REJECTED`) ; aucun bucket public n’est ouvert pour l’éviter.
 - La réconciliation par texte suppose un texte unique sur la période.
 - Le déclenchement réel (worker) reste à décider : `runOnePublicationJobInProduction` existe, aucun appelant.

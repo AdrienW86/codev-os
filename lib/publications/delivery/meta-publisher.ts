@@ -111,6 +111,7 @@ export function createMetaPublisher(transport:MetaPublishTransport,options:MetaP
 // Reconciliation: a known remote id is checked directly; otherwise the post is looked up among the Page / Instagram
 // account's recent posts created after the dispatch with the exact same text. One match → exists; none → missing;
 // several or unverifiable → unknown. Never invents an id.
+const RECONCILE_PAGE_SIZE=25;
 const meta_time=(v:unknown)=>typeof v==='string'?Date.parse(v.replace(/([+-]\d{2})(\d{2})$/,'$1:$2')):NaN;
 export function createMetaReconciler(transport:MetaPublishTransport):PublicationReconciler{
  const publisher={async read(path:string,params:Record<string,string>,token:string){try{const r=await transport.request({method:'GET',path,params,token});return r;}catch{return null;}}};
@@ -130,12 +131,17 @@ export function createMetaReconciler(transport:MetaPublishTransport):Publication
   const text=(d.text??'').trim(),since=d.since?Date.parse(d.since):NaN;if(!Number.isFinite(since))return unknown;
   const path=d.platform==='facebook'?`${pageId}/published_posts`:`${d.account?.externalAccountId}/media`;
   if(d.platform==='instagram'&&!/^[0-9]{1,30}$/.test(d.account?.externalAccountId??''))return unknown;
-  const r=await publisher.read(path,d.platform==='facebook'?{fields:'id,message,created_time',since:String(Math.floor(since/1000)-120),limit:'25'}:{fields:'id,caption,timestamp',limit:'25'},token);
+  const r=await publisher.read(path,d.platform==='facebook'?{fields:'id,message,created_time',since:String(Math.floor(since/1000)-120),limit:String(RECONCILE_PAGE_SIZE)}:{fields:'id,caption,timestamp',limit:String(RECONCILE_PAGE_SIZE)},token);
   if(!r||r.status!==200)return unknown;
-  const data=Array.isArray(record(r.body).data)?record(r.body).data as unknown[]:[];
-  const matches=data.map(record).filter(p=>{const at=meta_time(d.platform==='facebook'?p.created_time:p.timestamp);
+  const data=(Array.isArray(record(r.body).data)?record(r.body).data as unknown[]:[]).map(record);
+  const timeOf=(p:Record<string,unknown>)=>meta_time(d.platform==='facebook'?p.created_time:p.timestamp);
+  const matches=data.filter(p=>{const at=timeOf(p);
    return Number.isFinite(at)&&at>=since-120_000&&String((d.platform==='facebook'?p.message:p.caption)??'').trim()===text;});
   if(matches.length===1){const remote=id(matches[0].id);return remote?{status:'exists',remoteId:remote}:unknown;}
-  return matches.length===0?{status:'missing',remoteId:null}:unknown;
+  if(matches.length>1)return unknown;
+  // "missing" only when the whole window since the dispatch was read: a page that is not full, or a post older than
+  // the window in it. A full page of newer posts may hide ours (a false "missing" would allow a duplicate).
+  const covered=data.length<RECONCILE_PAGE_SIZE||data.some(p=>{const at=timeOf(p);return Number.isFinite(at)&&at<since-120_000;});
+  return covered?{status:'missing',remoteId:null}:unknown;
  }};
 }

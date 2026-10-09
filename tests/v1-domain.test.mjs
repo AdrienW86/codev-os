@@ -132,3 +132,30 @@ test("system status: ✓ configured, ○ nothing set, ! partial or last sync err
   assert.doesNotMatch(statuses, /sk-very-secret-value|"a"|"b"/);
   assert.ok(!providers.allProviderStatuses({}).some((item) => item.id === "internal"));
 });
+
+const agenda = loadTs("lib/agenda/occurrences.ts", { zod, "@/lib/scheduler/recurrence": recurrence });
+
+test("agenda recurrence keeps the Paris wall-clock time across the DST change; until and cancelled respected", () => {
+  const item = { id: "w", starts_at: "2026-10-19T07:00:00.000Z", timezone: "Europe/Paris", recurrence: "weekly", recurrence_until: "2026-11-02", status: "planned", duration_minutes: 30 };
+  const list = agenda.expandOccurrences([item, { ...item, id: "c", status: "cancelled" }], new Date("2026-10-01T00:00:00Z"), new Date("2026-12-01T00:00:00Z"));
+  assert.deepEqual(plain(list.map((occurrence) => occurrence.startsAt.toISOString())), ["2026-10-19T07:00:00.000Z", "2026-10-26T08:00:00.000Z", "2026-11-02T08:00:00.000Z"], "09:00 Paris before and after 25 Oct");
+  assert.equal(list[0].endsAt.toISOString(), "2026-10-19T07:30:00.000Z");
+  const monthly = agenda.expandOccurrences([{ ...item, id: "m", starts_at: "2026-01-31T09:00:00.000Z", recurrence: "monthly", recurrence_until: null }], new Date("2026-02-01T00:00:00Z"), new Date("2026-04-01T00:00:00Z"));
+  assert.deepEqual(plain(monthly.map((occurrence) => occurrence.startsAt.toISOString().slice(0, 10))), ["2026-02-28", "2026-03-31"], "month end clamps");
+  const once = agenda.expandOccurrences([{ ...item, id: "o", recurrence: "none" }], new Date("2026-10-20T00:00:00Z"), new Date("2026-10-27T00:00:00Z"));
+  assert.equal(once.length, 0);
+  assert.equal(agenda.mondayOf("2026-10-11"), "2026-10-05");
+  assert.equal(agenda.localDay(new Date("2026-10-09T22:30:00Z")), "2026-10-10", "Paris day, not UTC day");
+});
+
+test("agenda shows planned automation runs and validates input server-side", () => {
+  const runs = agenda.automationRuns([{ id: "a", name: "Rapports", status: "active", frequency: "weekly", schedule: { time: "08:00", weekdays: [1] }, timezone: "Europe/Paris", next_run_at: "2026-10-12T06:00:00.000Z" }, { id: "p", name: "Pause", status: "paused", frequency: "daily", schedule: { time: "08:00" }, timezone: "Europe/Paris", next_run_at: "2026-10-12T06:00:00.000Z" }], new Date("2026-10-12T00:00:00Z"), new Date("2026-10-27T00:00:00Z"));
+  assert.deepEqual(plain(runs.map((run) => run.at.toISOString())), ["2026-10-12T06:00:00.000Z", "2026-10-19T06:00:00.000Z", "2026-10-26T07:00:00.000Z"]);
+  const ok = agenda.validateAgendaInput({ kind: "meeting", title: "Point", clientId: null, startsLocal: "2026-12-01T09:30" });
+  assert.equal(ok.value.startsAt, "2026-12-01T08:30:00.000Z");
+  assert.equal(agenda.validateAgendaInput({ kind: "meeting", title: "Point", clientId: null, startsLocal: "2026-02-30T09:30" }).ok, false, "impossible date");
+  assert.equal(agenda.validateAgendaInput({ kind: "automation", title: "x", clientId: null, startsLocal: "2026-12-01T09:30" }).ok, false, "automation entries are derived, never typed");
+  assert.equal(agenda.validateAgendaInput({ kind: "meeting", title: "x", clientId: null, startsLocal: "2026-12-01T09:30", recurrence: "weekly", recurrenceUntil: "2026-11-01" }).ok, false);
+  assert.equal(agenda.validateAgendaInput({ kind: "meeting", title: "x", clientId: null, startsLocal: "2026-12-01T09:30", sql: "drop" }).ok, false);
+  assert.equal(agenda.validateAgendaInput({ kind: "meeting", title: "", clientId: null, startsLocal: "2026-12-01T09:30" }).ok, false);
+});

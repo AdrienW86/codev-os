@@ -15,6 +15,9 @@ import { runNow } from "@/lib/automations/service";
 import { topNews } from "@/lib/news/data";
 import { todayInParis } from "@/lib/dashboard/home";
 import { runCheckType, type ToolName } from "@/lib/assistant/tools";
+import { listAgendaItems } from "@/lib/agenda/service";
+import { addDays, expandOccurrences } from "@/lib/agenda/occurrences";
+import { zonedToUtc } from "@/lib/scheduler/recurrence";
 import type { ToolOutcome } from "@/lib/assistant/orchestrator";
 
 const db = () => getSupabaseServerClient();
@@ -81,10 +84,14 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
     }
     case "agenda_today": {
       const day = typeof input.date === "string" ? input.date : today;
-      const [tasks, items] = await Promise.all([
+      const [y, m, d] = day.split("-").map(Number);
+      const [ny, nm, nd] = addDays(day, 1).split("-").map(Number);
+      const from = zonedToUtc(y, m, d, 0, 0, "Europe/Paris"), to = zonedToUtc(ny, nm, nd, 0, 0, "Europe/Paris");
+      const [tasks, agendaItems] = await Promise.all([
         db().from("tasks").select("title,due_time,client:clients(name)").eq("due_date", day).neq("status", "Terminé").order("due_time").limit(20),
-        db().from("agenda_items").select("title,starts_at").gte("starts_at", `${day}T00:00:00Z`).lt("starts_at", `${day}T23:59:59Z`).neq("status", "cancelled").order("starts_at").limit(20),
+        listAgendaItems(to).catch(() => []),
       ]);
+      const items = { data: expandOccurrences(agendaItems, from, to).map((occurrence) => ({ title: occurrence.item.title, starts_at: occurrence.startsAt.toISOString() })) };
       const lines = [
         ...(items.data ?? []).map((item) => `${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(new Date(item.starts_at))} ${item.title}`),
         ...(tasks.data ?? []).map((task) => `${task.due_time ? `${String(task.due_time).slice(0, 5)} ` : ""}${task.title}${(task.client as { name?: string } | null)?.name ? ` (${(task.client as { name: string }).name})` : ""}`),

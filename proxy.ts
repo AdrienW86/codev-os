@@ -1,0 +1,30 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import { isAuthorizedAdmin } from "@/lib/admin-policy";
+
+export default clerkMiddleware(async (auth, request) => {
+  const path = request.nextUrl.pathname;
+  if (path === "/sign-up" || path.startsWith("/sign-up/")) {
+    return NextResponse.redirect(new URL("/sign-in", request.url), 303);
+  }
+  if (path === "/sign-in" || path.startsWith("/sign-in/") || path === "/__clerk" || path.startsWith("/__clerk/")) return;
+
+  const { userId, isAuthenticated } = await auth();
+  if (!isAuthenticated || !userId) {
+    if (request.method !== "GET" && request.method !== "HEAD" || path.startsWith("/api/") || path.startsWith("/trpc/")) {
+      return new NextResponse("Authentification requise", { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
+    return NextResponse.redirect(new URL("/sign-in", request.url));
+  }
+  if (!isAuthorizedAdmin(userId)) {
+    return new NextResponse("Accès refusé", { status: 403, headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" } });
+  }
+});
+
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico$).*)",
+    "/(api|trpc)(.*)",
+    "/__clerk/:path*",
+  ],
+};

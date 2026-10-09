@@ -7,12 +7,23 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:security": "node --test tests/admin-access.test.mjs",
+    "test:clients": "node --test tests/clients.test.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:publications": "node --test tests/publications.test.mjs",
+    "test:publications:db": "node scripts/test-publications-db.mjs",
+    "test:scope:db": "node --test tests/agent-scope-db.test.mjs",
+    "test:remote-schema:db": "node scripts/test-remote-schema-db.mjs",
+    "test:historical-permissions:db": "node scripts/test-historical-permissions-db.mjs"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.9.10",
+    "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

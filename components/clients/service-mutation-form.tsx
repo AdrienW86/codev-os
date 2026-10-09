@@ -3,10 +3,17 @@
 import { useActionState } from "react";
 import { activateServiceAction, deactivateServiceAction, type ServiceActionState } from "@/app/(cockpit)/clients/[id]/service-actions";
 import { actionClass } from "@/components/ui/button";
+import { flash } from "@/components/ui/flash";
 
 /** Activation / désactivation réelle d’un service (Server Action, simulation refusée côté serveur). */
 export function ServiceMutationForm({ clientId, serviceKey, mode }: { clientId: string; serviceKey: string; mode: "activate" | "deactivate" }) {
-  const [state, action, pending] = useActionState<ServiceActionState, FormData>(mode === "activate" ? activateServiceAction : deactivateServiceAction, {});
+  const server = mode === "activate" ? activateServiceAction : deactivateServiceAction;
+  // Après succès, le formulaire laisse place à l'autre état du service : confirmation persistante.
+  const [state, action, pending] = useActionState<ServiceActionState, FormData>(async (previous, form) => {
+    const result = await server(previous, form);
+    if (result.ok && result.message) flash(result.message);
+    return result;
+  }, {});
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="client_id" value={clientId} />

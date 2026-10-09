@@ -36,7 +36,7 @@ export async function listJobs(filters: { status?: string; limit?: number } = {}
   return (data ?? []) as unknown as JobRecord[];
 }
 
-export async function createAutomation(actor: Actor & { kind: "admin" }, input: unknown, now = new Date()): Promise<Outcome & { id?: string }> {
+export async function createAutomation(actor: Extract<Actor, { userId: string }>, input: unknown, now = new Date()): Promise<Outcome & { id?: string }> {
   const valid = validateAutomation(input, now);
   if (!valid.ok) return valid;
   const value = valid.value;

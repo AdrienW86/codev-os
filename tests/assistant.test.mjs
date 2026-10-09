@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as zod from "zod";
-import { loadTs } from "./helpers/load-ts.mjs";
+import { loadRegistry, loadTs } from "./helpers/load-ts.mjs";
 
 const tools = loadTs("lib/assistant/tools.ts", { zod });
 const intents = loadTs("lib/assistant/intents.ts");
@@ -33,7 +33,8 @@ test("tool registry: strict inputs, unknown tools refused, JSON schemas closed",
     assert.equal(spec.parameters.$schema, undefined);
   }
   const writes = Object.entries(tools.toolDefinitions).filter(([, item]) => item.kind === "write").map(([name]) => name).sort();
-  assert.deepEqual(writes, ["create_task", "generate_report", "run_check"]);
+  assert.deepEqual(writes, ["create_task", "generate_report", "run_check", "schedule_check"]);
+  assert.equal(tools.parseToolInput("schedule_check", { check: "seo.analyze", date: "2026-10-13", time: "25:00" }).ok, false);
   assert.match(tools.describeProposal("create_task", { client: "Jrenov", title: "Relancer", priority: "Haute" }), /Créer la tâche « Relancer » pour Jrenov, priorité haute/);
 });
 
@@ -49,6 +50,10 @@ test("deterministic intents (French)", () => {
     ["Mon agenda d'aujourd'hui", "agenda_today", {}],
     ["Crée une tâche Relancer le devis pour Jrenov demain", "create_task", { title: "Relancer le devis", client: "Jrenov", due_date: "2026-10-10", priority: "Moyenne" }],
     ["Où en est le client Jrenov ?", "client_overview", { client: "Jrenov" }],
+    ["Montre-moi les actions à valider", "list_pending_actions", {}],
+    ["Quels clients nécessitent mon attention ?", "clients_attention", {}],
+    ["Planifie un audit SEO de Jrenov mardi à 9h", "schedule_check", { check: "seo.analyze", client: "Jrenov", date: "2026-10-13", time: "09:00" }],
+    ["Programme le contrôle des sites demain 14h30", "schedule_check", { check: "monitoring.check_sites", date: "2026-10-10", time: "14:30" }],
   ];
   for (const [text, tool, input] of cases) assert.deepEqual(plain(intents.parseIntent(text, TODAY)), { tool, input }, text);
   assert.equal(intents.parseIntent("Écris-moi un poème", TODAY), null);
@@ -196,4 +201,9 @@ test("request guard: strict same origin, JSON only, bounded size, malformed JSON
   assert.equal(limiter("u", 0), true); assert.equal(limiter("u", 10), true); assert.equal(limiter("u", 20), false);
   assert.equal(limiter("other", 20), true);
   assert.equal(limiter("u", 1500), true, "window slides");
+});
+
+test("every assistant tool named by the agent registry exists in the tool registry", () => {
+  const { registry } = loadRegistry();
+  for (const definition of Object.values(registry.agentDefinitions)) for (const tool of definition.tools) assert.ok(tools.isToolName(tool), `${definition.type}: ${tool}`);
 });

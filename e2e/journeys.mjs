@@ -78,6 +78,37 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
       await page.waitForURL(/\/reports\/[0-9a-f-]{36}/);
     });
 
+    await journey("client → service → agent : activer le SEO rattache l’Agent SEO (en pause, à configurer)", async () => {
+      await go("/clients/22222222-2222-4222-8222-222222222222");
+      await page.getByRole("button", { name: "Ajouter un service" }).click();
+      const dialog = page.locator("dialog[open]");
+      await dialog.getByRole("button", { name: /SEO & visibilité locale/ }).first().click();
+      await dialog.getByRole("button", { name: "Activer ce service" }).click();
+      await status(/Service activé/).waitFor();
+      await shot("service-activated");
+      await go("/clients/22222222-2222-4222-8222-222222222222?tab=agents");
+      await page.getByText("Agent SEO & Site").first().waitFor();
+    });
+
+    await journey("assistant : planifier un audit et créer une tâche (propositions confirmées)", async () => {
+      await go("/dashboard");
+      const input = page.getByLabel("Votre demande à l’assistant");
+      await input.fill("Planifie un audit SEO de Jrenov mardi à 9h");
+      await page.getByRole("button", { name: "Envoyer", exact: true }).click();
+      const proposal = page.getByRole("group", { name: "Action proposée" });
+      await proposal.getByText(/Planifier l’analyse SEO pour Jrenov/).waitFor();
+      await proposal.getByRole("button", { name: "Confirmer" }).click();
+      await page.getByText(/Planifié le \d{4}-\d{2}-\d{2} à 09:00/).waitFor();
+      await input.fill("Crée une tâche Préparer le devis SEO pour Jrenov demain");
+      await page.getByRole("button", { name: "Envoyer", exact: true }).click();
+      await proposal.getByRole("button", { name: "Confirmer" }).click();
+      await page.getByText("Tâche créée pour Jrenov.").waitFor();
+      await go("/settings?tab=automations");
+      await page.getByText(/Analyse SEO — Jrenov \(planifiée\)/).waitFor();
+      await go("/work?kind=task");
+      await page.getByText("Préparer le devis SEO").first().waitFor();
+    });
+
     await journey("rapports : générer, relire, approuver, envoi manuel (e-mail désactivé)", async () => {
       await go("/reports");
       await page.locator('select[name="client_id"]').first().selectOption({ label: "Boulangerie Martin" });

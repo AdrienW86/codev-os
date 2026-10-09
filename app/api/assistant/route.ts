@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const MAX_BODY = 16_384;
-const limiter = createRateLimiter(20, 60_000);
+const limiter = createRateLimiter(30, 60_000);
 const headers = { "Cache-Control": "no-store" };
 
 const requestSchema = z.union([

@@ -31,6 +31,18 @@ export const toolDefinitions = {
     kind: "read", description: "Les 3 actualités tech & IA les plus pertinentes de la veille.",
     input: z.object({}).strict(), capability: "fetch_news" as CapabilityId,
   },
+  list_pending_actions: {
+    kind: "read", description: "Actions préparées par les agents qui attendent votre validation.",
+    input: z.object({}).strict(), capability: null,
+  },
+  clients_attention: {
+    kind: "read", description: "Clients qui nécessitent votre attention (incidents ouverts, tâches en retard, actions à valider).",
+    input: z.object({}).strict(), capability: null,
+  },
+  schedule_check: {
+    kind: "write", description: "Planifie une analyse d’agent à une date et une heure précises (heure de Paris).",
+    input: z.object({ check: z.enum(["monitoring.check_sites", "seo.analyze", "ads.monitor", "news.fetch"]), client: clientName.optional(), date, time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict(), capability: null,
+  },
   generate_report: {
     kind: "write", description: "Génère (ou régénère) le rapport hebdomadaire ou mensuel de la période close d’un client, à relire avant tout envoi.",
     input: z.object({ client: clientName, kind: z.enum(["weekly", "monthly"]).default("weekly") }).strict(), capability: "generate_report" as CapabilityId,
@@ -72,6 +84,7 @@ const checkLabels: Record<string, string> = { "monitoring.check_sites": "le cont
 export function describeProposal(name: ToolName, input: Record<string, unknown>) {
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;
+  if (name === "schedule_check") return `Planifier ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""} le ${input.date} à ${input.time} (heure de Paris).`;
   if (name === "create_task") return `Créer la tâche « ${input.title} » pour ${input.client}${input.due_date ? `, échéance ${input.due_date}` : ""}, priorité ${String(input.priority ?? "Moyenne").toLowerCase()}.`;
   return toolDefinitions[name].description;
 }

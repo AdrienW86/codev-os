@@ -77,7 +77,10 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
     setPending(true);
     const current = proposal;
     setProposal(null);
-    deliver(await call({ confirm: { tool: current.tool, input: current.input } }));
+    const reply = await call({ confirm: { tool: current.tool, input: current.input } });
+    deliver(reply);
+    // Échec technique (quota, réseau, session) : la proposition reste disponible pour réessayer.
+    if (reply.error) setProposal(current);
     setPending(false);
   }
 

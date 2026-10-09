@@ -11,7 +11,8 @@ import { isProviderConfigured } from "@/lib/system/providers";
 import { generateReport, listReports } from "@/lib/reports/service";
 import { reportStatusLabels } from "@/lib/reports/labels";
 import { periodLabel } from "@/lib/reports/build";
-import { runNow } from "@/lib/automations/service";
+import { createAutomation, runNow } from "@/lib/automations/service";
+import { describeAction } from "@/lib/actions/registry";
 import { topNews } from "@/lib/news/data";
 import { todayInParis } from "@/lib/dashboard/home";
 import { runCheckType, type ToolName } from "@/lib/assistant/tools";
@@ -138,6 +139,42 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
       } else if (definition.scope === "client") return { ok: false, text: "Précisez le client pour cette analyse." };
       const result = await runNow(actor, { runType, clientId, trigger: "assistant" });
       return { ok: result.ok, text: result.message ?? (result.ok ? "Analyse lancée." : "Analyse impossible."), links: [{ label: "Observabilité", href: "/settings?tab=system" }, { label: "Travail", href: "/work" }] };
+    }
+    case "list_pending_actions": {
+      const { data, error } = await db().from("actions").select("action_type,parameters,client:clients(name)").eq("status", "pending_approval").order("created_at", { ascending: false }).limit(6);
+      if (error) throw new Error("actions read");
+      if (!data?.length) return { ok: true, text: "Aucune action en attente de validation.", links: [{ label: "Travail", href: "/work" }] };
+      return { ok: true, text: `${data.length} action(s) à valider : ${data.slice(0, 5).map((item) => `${(item.client as { name?: string } | null)?.name ?? "Client"} — ${describeAction(item.action_type, item.parameters)}`).join(" · ")}`, links: [{ label: "Valider dans Travail", href: "/work?view=review" }] };
+    }
+    case "clients_attention": {
+      const [incidents, tasks, actions] = await Promise.all([
+        db().from("incidents").select("client_id").neq("status", "resolved").limit(500),
+        db().from("tasks").select("client_id").neq("status", "Terminé").lt("due_date", today).limit(500),
+        db().from("actions").select("client_id").eq("status", "pending_approval").limit(500),
+      ]);
+      const score = new Map<string, { incidents: number; overdue: number; actions: number }>();
+      const bump = (rows: { client_id: string | null }[] | null, key: "incidents" | "overdue" | "actions") => { for (const row of rows ?? []) { if (!row.client_id) continue; const entry = score.get(row.client_id) ?? { incidents: 0, overdue: 0, actions: 0 }; entry[key]++; score.set(row.client_id, entry); } };
+      bump(incidents.data, "incidents"); bump(tasks.data, "overdue"); bump(actions.data, "actions");
+      if (!score.size) return { ok: true, text: "Aucun client ne demande d’attention particulière.", links: [{ label: "Clients", href: "/clients" }] };
+      const ranked = [...score.entries()].sort(([, a], [, b]) => (b.incidents * 3 + b.overdue * 2 + b.actions) - (a.incidents * 3 + a.overdue * 2 + a.actions)).slice(0, 5);
+      const { data: clients } = await db().from("clients").select("id,name").in("id", ranked.map(([id]) => id));
+      const name = (id: string) => clients?.find((client) => client.id === id)?.name ?? "Client";
+      return { ok: true, text: ranked.map(([id, entry]) => `${name(id)} : ${[entry.incidents ? `${entry.incidents} incident(s)` : null, entry.overdue ? `${entry.overdue} tâche(s) en retard` : null, entry.actions ? `${entry.actions} action(s) à valider` : null].filter(Boolean).join(", ")}`).join(" · "), links: ranked.slice(0, 3).map(([id]) => ({ label: name(id), href: `/clients/${id}` })) };
+    }
+    case "schedule_check": {
+      const runType = runCheckType(input.check);
+      if (!runType) return { ok: false, text: "Analyse inconnue." };
+      if (actor.kind === "system") return { ok: false, text: "Planification réservée à l’administrateur." };
+      const allowed = await authorizeCapability(runTypes[runType].capability);
+      let clientId: string | null = null, clientName = "";
+      if (typeof input.client === "string") {
+        const client = await resolveClient(input.client);
+        if (!client.ok) return { ok: false, text: client.message };
+        clientId = client.id; clientName = client.name;
+      }
+      const result = await createAutomation(actor, { name: `${runTypes[runType].label}${clientName ? ` — ${clientName}` : ""} (planifiée)`.slice(0, 120), runType, clientId, frequency: "once", schedule: { runAtLocal: `${input.date}T${input.time}` }, config: {} });
+      if (!result.ok) return { ok: false, text: result.message };
+      return { ok: true, text: `Planifié le ${input.date} à ${input.time}.${allowed.ok ? "" : ` Attention : ${allowed.message}`}`, links: [{ label: "Automatisations", href: "/settings?tab=automations" }, { label: "Agenda", href: "/agenda" }] };
     }
     case "create_task": {
       const client = await resolveClient(String(input.client));

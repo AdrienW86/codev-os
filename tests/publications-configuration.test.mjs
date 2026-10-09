@@ -152,7 +152,7 @@ test('page: admin guard, workspace rule (0 active channel keeps the tab), no wri
  assert.match(renderToStaticMarkup(await page(caps('legacy',['facebook']))(props({debug:'1'}))),/data-debug="true"/);});
 
 test('P2-b scope: no migration, no client-side database access, no P3 / occurrences, tab under the project',()=>{
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,21,'P2-b added none; 21 after P11-b');
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,22,'P2-b added none; 22 after P12');
  const client=src('components/publications/channel-configuration.tsx');assert.match(client,/^'use client';/);assert.doesNotMatch(client,/@\/lib\/supabase|getSupabaseServerClient|\.rpc\(|\.from\(|process\.env|server-only|@\/lib\/publications\/channel-configuration'/);
  for(const f of ['components/publications/channel-configuration.tsx','lib/publications/channel-configuration.ts','lib/publications/channel-configuration-model.ts','app/(cockpit)/publications/configuration-actions.ts'])assert.doesNotMatch(src(f),/openai|drive|publish_now|cron/i,f);// occurrences exist since P3
  const service=src('lib/publications/channel-configuration.ts');assert.deepEqual([...new Set([...service.matchAll(/rpc\('([a-z_]+)'/g)].map(m=>m[1]))],['publication_channel_save']);assert.match(service,/saveChannelSchedule\(/);assert.doesNotMatch(service,/\.insert\(|\.update\(|\.delete\(/);

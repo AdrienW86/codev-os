@@ -1,12 +1,16 @@
 import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {metaOAuthConfig} from '@/lib/integrations/publications-oauth/config';
+import {googleOAuthConfig,metaOAuthConfig} from '@/lib/integrations/publications-oauth/config';
+import {googleTransport} from '@/lib/integrations/publications-oauth/http';
 import {metaPublishTransport} from '@/lib/integrations/publications-meta-publish';
+import {gbpPublishTransport} from '@/lib/integrations/publications-gbp-publish';
 import {isPublicationUuid} from '../validation';
 import {isCredentialReference,type CredentialVault} from '../connections/vault';
 import {productionOAuthDeps} from '../oauth/service';
+import {createGoogleBusinessProfileConnectionProvider} from '../connections/google-business-profile';
 import {createMetaPublisher,createMetaReconciler} from './meta-publisher';
+import {createGoogleBusinessProfilePublisher,createGoogleBusinessProfileReconciler} from './gbp-publisher';
 import {runOnePublicationJob,type EngineDb,type ExecutionResult} from './engine';
 import type {PublicationPublisher,PublicationReconciler,PublishResult,ReconcileResult} from './publisher';
 import type {PublicationPlatform} from '../types';
@@ -21,12 +25,19 @@ const notConfigured:PublishResult={ok:false,errorClass:'auth',errorCode:'provide
 export function registryPublisher(registry:PublisherRegistry):PublicationPublisher{
  return {async publish(input){const p=registry[input.platform];return p?p.publish(input):notConfigured;}};
 }
+// Meta when its app is configured (P11-b); Google Business Profile when its OAuth client is configured (P12: the
+// expired access token is refreshed in memory through the read-only OAuth transport, never stored again).
 export function productionPublisherRegistry():{publishers:PublisherRegistry;reconcilers:ReconcilerRegistry}{
+ const publishers:PublisherRegistry={},reconcilers:ReconcilerRegistry={};
  const meta=metaOAuthConfig();
- if(!meta)return {publishers:{},reconcilers:{}};
- const transport=metaPublishTransport(meta);
- const publisher=createMetaPublisher(transport),reconciler=createMetaReconciler(transport);
- return {publishers:{facebook:publisher,instagram:publisher},reconcilers:{facebook:reconciler,instagram:reconciler}};
+ if(meta){const transport=metaPublishTransport(meta);const publisher=createMetaPublisher(transport),reconciler=createMetaReconciler(transport);
+  Object.assign(publishers,{facebook:publisher,instagram:publisher});Object.assign(reconcilers,{facebook:reconciler,instagram:reconciler});}
+ const google=googleOAuthConfig();
+ if(google){const transport=gbpPublishTransport(),provider=createGoogleBusinessProfileConnectionProvider(googleTransport(google));
+  const refresh=(credential:Parameters<typeof provider.refresh>[0])=>provider.refresh(credential);
+  publishers.google_business_profile=createGoogleBusinessProfilePublisher(transport,{refresh});
+  reconcilers.google_business_profile=createGoogleBusinessProfileReconciler(transport,{refresh});}
+ return {publishers,reconcilers};
 }
 // Explicit, single-job execution for a future worker. Fail closed: no vault → nothing runs.
 export async function runOnePublicationJobInProduction(workerId:string):Promise<ExecutionResult>{

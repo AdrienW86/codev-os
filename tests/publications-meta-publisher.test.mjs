@@ -173,7 +173,8 @@ test('kill switches with the real Meta publisher: no claim, blocked context or r
 
 test('registry, production entry point, reconcile service and drawer actions: explicit only, fail closed, no secret',async()=>{
  const reg=load('lib/publications/delivery/registry.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>({})},
-  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null},'@/lib/integrations/publications-meta-publish':integration,'../oauth/service':{productionOAuthDeps:()=>({vault:null})},
+  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null},'@/lib/integrations/publications-meta-publish':integration,'../oauth/service':{productionOAuthDeps:()=>({vault:null})},
+  '@/lib/integrations/publications-oauth/http':{},'@/lib/integrations/publications-gbp-publish':{},'../connections/google-business-profile':{},'./gbp-publisher':{},
   './meta-publisher':meta,'./engine':{runOnePublicationJob:async()=>{throw Error('must not run');}},'../connections/vault':vault});
  assert.deepEqual(json(await reg.registryPublisher({}).publish(input())),{ok:false,errorClass:'auth',errorCode:'provider_not_configured'});
  assert.deepEqual(json(reg.productionPublisherRegistry()),{publishers:{},reconcilers:{}},'no Meta config: no publisher');
@@ -198,12 +199,12 @@ test('registry, production entry point, reconcile service and drawer actions: ex
 
 test('P11-b scope: nothing triggers publishing, OAuth transport still read-only, generic logs, docs, migrations',()=>{
  for(const dir of ['app','components','lib','proxy.ts']){const files=dir.endsWith('.ts')?[dir]:readdirSync(resolve(root,dir),{recursive:true}).filter(f=>/\.(ts|tsx)$/.test(f)).map(f=>dir+'/'+f.replaceAll('\\','/'));
-  for(const f of files){if(f.startsWith('lib/publications/delivery/')||f==='lib/integrations/publications-meta-publish.ts')continue;const code=src(f);
+  for(const f of files){if(f.startsWith('lib/publications/delivery/')||f==='lib/integrations/publications-meta-publish.ts'||f==='lib/integrations/publications-gbp-publish.ts')continue;const code=src(f);
    assert.doesNotMatch(code,/runOnePublicationJobInProduction|runOnePublicationJob\b|createMetaPublisher|metaPublishTransport/,`${f}: no trigger of the real publisher`);}}
  assert.doesNotMatch(src('lib/integrations/publications-oauth/http.ts').replace(/\/\/[^\n]*/g,''),/feed|media_publish|\/photos/,'OAuth transport stays read-only');
  for(const f of ['lib/publications/delivery/meta-publisher.ts','lib/publications/delivery/registry.ts','lib/integrations/publications-meta-publish.ts']){const code=src(f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/console\.log/,f);for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/token|credential|body|url|text|message|error\b/i,`${f}: generic logs`);}
  const doc=src('docs/publications-meta-publisher.md');for(const s of ['v25.0','/feed','/photos','/media_publish','status_code','pages_manage_posts','instagram_content_publish','uncertain','App Review'])assert.ok(doc.includes(s),s);
  assert.doesNotMatch(doc,/EAAB|appsecret_proof=[a-f0-9]{10}/);
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,21);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
  const sql=src('supabase/migrations/20261012000000_publications_meta_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs/i);});

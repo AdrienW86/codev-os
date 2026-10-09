@@ -272,7 +272,7 @@ test('runs view: state per run, retry only for failed or stalled attempts, signe
  assert.deepEqual(json(await m.getAgentV2MediaRuns('bad')),[]);});
 
 test('P8 scope: one migration, no publisher / delivery / job / cron / security definer; media code never calls AI; remote untouched',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,21);assert.equal(list[16],'20261008050000_publications_agent_v2_media.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[16],'20261008050000_publications_agent_v2_media.sql');
  const sql=src('supabase/migrations/20261008050000_publications_agent_v2_media.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|index|function)|delete from|truncate (table )?public|security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|publication_submit_manual|publication_review_manual|cron|http/i);
  assert.match(sql,/create trigger publications_media_before_approval before update of status on public\.publications/);

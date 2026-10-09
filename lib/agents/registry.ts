@@ -72,7 +72,7 @@ export type RunTypeDefinition = {
   capability: CapabilityId;
   /** Portée attendue de l'automatisation. */
   scope: "global" | "client";
-  /** Charge utile acceptée (validée par lib/runs/payloads.ts). */
+  /** Description affichée ; la charge utile acceptée est validée par lib/automations/definitions.ts (runConfigSchemas). */
   description: string;
 };
 
@@ -91,7 +91,7 @@ export type AgentDefinition = {
   scopes: AgentScope[];
   services: ServiceId[];
   capabilities: CapabilityId[];
-  /** Outils de l'assistant que cet agent peut déclencher. */
+  /** Outils de l'assistant (lib/assistant/tools.ts) qui sollicitent cet agent. */
   tools: string[];
   runTypes: RunType[];
   defaultAutonomy: 0 | 1;
@@ -110,22 +110,22 @@ export const agentDefinitions: Record<AgentType, AgentDefinition> = {
   seo: {
     type: "seo", name: "Agent SEO & Site", description: "Analyse Search Console et PageSpeed, détecte pertes et opportunités, propose des améliorations.",
     scopes: ["client", "project"], services: ["seo"], capabilities: ["analyze_search_console", "audit_pagespeed", "detect_seo_opportunities", "propose_site_change", "modify_site"],
-    tools: ["run_agent"], runTypes: ["seo.analyze"], defaultAutonomy: 1,
+    tools: ["run_check"], runTypes: ["seo.analyze"], defaultAutonomy: 1,
   },
   "google-ads": {
     type: "google-ads", name: "Agent Google Ads", description: "Surveille les campagnes en lecture seule et propose des optimisations.",
     scopes: ["client"], services: ["google-ads"], capabilities: ["read_campaigns", "detect_ads_anomalies", "propose_ads_optimization", "modify_campaign"],
-    tools: ["run_agent"], runTypes: ["ads.monitor"], defaultAutonomy: 1,
+    tools: ["run_check"], runTypes: ["ads.monitor"], defaultAutonomy: 1,
   },
   publications: {
     type: "publications", name: "Agent Publications", description: "Prépare les contenus des réseaux sociaux ; rien n’est publié sans validation.",
     scopes: ["project"], services: ["social"], capabilities: ["prepare_publication", "select_media", "schedule_publication", "publish"],
-    tools: ["list_publications"], runTypes: [], defaultAutonomy: 1,
+    tools: [], runTypes: [], defaultAutonomy: 1,
   },
   monitoring: {
     type: "monitoring", name: "Agent Monitoring Technique", description: "Disponibilité, performances, déploiements et régressions des sites.",
     scopes: ["client", "project"], services: ["maintenance", "website"], capabilities: ["check_http", "audit_pagespeed", "read_deployments", "read_repository", "propose_fix", "apply_fix"],
-    tools: ["run_agent"], runTypes: ["monitoring.check_sites"], defaultAutonomy: 1,
+    tools: ["run_check"], runTypes: ["monitoring.check_sites"], defaultAutonomy: 1,
   },
   automation: {
     type: "automation", name: "Agent Automatisation", description: "Workflows et intégrations sur mesure.",

@@ -45,9 +45,9 @@ insert into public.agents(name, description, status, instructions, autonomy_leve
 select v.name, v.description, v.status, '', v.autonomy, v.enabled, v.scope, false, v.agent_type
 from (values
   ('Agent Rapport', 'Account manager : synthèses hebdomadaires et mensuelles de chaque client.', 'Actif', 0::smallint, true, 'client', 'report'),
-  ('Agent SEO & Site', 'Analyse Search Console, performances et opportunités ; propose des améliorations.', 'En pause', 1::smallint, false, 'project', 'seo'),
+  ('Agent SEO & Site', 'Analyse Search Console, performances et opportunités ; propose des améliorations.', 'En pause', 1::smallint, false, 'client', 'seo'),
   ('Agent Google Ads', 'Surveillance des campagnes en lecture seule ; propose des optimisations.', 'En pause', 1::smallint, false, 'client', 'google-ads'),
-  ('Agent Monitoring Technique', 'Disponibilité, performances, déploiements et régressions des sites.', 'En pause', 1::smallint, false, 'project', 'monitoring'),
+  ('Agent Monitoring Technique', 'Disponibilité, performances, déploiements et régressions des sites.', 'En pause', 1::smallint, false, 'client', 'monitoring'),
   ('Agent Automatisation', 'Workflows et intégrations sur mesure.', 'En pause', 1::smallint, false, 'client', 'automation'),
   ('Agent Veille', 'Veille tech, IA, SEO et Ads à partir de flux publics.', 'Actif', 0::smallint, true, 'client', 'veille')
 ) as v(name, description, status, autonomy, enabled, scope, agent_type)

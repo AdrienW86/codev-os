@@ -26,8 +26,9 @@ function claimRpc(args, tables) {
   return JSON.parse(JSON.stringify(due));
 }
 
-function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents() } = {}) {
-  const fake = createFakeSupabase({ agents: initialAgents, automations, jobs: jobs.map((job) => ({ status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", payload: {}, worker_id: null, ...job })), agent_runs: [], audit_logs: [] }, {
+const assigned = (agentId, clientId = CLIENT) => ({ agent_id: agentId, client_id: clientId, enabled: true });
+function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents(), assignments = [assigned(REPORT), assigned(MONITORING)] } = {}) {
+  const fake = createFakeSupabase({ agents: initialAgents, agent_client_assignments: assignments, automations, jobs: jobs.map((job) => ({ status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", payload: {}, worker_id: null, ...job })), agent_runs: [], audit_logs: [] }, {
     unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc },
   });
   const server = { getSupabaseServerClient: () => fake.client };
@@ -72,8 +73,8 @@ test("invalid schedule or unknown run type puts the automation in error, never r
   assert.equal(fake.tables.audit_logs.filter((entry) => entry.action === "automation.invalid").length, 2);
 });
 
-test("successful job: run recorded, job succeeded, audited", async () => {
-  const { engine, fake } = setup({ jobs: [{ id: "job-1", run_type: "report.generate", idempotency_key: "k1", automation_id: null }] });
+test("successful client job: run recorded, job succeeded, audited", async () => {
+  const { engine, fake } = setup({ jobs: [{ id: "job-1", run_type: "report.generate", idempotency_key: "k1", automation_id: null, client_id: CLIENT }] });
   const summary = await engine.processJobs(system, "worker-1");
   assert.equal(summary.succeeded, 1);
   const job = fake.tables.jobs[0];
@@ -86,7 +87,7 @@ test("successful job: run recorded, job succeeded, audited", async () => {
 test("retryable failure → backoff then failure after max attempts; automation goes to error after 3 failures", async () => {
   let calls = 0;
   const handlers = { "monitoring.check_sites": async () => { calls++; throw new types.RunError("Fournisseur indisponible."); } };
-  const { engine, fake } = setup({ automations: [weekly({ id: "auto-m", agent_id: MONITORING, run_type: "monitoring.check_sites", consecutive_failures: 2 })], jobs: [{ id: "job-r", run_type: "monitoring.check_sites", idempotency_key: "kr", automation_id: "auto-m", max_attempts: 2 }], handlers });
+  const { engine, fake } = setup({ automations: [weekly({ id: "auto-m", agent_id: MONITORING, run_type: "monitoring.check_sites", consecutive_failures: 2 })], jobs: [{ id: "job-r", run_type: "monitoring.check_sites", idempotency_key: "kr", automation_id: "auto-m", max_attempts: 2, client_id: CLIENT }], handlers });
   assert.equal((await engine.processJobs(system, "w")).retried, 1);
   const job = fake.tables.jobs[0];
   assert.equal(job.status, "queued");
@@ -97,6 +98,27 @@ test("retryable failure → backoff then failure after max attempts; automation 
   assert.equal(calls, 2);
   assert.equal(fake.tables.automations[0].status, "error");
   assert.equal(fake.tables.agent_runs.filter((run) => run.status === "failed").length, 2);
+});
+
+test("global job (no client) runs without an agent_runs row; the job is the trace", async () => {
+  const { engine, fake } = setup({ jobs: [{ id: "g", run_type: "report.generate", idempotency_key: "g" }] });
+  assert.equal((await engine.processJobs(system, "w")).succeeded, 1);
+  assert.equal(fake.tables.agent_runs.length, 0);
+  assert.equal(fake.tables.jobs[0].status, "succeeded");
+  assert.equal(fake.tables.jobs[0].agent_run_id, null);
+});
+
+test("client job for an unassigned or project-scoped agent is skipped with the reason (scope guard)", async () => {
+  const projectScoped = agents().map((agent) => agent.id === MONITORING ? { ...agent, agent_scope: "project" } : agent);
+  const { engine, fake } = setup({ initialAgents: projectScoped, assignments: [assigned(MONITORING)], jobs: [
+    { id: "na", run_type: "report.generate", idempotency_key: "na", client_id: CLIENT },
+    { id: "ps", run_type: "monitoring.check_sites", idempotency_key: "ps", client_id: CLIENT },
+  ] });
+  const summary = await engine.processJobs(system, "w", 10);
+  assert.equal(summary.skipped, 2);
+  assert.equal(fake.tables.agent_runs.length, 0, "no write the database guard would reject");
+  assert.match(fake.tables.jobs.find((job) => job.id === "na").last_error, /pas rattaché à ce client/);
+  assert.match(fake.tables.jobs.find((job) => job.id === "ps").last_error, /niveau projet/);
 });
 
 test("non-retryable failure fails immediately; unknown run type and incompatible agent fail cleanly", async () => {

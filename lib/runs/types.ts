@@ -3,7 +3,7 @@ import type { Actor } from "@/lib/core/actor";
 import type { JobRow } from "@/lib/supabase/core.types";
 import type { AgentRow } from "@/lib/agents/outputs";
 
-export type RunContext = { job: JobRow; agent: AgentRow; actor: Actor; now: Date; signal: AbortSignal; runId: string };
+export type RunContext = { job: JobRow; agent: AgentRow; actor: Actor; now: Date; signal: AbortSignal; /** Trace agent_runs : uniquement pour un job rattaché à un client (portée vérifiée en base). */ runId: string | null };
 export type RunOutcome = { status: "succeeded" | "skipped"; summary: string; data?: Record<string, unknown> };
 export type RunHandler = (context: RunContext) => Promise<RunOutcome>;
 

@@ -20,11 +20,13 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
   let clientIds: string[];
   if (job.client_id) clientIds = [job.client_id];
   else {
-    const { data, error } = await supabase.from("client_services").select("client_id").in("service_key", ["maintenance", "website"]).eq("lifecycle", "active").limit(500);
-    if (error) throw new RunError("Services illisibles.");
+    // Clients rattachés à l'agent (activation des services Maintenance / Site web) : seule source
+    // autorisée par la garde de portée en base pour écrire recommandations et actions.
+    const { data, error } = await supabase.from("agent_client_assignments").select("client_id").eq("agent_id", agent.id).eq("enabled", true).limit(500);
+    if (error) throw new RunError("Rattachements illisibles.");
     clientIds = [...new Set((data ?? []).map((row) => row.client_id))];
   }
-  if (!clientIds.length) return { status: "skipped", summary: "Aucun client avec un service Maintenance ou Site web actif." };
+  if (!clientIds.length) return { status: "skipped", summary: "Aucun client rattaché à l’Agent Monitoring (activez Maintenance ou Site web sur une fiche client)." };
   const { data: clients, error } = await supabase.from("clients").select("id,name,website").in("id", clientIds.slice(0, MAX_SITES));
   if (error) throw new RunError("Clients illisibles.");
   const { data: connections } = await supabase.from("client_connections").select("client_id,provider,metadata").in("client_id", clientIds.slice(0, MAX_SITES)).in("provider", ["vercel", "github"]);

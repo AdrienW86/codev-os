@@ -2,14 +2,21 @@
 // même origine stricte (anti-CSRF), type de contenu, taille bornée, limitation de débit.
 export type GuardFailure = { ok: false; status: number; error: string };
 
-/** Refuse toute requête dont l'origine n'est pas exactement celle du site (CSRF, appels inter-sites). */
+/**
+ * Refuse toute requête dont l'origine n'est pas exactement le site lui-même (CSRF, appels inter-sites).
+ * Hôtes acceptés : celui de l'URL vue par Next et celui de la requête (Host / X-Forwarded-Host posés
+ * par l'hébergeur) — un navigateur ne peut pas falsifier l'en-tête Origin.
+ */
 export function checkSameOrigin(headers: Headers, requestUrl: string): { ok: true } | GuardFailure {
-  const expected = new URL(requestUrl).origin;
   const origin = headers.get("origin");
   const site = headers.get("sec-fetch-site");
   if (site && site !== "same-origin") return { ok: false, status: 403, error: "cross_site" };
-  if (!origin || origin !== expected) return { ok: false, status: 403, error: "bad_origin" };
-  return { ok: true };
+  if (!origin) return { ok: false, status: 403, error: "bad_origin" };
+  let parsed: URL;
+  try { parsed = new URL(origin); } catch { return { ok: false, status: 403, error: "bad_origin" }; }
+  if (!["http:", "https:"].includes(parsed.protocol) || origin !== parsed.origin) return { ok: false, status: 403, error: "bad_origin" };
+  const allowed = new Set([new URL(requestUrl).host, headers.get("x-forwarded-host")?.split(",")[0]?.trim(), headers.get("host")].filter((value): value is string => Boolean(value)));
+  return allowed.has(parsed.host) ? { ok: true } : { ok: false, status: 403, error: "bad_origin" };
 }
 
 /** Corps JSON borné : taille annoncée ET réelle vérifiées, type de contenu obligatoire. */

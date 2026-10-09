@@ -182,6 +182,11 @@ test("request guard: strict same origin, JSON only, bounded size, malformed JSON
   assert.equal(guard.checkSameOrigin(h({}), url).status, 403, "missing Origin refused");
   assert.equal(guard.checkSameOrigin(h({ origin: "https://os.code-v.fr", "sec-fetch-site": "cross-site" }), url).status, 403);
   assert.equal(guard.checkSameOrigin(h({ origin: "https://os.code-v.fr.evil.io" }), url).status, 403);
+  assert.equal(guard.checkSameOrigin(h({ origin: "http://127.0.0.1:3200", host: "127.0.0.1:3200" }), "http://localhost:3200/api/assistant").ok, true, "host header seen by the server");
+  assert.equal(guard.checkSameOrigin(h({ origin: "https://os.code-v.fr", "x-forwarded-host": "os.code-v.fr" }), "http://internal:3000/api").ok, true, "behind the hosting proxy");
+  assert.equal(guard.checkSameOrigin(h({ origin: "https://evil.example", host: "os.code-v.fr" }), url).status, 403);
+  assert.equal(guard.checkSameOrigin(h({ origin: "null" }), url).status, 403, "opaque origin refused");
+  assert.equal(guard.checkSameOrigin(h({ origin: "https://os.code-v.fr/path" }), url).status, 403, "malformed origin refused");
   const req = (body, type = "application/json") => new Request(url, { method: "POST", headers: { "content-type": type }, body });
   assert.equal((await guard.readJsonBody(req("{}", "text/plain"), 100)).status, 415);
   assert.equal((await guard.readJsonBody(req("x".repeat(200)), 100)).status, 413);

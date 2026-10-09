@@ -20,7 +20,7 @@ const statusLabels: Record<AutomationStatus, { label: string; tone: StatusTone }
 
 export function AutomationsPanel({ automations, unavailable, clients, schedulerConfigured }: { automations: AutomationRecord[]; unavailable: boolean; clients: { id: string; name: string }[]; schedulerConfigured: boolean }) {
   const existing = new Set(automations.map((item) => `${item.run_type}:${JSON.stringify(item.config)}:${item.client_id ?? ""}`));
-  const presets = automationPresets.filter((preset) => !existing.has(`${preset.runType}:${JSON.stringify(preset.config)}:`));
+  const presets = automationPresets.map((preset) => ({ ...preset, created: existing.has(`${preset.runType}:${JSON.stringify(preset.config)}:`) }));
   return (
     <div className="space-y-8">
       {unavailable && <ModuleUnavailable module="Automatisations" />}
@@ -49,7 +49,7 @@ export function AutomationsPanel({ automations, unavailable, clients, schedulerC
                     {automation.status !== "archived" && automation.status !== "completed" && <MutationForm action={runAutomationNowAction} fields={{ id: automation.id }} label="Exécuter maintenant" pendingLabel="Exécution…" />}
                     {["active", "error"].includes(automation.status) && <MutationForm action={pauseAutomationAction} fields={{ id: automation.id }} label="Mettre en pause" variant="ghost" />}
                     {["paused", "error"].includes(automation.status) && <MutationForm action={resumeAutomationAction} fields={{ id: automation.id }} label="Réactiver" variant="ghost" />}
-                    {automation.status !== "archived" && <MutationForm action={archiveAutomationAction} fields={{ id: automation.id }} label="Archiver" variant="ghost" confirm="Archiver cette automatisation ? Son historique est conservé." />}
+                    {automation.status !== "archived" && <MutationForm action={archiveAutomationAction} fields={{ id: automation.id }} label="Archiver" variant="ghost" confirm="Archiver cette automatisation ? Son historique est conservé." flashOnSuccess />}
                   </div>
                 </li>
               );
@@ -58,7 +58,7 @@ export function AutomationsPanel({ automations, unavailable, clients, schedulerC
         ) : !unavailable && <EmptyState icon="calendar" compact title="Aucune automatisation." description="Commencez par une automatisation recommandée ci-dessous." />}
       </section>
 
-      {presets.length > 0 && (
+      {presets.some((preset) => !preset.created) && (
         <section>
           <SectionHeader title="Recommandées" description="Créées en un clic, en heure de Paris. Aucune action externe : les agents préparent, vous validez." />
           <ul className="grid gap-4 md:grid-cols-2">
@@ -67,7 +67,7 @@ export function AutomationsPanel({ automations, unavailable, clients, schedulerC
                 <p className="font-medium">{preset.name}</p>
                 <p className="mt-1 text-sm text-muted">{describeSchedule(preset.frequency, preset.schedule, "Europe/Paris")}</p>
                 <p className="mt-2 flex-1 text-sm leading-6 text-muted">{preset.why}</p>
-                <MutationForm action={createPresetAutomationAction} fields={{ preset: preset.id }} label="Créer" className="mt-4" disableOnSuccess />
+                <MutationForm action={createPresetAutomationAction} fields={{ preset: preset.id }} label={preset.created ? "Déjà créée" : "Créer"} disabled={preset.created} className="mt-4" disableOnSuccess flashOnSuccess />
               </li>
             ))}
           </ul>

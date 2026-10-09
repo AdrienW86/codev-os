@@ -10,10 +10,10 @@ import { isAgentType } from "@/lib/agents/registry";
 import { getActionType, parseActionParameters } from "@/lib/actions/registry";
 import type { Json } from "@/lib/supabase/database.types";
 
-export type AgentRow = { id: string; name: string; agent_type: string | null; enabled: boolean; status: string; autonomy_level: number };
+export type AgentRow = { id: string; name: string; agent_type: string | null; enabled: boolean; status: string; autonomy_level: number; agent_scope?: string };
 
 export async function getAgentByType(type: string): Promise<AgentRow | null> {
-  const { data, error } = await getSupabaseServerClient().from("agents").select("id,name,agent_type,enabled,status,autonomy_level").eq("agent_type", type).order("created_at");
+  const { data, error } = await getSupabaseServerClient().from("agents").select("id,name,agent_type,enabled,status,autonomy_level,agent_scope").eq("agent_type", type).order("created_at");
   if (error) throw new Error("agent read");
   const rows = (data ?? []) as AgentRow[];
   return rows.find((row) => row.enabled && row.status === "Actif") ?? rows[0] ?? null;
@@ -31,6 +31,18 @@ export async function startRun(input: { agentId: string; clientId: string | null
 export async function finishRun(runId: string, outcome: "completed" | "failed", summary: string) {
   const { error } = await getSupabaseServerClient().from("agent_runs").update({ status: outcome, completed_at: new Date().toISOString(), summary: summary.slice(0, 2000) }).eq("id", runId).eq("status", "running");
   if (error) throw new Error("run finish");
+}
+
+/**
+ * L'agent peut-il produire des sorties pour ce client ? Même règle que la garde en base
+ * (agent_scope_private.context_allowed) : agent de portée client, rattachement actif.
+ * Renvoie la raison du refus, ou null.
+ */
+export async function clientContextDenied(agent: AgentRow, clientId: string): Promise<string | null> {
+  if (agent.agent_scope && agent.agent_scope !== "client") return `${agent.name} est configuré au niveau projet : passez sa portée au niveau client pour les analyses V1 (Agents → Portée).`;
+  const { data, error } = await getSupabaseServerClient().from("agent_client_assignments").select("enabled").eq("agent_id", agent.id).eq("client_id", clientId).maybeSingle();
+  if (error) throw new Error("assignment read");
+  return data?.enabled ? null : `${agent.name} n’est pas rattaché à ce client (activez le service correspondant sur la fiche client).`;
 }
 
 /** Recommandation d'un agent ; une recommandation identique encore en attente n'est pas dupliquée. */

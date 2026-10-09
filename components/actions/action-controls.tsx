@@ -5,11 +5,17 @@ import { approveActionAction, cancelActionAction, completeManualActionAction, ex
 import type { InternalActionRecord } from "@/lib/actions/types";
 import type { RecommendationActionState } from "@/lib/recommendations/types";
 import { executionModeOf } from "@/lib/actions/modes";
+import { flash } from "@/components/ui/flash";
 
 type Server = (state: RecommendationActionState, form: FormData) => Promise<RecommendationActionState>;
 
 function Control({ id, action, label, pendingLabel, className, confirm }: { id: string; action: Server; label: string; pendingLabel: string; className: string; confirm?: string }) {
-  const [state, submit, pending] = useActionState<RecommendationActionState, FormData>(action, {});
+  // Le bouton disparaît après une transition réussie : la confirmation est aussi affichée dans la zone persistante.
+  const [state, submit, pending] = useActionState<RecommendationActionState, FormData>(async (previous, form) => {
+    const result = await action(previous, form);
+    if (result.message) flash(result.message);
+    return result;
+  }, {});
   function onSubmit(event: FormEvent<HTMLFormElement>) { if (confirm && !window.confirm(confirm)) event.preventDefault(); }
   return (
     <form action={submit} onSubmit={onSubmit} className="contents">

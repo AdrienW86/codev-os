@@ -110,8 +110,8 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                   <p className="text-sm font-medium">{item.title}</p>
                   <p className="text-xs text-muted">{dayFormatter.format(new Date(`${localDay(startsAt)}T00:00:00Z`))} · {timeFormatter.format(startsAt)} · {kindLabels[item.kind]}{item.recurrence !== "none" ? " · récurrent" : ""}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {item.recurrence === "none" && <MutationForm action={completeAgendaItemAction} fields={{ id: item.id }} label="Fait" variant="ghost" disableOnSuccess />}
-                    <MutationForm action={cancelAgendaItemAction} fields={{ id: item.id }} label={item.recurrence === "none" ? "Annuler" : "Arrêter la série"} variant="ghost" confirm="Annuler cet élément ? Il reste dans l’historique." disableOnSuccess />
+                    {item.recurrence === "none" && <MutationForm action={completeAgendaItemAction} fields={{ id: item.id }} label="Fait" variant="ghost" disableOnSuccess flashOnSuccess />}
+                    <MutationForm action={cancelAgendaItemAction} fields={{ id: item.id }} label={item.recurrence === "none" ? "Annuler" : "Arrêter la série"} variant="ghost" confirm="Annuler cet élément ? Il reste dans l’historique." disableOnSuccess flashOnSuccess />
                   </div>
                 </li>
               ))}

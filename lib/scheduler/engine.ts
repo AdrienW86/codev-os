@@ -13,7 +13,7 @@ import type { Actor } from "@/lib/core/actor";
 import { authorize } from "@/lib/permissions/engine";
 import { isAgentType, isRunType, runTypes, type RunType } from "@/lib/agents/registry";
 import { isProviderConfigured } from "@/lib/system/providers";
-import { getAgentByType, startRun, finishRun, type AgentRow } from "@/lib/agents/outputs";
+import { clientContextDenied, getAgentByType, startRun, finishRun, type AgentRow } from "@/lib/agents/outputs";
 import { runHandlers } from "@/lib/runs/handlers";
 import { RunError, type RunOutcome } from "@/lib/runs/types";
 import { nextRun, scheduleSchema, type Schedule } from "@/lib/scheduler/recurrence";
@@ -92,7 +92,7 @@ async function noteAutomation(job: JobRow, success: boolean) {
 
 async function resolveAgent(job: JobRow, runType: RunType): Promise<AgentRow | null> {
   if (job.agent_id) {
-    const { data, error } = await db().from("agents").select("id,name,agent_type,enabled,status,autonomy_level").eq("id", job.agent_id).maybeSingle();
+    const { data, error } = await db().from("agents").select("id,name,agent_type,enabled,status,autonomy_level,agent_scope").eq("id", job.agent_id).maybeSingle();
     if (error) throw new Error("agent read");
     return (data as AgentRow | null) ?? null;
   }
@@ -124,12 +124,21 @@ export async function runJob(actor: Actor, worker: string, job: JobRow, now = ne
     return ok ? "skipped" : "lost";
   }
 
-  const runId = await startRun({ agentId: agent.id, clientId: job.client_id, projectId: job.project_id, runType: job.run_type, jobId: job.id });
+  if (job.client_id) {
+    const denied = await clientContextDenied(agent, job.client_id);
+    if (denied) {
+      const ok = await complete(job, worker, { status: "skipped", last_error: denied.slice(0, 2000), finished_at: now.toISOString(), result: { reason: "not_assigned" } });
+      if (ok) await writeAudit(actor, { action: "job.skipped", resource_type: "job", resource_id: job.id, metadata: { run_type: job.run_type, reason: "not_assigned" } });
+      return ok ? "skipped" : "lost";
+    }
+  }
+  // Job global (sans client) : tracé par le job lui-même ; agent_runs exige un contexte client.
+  const runId = job.client_id ? await startRun({ agentId: agent.id, clientId: job.client_id, projectId: job.project_id, runType: job.run_type, jobId: job.id }) : null;
   const controller = new AbortController();
   try {
     const handler = await runHandlers[job.run_type]();
     const outcome: RunOutcome = await withTimeout(handler({ job, agent, actor, now, signal: controller.signal, runId }), controller, timeoutMs);
-    await finishRun(runId, "completed", outcome.summary);
+    if (runId) await finishRun(runId, "completed", outcome.summary);
     const ok = await complete(job, worker, { status: outcome.status, result: { summary: outcome.summary, ...(outcome.data ?? {}) } as Json, agent_run_id: runId, finished_at: new Date().toISOString(), last_error: null });
     if (ok) {
       await noteAutomation(job, true);
@@ -138,7 +147,7 @@ export async function runJob(actor: Actor, worker: string, job: JobRow, now = ne
     return ok ? outcome.status : "lost";
   } catch (error) {
     const message = errorText(error);
-    await finishRun(runId, "failed", message).catch(() => undefined);
+    if (runId) await finishRun(runId, "failed", message).catch(() => undefined);
     const retryable = isRetryable(error);
     const retry = retryable && job.attempts < job.max_attempts;
     const backoffMinutes = Math.min(60, 2 ** job.attempts);

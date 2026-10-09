@@ -72,14 +72,14 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
         <div className="space-y-5">
           <Panel className="space-y-4 p-5">
             <h2 className="font-semibold">Étapes</h2>
-            {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess />}
+            {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
             {item.status === "approved" && (
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
                 {email.enabled
-                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email" }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer la version client approuvée par e-mail ?" disableOnSuccess />
+                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email" }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer la version client approuvée par e-mail ?" disableOnSuccess flashOnSuccess />
                   : <InlineNotice title="Envoi e-mail désactivé.">{email.reason}</InlineNotice>}
-                <MutationForm action={sendReportAction} fields={{ id, mode: "manual" }} label="Marquer comme envoyé manuellement" confirm="Confirmer que la version approuvée a été envoyée en dehors de CODE-V OS ?" disableOnSuccess />
+                <MutationForm action={sendReportAction} fields={{ id, mode: "manual" }} label="Marquer comme envoyé manuellement" confirm="Confirmer que la version approuvée a été envoyée en dehors de CODE-V OS ?" disableOnSuccess flashOnSuccess />
               </>
             )}
             {item.status === "sent" && <p className="text-sm text-muted">Envoyé le {formatDate(item.sent_at)}. Le contenu est figé.</p>}

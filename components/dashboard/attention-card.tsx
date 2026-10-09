@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/ui/icon";
 
-export type AttentionItem = { id: string; title: string; detail: string };
+/** Élément d’une carte : ouvre une page (`href`) ou un panneau (`onOpen`). */
+export type AttentionItem = { id: string; title: string; detail: string; href?: string; onOpen?: () => void };
 
 /** Carte « À traiter maintenant » : un compteur métier, quelques éléments, un lien. */
 export function AttentionCard({ title, count, icon, href, linkLabel, items, emptyLabel, urgent = false }: {
@@ -18,16 +19,21 @@ export function AttentionCard({ title, count, icon, href, linkLabel, items, empt
         </span>
       </div>
       {items.length ? (
-        <ul className="mt-4 space-y-2.5">
-          {items.map((item) => (
-            <li key={item.id} className="min-w-0">
-              <p className="truncate text-sm">{item.title}</p>
-              <p className="truncate text-xs text-muted">{item.detail}</p>
-            </li>
-          ))}
+        <ul className="mt-4 space-y-1">
+          {items.map((item) => {
+            const body = <><span className="block truncate text-sm">{item.title}</span><span className="block truncate text-xs text-muted">{item.detail}</span></>;
+            const className = "block w-full min-w-0 rounded-lg px-2 py-1.5 -mx-2 text-left hover:bg-white/[0.04]";
+            return (
+              <li key={item.id} className="min-w-0">
+                {item.href ? <Link href={item.href} className={className}>{body}</Link>
+                  : item.onOpen ? <button type="button" onClick={item.onOpen} className={className}>{body}</button>
+                  : <div className="py-1.5">{body}</div>}
+              </li>
+            );
+          })}
         </ul>
       ) : emptyLabel && <p className="mt-4 text-sm text-muted">{emptyLabel}</p>}
-      <Link href={href} className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm text-accent hover:underline">
+      <Link href={href} className="mt-auto inline-flex min-h-10 items-center gap-1.5 pt-4 text-sm text-accent hover:underline">
         {linkLabel}<Icon name="arrow" width={16} height={16} />
       </Link>
     </article>

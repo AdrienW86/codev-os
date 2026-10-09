@@ -1,87 +1,58 @@
 import { requireAdmin } from "@/lib/require-admin";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Badge, PageHeading } from "@/components/ui/primitives";
+import { Action } from "@/components/ui/button";
+import { FilterBar } from "@/components/ui/filter-bar";
+import { PageHeading } from "@/components/ui/primitives";
+import { WorkBoard } from "@/components/work/work-board";
+import { SimWork } from "@/components/simulation/views/sim-work";
 import { listTasks } from "@/lib/tasks/data";
 import { listRecommendations } from "@/lib/recommendations/data";
 import { listActions } from "@/lib/actions/data";
-import { buildWorkItems, groupWorkItems, isWorkSectionId, workSections, type WorkItem, type WorkSectionId } from "@/lib/work/items";
-import { formatDate } from "@/lib/format-date";
+import { buildWorkItems, groupWorkItems, isWorkSectionId, workSections, type WorkSectionId } from "@/lib/work/items";
+import { getActiveScenario } from "@/lib/simulation/server";
 
 export const metadata: Metadata = { title: "Travail" };
 
 const DONE_LIMIT = 15;
-
-function WorkRow({ item }: { item: WorkItem }) {
-  return (
-    <li className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <div className="min-w-0">
-        <p className="text-xs text-muted">
-          <span className="font-medium text-foreground/80">{item.kindLabel}</span>
-          {" · "}<Link href={`/clients/${item.client.id}`} className="text-accent hover:underline">{item.client.name ?? "Client"}</Link>
-          {item.project && <>{" · "}<Link href={`/projects/${item.project.id}`} className="hover:text-foreground hover:underline">{item.project.name}</Link></>}
-        </p>
-        <h3 className="mt-1.5 text-sm font-medium sm:text-base">
-          <Link href={item.href} className="hover:text-accent hover:underline">{item.title}</Link>
-        </h3>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-        <Badge tone={item.status.tone}>{item.status.label}</Badge>
-        {item.priority && <Badge tone={item.priority.tone}>{item.priority.label}</Badge>}
-        {item.dueDate && <span className="text-xs text-muted">Échéance <time dateTime={item.dueDate}>{formatDate(item.dueDate)}</time></span>}
-      </div>
-    </li>
-  );
-}
+const kinds = [{ value: "task", label: "Tâches" }, { value: "recommendation", label: "Recommandations" }, { value: "action", label: "Actions" }];
+const priorities = [{ value: "high", label: "Haute" }, { value: "medium", label: "Moyenne" }, { value: "low", label: "Basse" }];
+const one = (value: string | string[] | undefined) => (typeof value === "string" ? value : "");
 
 export default async function WorkPage({ searchParams }: PageProps<"/work">) {
   await requireAdmin();
   const params = await searchParams;
+  if (await getActiveScenario()) return <SimWork initialView={one(params.view) || undefined} initialClient={one(params.client) || undefined} />;
   const view: WorkSectionId | null = isWorkSectionId(params.view) ? params.view : null;
+  const filters = { client: one(params.client), project: one(params.project), kind: one(params.kind), priority: one(params.priority) };
   const [tasks, recommendations, actions] = await Promise.all([listTasks(), listRecommendations(), listActions()]);
-  const groups = groupWorkItems(buildWorkItems({ tasks, recommendations, actions }));
-  const visible = workSections.filter((section) => !view || section.id === view);
-  const filterClass = (active: boolean) => `inline-flex min-h-10 items-center gap-2 rounded-full border px-3.5 text-sm transition-colors ${active ? "border-accent/50 bg-accent/10 text-accent" : "border-border text-muted hover:text-foreground"}`;
+  const all = buildWorkItems({ tasks, recommendations, actions });
+  const items = all.filter((item) => (!filters.client || item.client.id === filters.client) && (!filters.project || item.project?.id === filters.project)
+    && (!filters.kind || item.kind === filters.kind) && (!filters.priority || item.priorityKey === filters.priority));
+  const groups = groupWorkItems(items);
+
+  // Options de filtre tirées des données réelles uniquement.
+  const clients = [...new Map(all.map((item) => [item.client.id, item.client.name ?? "Client"])).entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  const projects = [...new Map(all.filter((item) => item.project && (!filters.client || item.client.id === filters.client)).map((item) => [item.project!.id, item.project!.name])).entries()].map(([value, label]) => ({ value, label }));
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  const sections = workSections.filter((section) => !view || section.id === view).map((section) => {
+    const list = groups[section.id];
+    const capped = section.id === "done" && !view && list.length > DONE_LIMIT;
+    query.set("view", section.id);
+    return { id: section.id, label: section.label, items: capped ? list.slice(0, DONE_LIMIT) : list, total: list.length, moreHref: capped ? `/work?${query.toString()}` : undefined };
+  });
 
   return (
     <>
-      <PageHeading
-        eyebrow="Organisation"
-        title="Travail"
-        description="Tâches, recommandations des agents et actions à valider, réunies au même endroit."
-        action={<Link href="/tasks/new" className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background">+ Nouvelle tâche</Link>}
-      />
-      <nav aria-label="Filtrer le travail" className="mb-8">
-        <ul className="flex flex-wrap gap-2">
-          <li><Link href="/work" aria-current={!view ? "page" : undefined} className={filterClass(!view)}>Tout</Link></li>
-          {workSections.map((section) => (
-            <li key={section.id}>
-              <Link href={`/work?view=${section.id}`} aria-current={view === section.id ? "page" : undefined} className={filterClass(view === section.id)}>
-                {section.label}<span className="text-xs opacity-70">{groups[section.id].length}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <div className="space-y-10">
-        {visible.map((section) => {
-          const items = groups[section.id];
-          const shown = section.id === "done" && !view ? items.slice(0, DONE_LIMIT) : items;
-          return (
-            <section key={section.id} aria-labelledby={`work-${section.id}`}>
-              <h2 id={`work-${section.id}`} className="flex items-center gap-3 border-b border-border pb-3 text-lg font-semibold">
-                {section.label}<span className="text-sm font-normal text-muted">{items.length}</span>
-              </h2>
-              {shown.length ? (
-                <ul className="divide-y divide-border">{shown.map((item) => <WorkRow key={item.key} item={item} />)}</ul>
-              ) : <p className="py-6 text-sm text-muted">Rien dans cette catégorie pour le moment.</p>}
-              {shown.length < items.length && <Link href={`/work?view=${section.id}`} className="mt-2 inline-block text-sm text-accent hover:underline">Voir les {items.length} éléments</Link>}
-            </section>
-          );
-        })}
-      </div>
-
+      <PageHeading eyebrow="Organisation" title="Travail" description="Tâches, recommandations des agents et actions à valider, réunies au même endroit." action={<Action href="/tasks/new" variant="primary">+ Nouvelle tâche</Action>} />
+      <FilterBar resetHref="/work" fields={[
+        { name: "client", label: "Client", value: filters.client, options: clients },
+        { name: "project", label: "Projet", value: filters.project, options: projects },
+        { name: "kind", label: "Type", value: filters.kind, options: kinds },
+        { name: "view", label: "Statut", value: view ?? "", options: workSections.map((section) => ({ value: section.id, label: `${section.label} (${groups[section.id].length})` })) },
+        { name: "priority", label: "Priorité", value: filters.priority, options: priorities },
+      ]} />
+      <WorkBoard sections={sections} actions={Object.fromEntries(actions.map((action) => [action.id, action]))} />
       <p className="mt-12 border-t border-border pt-5 text-xs text-muted">
         Vues détaillées : <Link href="/tasks" className="text-accent hover:underline">tâches</Link> · <Link href="/recommendations" className="text-accent hover:underline">recommandations</Link> · <Link href="/actions" className="text-accent hover:underline">actions</Link> · <Link href="/projects" className="text-accent hover:underline">projets</Link>
       </p>

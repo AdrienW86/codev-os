@@ -1,4 +1,5 @@
 import { ProjectContext } from "@/components/work/project-context";
+import { actionStatusLabel, actionTypeLabel, recommendationStatusLabel, severityLabel } from "@/lib/presentation/labels";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,18 +26,18 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
   return (
     <>
       <Link href="/recommendations" className="mb-6 inline-block text-xs text-accent hover:underline">← Toutes les recommandations</Link>
-      <PageHeading eyebrow="Recommandation" title={recommendation.title} description="Recommandation enregistrée. Aucune API externe ni exécution automatique n’est connectée." action={<Badge>{recommendation.status}</Badge>} />
+      <PageHeading eyebrow="Recommandation" title={recommendation.title} description="Recommandation enregistrée. Aucune API externe ni exécution automatique n’est connectée." action={<Badge tone={recommendationStatusLabel(recommendation.status).tone}>{recommendationStatusLabel(recommendation.status).label}</Badge>} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
         <div className="space-y-6">
           <Panel className="p-6">
             <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm"><span>Client : <Link href={`/clients/${recommendation.client_id}`} className="text-accent hover:underline">{recommendation.client?.name ?? "Client indisponible"}</Link></span><span>Agent : <Link href={`/agents/${recommendation.agent_id}`} className="text-accent hover:underline">{recommendation.agent?.name ?? "Agent indisponible"}</Link></span></div>
             <ProjectContext projectId={recommendation.project_id} project={recommendation.project}/><dl className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-3">
-              <div><dt className="text-xs text-muted">Statut</dt><dd className="mt-1 text-sm">{recommendation.status}</dd></div>
-              <div><dt className="text-xs text-muted">Sévérité</dt><dd className="mt-1 text-sm">{recommendation.severity}</dd></div>
+              <div><dt className="text-xs text-muted">Statut</dt><dd className="mt-1 text-sm">{recommendationStatusLabel(recommendation.status).label}</dd></div>
+              <div><dt className="text-xs text-muted">Importance</dt><dd className="mt-1 text-sm">{severityLabel(recommendation.severity).label}</dd></div>
               <div><dt className="text-xs text-muted">Créée</dt><dd className="mt-1 text-sm"><time dateTime={recommendation.created_at}>{formatDate(recommendation.created_at)}</time></dd></div>
             </dl>
             <div className="mt-5 border-t border-border pt-5"><h2 className="text-sm font-semibold">Raison</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">{recommendation.reason || "Aucune raison fournie."}</p></div>
-            <details className="mt-5 border-t border-border pt-5"><summary className="cursor-pointer text-sm font-medium">Données techniques</summary><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-background p-4 text-xs leading-5 text-muted">{JSON.stringify(recommendation.payload, null, 2)}</pre></details>
+            <details className="mt-5 border-t border-border pt-5"><summary className="min-h-10 cursor-pointer text-sm font-medium">Données techniques (vue avancée)</summary><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-background p-4 text-xs leading-5 text-muted">{JSON.stringify(recommendation.payload, null, 2)}</pre></details>
           </Panel>
           <Panel className="p-6">
             <h2 className="font-semibold">Conversation <span className="text-sm font-normal text-muted">({messages.length})</span></h2>
@@ -47,7 +48,7 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
           </Panel>
           <Panel className="p-6">
             <h2 className="font-semibold">Actions liées <span className="text-sm font-normal text-muted">({actions.length})</span></h2>
-            {actions.length ? <ul className="mt-4 divide-y divide-border">{actions.map((action) => <li key={action.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium">{action.action_type}</p><p className="mt-1 text-xs text-muted">{action.requires_approval ? "Approbation requise" : "Approbation non requise"}</p></div><Badge>{action.status}</Badge></li>)}</ul> : <p className="mt-4 text-sm text-muted">Aucune action liée.</p>}
+            {actions.length ? <ul className="mt-4 divide-y divide-border">{actions.map((action) => <li key={action.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium">{actionTypeLabel(action.action_type)}</p><p className="mt-1 text-xs text-muted">{action.requires_approval ? "Approbation requise" : "Approbation non requise"}</p></div><Badge tone={actionStatusLabel(action.status).tone}>{actionStatusLabel(action.status).label}</Badge></li>)}</ul> : <p className="mt-4 text-sm text-muted">Aucune action liée.</p>}
           </Panel>
         </div>
         <Panel className="p-6"><h2 className="mb-5 font-semibold">Actions administratives</h2><RecommendationControls id={id} status={recommendation.status} /></Panel>

@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { AgentStateBadge, CapabilityLegend, CapabilityList } from "@/components/agents/capability-list";
 import { ServiceStatusBadge } from "@/components/clients/service-card";
 import { Icon } from "@/components/ui/icon";
+import Link from "next/link";
+import { TrySimulationButton } from "@/components/simulation/simulation-banner";
 import { scopeLabels } from "@/lib/agents/catalog";
 import type { ClientServiceView } from "@/lib/services/client-view";
 
@@ -40,7 +42,7 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      onClose={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onClick={(event) => { if (event.target === ref.current) ref.current?.close(); }}
       className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface p-0 text-foreground backdrop:bg-black/70"
     >
@@ -100,6 +102,11 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
                   {agent.configured.length > 0 && <> · Configuré : {agent.configured.map((item) => item.name).join(", ")}</>}
                 </p>
                 <CapabilityList capabilities={agent.capabilities} className="mt-3" />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {agent.configured.length
+                    ? agent.configured.map((item) => <Link key={item.id} href={`/agents/${item.id}`} className="inline-flex min-h-10 items-center text-sm text-accent hover:underline">Ouvrir la configuration de {item.name}</Link>)
+                    : <TrySimulationButton scenarioId="to-configure" href="/clients/sim-renov">Voir la configuration en simulation</TrySimulationButton>}
+                </div>
               </div>
             ))}
             <CapabilityLegend />
@@ -121,7 +128,7 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Désactiver ce service</h3>
               <Notice>Une fois disponible, la désactivation arrêtera les agents liés pour les prochaines exécutions. L’historique (publications, recommandations, tâches) restera conservé. Rien n’est supprimé.</Notice>
-              <button type="button" disabled className="min-h-11 cursor-not-allowed rounded-lg border border-border px-4 text-sm text-muted opacity-60">Bientôt disponible</button>
+              <TrySimulationButton scenarioId="all-services" href="/clients/sim-renov">Voir la désactivation en simulation</TrySimulationButton>
             </div>
           )}
         </div>

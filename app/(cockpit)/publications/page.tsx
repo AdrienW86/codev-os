@@ -12,9 +12,11 @@ import {PublicationSettingsPanel} from "@/components/publications/settings-panel
 import {PublicationsBoard,PublicationsNav} from "@/components/publications/publications-board";
 import {PublicationDrawer} from "@/components/publications/publication-drawer";
 import {ProcessDueForm} from "@/components/publications/process-due-form";
+import {getActiveScenario} from "@/lib/simulation/server";
+import {SimPublications} from "@/components/simulation/views/sim-publications";
 // Main operational view: every filter, sort, page and the open publication (publication=<id>) live in the URL.
 export default async function PublicationsPage({searchParams}:PageProps<"/publications">){
- await requireAdmin();const search=await searchParams,query=parseBoardQuery(search);
+ await requireAdmin();if(await getActiveScenario())return <SimPublications/>;const search=await searchParams,query=parseBoardQuery(search);
  const invalidLink=typeof search.publication==="string"&&search.publication!==""&&!query.publication;
  const [result,settings,clients,projects,drawer]=await Promise.all([listPublicationBoardRows(query),getPublicationSettingsState(),listClients(),listProjects(),
   query.publication?loadPublicationDetail(query.publication,{debug:query.debug}):Promise.resolve(null)]);

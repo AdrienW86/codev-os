@@ -9,11 +9,16 @@ import { listTasks } from "@/lib/tasks/data";
 import { listRecommendations } from "@/lib/recommendations/data";
 import { listActions } from "@/lib/actions/data";
 import { watchClients } from "@/lib/dashboard/home";
+import { getActiveScenario } from "@/lib/simulation/server";
+import { requireAdmin } from "@/lib/require-admin";
+import { SimClients } from "@/components/simulation/views/sim-clients";
 
 export const metadata: Metadata = { title: "Clients" };
 
 export default async function ClientsPage() {
-  const clients = await listClients(); // Vérification admin avant toute lecture.
+  await requireAdmin();
+  if (await getActiveScenario()) return <SimClients />;
+  const clients = await listClients();
   const [projects, tasks, recommendations, actions] = await Promise.all([listProjects(), listTasks(), listRecommendations(), listActions()]);
   const watched = watchClients({ clients, projects, tasks, recommendations, actions }, 3);
   return (

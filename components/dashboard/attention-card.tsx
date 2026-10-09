@@ -6,7 +6,7 @@ export type AttentionItem = { id: string; title: string; detail: string };
 /** Carte « À traiter maintenant » : un compteur métier, quelques éléments, un lien. */
 export function AttentionCard({ title, count, icon, href, linkLabel, items, emptyLabel, urgent = false }: {
   title: string; count: number; icon: IconName; href: string; linkLabel: string;
-  items: AttentionItem[]; emptyLabel: string; urgent?: boolean;
+  items: AttentionItem[]; emptyLabel?: string; urgent?: boolean;
 }) {
   const highlight = urgent && count > 0;
   return (
@@ -26,7 +26,7 @@ export function AttentionCard({ title, count, icon, href, linkLabel, items, empt
             </li>
           ))}
         </ul>
-      ) : <p className="mt-4 text-sm text-muted">{emptyLabel}</p>}
+      ) : emptyLabel && <p className="mt-4 text-sm text-muted">{emptyLabel}</p>}
       <Link href={href} className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm text-accent hover:underline">
         {linkLabel}<Icon name="arrow" width={16} height={16} />
       </Link>

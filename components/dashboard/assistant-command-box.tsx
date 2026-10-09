@@ -64,7 +64,10 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
           </div>
         </div>
       </form>
-      <p id={statusId} role="status" aria-live="polite" className="min-h-5 px-1 pt-2 text-xs text-muted">{notice}</p>
+      <div className="flex min-h-5 items-start justify-between gap-2 px-1 pt-2">
+        <p id={statusId} role="status" aria-live="polite" className="text-xs text-muted">{notice}</p>
+        {notice && <button type="button" onClick={() => setNotice("")} aria-label="Fermer le message" className="-mt-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground"><span aria-hidden="true">×</span></button>}
+      </div>
       <ul aria-label="Suggestions rapides" className="mt-1 flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (
           <li key={suggestion.label}>

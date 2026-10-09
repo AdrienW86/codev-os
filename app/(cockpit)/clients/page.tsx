@@ -2,15 +2,29 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeading, Panel } from "@/components/ui/primitives";
 import { ClientInformation } from "@/components/clients/client-information";
+import { ClientWatchCard } from "@/components/dashboard/client-watch-card";
 import { listClients } from "@/lib/clients/data";
+import { listProjects } from "@/lib/projects/data";
+import { listTasks } from "@/lib/tasks/data";
+import { listRecommendations } from "@/lib/recommendations/data";
+import { listActions } from "@/lib/actions/data";
+import { watchClients } from "@/lib/dashboard/home";
 
 export const metadata: Metadata = { title: "Clients" };
 
 export default async function ClientsPage() {
   const clients = await listClients(); // Vérification admin avant toute lecture.
+  const [projects, tasks, recommendations, actions] = await Promise.all([listProjects(), listTasks(), listRecommendations(), listActions()]);
+  const watched = watchClients({ clients, projects, tasks, recommendations, actions }, 3);
   return (
     <>
       <PageHeading eyebrow="Portefeuille" title="Clients" description="Votre portefeuille CODE-V. Les informations clients sont enregistrées dans Supabase." action={<Link href="/clients/new" className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background">+ Nouveau client</Link>} />
+      {watched.length > 0 && (
+        <section aria-labelledby="watch-title" className="mb-8">
+          <h2 id="watch-title" className="mb-4 font-semibold">À surveiller</h2>
+          <ul className="grid gap-3 md:grid-cols-3">{watched.map((client) => <li key={client.id} className="min-w-0"><ClientWatchCard client={client} /></li>)}</ul>
+        </section>
+      )}
       <Panel>
         <div className="flex items-center justify-between border-b border-border p-5"><h2 className="font-semibold">Votre portefeuille</h2><span className="text-xs text-muted">{clients.length} clients</span></div>
         {clients.length ? <ul className="divide-y divide-border">

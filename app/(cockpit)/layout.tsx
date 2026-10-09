@@ -15,7 +15,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
         <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10">
           {children}
           <footer className="mt-12 flex flex-wrap justify-between gap-2 border-t border-border pt-5 text-xs text-muted">
-            <span>CODE-V OS · Cockpit interne</span>
+            <span>CODE-V OS</span>
             <span>Google Ads en lecture seule · Actions externes désactivées</span>
           </footer>
         </main>

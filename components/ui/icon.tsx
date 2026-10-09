@@ -15,6 +15,15 @@ const paths = {
   seo: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
   content: "M14 2H4v20h16V8l-6-6z M14 2v6h6 M8 13h8 M8 17h5",
   business: "M3 21h18 M6 17v-5 M12 17V7 M18 17V3",
+  home: "M3 11l9-8 9 8 M5 9v12h14V9 M10 21v-6h4v6",
+  calendar: "M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4",
+  work: "M3 7h18v13H3z M8 7V4h8v3 M3 13h18",
+  reports: "M4 3h16v18H4z M8 15v2 M12 11v6 M16 7v10",
+  publications: "M4 4h16v12H8l-4 4z M8 9h8 M8 12h5",
+  mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3 M5 11a7 7 0 0 0 14 0 M12 18v3",
+  send: "M22 2 11 13 M22 2l-7 20-4-9-9-4z",
+  voice: "M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4",
+  plus: "M12 5v14 M5 12h14",
 } as const;
 
 export type IconName = keyof typeof paths;

@@ -97,7 +97,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         });
         return (
           <>
-            <ServicesAgentsSection services={servicesView.services} otherServices={servicesView.otherServices} />
+            <ServicesAgentsSection clientId={client.id} services={servicesView.services} otherServices={servicesView.otherServices} />
             {toHandle > 0 && (
               <section aria-labelledby="client-work" className="mt-10">
                 <SectionHeader id="client-work" title="Travail à traiter" count={toHandle} action={<Link href="/work" className="text-sm text-accent hover:underline">Ouvrir Travail</Link>} />

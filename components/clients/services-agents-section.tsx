@@ -8,24 +8,13 @@ import type { ClientServiceView } from "@/lib/services/client-view";
 
 /**
  * Section « Services & agents » d’une fiche client : CLIENT → SERVICES → AGENTS.
- * Lecture seule ; l’ajout d’un service est un aperçu local, jamais enregistré.
+ * Activation et désactivation réelles (Server Actions) ; refusées en simulation.
  */
-export function ServicesAgentsSection({ services, otherServices }: { services: ClientServiceView[]; otherServices: string[] }) {
-  const [previewIds, setPreviewIds] = useState<ReadonlySet<string>>(() => new Set());
+export function ServicesAgentsSection({ clientId, services, otherServices }: { clientId: string; services: ClientServiceView[]; otherServices: string[] }) {
   const [dialog, setDialog] = useState<ServiceDialogView | null>(null);
 
-  const shown = services.filter((service) => service.status !== "not-subscribed" || previewIds.has(service.id));
-  const notSubscribed = services.filter((service) => service.status === "not-subscribed" && !previewIds.has(service.id));
-
-  function preview(serviceId: string) {
-    setPreviewIds((ids) => new Set(ids).add(serviceId));
-    setDialog({ mode: "detail", serviceId });
-  }
-
-  function removePreview(serviceId: string) {
-    setPreviewIds((ids) => { const next = new Set(ids); next.delete(serviceId); return next; });
-    setDialog(null);
-  }
+  const shown = services.filter((service) => service.status !== "not-subscribed");
+  const notSubscribed = services.filter((service) => service.status === "not-subscribed");
 
   return (
     <section aria-labelledby="services-agents" className="mt-8">
@@ -41,7 +30,7 @@ export function ServicesAgentsSection({ services, otherServices }: { services: C
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {shown.map((service) => (
-          <ServiceCard key={service.id} service={service} preview={previewIds.has(service.id)} onOpen={() => setDialog({ mode: "detail", serviceId: service.id })} />
+          <ServiceCard key={service.id} service={service} onOpen={() => setDialog({ mode: "detail", serviceId: service.id })} />
         ))}
       </div>
 
@@ -57,7 +46,7 @@ export function ServicesAgentsSection({ services, otherServices }: { services: C
       )}
       {otherServices.length > 0 && <p className="mt-3 text-xs text-muted">Autres services enregistrés : {otherServices.join(", ")}.</p>}
 
-      <AddServiceDialog view={dialog} services={services} previewIds={previewIds} onNavigate={setDialog} onPreview={preview} onRemovePreview={removePreview} onClose={() => setDialog(null)} />
+      <AddServiceDialog clientId={clientId} view={dialog} services={services} onNavigate={setDialog} onClose={() => setDialog(null)} />
     </section>
   );
 }

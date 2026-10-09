@@ -28,7 +28,7 @@ function form(fields = validFields) {
 function setup({ deny = false, data = null, error = null, throwStorage = false, pages } = {}) {
   const calls = [];
   const logs = [];
-  const guard = async () => { calls.push("auth"); if (deny) throw new Error("access-denied"); };
+  const guard = async () => { calls.push("auth"); if (deny) throw new Error("access-denied"); return { userId: "user_test_admin" }; };
   let pageIndex = 0;
   const query = {
     select: () => query, order: () => query, eq: () => query,
@@ -50,6 +50,7 @@ function setup({ deny = false, data = null, error = null, throwStorage = false, 
   }, logs);
   const action = load("app/(cockpit)/clients/new/actions.ts", {
     "@/lib/require-admin": { requireAdmin: guard }, "@/lib/clients/data": repository,
+    "@/lib/services/domain": { ensureGlobalAgents: async (_actor, ids) => { calls.push(`global-agents:${ids.length}`); } },
     "next/navigation": navigation, "next/cache": { revalidatePath: (path) => calls.push(`revalidate:${path}`) },
   }, logs);
   return { repository, action, calls, logs };

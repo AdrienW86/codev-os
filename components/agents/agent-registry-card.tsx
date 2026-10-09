@@ -8,7 +8,7 @@ import { capabilityState, scopeLabels, type AgentBlueprint, type AgentDisplaySta
 
 /** Scénario le plus parlant pour découvrir chaque agent. */
 const simulationScenarios: Record<AgentBlueprint["id"], string> = {
-  seo: "seo-progress", "google-ads": "ads-anomaly", publications: "publications-review", monitoring: "site-down", automation: "all-services", report: "report-ready",
+  seo: "seo-progress", "google-ads": "ads-anomaly", publications: "publications-review", monitoring: "site-down", automation: "all-services", report: "report-ready", veille: "normal",
 };
 
 function Autonomy({ level, planned }: { level: number; planned: boolean }) {

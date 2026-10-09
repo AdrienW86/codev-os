@@ -1,7 +1,7 @@
 // Registre frontend des agents CODE-V (actuels et futurs). Configuration statique : aucune table associée.
 import { normalizeLabel, type ServiceId } from "@/lib/services/catalog";
 
-export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report";
+export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report" | "veille";
 export type AgentPortee = "global" | "client" | "project";
 /** État d’un agent tant qu’aucun agent configuré en base ne lui correspond. */
 export type BlueprintReadiness = "to-connect" | "coming-soon";
@@ -67,6 +67,12 @@ export const agentCatalog: readonly AgentBlueprint[] = [
     capabilities: [{ label: "Synthèse d’activité" }, { label: "Rapport hebdomadaire" }, { label: "Rapport mensuel" }, { label: "Synthèse client" }],
     matches: nameHas(/rapport|report|account manager/),
   },
+  {
+    id: "veille", name: "Agent Veille", role: "Sélectionne l’actualité tech, IA, SEO et Ads à partir de flux publics.",
+    scope: "global", services: [], readiness: "to-connect", plannedAutonomy: 1,
+    capabilities: [{ label: "Collecte des flux publics", existsInApp: true }, { label: "Digest quotidien et hebdomadaire", existsInApp: true }],
+    matches: nameHas(/veille/),
+  },
 ];
 
 export function getAgentBlueprint(id: string) {
@@ -89,7 +95,7 @@ export const agentStateLabels: Record<AgentDisplayState, { label: string; tone: 
   "coming-soon": { label: "À venir", tone: "neutral", symbol: "◌" },
 };
 
-export type ConfiguredAgent = { id: string; name: string; status: string; enabled: boolean; autonomy_level: number; scope_review_required: boolean; publication_specialist?: boolean };
+export type ConfiguredAgent = { id: string; name: string; status: string; enabled: boolean; autonomy_level: number; scope_review_required: boolean; publication_specialist?: boolean; agent_type?: string | null };
 
 const isRunnable = (agent: ConfiguredAgent) => agent.enabled && agent.status === "Actif";
 
@@ -124,7 +130,8 @@ export function matchConfiguredAgents<T extends ConfiguredAgent>(agents: readonl
   const byBlueprint = new Map<AgentBlueprintId, T[]>(agentCatalog.map((blueprint) => [blueprint.id, []]));
   const unmatched: T[] = [];
   for (const agent of agents) {
-    const blueprint = agentCatalog.find((item) => item.matches(agent));
+    // Type explicite (registre en base) prioritaire ; sinon reconnaissance par le nom.
+    const blueprint = agentCatalog.find((item) => item.id === agent.agent_type) ?? (agent.agent_type ? undefined : agentCatalog.find((item) => item.matches(agent)));
     if (blueprint) byBlueprint.get(blueprint.id)!.push(agent);
     else unmatched.push(agent);
   }

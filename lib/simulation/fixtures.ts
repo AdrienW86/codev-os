@@ -49,6 +49,7 @@ export function buildBaseWorld(today: string): SimWorld {
       monitoring: { status: "active" },
       automation: { status: "coming-soon" },
       report: { status: "active" },
+      veille: { status: "active" },
     },
     work: [
       { id: "sim-w-task-1", kind: "task", title: "Valider les visuels de novembre", summary: "Le client attend une proposition de 4 visuels pour ses publications.", status: "todo",

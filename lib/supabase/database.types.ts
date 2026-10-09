@@ -1,5 +1,6 @@
 import type { Client, ClientInput } from "@/lib/clients/types";
 import type { PublicationTables, PublicationFunctions } from "@/lib/publications/types";
+import type { CoreFunctions, CoreTables } from "@/lib/supabase/core.types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -32,6 +33,8 @@ export type ProjectInsert = {
 };
 
 export type TaskRow = {
+  due_time?: string | null;
+  duration_minutes?: number | null;
   completed_at: string | null;
   id: string;
   client_id: string;
@@ -47,6 +50,8 @@ export type TaskRow = {
 };
 
 export type TaskInsert = {
+  due_time?: string | null;
+  duration_minutes?: number | null;
   id?: string;
   client_id: string;
   project_id?: string | null;
@@ -61,6 +66,8 @@ export type TaskInsert = {
 };
 
 export type AgentRow = {
+  /** Type du registre applicatif (lib/agents/registry.ts). */
+  agent_type?: string | null;
   publication_specialist?: boolean;
   agent_scope: "client" | "project";
   scope_review_required: boolean;
@@ -79,6 +86,7 @@ export type AgentRow = {
 };
 
 export type AgentInsert = {
+  agent_type?: string | null;
   publication_specialist?: boolean;
   agent_scope?: "client" | "project";
   scope_review_required?: boolean;
@@ -102,6 +110,10 @@ export type AgentClientAssignmentRow = {
   enabled: boolean;
   client_instructions: string | null;
   created_at: string;
+  /** manual (admin), service (activation d’un service) ou global (Agent Rapport). */
+  source?: "manual" | "service" | "global";
+  service_key?: string | null;
+  updated_at?: string;
 };
 
 export type AgentClientAssignmentInsert = {
@@ -110,6 +122,8 @@ export type AgentClientAssignmentInsert = {
   enabled?: boolean;
   client_instructions?: string | null;
   created_at?: string;
+  source?: "manual" | "service" | "global";
+  service_key?: string | null;
 };
 
 export type AuditLogRow = {
@@ -225,6 +239,12 @@ export type InternalActionRow = {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+  payload_hash?: string | null;
+  approved_payload_hash?: string | null;
+  approved_by?: string | null;
+  prepared_by?: string | null;
+  execution_mode?: "internal" | "manual" | "external";
+  incident_id?: string | null;
 };
 
 export type InternalActionInsert = {
@@ -243,6 +263,10 @@ export type InternalActionInsert = {
   error_message?: string | null;
   created_at?: string;
   updated_at?: string;
+  approved_by?: string | null;
+  prepared_by?: string | null;
+  execution_mode?: "internal" | "manual" | "external";
+  incident_id?: string | null;
 };
 
 export type ClientServiceRow = {
@@ -253,6 +277,11 @@ export type ClientServiceRow = {
   monthly_fee_eur: number | null;
   notes: string | null;
   created_at: string;
+  service_key?: string | null;
+  lifecycle?: "active" | "to_configure" | "paused" | "ended";
+  activated_at?: string | null;
+  deactivated_at?: string | null;
+  updated_at?: string;
 };
 
 export type ClientServiceInsert = {
@@ -260,6 +289,10 @@ export type ClientServiceInsert = {
   client_id: string;
   service_type: string;
   status: string;
+  service_key?: string | null;
+  lifecycle?: "active" | "to_configure" | "paused" | "ended";
+  activated_at?: string | null;
+  deactivated_at?: string | null;
   monthly_fee_eur?: number | null;
   notes?: string | null;
   created_at?: string;
@@ -267,7 +300,7 @@ export type ClientServiceInsert = {
 
 export type Database = {
   public: {
-    Tables: PublicationTables & {
+    Tables: PublicationTables & CoreTables & {
       agent_project_assignments: {
         Row: {agent_id:string;client_id:string;project_id:string;enabled:boolean;created_at:string;updated_at:string};
         Insert: {agent_id:string;client_id:string;project_id:string;enabled?:boolean;created_at?:string;updated_at?:string};
@@ -279,9 +312,9 @@ export type Database = {
       };
       client_connections: {
         // credential_reference / connected_at / expires_at: Lot 4.3 P9, written only through the publication connection RPCs.
-        Row: { id: string; client_id: string; provider: string; status: string; external_account_id: string | null; metadata: Json; last_checked_at: string | null; created_at: string; updated_at: string; credential_reference: string | null; connected_at: string | null; expires_at: string | null };
-        Insert: { client_id: string; provider: string; status: string; external_account_id?: string | null; metadata: Json; last_checked_at?: string | null };
-        Update: { status?: string; external_account_id?: string | null; metadata?: Json; last_checked_at?: string | null };
+        Row: { id: string; client_id: string; provider: string; status: string; external_account_id: string | null; metadata: Json; last_checked_at: string | null; created_at: string; updated_at: string; credential_reference: string | null; connected_at: string | null; expires_at: string | null; scope?: "client" | "global"; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
+        Insert: { client_id: string | null; provider: string; status: string; external_account_id?: string | null; metadata: Json; last_checked_at?: string | null; scope?: "client" | "global"; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
+        Update: { status?: string; external_account_id?: string | null; metadata?: Json; last_checked_at?: string | null; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
         Relationships: [];
       };
       clients: {
@@ -472,7 +505,7 @@ export type Database = {
       };
     };
     Views: { [key: string]: never };
-    Functions: PublicationFunctions & {
+    Functions: PublicationFunctions & CoreFunctions & {
       agent_set_scope: { Args:{p_agent_id:string;p_scope:"client"|"project";p_actor_id:string};Returns:undefined };
       agent_project_assignment_set: { Args:{p_agent_id:string;p_project_id:string;p_enabled:boolean;p_actor_id:string};Returns:undefined };
     };

@@ -1,0 +1,147 @@
+import "server-only";
+// Exécution des outils de l'assistant. Chaque outil passe par le moteur de permissions quand il
+// touche à une capacité d'agent ; les écritures n'arrivent ici qu'après confirmation explicite.
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { writeAudit } from "@/lib/core/audit";
+import type { Actor } from "@/lib/core/actor";
+import { authorize } from "@/lib/permissions/engine";
+import { agentDefinitions, isAgentType, runTypes, type CapabilityId } from "@/lib/agents/registry";
+import { getAgentByType } from "@/lib/agents/outputs";
+import { isProviderConfigured } from "@/lib/system/providers";
+import { generateReport, listReports } from "@/lib/reports/service";
+import { reportStatusLabels } from "@/lib/reports/labels";
+import { periodLabel } from "@/lib/reports/build";
+import { runNow } from "@/lib/automations/service";
+import { topNews } from "@/lib/news/data";
+import { todayInParis } from "@/lib/dashboard/home";
+import { runCheckType, type ToolName } from "@/lib/assistant/tools";
+import type { ToolOutcome } from "@/lib/assistant/orchestrator";
+
+const db = () => getSupabaseServerClient();
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+/** Résout un nom de client saisi librement ; refuse l'ambiguïté plutôt que de deviner. */
+export async function resolveClient(name: string): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }> {
+  const query = name.trim().slice(0, 120);
+  if (!query) return { ok: false, message: "Précisez le client." };
+  const { data, error } = await db().from("clients").select("id,name").ilike("name", `%${escapeLike(query)}%`).order("name").limit(6);
+  if (error) throw new Error("client search");
+  const rows = data ?? [];
+  const exact = rows.find((row) => row.name.localeCompare(query, "fr", { sensitivity: "base" }) === 0);
+  if (exact) return { ok: true, id: exact.id, name: exact.name };
+  if (rows.length === 1) return { ok: true, id: rows[0].id, name: rows[0].name };
+  if (!rows.length) return { ok: false, message: `Aucun client ne correspond à « ${query} ».` };
+  return { ok: false, message: `Plusieurs clients correspondent à « ${query} » : ${rows.slice(0, 5).map((row) => row.name).join(", ")}. Précisez lequel.` };
+}
+
+/** Vérifie qu'un agent actif du registre détient la capacité (et que ses connexions sont prêtes). */
+async function authorizeCapability(capability: CapabilityId): Promise<{ ok: true } | { ok: false; message: string }> {
+  const definition = Object.values(agentDefinitions).find((item) => item.capabilities.includes(capability));
+  if (!definition) return { ok: false, message: "Capacité non disponible." };
+  const agent = await getAgentByType(definition.type);
+  if (!agent || !isAgentType(agent.agent_type)) return { ok: false, message: `${definition.name} n’est pas installé.` };
+  const decision = authorize({ agent: { type: agent.agent_type, enabled: agent.enabled, status: agent.status, autonomy: agent.autonomy_level }, capability, isProviderConfigured });
+  return decision.outcome === "deny" ? { ok: false, message: decision.message } : { ok: true };
+}
+
+const count = async (query: PromiseLike<{ count: number | null; error: unknown }>) => {
+  const { count: value, error } = await query;
+  return error ? null : value ?? 0;
+};
+
+export async function executeTool(actor: Actor, name: ToolName, input: Record<string, unknown>): Promise<ToolOutcome> {
+  const today = todayInParis();
+  switch (name) {
+    case "get_priorities": {
+      const [actions, incidents, overdue, dueToday, reports] = await Promise.all([
+        count(db().from("actions").select("id", { count: "exact", head: true }).eq("status", "pending_approval")),
+        count(db().from("incidents").select("id", { count: "exact", head: true }).neq("status", "resolved")),
+        count(db().from("tasks").select("id", { count: "exact", head: true }).neq("status", "Terminé").lt("due_date", today)),
+        count(db().from("tasks").select("id", { count: "exact", head: true }).neq("status", "Terminé").eq("due_date", today)),
+        count(db().from("reports").select("id", { count: "exact", head: true }).eq("status", "ready_for_review")),
+      ]);
+      const parts = [
+        actions ? `${actions} action(s) à valider` : null, incidents ? `${incidents} incident(s) ouvert(s)` : null,
+        overdue ? `${overdue} tâche(s) en retard` : null, dueToday ? `${dueToday} tâche(s) pour aujourd’hui` : null, reports ? `${reports} rapport(s) à relire` : null,
+      ].filter(Boolean);
+      return { ok: true, text: parts.length ? `À traiter : ${parts.join(", ")}.` : "Rien d’urgent pour le moment.", links: [{ label: "Ouvrir Travail", href: "/work?view=review" }, ...(reports ? [{ label: "Rapports à relire", href: "/reports?status=ready_for_review" }] : [])] };
+    }
+    case "client_overview": {
+      const client = await resolveClient(String(input.client));
+      if (!client.ok) return { ok: false, text: client.message };
+      const [services, tasks, incidents, report] = await Promise.all([
+        db().from("client_services").select("service_type,lifecycle").eq("client_id", client.id).limit(20),
+        count(db().from("tasks").select("id", { count: "exact", head: true }).eq("client_id", client.id).neq("status", "Terminé")),
+        count(db().from("incidents").select("id", { count: "exact", head: true }).eq("client_id", client.id).neq("status", "resolved")),
+        db().from("reports").select("kind,status,period_start,period_end").eq("client_id", client.id).order("period_start", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const active = (services.data ?? []).filter((item) => (item as { lifecycle?: string }).lifecycle !== "ended").map((item) => item.service_type);
+      const lastReport = report.data ? `dernier rapport : ${periodLabel(report.data.kind, { start: report.data.period_start, end: report.data.period_end })} (${reportStatusLabels[report.data.status].label.toLowerCase()})` : "aucun rapport";
+      return { ok: true, text: `${client.name} — services : ${active.length ? active.join(", ") : "aucun"} ; ${tasks ?? "?"} tâche(s) ouverte(s) ; ${incidents ?? 0} incident(s) ouvert(s) ; ${lastReport}.`, links: [{ label: `Fiche ${client.name}`, href: `/clients/${client.id}` }] };
+    }
+    case "agenda_today": {
+      const day = typeof input.date === "string" ? input.date : today;
+      const [tasks, items] = await Promise.all([
+        db().from("tasks").select("title,due_time,client:clients(name)").eq("due_date", day).neq("status", "Terminé").order("due_time").limit(20),
+        db().from("agenda_items").select("title,starts_at").gte("starts_at", `${day}T00:00:00Z`).lt("starts_at", `${day}T23:59:59Z`).neq("status", "cancelled").order("starts_at").limit(20),
+      ]);
+      const lines = [
+        ...(items.data ?? []).map((item) => `${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(new Date(item.starts_at))} ${item.title}`),
+        ...(tasks.data ?? []).map((task) => `${task.due_time ? `${String(task.due_time).slice(0, 5)} ` : ""}${task.title}${(task.client as { name?: string } | null)?.name ? ` (${(task.client as { name: string }).name})` : ""}`),
+      ];
+      return { ok: true, text: lines.length ? `Au programme : ${lines.slice(0, 10).join(" · ")}.` : "Rien de planifié pour cette journée.", links: [{ label: "Ouvrir l’agenda", href: "/agenda" }] };
+    }
+    case "list_reports": {
+      const allowed = await authorizeCapability("aggregate_activity");
+      if (!allowed.ok) return { ok: false, text: allowed.message };
+      let clientId: string | undefined;
+      if (typeof input.client === "string") {
+        const client = await resolveClient(input.client);
+        if (!client.ok) return { ok: false, text: client.message };
+        clientId = client.id;
+      }
+      const reports = (await listReports({ clientId })).slice(0, 5);
+      if (!reports.length) return { ok: true, text: "Aucun rapport pour l’instant.", links: [{ label: "Rapports", href: "/reports" }] };
+      return { ok: true, text: reports.map((report) => `${report.client?.name ?? "Global"} — ${periodLabel(report.kind, { start: report.period_start, end: report.period_end })} : ${reportStatusLabels[report.status].label.toLowerCase()}`).join(" · "), links: reports.slice(0, 3).map((report) => ({ label: `Rapport ${report.client?.name ?? ""}`.trim(), href: `/reports/${report.id}` })) };
+    }
+    case "list_news": {
+      const news = await topNews(3);
+      return { ok: true, text: news.length ? news.map((item) => `${item.title} (${item.source})`).join(" · ") : "Aucune actualité collectée : lancez la veille tech & IA.", links: news.flatMap((item) => (item.url ? [{ label: item.source, href: item.url }] : [])) };
+    }
+    case "generate_report": {
+      const allowed = await authorizeCapability("generate_report");
+      if (!allowed.ok) return { ok: false, text: allowed.message };
+      const client = await resolveClient(String(input.client));
+      if (!client.ok) return { ok: false, text: client.message };
+      const result = await generateReport(actor, { clientId: client.id, kind: input.kind === "monthly" ? "monthly" : "weekly", today });
+      if (result.status === "frozen") return { ok: false, text: "Ce rapport a déjà été envoyé ou archivé : il n’est pas régénéré.", links: [{ label: "Voir le rapport", href: `/reports/${result.id}` }] };
+      return { ok: true, text: `Rapport ${result.status === "created" ? "généré" : `régénéré (v${result.version})`} pour ${client.name}. Il attend votre relecture avant tout envoi.`, links: [{ label: "Relire le rapport", href: `/reports/${result.id}` }] };
+    }
+    case "run_check": {
+      const runType = runCheckType(input.check);
+      if (!runType) return { ok: false, text: "Analyse inconnue." };
+      const definition = runTypes[runType];
+      const allowed = await authorizeCapability(definition.capability);
+      if (!allowed.ok) return { ok: false, text: allowed.message };
+      let clientId: string | null = null;
+      if (typeof input.client === "string") {
+        const client = await resolveClient(input.client);
+        if (!client.ok) return { ok: false, text: client.message };
+        clientId = client.id;
+      } else if (definition.scope === "client") return { ok: false, text: "Précisez le client pour cette analyse." };
+      const result = await runNow(actor, { runType, clientId, trigger: "assistant" });
+      return { ok: result.ok, text: result.message ?? (result.ok ? "Analyse lancée." : "Analyse impossible."), links: [{ label: "Observabilité", href: "/settings?tab=system" }, { label: "Travail", href: "/work" }] };
+    }
+    case "create_task": {
+      const client = await resolveClient(String(input.client));
+      if (!client.ok) return { ok: false, text: client.message };
+      const { data, error } = await db().from("tasks").insert({
+        client_id: client.id, title: String(input.title).slice(0, 200), status: "À faire", priority: String(input.priority ?? "Moyenne"),
+        due_date: typeof input.due_date === "string" ? input.due_date : null, assignee_type: "admin",
+      }).select("id").single();
+      if (error || !data) throw new Error("task insert");
+      await writeAudit(actor, { action: "task.created", resource_type: "task", resource_id: data.id, metadata: { client_id: client.id, via: "assistant" } });
+      return { ok: true, text: `Tâche créée pour ${client.name}.`, links: [{ label: "Voir la tâche", href: `/tasks/${data.id}/edit` }] };
+    }
+  }
+}

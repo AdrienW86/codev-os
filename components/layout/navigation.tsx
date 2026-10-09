@@ -5,34 +5,40 @@ import { usePathname } from "next/navigation";
 import { useRef } from "react";
 import { Icon, type IconName } from "@/components/ui/icon";
 
-const navigation: { href: string; label: string; icon: IconName }[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { href: "/clients", label: "Clients", icon: "clients" },
-  { href: "/projects", label: "Projects", icon: "projects" },
-  { href: "/tasks", label: "Tasks", icon: "tasks" },
+// Navigation V2 : orientée usage quotidien. Les routes /projects, /tasks,
+// /recommendations et /actions restent accessibles via les liens internes.
+const navigation: { href: string; label: string; icon: IconName; matches?: string[] }[] = [
+  { href: "/dashboard", label: "Accueil", icon: "home" },
+  { href: "/clients", label: "Clients", icon: "clients", matches: ["/projects"] },
+  { href: "/agenda", label: "Agenda", icon: "calendar" },
+  { href: "/work", label: "Travail", icon: "work", matches: ["/tasks", "/recommendations", "/actions"] },
+  { href: "/publications", label: "Publications", icon: "publications" },
+  { href: "/reports", label: "Rapports", icon: "reports" },
   { href: "/agents", label: "Agents", icon: "agents" },
-  { href: "/recommendations", label: "Recommandations", icon: "recommendations" },
-  { href: "/actions", label: "Actions", icon: "tasks" },
-  { href: "/publications", label: "Publications", icon: "recommendations" },
   { href: "/settings", label: "Paramètres", icon: "settings" },
 ];
+
+const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
 function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Navigation principale" className="space-y-1.5">
-      {navigation.map(({ href, label, icon }) => (
-        <Link
-          key={href}
-          href={href}
-          onClick={onNavigate}
-          aria-current={pathname === href ? "page" : pathname.startsWith(`${href}/`) ? "location" : undefined}
-          className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors ${pathname === href || pathname.startsWith(`${href}/`) ? "bg-accent/10 font-medium text-accent" : "text-muted hover:bg-white/5 hover:text-foreground"}`}
-        >
-          <Icon name={icon} />
-          {label}
-        </Link>
-      ))}
+    <nav aria-label="Navigation principale" className="space-y-1">
+      {navigation.map(({ href, label, icon, matches = [] }) => {
+        const active = within(pathname, href) || matches.some((path) => within(pathname, path));
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onNavigate}
+            aria-current={pathname === href ? "page" : active ? "location" : undefined}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${active ? "bg-accent/10 font-medium text-accent" : "text-muted hover:bg-white/5 hover:text-foreground"}`}
+          >
+            <Icon name={icon} width={18} height={18} />
+            {label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -50,21 +56,8 @@ export function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col overflow-y-auto border-r border-border bg-[#141718] p-5 lg:flex">
       <Brand />
-      <p className="mt-12 mb-4 px-3 text-[10px] tracking-[0.2em] text-muted uppercase">Espace de travail</p>
-      <NavigationLinks />
-      <div className="mt-auto pt-8">
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-sm font-medium">Votre espace de pilotage.</p>
-          <p className="mt-2 text-xs leading-5 text-muted">Clients, projets, tâches et agents réunis pour CODE-V.</p>
-          <span className="mt-4 inline-block text-[10px] tracking-widest text-accent uppercase">Version 0.2 · Prototype</span>
-        </div>
-      </div>
-      <div className="mt-5 flex items-center gap-3 border-t border-border pt-5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-xs font-medium">CV</span>
-        <div>
-          <p className="text-xs font-medium">Équipe CODE-V</p>
-          <p className="mt-1 text-xs text-muted">Espace interne</p>
-        </div>
+      <div className="mt-10">
+        <NavigationLinks />
       </div>
     </aside>
   );

@@ -10,11 +10,14 @@ import { listAgentProjectAssignments } from "@/lib/agents/project-assignments";
 import { listClients } from "@/lib/clients/data";
 import { agentCatalog, agentStateLabels, blueprintState, matchConfiguredAgents } from "@/lib/agents/catalog";
 import { getService } from "@/lib/services/catalog";
+import { getActiveScenario } from "@/lib/simulation/server";
+import { SimAgents } from "@/components/simulation/views/sim-agents";
 
 export const metadata: Metadata = { title: "Agents" };
 
 export default async function AgentsPage() {
   await requireAdmin();
+  if (await getActiveScenario()) return <SimAgents />;
   const [agents, clients] = await Promise.all([listAgents(), listClients()]);
   const { byBlueprint, unmatched } = matchConfiguredAgents(agents);
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));

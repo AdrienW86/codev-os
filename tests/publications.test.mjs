@@ -218,6 +218,9 @@ const boardComponent = load("components/publications/publications-board.tsx", { 
   "@/lib/publications/editor": { platformLabels: {} }, "@/lib/format-date": date, "@/lib/publications/types": types, "@/lib/publications/board-query": boardQuery,
   "./board-filter-bar": { BoardFilterBar: () => null }, "./board-visibility-form": { BoardVisibilityForm: () => null } });
 
+// Simulation UX inactive : la page lit les données réelles.
+const simulationOff = { "@/lib/simulation/server": { getActiveScenario: async () => null }, "@/components/simulation/views/sim-publications": { SimPublications: () => jsx.jsx("div", { "data-simulation": "publications" }) } };
+
 // The board loader is backed by the same stored rows: no demo fallback, and it reads only after the admin guard.
 function boardFrom(context){return {listPublicationBoardRows:async()=>{const rows=await context.repository.listPublications();
  const mapped=rows.map(p=>({id:p.id,clientId:p.client_id,clientName:p.client?.name??"Client",projectId:null,projectName:null,date:p.editorial_week,dateIsWeek:true,status:p.status==="pending_review"?"draft":"to_prepare",rawStatus:p.status,subject:p.subject,preview:"",platforms:[],origin:"manual",edited:false,updatedAt:p.editorial_week,revisionId:null,revisionNumber:null,creationOrigin:"manual",hasMedia:false,missingMedia:[],hidden:false,deliveries:{published:0,total:0},image:null,debug:null}));
@@ -231,6 +234,7 @@ test("publications page renders true empty state, flags and kill switch", async 
     "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
     "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel,
     "@/lib/format-date": date,
+    ...simulationOff,
   });
   const html = renderToStaticMarkup(await page.default({searchParams:Promise.resolve({})}));
   assert.match(html, /Aucune publication pour ces critères/);
@@ -243,6 +247,25 @@ test("publications page renders true empty state, flags and kill switch", async 
   assert.equal(context.calls[0], "auth");
 });
 
+test("simulation active: publications page renders the simulated view and never reads stored publications", async () => {
+  const context = setup({ rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
+  let boardReads = 0;
+  const page = load("app/(cockpit)/publications/page.tsx", {
+    "@/components/publications/process-due-form": { ProcessDueForm: () => null }, "@/lib/clients/data": { listClients: async () => { throw new Error("no real read"); } },
+    "@/lib/publications/board": { listPublicationBoardRows: async () => { boardReads++; return {}; } }, "@/lib/publications/board-query": boardQuery, "@/components/publications/publications-board": boardComponent,
+    "@/lib/publications/drawer": { loadPublicationDetail: async () => { throw new Error("no real read"); } }, "@/components/publications/publication-drawer": { PublicationDrawer: () => null },
+    "@/lib/publications/project-channels": { publicationProjectOptions: async () => [] }, "@/lib/projects/data": { listProjects: async () => [] },
+    "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
+    "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel, "@/lib/format-date": date,
+    ...simulationOff, "@/lib/simulation/server": { getActiveScenario: async () => ({ id: "normal", name: "Journée type" }) },
+  });
+  const html = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
+  assert.match(html, /data-simulation="publications"/);
+  assert.doesNotMatch(html, /Contenu réel|Client réel/);
+  assert.equal(boardReads, 0);
+  assert.deepEqual(context.calls, ["auth"]);
+});
+
 test("page refuses non-admin and renders existing publications without demo fallback", async () => {
   for (const deny of [false, true]) {
     const context = setup({ deny, rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
@@ -252,32 +275,48 @@ test("page refuses non-admin and renders existing publications without demo fall
       "@/lib/projects/data":{listProjects:async()=>[]},
       "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
       "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel, "@/lib/format-date": date,
+      ...simulationOff,
     });
     if (deny) await assert.rejects(()=>page.default({searchParams:Promise.resolve({})}), /denied/);
     else { const html = renderToStaticMarkup(await page.default({searchParams:Promise.resolve({})})); assert.match(html, /Contenu réel/); assert.match(html, /Client réel/); assert.match(html, /Brouillon/); assert.match(html,new RegExp(`/publications/${id}`)); assert.equal(context.calls[0], "auth"); }
   }
 });
 
-test("Settings reads publication flags without mutation controls or external calls", async () => {
-  const context = setup();
-  const page = load("app/(cockpit)/settings/page.tsx", {
+// Paramètres : modules réels du kit UI, simulation inactive, aucun lecteur externe.
+function settingsMocks(context) {
+  const icon = load("components/ui/icon.tsx");
+  const statusBadge = load("components/ui/status-badge.tsx");
+  const servicesCatalog = load("lib/services/catalog.ts");
+  return {
     "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
     "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel,
-  });
-  const html = renderToStaticMarkup(await page.default());
+    "@/components/ui/button": load("components/ui/button.tsx"), "@/components/ui/status-badge": statusBadge,
+    "@/components/ui/layout": load("components/ui/layout.tsx", { "@/components/ui/icon": icon, "@/components/ui/status-badge": statusBadge, "@/components/ui/primitives": primitives }),
+    "@/components/ui/states": load("components/ui/states.tsx", { "@/components/ui/icon": icon }), "@/components/ui/tabs": load("components/ui/tabs.tsx"),
+    "@/components/simulation/simulation-banner": { TrySimulationButton: () => null },
+    "@/components/simulation/views/sim-settings": { SimAutomations: () => null, SimConnections: () => null },
+    "@/lib/agents/data": { listAgents: async () => [] }, "@/lib/agents/catalog": load("lib/agents/catalog.ts", { "@/lib/services/catalog": servicesCatalog }),
+    "@/lib/simulation/server": { getActiveScenario: async () => null },
+  };
+}
+
+test("Settings reads publication flags without mutation controls or external calls", async () => {
+  const context = setup();
+  const page = load("app/(cockpit)/settings/page.tsx", settingsMocks(context));
+  // Les réglages Publications sont affichés en consultation dans l’onglet Sécurité.
+  const html = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({ tab: "security" }) }));
   assert.match(html, /Publications/); assert.match(html, /Automatisation/); assert.match(html, /consultation/);
   assert.doesNotMatch(html, /<form|<button/);
+  const general = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
+  assert.doesNotMatch(general, /<form|<button/);
   const missingHtml = renderToStaticMarkup(jsx.jsx(settingsPanel.PublicationSettingsPanel, { settings: null }));
   assert.match(missingHtml, /Réglages indisponibles/);
 });
 
 test("Settings denies non-admin before reading and error UI does not expose raw failures", async () => {
   const context = setup({ deny: true });
-  const page = load("app/(cockpit)/settings/page.tsx", {
-    "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
-    "@/components/ui/primitives": primitives, "@/components/publications/settings-panel": settingsPanel,
-  });
-  await assert.rejects(page.default, /denied/);
+  const page = load("app/(cockpit)/settings/page.tsx", settingsMocks(context));
+  await assert.rejects(() => page.default({ searchParams: Promise.resolve({ tab: "security" }) }), /denied/);
   assert.deepEqual(context.calls, ["auth"]);
   const errorPage = load("app/(cockpit)/publications/error.tsx");
   const html = renderToStaticMarkup(jsx.jsx(errorPage.default, { error: new Error("private secret SQL"), reset: () => {} }));

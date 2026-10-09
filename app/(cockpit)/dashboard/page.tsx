@@ -18,6 +18,8 @@ import { listPublications } from "@/lib/publications/data";
 import { summarizeDashboard } from "@/lib/dashboard/summary";
 import { actionTypeLabel, countLabel } from "@/lib/presentation/labels";
 import { formatDate } from "@/lib/format-date";
+import { getActiveScenario } from "@/lib/simulation/server";
+import { SimDashboard } from "@/components/simulation/views/sim-dashboard";
 
 export const metadata: Metadata = { title: "Accueil" };
 
@@ -27,6 +29,7 @@ async function firstName() {
 
 export default async function DashboardPage() {
   await requireAdmin();
+  if (await getActiveScenario()) return <SimDashboard name={await firstName()} />;
   const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications] = await Promise.all([
     firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 4 }),
     // Les publications sont facultatives sur la home : leur indisponibilité ne bloque pas la page.
@@ -42,27 +45,27 @@ export default async function DashboardPage() {
     {
       key: "tasks", count: summary.priorityTasks.length, urgent: true, icon: "tasks" as const, href: "/work?view=todo", linkLabel: "Voir les tâches",
       title: countLabel(summary.priorityTasks.length, "tâche prioritaire", "tâches prioritaires"),
-      items: summary.priorityTasks.slice(0, 3).map((task) => ({ id: task.id, title: task.title, detail: task.client?.name ?? "Client" })),
+      items: summary.priorityTasks.slice(0, 3).map((task) => ({ id: task.id, title: task.title, detail: task.client?.name ?? "Client", href: `/tasks/${task.id}/edit` })),
     },
     {
       key: "recommendations", count: pendingRecommendations.length, urgent: false, icon: "recommendations" as const, href: "/work?view=review", linkLabel: "Examiner",
       title: countLabel(pendingRecommendations.length, "recommandation à examiner", "recommandations à examiner"),
-      items: pendingRecommendations.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: `${item.client?.name ?? "Client"} · ${item.agent?.name ?? "Agent"}` })),
+      items: pendingRecommendations.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: `${item.client?.name ?? "Client"} · ${item.agent?.name ?? "Agent"}`, href: `/recommendations/${item.id}` })),
     },
     {
       key: "actions", count: pendingActions.length, urgent: true, icon: "alert" as const, href: "/actions?status=pending_approval", linkLabel: "Valider",
       title: countLabel(pendingActions.length, "action à valider", "actions à valider"),
-      items: pendingActions.slice(0, 3).map((item) => ({ id: item.id, title: actionTypeLabel(item.action_type), detail: `${item.client?.name ?? "Client"} · ${formatDate(item.created_at)}` })),
+      items: pendingActions.slice(0, 3).map((item) => ({ id: item.id, title: actionTypeLabel(item.action_type), detail: `${item.client?.name ?? "Client"} · ${formatDate(item.created_at)}`, href: "/actions?status=pending_approval" })),
     },
     {
       key: "publications-review", count: publicationsToReview.length, urgent: false, icon: "publications" as const, href: "/publications/review", linkLabel: "Valider les publications",
       title: countLabel(publicationsToReview.length, "publication à valider", "publications à valider"),
-      items: publicationsToReview.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client" })),
+      items: publicationsToReview.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client", href: `/publications?publication=${item.id}` })),
     },
     {
       key: "publications-draft", count: publicationsToPrepare.length, urgent: false, icon: "publications" as const, href: "/publications", linkLabel: "Ouvrir les publications",
       title: countLabel(publicationsToPrepare.length, "publication à préparer", "publications à préparer"),
-      items: publicationsToPrepare.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client" })),
+      items: publicationsToPrepare.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client", href: `/publications?publication=${item.id}` })),
     },
   ].filter((card) => card.count > 0); // Aucune carte vide.
 

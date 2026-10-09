@@ -2,7 +2,14 @@ import Link from "next/link";
 import { AgentStateBadge, CapabilityList } from "@/components/agents/capability-list";
 import { Icon } from "@/components/ui/icon";
 import { Panel } from "@/components/ui/primitives";
+import { Action } from "@/components/ui/button";
+import { TrySimulationButton } from "@/components/simulation/simulation-banner";
 import { capabilityState, scopeLabels, type AgentBlueprint, type AgentDisplayState } from "@/lib/agents/catalog";
+
+/** Scénario le plus parlant pour découvrir chaque agent. */
+const simulationScenarios: Record<AgentBlueprint["id"], string> = {
+  seo: "seo-progress", "google-ads": "ads-anomaly", publications: "publications-review", monitoring: "site-down", automation: "all-services", report: "report-ready",
+};
 
 function Autonomy({ level, planned }: { level: number; planned: boolean }) {
   const value = Math.max(0, Math.min(3, level));
@@ -62,7 +69,15 @@ export function AgentRegistryCard({ blueprint, state, serviceNames, clients, cli
               </li>
             ))}
           </ul>
-        ) : <p className="border-t border-border pt-4 text-xs text-muted">Aucun agent configuré pour l’instant.</p>}
+        ) : (
+          <div className="border-t border-border pt-4">
+            <p className="text-xs text-muted">Aucun agent configuré pour l’instant.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <TrySimulationButton scenarioId={simulationScenarios[blueprint.id]} href="/agents">Voir en simulation</TrySimulationButton>
+              <Action href="/agents/new">Créer</Action>
+            </div>
+          </div>
+        )}
       </div>
     </Panel>
   );

@@ -6,12 +6,17 @@ import { PageHeading, Panel } from "@/components/ui/primitives";
 import { DayPlan } from "@/components/dashboard/day-plan";
 import { planTasks, todayInParis } from "@/lib/dashboard/home";
 import { listTasks } from "@/lib/tasks/data";
+import { getActiveScenario } from "@/lib/simulation/server";
+import { SimAgenda } from "@/components/simulation/views/sim-agenda";
+import { TrySimulationButton } from "@/components/simulation/simulation-banner";
+import { InlineNotice } from "@/components/ui/states";
+import { SimulatedFeatureButton } from "@/components/simulation/simulated-feature";
 
 export const metadata: Metadata = { title: "Agenda" };
 
 const dayFormatter = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" });
 
-/** Lundi → dimanche de la semaine courante (aucune donnée métier pour ce lot). */
+/** Lundi → dimanche de la semaine courante. */
 function currentWeek(today: string) {
   const date = new Date(`${today}T00:00:00.000Z`);
   const monday = new Date(date);
@@ -26,16 +31,20 @@ function currentWeek(today: string) {
 
 export default async function AgendaPage() {
   await requireAdmin();
+  if (await getActiveScenario()) return <SimAgenda />;
   const today = todayInParis();
   const week = currentWeek(today);
-  const plan = planTasks(await listTasks(), today);
+  const tasks = await listTasks();
+  const plan = planTasks(tasks, today);
   return (
     <>
       <PageHeading
         eyebrow="Planification"
         title="Agenda"
         description="Organisez vos tâches, échéances et créneaux de travail."
-        action={<button type="button" disabled aria-describedby="agenda-soon" className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background opacity-50"><Icon name="plus" width={16} height={16} />Ajouter</button>}
+        action={<SimulatedFeatureButton href="/agenda" title="Ajouter à l’agenda"
+          description={<><p>Bientôt, vous pourrez ajouter ici une tâche, un rendez-vous, un contrôle récurrent ou une analyse d’agent planifiée, avec client, projet et récurrence.</p><p>En attendant, les échéances viennent des tâches : créez une tâche datée depuis Travail.</p></>}>
+          <Icon name="plus" width={16} height={16} />Ajouter</SimulatedFeatureButton>}
       />
       <DayPlan overdue={plan.overdue} today={plan.today} week={plan.week} />
       <Panel className="mt-6 overflow-hidden">
@@ -49,16 +58,16 @@ export default async function AgendaPage() {
               <time dateTime={day.iso} className={`inline-flex rounded-md px-2 py-1 text-xs first-letter:uppercase ${day.isToday ? "bg-accent/15 font-medium text-accent" : "text-muted"}`}>
                 {day.label}{day.isToday && <span className="sr-only"> (aujourd’hui)</span>}
               </time>
+              <ul className="mt-2 space-y-1.5">
+                {tasks.filter((task) => task.status !== "Terminé" && task.due_date?.slice(0, 10) === day.iso).map((task) => (
+                  <li key={task.id}><Link href={`/tasks/${task.id}/edit`} className="block rounded-md border-l-2 border-l-amber-300 bg-white/[0.03] px-2 py-1.5 text-xs hover:bg-white/[0.07]"><span className="block text-muted">Échéance</span><span className="block break-words">{task.title}</span></Link></li>
+                ))}
+              </ul>
             </li>
           ))}
         </ol>
       </Panel>
-      <div id="agenda-soon" className="mt-8 rounded-2xl border border-dashed border-border px-6 py-10 text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent"><Icon name="calendar" /></span>
-        <p className="mt-4 font-medium">L’agenda CODE-V sera bientôt disponible.</p>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted">Créneaux et ajout d’événements arrivent bientôt. Les échéances ci-dessus viennent de vos tâches.</p>
-        <Link href="/work" className="mt-5 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">Voir le travail<Icon name="arrow" width={16} height={16} /></Link>
-      </div>
+      <div className="mt-6"><InlineNotice title="Rendez-vous, contrôles récurrents et analyses planifiées arrivent bientôt." action={<TrySimulationButton href="/agenda">Voir l’agenda complet en simulation</TrySimulationButton>}>Les échéances affichées viennent de vos tâches réelles.</InlineNotice></div>
     </>
   );
 }

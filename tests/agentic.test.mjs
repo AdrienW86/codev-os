@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import * as zod from "zod";
 
 const agentId = "c7d93a42-4db1-4eb3-9b0a-3dcbeb4bd879";
 const clientId = "d94e386a-653e-478b-80f1-05d442baed92";
@@ -97,11 +98,12 @@ function setup({ deny = false, missingAgent = false, missingClient = false, fail
   common["@/lib/agents/scope"]=load("lib/agents/scope.ts",common,logs);
   const agentValidation = load("lib/agents/validation.ts");
   const recommendationValidation = load("lib/recommendations/validation.ts");
-  const actionValidation = load("lib/actions/validation.ts");
+  const actionRegistry = load("lib/actions/registry.ts", { zod });
+  const actionValidation = load("lib/actions/validation.ts", { "./registry": actionRegistry });
   const recommendationRepository = load("lib/recommendations/data.ts", { ...common, "./validation": recommendationValidation }, logs);
   const messageRepository = load("lib/agent-messages/data.ts", { ...common, "@/lib/recommendations/validation": recommendationValidation }, logs);
   const runRepository = load("lib/agent-runs/data.ts", { ...common, "@/lib/recommendations/data": recommendationRepository, "@/lib/agents/validation": agentValidation }, logs);
-  const actionRepository = load("lib/actions/data.ts", { ...common, "./validation": actionValidation }, logs);
+  const actionRepository = load("lib/actions/data.ts", { ...common, "./validation": actionValidation, "./registry": actionRegistry }, logs);
   return { recommendationRepository, messageRepository, runRepository, actionRepository, calls, audits, logs, rows };
 }
 

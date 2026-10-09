@@ -91,6 +91,15 @@ test("sign-in stays public and sign-up always redirects without rendering", asyn
   }
 });
 
+test("only the scheduler tick bypasses the session gate; neighbours stay protected", async () => {
+  const { proxy } = setup(null);
+  assert.equal(await proxy(request("/api/internal/scheduler/tick")), undefined, "tick authenticates itself with CRON_SECRET");
+  assert.equal(await proxy(request("/api/internal/scheduler/tick", "POST")), undefined);
+  for (const path of ["/api/internal/scheduler/tick/extra", "/api/internal/scheduler", "/api/internal/scheduler/tickx", "/api/assistant"]) {
+    assert.equal((await proxy(request(path, "POST"))).status, 401, path);
+  }
+});
+
 test("actual Next.js matcher covers private paths even with file extensions", () => {
   const { unstable_doesMiddlewareMatch } = require("next/experimental/testing/server");
   const { config } = setup(null);

@@ -1,7 +1,7 @@
 // Types des tables du noyau V1 (migration 20261015000000_codev_os_core.sql).
 import type { Json } from "@/lib/supabase/database.types";
 
-type Table<Row, Insert, Update = Partial<Insert>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
+type Table<Row, Insert, Update = Partial<Omit<Row, "id" | "created_at">>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
 
 export type AutomationFrequency = "once" | "daily" | "weekly" | "monthly";
 export type AutomationStatus = "active" | "paused" | "error" | "completed" | "archived";

@@ -1,7 +1,8 @@
 import type { InternalActionStatus, InternalActionType } from "./types";
+import { parseActionParameters } from "./registry";
 
 export const actionTypes: readonly InternalActionType[] = ["internal.test"];
-export const actionStatuses: readonly InternalActionStatus[] = ["draft", "pending_approval", "approved", "executing", "executed", "failed", "cancelled"];
+export const actionStatuses: readonly InternalActionStatus[] = ["draft", "pending_approval", "approved", "executing", "executed", "failed", "cancelled", "rejected", "uncertain"];
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -9,8 +10,9 @@ export function isActionUuid(value: string) {
   return uuid.test(value);
 }
 
-export function isValidActionParameters(actionType: unknown, parameters: unknown): parameters is Record<string, never> {
-  return actionType === "internal.test" && parameters !== null && typeof parameters === "object" && !Array.isArray(parameters) && Object.keys(parameters).length === 0;
+/** Payload conforme au schéma de son type (registre lib/actions/registry.ts). */
+export function isValidActionParameters(actionType: unknown, parameters: unknown): parameters is Record<string, unknown> {
+  return typeof actionType === "string" && parseActionParameters(actionType, parameters) !== null;
 }
 
 export function validateCreateActionInput(input: unknown): { recommendation_id: string; action_type: InternalActionType; parameters: Record<string, never> } | null {
@@ -24,12 +26,15 @@ export function validateCreateActionInput(input: unknown): { recommendation_id: 
 
 const transitions: Record<InternalActionStatus, readonly InternalActionStatus[]> = {
   draft: ["pending_approval", "cancelled"],
-  pending_approval: ["approved", "cancelled"],
-  approved: ["executing"],
-  executing: ["executed", "failed"],
+  pending_approval: ["approved", "cancelled", "rejected"],
+  // « executed » direct : action manuelle réalisée hors de CODE-V OS puis confirmée.
+  approved: ["executing", "executed"],
+  executing: ["executed", "failed", "uncertain"],
   executed: [],
   failed: [],
   cancelled: [],
+  rejected: [],
+  uncertain: [],
 };
 
 export function canTransitionAction(from: string, to: InternalActionStatus) {

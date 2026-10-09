@@ -8,6 +8,8 @@ export default clerkMiddleware(async (auth, request) => {
     return NextResponse.redirect(new URL("/sign-in", request.url), 303);
   }
   if (path === "/sign-in" || path.startsWith("/sign-in/") || path === "/__clerk" || path.startsWith("/__clerk/")) return;
+  // Seule exemption : le déclencheur planifié s'authentifie lui-même par CRON_SECRET (voir la route).
+  if (path === "/api/internal/scheduler/tick") return;
 
   const { userId, isAuthenticated } = await auth();
   if (!isAuthenticated || !userId) {

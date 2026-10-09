@@ -183,7 +183,7 @@ test('P12 scope: nothing triggers publishing, OAuth transport still read-only, g
  assert.doesNotMatch(src('lib/publications/delivery/gbp-publisher.ts'),/https:\/\/|setTimeout|fetch\(/,'no network code in the publisher itself');
  const doc=src('docs/publications-gbp-publisher.md');for(const s of ['v4','localPosts','STANDARD','business.manage','uncertain','sunset-dates','0 QPM','1500','REJECTED'])assert.ok(doc.includes(s),s);
  assert.doesNotMatch(doc,/ya29\.|1\/\/[A-Za-z0-9_-]{10}/);
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[21],'20261013000000_publications_gbp_publisher.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[21],'20261013000000_publications_gbp_publisher.sql');
  const sql=src('supabase/migrations/20261013000000_publications_gbp_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs|drop /i);});
 
 test('Gate 4: the production lease outlasts the slowest provider call (completion is refused after the lease)',async()=>{

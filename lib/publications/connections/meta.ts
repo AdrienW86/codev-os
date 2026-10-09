@@ -3,7 +3,7 @@ import {ConnectionProviderError,type ConnectionValidation,type MetaConnectionPro
 import type {ProviderCredential} from './vault';
 import type {MetaInstagramAccount,MetaPage} from './model';
 
-// Meta connection provider (Facebook Login for Business, manual flow; official docs, Graph API v25.0):
+// Meta connection provider (Facebook Login for Business, manual flow; official docs, Graph API v26.0):
 // code → short-lived user token → long-lived user token (fb_exchange_token, ~60 days, no refresh token: extended by
 // exchanging it again while still valid) → debug_token (validity, app, user, scopes, expiry). Pages from
 // /me/accounts (paginated); the Instagram professional account linked to a Page from its instagram_business_account

@@ -227,7 +227,7 @@ test('removal from the board is an audited, reversible masking that never delete
  const restore=visibility(fixtures());assert.equal((await restore.m.setBoardVisibility(form([['publication_id',P.ready]]),false)).ok,true);assert.equal(restore.writes[0][2].action,'publication.board_restored');
  for(const f of ['lib/publications/board-visibility.ts','app/(cockpit)/publications/board-actions.ts','lib/publications/board.ts','components/publications/publications-board.tsx'])assert.doesNotMatch(src(f),/\.delete\(|\.update\(|\.upsert\(|\.remove\(|\.rpc\(/,f);
  const actions=src('app/(cockpit)/publications/board-actions.ts');assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,2);assert.match(actions,/^"use server";/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,22,'no migration added by this lot (22 = 9 + Lot 4.3 P1 … P5 + P7 … P12)');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,23,'no migration added by this lot (23 = 9 + Lot 4.3 P1 … P5 + P7 … P13)');});
 
 test('filter bar: client-only, instant, no Filtrer button, reset kept, debounced search',async()=>{
  const out=await html({client:C1,status:'draft',q:'toiture'});const form=out.match(/<form[^>]*data-board-filters="instant"[^>]*>[\s\S]*?<\/form>/)[0];

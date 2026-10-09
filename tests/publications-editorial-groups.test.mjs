@@ -50,7 +50,7 @@ test('loaders: admin first, groups then sisters in one batch (no N+1), scope enf
  const empty=service({publication_editorial_groups:[],publications});assert.deepEqual(json(await empty.m.getProjectEditorialGroups(P)),[]);assert.ok(!empty.db.log.some(x=>x[1]==='publications'),'no publication read without group');});
 
 test('P4-a scope: additive migration, legacy kept, no creation path / agent / publisher yet',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[12],'20261008010000_publications_editorial_groups.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[12],'20261008010000_publications_editorial_groups.sql');
  const sql=src('supabase/migrations/20261008010000_publications_editorial_groups.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/drop table|drop column|delete from|truncate (table )?public|security definer|update public\.publications set|insert into public\.publications/i,'no destructive change, no data conversion');
  assert.equal((sql.match(/drop index/gi)??[]).length,1,'only the weekly slot index is redefined');

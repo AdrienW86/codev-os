@@ -3,7 +3,7 @@ import {waitMilliseconds,type MetaPublishTransport} from '@/lib/integrations/pub
 import type {PublicationPublisher,PublicationReconciler,PublishInput,PublishResult,ReconcileInput,ReconcileResult} from './publisher';
 import type {DeliveryErrorClass} from './model';
 
-// Real Meta publisher (Lot 4.3 P11-b), implementing the P10 contract. Official flows (Graph API v25.0):
+// Real Meta publisher (Lot 4.3 P11-b), implementing the P10 contract. Official flows (Graph API v26.0):
 //  Facebook: Page access token (GET /{page-id}?fields=access_token with the long-lived user token, kept in memory
 //   only) → POST /{page-id}/feed (message) or POST /{page-id}/photos (url, caption).
 //  Instagram (Instagram API with Facebook Login, Page token): POST /{ig-id}/media (image_url, caption) → container,

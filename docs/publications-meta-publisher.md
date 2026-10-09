@@ -1,14 +1,17 @@
 # Publications — publisher Meta réel (Lot 4.3 P11-b)
 
 Implémentation du contrat de publication P10 pour **Facebook (Pages)** et **Instagram (comptes professionnels)**.
-Le code est complet mais **n’est déclenché par rien** : aucune route, aucun bouton « publier », aucun cron, aucun
-worker permanent. Le moteur P10 vérifie en plus, avant tout appel, les interrupteurs globaux
+Seul déclencheur : l’action administrateur **« Envoyer les publications dues »** (page Publications, P13) — au
+plus 5 envois par clic, uniquement des diffusions préparées après validation et dont l’heure est arrivée. Aucune
+route publique, aucun cron, aucun worker permanent. Les interrupteurs globaux sont lus d’abord côté serveur
 (`emergency_stop = true`, `publishing_enabled = false` aujourd’hui) : tant qu’ils sont fermés, **aucune requête**
-n’atteint Meta. Aucun appel réel n’a été fait pendant le développement (transports simulés dans les tests).
+n’atteint Meta ; le moteur P10 les revérifie avant chaque appel. Une Page / un compte Instagram ne sert qu’**un
+seul client** (P13). Aucun appel réel n’a été fait pendant le développement (transports simulés dans les tests).
 
 ## Version et endpoints (documentation officielle Meta)
 
-- **Graph API v25.0** — hôte `https://graph.facebook.com/v25.0/`.
+- **Graph API v26.0** (sortie le 2026-07-29 ; aucun changement sur les endpoints utilisés) — hôte
+  `https://graph.facebook.com/v26.0/`.
 - **Jeton de Page** : `GET /{page-id}?fields=access_token` avec le jeton utilisateur longue durée (coffre P11-a).
   Le jeton de Page reste en mémoire le temps de la requête : jamais stocké, jamais journalisé.
 - **Facebook, texte** : `POST /{page-id}/feed` — paramètre `message`. Réponse `id` (`{page-id}_{post-id}`).
@@ -76,7 +79,7 @@ Après un résultat « absente », l’administrateur peut confirmer « non publ
 - Une seule image par publication (pas de carrousel, pas de vidéo, pas de Reels, pas de Stories).
 - La réconciliation par texte suppose un texte unique sur la période : deux publications identiques simultanées
   restent `uncertain`.
-- Le déclenchement réel (worker) reste à décider : `runOnePublicationJobInProduction` existe, aucun appelant.
+- Pas de worker automatique : l’envoi se fait par l’action « Envoyer les publications dues » (P13).
 - Bail (lease) de production : `PRODUCTION_LEASE_SECONDS = 600` s. Le pire cas Instagram (jeton de Page, conteneur,
   10 vérifications de 20 s au plus, 9 attentes de 3 s, `media_publish`) dure environ 290 s ; avec le bail par défaut
   de 120 s, une publication réussie aurait été enregistrée `uncertain` (correction Gate 4).

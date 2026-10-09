@@ -4,12 +4,12 @@ import {confirmNotPublishedAction,prepareDeliveryAction,reconcileDeliveryAction,
 import {formatDate} from '@/lib/format-date';
 import {DELIVERY_ENGINE_NOTICE,type DeliveryView,type DiffusionView} from '@/lib/publications/delivery/model';
 
-// Drawer « Diffusion » (Lot 4.3 P10): status, account, attempts, last safe error, next retry. There is no
-// « Publier maintenant »: the engine only exists locally with a simulated provider in this lot.
+// Drawer « Diffusion » (Lot 4.3 P10): status, account, attempts, last safe error, next retry. No per-publication
+// « Publier maintenant »: sending goes through the admin trigger « Envoyer les publications dues » (P13).
 const initial:DeliveryActionState={};
 export function DeliverySection({publicationId,diffusion}:{publicationId:string;diffusion:DiffusionView}){
  return <section className="rounded-xl border border-border p-4" data-diffusion="true"><h3 className="font-semibold">Diffusion</h3>
-  <p role="note" className="mt-1 text-xs text-muted" data-engine-mode="simulated">{DELIVERY_ENGINE_NOTICE}</p>
+  <p role="note" className="mt-1 text-xs text-muted" data-engine-mode="manual-trigger">{DELIVERY_ENGINE_NOTICE}</p>
   {diffusion.deliveries.length?<ul className="mt-3 space-y-3 text-sm">{diffusion.deliveries.map(d=><DeliveryRowView key={d.id} publicationId={publicationId} delivery={d}/>)}</ul>
    :<p className="mt-3 text-sm text-muted">Aucune diffusion préparée.</p>}
   {diffusion.canPrepare&&<PrepareForm publicationId={publicationId}/>}</section>;

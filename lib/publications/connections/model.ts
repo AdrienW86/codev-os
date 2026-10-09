@@ -49,12 +49,12 @@ export function syncPayload(accounts:readonly ExternalPublicationAccount[]){
 }
 
 // Publishability of a project channel — same order as publications_private.channel_publishability (SQL).
-export const PUBLISHABILITY_REASONS=['publishable','emergency_stop','publishing_disabled','channel_disabled','no_account','connection_inactive','account_inactive'] as const;
+export const PUBLISHABILITY_REASONS=['publishable','emergency_stop','publishing_disabled','channel_disabled','no_account','connection_inactive','account_inactive','account_shared'] as const;
 export type ChannelPublishability=typeof PUBLISHABILITY_REASONS[number];
 export const PUBLISHABILITY_LABELS:Record<ChannelPublishability,string>={publishable:'Prêt pour la publication',emergency_stop:'Arrêt d’urgence actif',publishing_disabled:'Publication désactivée',
- channel_disabled:'Canal inactif',no_account:'Aucun compte de publication',connection_inactive:'Connexion inactive',account_inactive:'Compte inactif'};
+ channel_disabled:'Canal inactif',no_account:'Aucun compte de publication',connection_inactive:'Connexion inactive',account_inactive:'Compte inactif',account_shared:'Compte déjà utilisé par un autre client'};
 export type PublishabilityInput={emergencyStop:boolean;publishingEnabled:boolean;clientPublishingEnabled:boolean;platform:PublicationPlatform;
- channel:{enabled:boolean;accountId:string|null}|null;account:{status:string;enabled:boolean;platform:string;connectionBacked:boolean}|null;
+ channel:{enabled:boolean;accountId:string|null}|null;account:{status:string;enabled:boolean;platform:string;connectionBacked:boolean;usedByOtherClient?:boolean}|null;
  connection:{provider:string;status:string;hasCredential:boolean;expiresAt:string|null}|null;now:Date};
 export function getChannelPublishability(i:PublishabilityInput):ChannelPublishability{
  if(i.emergencyStop)return 'emergency_stop';
@@ -65,13 +65,15 @@ export function getChannelPublishability(i:PublishabilityInput):ChannelPublishab
  if(!i.account?.connectionBacked||!c||c.status!=='active'||!c.hasCredential||(c.expiresAt!==null&&Date.parse(c.expiresAt)<=i.now.getTime())
   ||!isConnectionProvider(c.provider)||!PROVIDER_PLATFORMS[c.provider].includes(i.platform))return 'connection_inactive';
  if(i.account.status!=='active'||!i.account.enabled||i.account.platform!==i.platform)return 'account_inactive';
+ // P13: one external Page / account serves one client only (same rule as channel_publishability in SQL).
+ if(i.account.usedByOtherClient)return 'account_shared';
  return 'publishable';
 }
 
 // View models of the "Connexions" section and of the account selector of each channel card.
 export type ConnectionSummary={provider:ConnectionProvider;label:string;status:ConnectionStatus|'none';statusLabel:string;connected:boolean;
  counts:{facebook:number;instagram:number;google_business_profile:number};canDisconnect:boolean;expiresLabel:string|null;connectedLabel:string|null};
-export type AccountOption={id:string;platform:PublicationPlatform;name:string;status:AccountStatus;statusLabel:string;assignable:boolean};
+export type AccountOption={id:string;platform:PublicationPlatform;name:string;status:AccountStatus;statusLabel:string;assignable:boolean;usedByOtherClient?:boolean};
 export type ChannelAccountView={platform:PublicationPlatform;platformLabel:string;currentAccountId:string|null;currentLabel:string|null;options:AccountOption[];
  emptyMessage:string|null;publishability:ChannelPublishability;publishabilityLabel:string};
 const day=new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Europe/Paris'});
@@ -83,4 +85,4 @@ export function connectionSummary(provider:ConnectionProvider,row:{status:string
   expiresLabel:status==='active'&&typeof row?.expires_at==='string'&&!Number.isNaN(Date.parse(row.expires_at))?`Expire le ${day.format(new Date(row.expires_at))}`:null,
   connectedLabel:status!=='none'&&typeof row?.connected_at==='string'&&!Number.isNaN(Date.parse(row.connected_at))?`Connecté le ${day.format(new Date(row.connected_at))}`:null};
 }
-export function accountOptionLabel(o:AccountOption):string{return `${o.name} — ${platformLabels[o.platform]} — ${o.statusLabel}`;}
+export function accountOptionLabel(o:AccountOption):string{return `${o.name} — ${platformLabels[o.platform]} — ${o.usedByOtherClient?'Déjà utilisé par un autre client':o.statusLabel}`;}

@@ -3,7 +3,7 @@ import {createHmac} from 'node:crypto';
 import {META_GRAPH_VERSION,type MetaOAuthConfig} from './publications-oauth/config';
 import type {FetchLike} from './publications-oauth/http';
 
-// Meta publishing transport (Lot 4.3 P11-b), separate from the read-only OAuth transport. Graph API v25.0 only;
+// Meta publishing transport (Lot 4.3 P11-b), separate from the read-only OAuth transport. Graph API v26.0 only;
 // the allowlist covers exactly: Page token lookup, Page feed / photo posts, Instagram container creation, container
 // status, media_publish, and the two reconciliation reads. Every call: token in the Authorization header (never in
 // the URL), appsecret_proof, timeout, no redirect, bounded JSON body, NO retry (a write may have happened).

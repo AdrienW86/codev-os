@@ -58,6 +58,8 @@ $savedP12Url=$env:PUBLICATIONS_P12_TEST_DATABASE_URL
 $savedP12Psql=$env:PUBLICATIONS_P12_TEST_PSQL
 $savedChaosUrl=$env:PUBLICATIONS_CHAOS_TEST_DATABASE_URL
 $savedChaosPsql=$env:PUBLICATIONS_CHAOS_TEST_PSQL
+$savedP13Url=$env:PUBLICATIONS_P13_TEST_DATABASE_URL
+$savedP13Psql=$env:PUBLICATIONS_P13_TEST_PSQL
 $savedTelemetry=$env:NEXT_TELEMETRY_DISABLED
 $savedClerkTelemetry=$env:CLERK_TELEMETRY_DISABLED
 $savedApplicationEnv=@{}
@@ -213,6 +215,12 @@ try {
   $env:PUBLICATIONS_CHAOS_TEST_PSQL=Join-Path $binRoot 'psql.exe'
   & node --test tests/publications-chaos-db.test.mjs
   if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 chaos SQL failed. No remote migration permitted.' }
+  & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database publications_p13_test owner postgres;'
+  if ($LASTEXITCODE -ne 0) { throw 'Dedicated account exclusivity database creation failed.' }
+  $env:PUBLICATIONS_P13_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/publications_p13_test"
+  $env:PUBLICATIONS_P13_TEST_PSQL=Join-Path $binRoot 'psql.exe'
+  & node --test tests/publications-account-exclusivity-db.test.mjs
+  if ($LASTEXITCODE -ne 0) { throw 'Lot 4.3 P13 account exclusivity SQL failed. No remote migration permitted.' }
   & (Join-Path $binRoot 'psql.exe') -X --no-password -h 127.0.0.1 -p $port -U publications_local -d postgres -v ON_ERROR_STOP=1 -c 'create database remote_schema_test owner postgres;'
   if ($LASTEXITCODE -ne 0) { throw 'Dedicated local replay database creation failed.' }
   $env:REMOTE_SCHEMA_TEST_DATABASE_URL="postgresql://publications_local@127.0.0.1:$port/remote_schema_test"
@@ -289,6 +297,8 @@ try {
   $env:PUBLICATIONS_P12_TEST_PSQL=$savedP12Psql
   $env:PUBLICATIONS_CHAOS_TEST_DATABASE_URL=$savedChaosUrl
   $env:PUBLICATIONS_CHAOS_TEST_PSQL=$savedChaosPsql
+  $env:PUBLICATIONS_P13_TEST_DATABASE_URL=$savedP13Url
+  $env:PUBLICATIONS_P13_TEST_PSQL=$savedP13Psql
   $env:NEXT_TELEMETRY_DISABLED=$savedTelemetry
   $env:CLERK_TELEMETRY_DISABLED=$savedClerkTelemetry
   foreach($name in $savedPg.Keys) { [Environment]::SetEnvironmentVariable($name,$savedPg[$name],'Process') }

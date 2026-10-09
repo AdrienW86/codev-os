@@ -54,7 +54,7 @@ test('configuration: server-only names, https base URL allowlist, strict values,
   assert.equal(config.credentialKeyring({...ENV,...bad}),null,JSON.stringify(Object.keys(bad)));
  assert.equal(config.credentialKeyring({...ENV,PUBLICATION_CREDENTIALS_PREVIOUS_KEY:KEY2.toString('base64'),PUBLICATION_CREDENTIALS_PREVIOUS_KEY_ID:'k2025z'}).previous.id,'k2025z');
  assert.deepEqual(json(config.missingOAuthConfiguration('meta',{})),['PUBLICATIONS_OAUTH_BASE_URL','PUBLICATION_CREDENTIALS_KEY','PUBLICATION_CREDENTIALS_KEY_ID','META_APP_ID','META_APP_SECRET'],'names only');
- assert.equal(config.META_GRAPH_VERSION,'v25.0');
+ assert.equal(config.META_GRAPH_VERSION,'v26.0');
  const example=src('.env.example');assert.ok(example.split(/\r?\n/).every(l=>/^\s*(#.*)?$/.test(l)||/^[A-Z][A-Z0-9_]*=$/.test(l)),'.env.example: names only');
  for(const name of Object.keys(ENV))assert.match(example,new RegExp(`^${name}=$`,'m'));
  assert.doesNotMatch(example,/^NEXT_PUBLIC_/m,'no public variable declared');
@@ -101,16 +101,16 @@ const metaCfg=config.metaOAuthConfig(ENV),googleCfg=config.googleOAuthConfig(ENV
 test('HTTP transports: official endpoints only, secrets server-side, bearer + appsecret_proof, no redirect, bounded, JSON only',async()=>{
  let f=fetchDouble(()=>({body:{access_token:'EAAB-short'}}));let t=http.metaTransport(metaCfg,f);
  await t.request({operation:'token',path:'oauth/access_token',params:{code:'AQD-code'}});
- let u=new URL(f.calls[0].url);assert.equal(u.origin+u.pathname,'https://graph.facebook.com/v25.0/oauth/access_token');
+ let u=new URL(f.calls[0].url);assert.equal(u.origin+u.pathname,'https://graph.facebook.com/v26.0/oauth/access_token');
  assert.deepEqual([u.searchParams.get('client_id'),u.searchParams.get('redirect_uri'),u.searchParams.get('code')],['123456789012','https://cockpit.example.test/api/publications/oauth/meta/callback','AQD-code']);
  assert.equal(f.calls[0].init.redirect,'error');assert.equal(f.calls[0].init.cache,'no-store');
  await t.request({operation:'token',path:'oauth/access_token',params:{grant_type:'fb_exchange_token'},credential:{accessToken:'EAAB-short'}});
  u=new URL(f.calls[1].url);assert.equal(u.searchParams.get('fb_exchange_token'),'EAAB-short');assert.equal(u.searchParams.get('grant_type'),'fb_exchange_token');
  await t.request({operation:'read',path:'me/accounts',params:{fields:'id,name'},credential:{accessToken:'EAAB-user'}});
- u=new URL(f.calls[2].url);assert.equal(u.pathname,'/v25.0/me/accounts');assert.equal(u.searchParams.get('appsecret_proof'),createHmac('sha256',ENV.META_APP_SECRET).update('EAAB-user').digest('hex'));
+ u=new URL(f.calls[2].url);assert.equal(u.pathname,'/v26.0/me/accounts');assert.equal(u.searchParams.get('appsecret_proof'),createHmac('sha256',ENV.META_APP_SECRET).update('EAAB-user').digest('hex'));
  assert.ok(!f.calls[2].url.includes('EAAB')&&!f.calls[2].url.includes(ENV.META_APP_SECRET),'read: no token or secret in the URL');assert.equal(f.calls[2].init.headers.Authorization,'Bearer EAAB-user');
  await t.request({operation:'debug',path:'debug_token',params:{},credential:{accessToken:'EAAB-user'}});
- u=new URL(f.calls[3].url);assert.equal(u.pathname,'/v25.0/debug_token');assert.equal(u.searchParams.get('access_token'),`${ENV.META_APP_ID}|${ENV.META_APP_SECRET}`);
+ u=new URL(f.calls[3].url);assert.equal(u.pathname,'/v26.0/debug_token');assert.equal(u.searchParams.get('access_token'),`${ENV.META_APP_ID}|${ENV.META_APP_SECRET}`);
  for(const path of ['me/feed','../oauth','102/photos','me/accounts?x','https://evil.test'])await assert.rejects(()=>t.request({operation:'read',path,params:{},credential:{accessToken:'x'}}),e=>e.kind==='invalid_path',path);
  f=fetchDouble(()=>{throw Error('ECONNRESET EAAB');});await assert.rejects(()=>http.metaTransport(metaCfg,f).request({operation:'read',path:'me',params:{},credential:{accessToken:'x'}}),e=>e.kind==='network'&&!/EAAB/.test(e.message));
  f=fetchDouble(()=>({text:'x'.repeat(1_048_577)}));await assert.rejects(()=>http.metaTransport(metaCfg,f).request({operation:'read',path:'me',params:{},credential:{accessToken:'x'}}),e=>e.kind==='too_large');
@@ -126,7 +126,7 @@ test('HTTP transports: official endpoints only, secrets server-side, bearer + ap
  await t.request({operation:'read',path:'accounts/42/locations',params:{readMask:'name,title'},credential:{accessToken:'ya29.x'}});assert.equal(new URL(f.calls[3].url).pathname,'/v1/accounts/42/locations');
  for(const path of ['accounts/42/locations/1/localPosts','accounts/../x/locations','v4/accounts'])await assert.rejects(()=>t.request({operation:'read',path,params:{},credential:{accessToken:'x'}}),e=>e.kind==='invalid_path',path);
  const metaUrl=new URL(http.metaAuthorizeUrl(metaCfg,'S'.repeat(43)));
- assert.equal(metaUrl.origin+metaUrl.pathname,'https://www.facebook.com/v25.0/dialog/oauth');
+ assert.equal(metaUrl.origin+metaUrl.pathname,'https://www.facebook.com/v26.0/dialog/oauth');
  assert.equal(metaUrl.searchParams.get('scope'),'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish');
  assert.deepEqual([metaUrl.searchParams.get('state'),metaUrl.searchParams.get('response_type')],['S'.repeat(43),'code']);
  const gUrl=new URL(http.googleAuthorizeUrl(googleCfg,'S'.repeat(43),'C'.repeat(43)));
@@ -293,11 +293,11 @@ test('callback route, actions and UI: internal 303 redirect without referrer, ad
  const acts=[];let redirected=null;
  const a=load('app/(cockpit)/publications/connection-actions.ts',{'next/cache':{revalidatePath:p=>acts.push(['revalidate',p])},'next/navigation':{redirect:u=>{redirected=u;throw Object.assign(Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT'});}},
   '@/lib/require-admin':{requireAdmin:async()=>{acts.push('admin');}},'@/lib/publications/connections/service':{assignPublicationAccountToChannel:async()=>({ok:true,message:'ok'}),disconnectConnection:async()=>({ok:true,message:'ok'})},
-  '@/lib/publications/oauth/service':{startOAuth:async(provider,project)=>{acts.push(['start',provider,project]);return provider==='meta'?{ok:true,url:'https://www.facebook.com/v25.0/dialog/oauth?state=x'}:{ok:false,message:'Connexion indisponible'};},
+  '@/lib/publications/oauth/service':{startOAuth:async(provider,project)=>{acts.push(['start',provider,project]);return provider==='meta'?{ok:true,url:'https://www.facebook.com/v26.0/dialog/oauth?state=x'}:{ok:false,message:'Connexion indisponible'};},
    verifyConnection:async(project,provider)=>{acts.push(['verify',project,provider]);return {ok:true,message:'Connexion vérifiée'};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
  await assert.rejects(()=>a.startOAuthAction({},form({project_id:P,provider:'meta',client_id:uid(1,9)})),/NEXT_REDIRECT/);
- assert.equal(redirected,'https://www.facebook.com/v25.0/dialog/oauth?state=x');assert.deepEqual(json(acts.slice(0,2)),['admin',['start','meta',P]],'client id from the browser ignored');
+ assert.equal(redirected,'https://www.facebook.com/v26.0/dialog/oauth?state=x');assert.deepEqual(json(acts.slice(0,2)),['admin',['start','meta',P]],'client id from the browser ignored');
  acts.length=0;assert.deepEqual(json(await a.startOAuthAction({},form({project_id:P,provider:'google_business_profile'}))),{ok:false,message:'Connexion indisponible'});
  acts.length=0;await a.verifyConnectionAction({},form({project_id:P,provider:'meta'}));assert.deepEqual(json(acts.slice(0,2)),['admin',['verify',P,'meta']]);
  const panel=load('components/publications/connections-panel.tsx',{'@/app/(cockpit)/publications/connection-actions':{assignPublicationAccountAction:async()=>({}),disconnectPublicationConnectionAction:async()=>({}),startOAuthAction:async()=>({}),verifyConnectionAction:async()=>({})}});
@@ -321,7 +321,7 @@ test('P11-a security scope: no secret client-side, no provider call in client co
   for(const m of code.matchAll(/console\.(error|log|warn|info)\(([^;]*)\)/g))assert.doesNotMatch(m[2].replace(/instanceof [A-Za-z]+/g,''),/credential|token|code\b|state\b|reference|secret|body|headers/i,`${f}: generic logs only`);
   assert.doesNotMatch(code,/delivery\/(engine|fakes|publisher)|publication_job_|publication_prepare_delivery/,`${f}: no publisher / delivery wiring`);}
  assert.match(src('lib/publications/oauth/service.ts'),/publication_oauth_state_consume[\s\S]*exchangeCode/,'state consumed before any exchange');
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[19],'20261011000000_publications_oauth.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[19],'20261011000000_publications_oauth.sql');
  const sql=src('supabase/migrations/20261011000000_publications_oauth.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|create policy|grant [a-z, ]* to (anon|authenticated)|insert into public\.publication_deliveries|http|cron/i);
  assert.match(src('docs/publications-oauth.md'),/\/api\/publications\/oauth\/meta\/callback/);assert.doesNotMatch(src('docs/publications-oauth.md'),/EAAB|ya29\.|GOCSPX-[A-Za-z0-9]/);});

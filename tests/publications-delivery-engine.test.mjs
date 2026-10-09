@@ -57,7 +57,7 @@ test('model: outcome payload validated (simulated never recorded as published, n
  assert.equal(model.deliveryView({...row,status:'blocked',blocked_reason:'emergency_stop'},{accountName:'a',attempts:0,nextRetryAt:null}).blockedReason,'Arrêt d’urgence actif');
  assert.equal(model.deliveryView({...row,status:'blocked',blocked_reason:'content_changed'},{accountName:'a',attempts:0,nextRetryAt:null}).blockedReason,'Contenu modifié depuis la préparation');
  assert.equal(model.deliveryView({...row,status:'weird'},{accountName:'a',attempts:0,nextRetryAt:null}),null,'unknown status not displayed');
- assert.equal(model.DELIVERY_ENGINE_NOTICE,'Le moteur de diffusion est en mode local / provider simulé.');});
+ assert.equal(model.DELIVERY_ENGINE_NOTICE,'Envoi réel uniquement via « Envoyer les publications dues », et seulement si l’arrêt d’urgence est levé et la publication activée.');});
 
 test('publisher contract and fake publisher: deterministic results, typed failures, unknown exceptions are uncertain',async()=>{
  assert.deepEqual(json(publisher.outcomeOf({ok:true,remoteId:'simulated-a',simulated:true})),{result:'simulated',remoteId:'simulated-a'});
@@ -143,7 +143,7 @@ test('service: deliveries view, prepare refusals mapped, retry only for a delive
  assert.deepEqual(json(views.map(v=>[v.platformLabel,v.accountLabel,v.statusLabel,v.attempts,v.lastError,v.canRetry])),[['Facebook','Toitures Dupont','Échec',2,'Erreur définitive (fake_permanent)',true]]);
  assert.doesNotMatch(s.log.find(x=>x[0]==='select'&&x[1]==='publication_accounts')[2],/credential|external/,'never selects a credential');
  assert.deepEqual(json(await s.m.getPublicationDeliveries('nope')),[]);
- assert.deepEqual(json(await s.m.preparePublicationDelivery(PUB)),{ok:true,message:'Diffusion préparée (provider simulé : rien n’est publié).'});
+ assert.deepEqual(json(await s.m.preparePublicationDelivery(PUB)),{ok:true,message:'Diffusion préparée : envoi à l’heure prévue, via « Envoyer les publications dues ».'});
  assert.deepEqual(s.log.filter(x=>x[0]==='rpc')[0][2],{p_publication_id:PUB,p_actor_id:'user_admin'});
  for(const [message,expected] of [['Not publishable: emergency_stop','Diffusion impossible : arrêt d’urgence actif.'],['Not publishable: no_account','Diffusion impossible : aucun compte de publication.'],
   ['Publication not approved','Diffusion impossible : la publication doit être validée.'],['Resolve deliveries first','Une diffusion est déjà en cours ou terminée pour cette publication.'],['boom','Diffusion indisponible.']])
@@ -152,7 +152,7 @@ test('service: deliveries view, prepare refusals mapped, retry only for a delive
  assert.deepEqual(r.log.filter(x=>x[0]==='rpc').map(x=>x[1]),['publication_delivery_retry']);
  const foreign=serviceWith();assert.equal((await foreign.m.retryPublicationDelivery(uid(4,9),DEL)).message,'Diffusion invalide.');assert.ok(!foreign.log.some(x=>x[0]==='rpc'),'delivery of another publication: no RPC');});
 
-test('actions and UI: admin first, « Diffusion » section, simulated-provider notice, no « Publier maintenant », no secret',async()=>{
+test('actions and UI: admin first, « Diffusion » section, manual-trigger notice, no « Publier maintenant », no secret',async()=>{
  const calls=[];const a=load('app/(cockpit)/publications/delivery-actions.ts',{'next/cache':{revalidatePath:(p,t)=>calls.push(['revalidate',p,t??null])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
   '@/lib/publications/delivery/service':{preparePublicationDelivery:async p=>{calls.push(['prepare',p]);return {ok:true,message:'ok'};},retryPublicationDelivery:async(p,d)=>{calls.push(['retry',p,d]);return {ok:true,message:'ok'};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
@@ -162,7 +162,7 @@ test('actions and UI: admin first, « Diffusion » section, simulated-provider n
  const view=(status,extra={})=>({...model.deliveryView({id:uid(5,status.length),platform:'facebook',status,remote_id:status==='simulated'?'simulated-x':null,blocked_reason:status==='blocked'?'connection_inactive':null,
   last_error_class:status==='failed'?'invalid_payload':null,last_error_code:status==='failed'?'text_too_long':null},{accountName:'Toitures Dupont',attempts:2,nextRetryAt:null}),...extra});
  const html=renderToStaticMarkup(jsx.jsx(DeliverySection,{publicationId:PUB,diffusion:{deliveries:[view('simulated'),view('failed'),view('blocked')],canPrepare:false}}));
- assert.match(html,/Diffusion/);assert.match(html,/data-engine-mode="simulated"[^>]*>Le moteur de diffusion est en mode local \/ provider simulé\./);
+ assert.match(html,/Diffusion/);assert.match(html,/data-engine-mode="manual-trigger"[^>]*>Envoi réel uniquement via « Envoyer les publications dues »/);
  assert.match(html,/Diffusion simulée/);assert.match(html,/Identifiant simulé \(aucune publication réelle\)/);assert.match(html,/Contenu refusé par le fournisseur \(text_too_long\)/);assert.match(html,/Motif : Connexion inactive/);
  assert.equal((html.match(/>Réessayer</g)??[]).length,2,'retry for failed and blocked only');assert.doesNotMatch(html,/Préparer la diffusion/);
  assert.doesNotMatch(html,/Publier maintenant|simulated-x|vault:|token|credential/i);
@@ -178,6 +178,6 @@ test('P10 scope: no route runs the engine, fakes never imported by the app, no t
  for(const f of readdirSync(resolve(root,'lib/publications/delivery'))){const code=src('lib/publications/delivery/'+f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/\bfetch\s*\(|https?:\/\/|process\.env|console\.log|setInterval|setTimeout|while\s*\(true\)/,f);
   for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/credential|token|message|error\b|payload|text/,`${f}: generic logs only`);}
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[18],'20261010000000_publications_delivery_engine.sql');
  const sql=SQL.replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|delete from public\.|drop table|drop function|cron|http|net\./i);
  assert.match(sql,/for update of j skip locked/,'concurrent claiming');});

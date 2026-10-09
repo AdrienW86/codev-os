@@ -22,6 +22,9 @@ export const GOOGLE_BUSINESS_SCOPE='https://www.googleapis.com/auth/business.man
 // Instagram professional account, and the two publishing permissions needed later (P11-b) so that no second consent
 // is required. business_management is NOT requested (only for Pages reachable through Business Manager only).
 export const META_SCOPES=['pages_show_list','pages_read_engagement','pages_manage_posts','instagram_basic','instagram_content_publish'] as const;
+// Only when the Page roles come from a Business Manager (official Instagram content publishing guide).
+export const META_BUSINESS_MANAGER_SCOPES=['ads_management','ads_read'] as const;
+export function metaScopes(config:Pick<MetaOAuthConfig,'businessManagerRoles'>):string[]{return config.businessManagerRoles?[...META_SCOPES,...META_BUSINESS_MANAGER_SCOPES]:[...META_SCOPES];}
 
 async function call(fetchImpl:FetchLike,url:string,init:RequestInit):Promise<{status:number;body:unknown}>{
  let response:Response;
@@ -70,7 +73,9 @@ export function googleTransport(config:GoogleOAuthConfig,fetchImpl:FetchLike=fet
 }
 // Authorization URLs (official hosts only; the state / PKCE challenge come from the server).
 export function metaAuthorizeUrl(config:MetaOAuthConfig,state:string):string{
- return META_AUTHORIZE+'?'+query({client_id:config.appId,redirect_uri:config.redirectUri,state,response_type:'code',scope:META_SCOPES.join(',')});
+ // Facebook Login for Business: config_id replaces scope. Classic Facebook Login: explicit scope list.
+ const access:Record<string,string>=config.loginConfigId?{config_id:config.loginConfigId}:{scope:metaScopes(config).join(',')};
+ return META_AUTHORIZE+'?'+query({client_id:config.appId,redirect_uri:config.redirectUri,state,response_type:'code',...access});
 }
 export function googleAuthorizeUrl(config:GoogleOAuthConfig,state:string,codeChallenge:string):string{
  return GOOGLE_AUTHORIZE+'?'+query({client_id:config.clientId,redirect_uri:config.redirectUri,response_type:'code',scope:GOOGLE_BUSINESS_SCOPE,access_type:'offline',

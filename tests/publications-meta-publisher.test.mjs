@@ -130,7 +130,7 @@ test('publish transport: write allowlist, token only in the Authorization header
  const calls=[];const f=async(url,init)=>{calls.push({url,init:{...init,signal:undefined}});return {status:200,headers:{get:k=>({'content-type':'application/json'})[k.toLowerCase()]??null},text:async()=>JSON.stringify({id:'1'})};};
  const t=integration.metaPublishTransport({appSecret:'meta-app-secret-value'},f);
  await t.request({method:'POST',path:'1001/feed',params:{message:'Bonjour'},token:PAGE});
- assert.equal(calls[0].url,'https://graph.facebook.com/v25.0/1001/feed');assert.equal(calls[0].init.method,'POST');assert.equal(calls[0].init.redirect,'error');
+ assert.equal(calls[0].url,'https://graph.facebook.com/v26.0/1001/feed');assert.equal(calls[0].init.method,'POST');assert.equal(calls[0].init.redirect,'error');
  assert.equal(calls[0].init.headers.Authorization,`Bearer ${PAGE}`);const body=new URLSearchParams(calls[0].init.body);
  assert.equal(body.get('appsecret_proof'),createHmac('sha256','meta-app-secret-value').update(PAGE).digest('hex'));assert.equal(body.get('message'),'Bonjour');
  assert.ok(!calls[0].url.includes('EAAB'),'never a token in the URL');
@@ -204,9 +204,9 @@ test('P11-b scope: nothing triggers publishing, OAuth transport still read-only,
  assert.doesNotMatch(src('lib/integrations/publications-oauth/http.ts').replace(/\/\/[^\n]*/g,''),/feed|media_publish|\/photos/,'OAuth transport stays read-only');
  for(const f of ['lib/publications/delivery/meta-publisher.ts','lib/publications/delivery/registry.ts','lib/integrations/publications-meta-publish.ts']){const code=src(f).replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/console\.log/,f);for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/token|credential|body|url|text|message|error\b/i,`${f}: generic logs`);}
- const doc=src('docs/publications-meta-publisher.md');for(const s of ['v25.0','/feed','/photos','/media_publish','status_code','pages_manage_posts','instagram_content_publish','uncertain','App Review'])assert.ok(doc.includes(s),s);
+ const doc=src('docs/publications-meta-publisher.md');for(const s of ['v26.0','/feed','/photos','/media_publish','status_code','pages_manage_posts','instagram_content_publish','uncertain','App Review'])assert.ok(doc.includes(s),s);
  assert.doesNotMatch(doc,/EAAB|appsecret_proof=[a-f0-9]{10}/);
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
  const sql=src('supabase/migrations/20261012000000_publications_meta_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs/i);});
 
 test('Gate 4: Meta reconciliation never concludes "missing" from a full page of newer posts (a false missing would allow a duplicate)',async()=>{

@@ -52,7 +52,7 @@ export function outcomePayload(outcome:PublishOutcome,durationMs:number,requestI
 const REASON_LABELS:Record<string,string>={...PUBLISHABILITY_LABELS,archived:'Publication archivée',publication_changed:'Publication modifiée depuis la préparation',
  content_changed:'Contenu modifié depuis la préparation',account_changed:'Compte du canal modifié',auth:'Autorisation refusée ou révoquée'};
 export function blockedReasonLabel(reason:string|null):string|null{return reason?REASON_LABELS[reason as ChannelPublishability]??'Diffusion bloquée':null;}
-export const DELIVERY_ENGINE_NOTICE='Le moteur de diffusion est en mode local / provider simulé.';
+export const DELIVERY_ENGINE_NOTICE='Envoi réel uniquement via « Envoyer les publications dues », et seulement si l’arrêt d’urgence est levé et la publication activée.';
 export type DeliveryView={id:string;platform:PublicationPlatform;platformLabel:string;accountLabel:string;status:DeliveryStatus;statusLabel:string;attempts:number;
  lastError:string|null;blockedReason:string|null;nextRetryAt:string|null;remoteLabel:string|null;canRetry:boolean;canReconcile:boolean};
 // Drawer « Diffusion »: deliveries of the publication and whether a preparation can be requested.

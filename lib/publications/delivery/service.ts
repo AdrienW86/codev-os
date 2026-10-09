@@ -40,7 +40,7 @@ export async function preparePublicationDelivery(publicationId:unknown):Promise<
  const {userId}=await requireAdmin();if(!isPublicationUuid(publicationId))return {ok:false,message:'Publication invalide.'};
  const {data,error}=await getSupabaseServerClient().rpc('publication_prepare_delivery',{p_publication_id:publicationId,p_actor_id:userId});
  if(error||!data)return {ok:false,message:refusal(error?.message)};
- return {ok:true,message:(data as {created?:boolean}).created?'Diffusion préparée (provider simulé : rien n’est publié).':'Diffusion déjà préparée.'};
+ return {ok:true,message:(data as {created?:boolean}).created?'Diffusion préparée : envoi à l’heure prévue, via « Envoyer les publications dues ».':'Diffusion déjà préparée.'};
 }
 // Retry of one delivery of THIS publication (the server checks the delivery belongs to it before the RPC).
 export async function retryPublicationDelivery(publicationId:unknown,deliveryId:unknown):Promise<Result>{

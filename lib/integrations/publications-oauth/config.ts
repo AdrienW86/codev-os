@@ -4,10 +4,17 @@ import type {ConnectionProvider} from '@/lib/publications/connections/model';
 // Publication OAuth configuration (Lot 4.3 P11-a). Server-only environment, validated on use, fail closed: a
 // missing or malformed value disables the provider (generic message in the UI, nothing logged but its name).
 // No secret is NEXT_PUBLIC_*. Values are never returned to a component, logged or stored.
-export const META_GRAPH_VERSION='v25.0';
+// Graph API v26.0 (released 2026-07-29; no change to the Pages / Instagram publishing / Login endpoints used here).
+export const META_GRAPH_VERSION='v26.0';
 // Official callback paths (the redirect URI is the configured base URL + this path, nothing else).
 export const OAUTH_CALLBACK_PATHS:Record<ConnectionProvider,string>={meta:'/api/publications/oauth/meta/callback',google_business_profile:'/api/publications/oauth/google-business-profile/callback'};
-export type MetaOAuthConfig={appId:string;appSecret:string;redirectUri:string};
+// businessManagerRoles: the administrator's role on the client Pages comes from a Business Manager (business
+// portfolio). Meta then also requires ads_management + ads_read for Instagram publishing (official content publishing
+// guide). Off by default (minimum permissions); META_PAGE_ROLES_VIA_BUSINESS_MANAGER=true turns it on.
+// loginConfigId: Facebook Login for Business configuration (Business-type app). When set, the login dialog uses
+// config_id INSTEAD of scope (official FLfB docs: scope must not be used); the permissions are those of the
+// configuration. Unset: classic Facebook Login with the scope list below.
+export type MetaOAuthConfig={appId:string;appSecret:string;redirectUri:string;businessManagerRoles?:boolean;loginConfigId?:string|null};
 export type GoogleOAuthConfig={clientId:string;clientSecret:string;redirectUri:string};
 export type CredentialKey={id:string;key:Buffer};
 export type CredentialKeyring={current:CredentialKey;previous:CredentialKey|null};
@@ -26,7 +33,9 @@ export function redirectUriFor(provider:ConnectionProvider,env:Env=process.env):
 export function metaOAuthConfig(env:Env=process.env):MetaOAuthConfig|null{
  const appId=env.META_APP_ID,appSecret=env.META_APP_SECRET,redirectUri=redirectUriFor('meta',env);
  if(!appId||!/^[0-9]{5,30}$/.test(appId)||!opaque(appSecret,16,200)||!redirectUri)return null;
- return {appId,appSecret,redirectUri};
+ const roles=env.META_PAGE_ROLES_VIA_BUSINESS_MANAGER;if(roles!==undefined&&roles!==''&&roles!=='true'&&roles!=='false')return null;
+ const configId=env.META_LOGIN_CONFIG_ID;if(configId!==undefined&&configId!==''&&!/^[0-9]{5,30}$/.test(configId))return null;
+ return {appId,appSecret,redirectUri,businessManagerRoles:roles==='true',loginConfigId:configId?configId:null};
 }
 export function googleOAuthConfig(env:Env=process.env):GoogleOAuthConfig|null{
  const clientId=env.GOOGLE_BUSINESS_PROFILE_CLIENT_ID,clientSecret=env.GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET,redirectUri=redirectUriFor('google_business_profile',env);

@@ -126,7 +126,7 @@ test('saveDraft on a mono-platform publication: one variant on its platform, sam
  assert.equal((await w.saveDraft(edit({}))).id,PUB);assert.deepEqual(calls,['publication_save_draft']);});
 
 test('P4-b scope: one migration, legacy save_draft identical except the occurrence filter, no delivery / publisher / agent',()=>{
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,22);assert.equal(list[13],'20261008020000_publications_occurrence_publications.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[13],'20261008020000_publications_occurrence_publications.sql');
  const sql=src('supabase/migrations/20261008020000_publications_occurrence_publications.sql'),cal=src('supabase/migrations/20261005205057_publications_editorial_calendar.sql');
  const original=cal.slice(cal.indexOf('create or replace function public.publication_save_draft('),cal.indexOf('end $$;',cal.indexOf('create or replace function public.publication_save_draft('))+7);
  const redefined=sql.slice(sql.indexOf('create or replace function public.publication_save_draft('),sql.indexOf('end $$;',sql.indexOf('create or replace function public.publication_save_draft('))+7);

@@ -49,6 +49,36 @@ export async function runOnePublicationJobInProduction(workerId:string):Promise<
  return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS});
 }
 
+// Explicit admin trigger (Lot 4.3 P13): send the deliveries that are due now — prepared after the manual approval,
+// scheduled time reached — at most MAX_DUE_PER_RUN per click. No cron, no daemon: one click = a bounded number of
+// single-job runs of the P10 engine. Fail closed: the kill switches are read first and nothing is claimed while the
+// emergency stop is active or publishing is disabled; the engine re-checks every switch and the readiness anyway.
+export const MAX_DUE_PER_RUN=5;
+type SettingsDb={from(table:string):{select(columns:string):{limit(n:number):{maybeSingle():PromiseLike<{data:unknown;error:unknown}>}}}};
+export type DueRunDeps={db:SettingsDb;run:(workerId:string)=>Promise<ExecutionResult>};
+export type DueRunSummary={ok:boolean;message:string;counts:{published:number;failed:number;uncertain:number;blocked:number;retry:number}};
+export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
+ const {userId}=await requireAdmin();
+ const counts={published:0,failed:0,uncertain:0,blocked:0,retry:0};
+ const settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();
+ const s=settings.data as {emergency_stop?:unknown;publishing_enabled?:unknown}|null;
+ if(settings.error||!s)return {ok:false,message:'Réglages de publication illisibles : aucun envoi.',counts};
+ if(s.emergency_stop!==false)return {ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts};
+ if(s.publishing_enabled!==true)return {ok:false,message:'Publication désactivée dans les réglages : aucun envoi.',counts};
+ const worker='cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60);
+ let processed=0;
+ for(let i=0;i<MAX_DUE_PER_RUN;i++){
+  let r:ExecutionResult;try{r=await deps.run(worker);}catch{log('process_due');break;}
+  if(r.state==='idle')break;processed++;
+  if(r.state==='completed'){const o=r.outcome;
+   if(o==='published'||o==='simulated')counts.published++;else if(o==='uncertain')counts.uncertain++;
+   else if(o==='retryable'||o==='rate_limit'||o==='provider_unavailable')counts.retry++;else if(o==='auth')counts.blocked++;else counts.failed++;}
+  else if(r.state==='blocked')counts.blocked++;else if(r.state==='unconfirmed')counts.uncertain++;else counts.failed++;
+ }
+ if(!processed)return {ok:true,message:'Aucune publication due pour le moment.',counts};
+ return {ok:true,counts,message:`${processed} envoi(s) traité(s) : ${counts.published} publié(s), ${counts.retry} à réessayer, ${counts.blocked} bloqué(s), ${counts.failed} en échec, ${counts.uncertain} à vérifier.`};
+}
+
 // Reconciliation of an uncertain delivery (admin action). The provider is only READ; the outcome is recorded by
 // RPC: exists → published (provider id), missing / unknown → stays uncertain (no automatic resend).
 type Rpc=(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>;

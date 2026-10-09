@@ -27,7 +27,7 @@ type Result={ok:boolean;message:string};
 type ListedConnection={id:string;provider:string;status:string;connected_at:string|null;expires_at:string|null;has_credential:boolean;accounts:Record<string,unknown>};
 // Whether each provider can be connected from this server (configuration complete). Booleans only, never values.
 function readiness():Record<ConnectionProvider,boolean>{try{return oauthReadiness(productionOAuthDeps());}catch{return {meta:false,google_business_profile:false};}}
-type ListedAccount={id:string;platform:string;display_name:string|null;status:string;enabled:boolean;connection_status:string;assignable:boolean};
+type ListedAccount={id:string;platform:string;display_name:string|null;status:string;enabled:boolean;connection_status:string;assignable:boolean;used_by_other_client?:boolean};
 const isPlatform=(v:unknown):v is PublicationPlatform=>typeof v==='string'&&(publicationPlatforms as readonly string[]).includes(v);
 // Generic server log: operation and error kind only, never a provider message (it may echo a token).
 const logFailure=(operation:string,error:unknown)=>console.error('[publications-connections]',{operation,kind:error instanceof ConnectionProviderError?error.kind:'internal'});
@@ -46,7 +46,7 @@ async function listAccounts(clientId:string):Promise<ListedAccount[]>{
  if(error||!Array.isArray(data))throw Error(unavailable);return data as unknown as ListedAccount[];
 }
 const toOption=(a:ListedAccount):AccountOption[]=>isPlatform(a.platform)&&(ACCOUNT_STATUSES as readonly string[]).includes(a.status)&&typeof a.display_name==='string'&&isPublicationUuid(a.id)
- ?[{id:a.id,platform:a.platform,name:a.display_name,status:a.status as AccountStatus,statusLabel:ACCOUNT_STATUS_LABELS[a.status as AccountStatus],assignable:a.assignable===true}]:[];
+ ?[{id:a.id,platform:a.platform,name:a.display_name,status:a.status as AccountStatus,statusLabel:ACCOUNT_STATUS_LABELS[a.status as AccountStatus],assignable:a.assignable===true,usedByOtherClient:a.used_by_other_client===true}]:[];
 
 export async function getClientConnections(clientId:string):Promise<ConnectionSummary[]>{
  await requireAdmin();if(!isPublicationUuid(clientId))throw Error(unavailable);
@@ -80,7 +80,7 @@ export async function getProjectConnectionConfiguration(projectId:string,now=new
   const provider=providerOfPlatform(platform),conn=connections.find(c=>c.provider===provider)??null;
   const publishability:ChannelPublishability=computeChannelPublishability({emergencyStop:settings.data?.emergency_stop!==false,publishingEnabled:settings.data?.publishing_enabled===true,
    clientPublishingEnabled:clientSettings.data?.publishing_enabled===true,platform,channel:channel?{enabled:channel.enabled,accountId}:null,
-   account:listed?{status:listed.status,enabled:listed.enabled,platform:listed.platform,connectionBacked:true}:old?{status:old.status,enabled:old.enabled,platform:old.platform,connectionBacked:false}:null,
+   account:listed?{status:listed.status,enabled:listed.enabled,platform:listed.platform,connectionBacked:true,usedByOtherClient:listed.used_by_other_client===true}:old?{status:old.status,enabled:old.enabled,platform:old.platform,connectionBacked:false}:null,
    connection:listed&&conn?{provider:conn.provider,status:conn.status,hasCredential:conn.has_credential===true,expiresAt:conn.expires_at}:null,now});
   const own=options.filter(o=>o.platform===platform);
   return {platform,platformLabel:platformLabels[platform],currentAccountId:accountId,
@@ -129,7 +129,8 @@ export async function assignPublicationAccountToChannel(projectId:unknown,platfo
  try{
   const project=await projectRef(projectId);if(!project)return {ok:false,message:'Projet invalide.'};
   const {error}=await getSupabaseServerClient().rpc('publication_channel_assign_account',{p_project_id:project.id,p_platform:platform,p_account_id:accountId,p_actor_id:userId});
-  if(error)return {ok:false,message:error.code==='23514'?'Ce compte ne peut pas être utilisé pour ce canal (client, plateforme ou statut).':'Compte non enregistré. Réessayez.'};
+  if(error)return {ok:false,message:error.code==='23505'?'Ce compte est déjà utilisé par un autre client : une Page ou un compte Instagram ne sert qu’un seul client.'
+   :error.code==='23514'?'Ce compte ne peut pas être utilisé pour ce canal (client, plateforme ou statut).':'Compte non enregistré. Réessayez.'};
   return {ok:true,message:accountId?'Compte de publication enregistré.':'Compte de publication retiré.'};
  }catch(error){logFailure('assign',error);return {ok:false,message:unavailable};}
 }

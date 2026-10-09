@@ -23,11 +23,11 @@ concerné (bouton « Connecter » indisponible, message générique) : *fail clo
 
 Générer une clé : `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
 
-## Meta (Facebook Login for Business — flux manuel)
+## Meta (Facebook Login ou Facebook Login for Business — flux manuel)
 
 - **URL de callback exacte** : `<PUBLICATIONS_OAUTH_BASE_URL>/api/publications/oauth/meta/callback`
-- Graph API **v25.0** (dialogue `https://www.facebook.com/v25.0/dialog/oauth`, échange
-  `https://graph.facebook.com/v25.0/oauth/access_token`, inspection `debug_token`).
+- Graph API **v26.0** (dialogue `https://www.facebook.com/v26.0/dialog/oauth`, échange
+  `https://graph.facebook.com/v26.0/oauth/access_token`, inspection `debug_token`).
 - Le code est échangé côté serveur, puis converti en **jeton utilisateur longue durée** (`fb_exchange_token`,
   ~60 jours). Il est prolongé par « Vérifier la connexion » tant qu’il est valide ; au-delà, reconnecter.
 - Appels de lecture signés avec `appsecret_proof` (HMAC-SHA256 du jeton avec le secret de l’app).
@@ -44,17 +44,28 @@ Générer une clé : `node -e "console.log(require('crypto').randomBytes(32).toS
 | `instagram_basic` | Lire le compte Instagram professionnel lié (`instagram_business_account`). | Oui pour l’accès avancé |
 | `instagram_content_publish` | Publier sur Instagram (P11-b). | Oui |
 
-Non demandées : `business_management` (seulement si les Pages ne sont accessibles que via Business Manager),
-`ads_management`, `ads_read`.
+Option `META_PAGE_ROLES_VIA_BUSINESS_MANAGER=true` : ajoute `ads_management` et `ads_read`, exigées par Meta pour
+publier sur Instagram **quand ton rôle sur la Page vient d’un Business Manager** (guide officiel *Content
+Publishing*). Désactivée par défaut (permissions minimales). `business_management` n’est jamais demandée.
 
-En mode **Development**, seules les personnes ayant un rôle sur l’app (admin, développeur, testeur) peuvent
-autoriser ces permissions. En mode **Live**, les permissions marquées « Oui » exigent l’App Review (et la
-vérification d’entreprise pour l’accès avancé).
+Deux modes de connexion, selon le type d’app :
+- **Facebook Login** (paramètre `scope`, liste ci-dessus) — `META_LOGIN_CONFIG_ID` vide ;
+- **Facebook Login for Business** (app de type *Business*) — `META_LOGIN_CONFIG_ID` = identifiant de la
+  configuration créée dans Meta Developers (type de jeton : *User access token*, mêmes permissions). La
+  documentation officielle impose `config_id` **à la place** de `scope`.
+
+Accès **Standard** (automatique, sans App Review) : les permissions ne peuvent être accordées que par les
+personnes ayant un **rôle sur l’app**. CODE-V OS n’a qu’un utilisateur humain, l’administrateur : s’il est
+admin de l’app et gère les Pages de ses clients, l’accès Standard suffit. L’accès **Avancé** (App Review +
+vérification d’entreprise) n’est nécessaire que si des personnes **sans rôle sur l’app** (par exemple un client)
+devaient se connecter elles-mêmes.
 
 ### Configuration Meta Developers (à faire par l’administrateur)
 
-1. Créer une app de type *Business*, produit **Facebook Login for Business**.
-2. *Valid OAuth Redirect URIs* : l’URL de callback exacte ci-dessus (HTTPS, sans variante).
+1. Créer une app (type *Business* avec **Facebook Login for Business** + une configuration, ou produit
+   **Facebook Login** classique).
+2. *Valid OAuth Redirect URIs* : l’URL de callback exacte ci-dessus (sans variante ; en local
+   `http://localhost:3000/...`, voir `docs/publications-meta-setup.md`).
 3. Activer *Enforce HTTPS* et *Use Strict Mode for redirect URIs*.
 4. Ajouter les comptes de test comme rôles de l’app tant que l’app est en Development.
 5. Prérequis Instagram : compte **professionnel** (Business ou Creator) lié à la Page Facebook ; une Page sans

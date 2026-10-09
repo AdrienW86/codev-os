@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ActionControls } from "@/components/actions/action-controls";
+import { IncidentControls } from "@/components/work/incident-controls";
 import { Action } from "@/components/ui/button";
 import { DetailDrawer } from "@/components/ui/dialog";
 import { RelationLink } from "@/components/ui/layout";
@@ -77,6 +78,12 @@ export function WorkBoard({ sections, actions }: {
               <div>
                 <h3 className="mb-2 text-xs font-medium tracking-[0.14em] text-muted uppercase">Décision</h3>
                 <ActionControls action={action} />
+              </div>
+            )}
+            {selected.kind === "incident" && (
+              <div>
+                <h3 className="mb-2 text-xs font-medium tracking-[0.14em] text-muted uppercase">Suivi</h3>
+                <IncidentControls id={selected.id} section={selected.section} />
               </div>
             )}
             {selected.kind === "recommendation" && selected.section === "review" && <p className="text-sm text-muted">Acceptez, écartez ou transformez cette recommandation en action depuis sa fiche complète.</p>}

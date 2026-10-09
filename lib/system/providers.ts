@@ -64,3 +64,16 @@ export function isProviderConfigured(provider: ProviderId | ProviderRequirement[
 export function allProviderStatuses(env: Env = process.env) {
   return providerRequirements.filter((item) => item.id !== "internal").map((item) => ({ ...providerStatus(item, env), requirement: item }));
 }
+
+export type ConnectionState = "ok" | "todo" | "attention";
+
+/**
+ * ✓ ok : configuré et sans erreur récente ; ○ todo : rien de configuré ;
+ * ! attention : configuration partielle (incohérente) ou dernière synchronisation en erreur.
+ */
+export function connectionState(requirement: ProviderRequirement, env: Env = process.env, lastError?: string | null): ConnectionState {
+  const status = providerStatus(requirement, env);
+  if (status.state === "configured") return lastError ? "attention" : "ok";
+  const names = [...requirement.required, ...(requirement.anyOf?.flat() ?? [])];
+  return names.some((name) => present(env, name)) ? "attention" : "todo";
+}

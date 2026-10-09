@@ -9,18 +9,24 @@ import { EmptyState, InlineNotice } from "@/components/ui/states";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { Tabs } from "@/components/ui/tabs";
 import { PublicationSettingsPanel } from "@/components/publications/settings-panel";
-import { TrySimulationButton } from "@/components/simulation/simulation-banner";
 import { SimAutomations, SimConnections } from "@/components/simulation/views/sim-settings";
 import { getPublicationSettingsState } from "@/lib/publications/data";
 import { listAgents } from "@/lib/agents/data";
 import { agentCatalog, blueprintState, agentStateLabels, matchConfiguredAgents } from "@/lib/agents/catalog";
 import { getActiveScenario } from "@/lib/simulation/server";
+import { AutomationsPanel } from "@/components/automations/automations-panel";
+import { SystemStatus, Observability } from "@/components/system/system-status";
+import { listAutomations } from "@/lib/automations/service";
+import { listClients } from "@/lib/clients/data";
+import { getSystemHealth } from "@/lib/system/health";
+import { isProviderConfigured } from "@/lib/system/providers";
+import { safeRead } from "@/lib/core/safe-read";
 
 export const metadata: Metadata = { title: "Paramètres" };
 
 const tabs = [
   { id: "general", label: "Général" }, { id: "connections", label: "Connexions" }, { id: "agents", label: "Agents" },
-  { id: "automations", label: "Automatisations" }, { id: "simulation", label: "Simulation UX" }, { id: "security", label: "Sécurité" },
+  { id: "automations", label: "Automatisations" }, { id: "system", label: "Observabilité" }, { id: "simulation", label: "Simulation UX" }, { id: "security", label: "Sécurité" },
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 
@@ -36,9 +42,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const tab: TabId = tabs.some((item) => item.id === rawTab) ? (rawTab as TabId) : "general";
   const scenario = await getActiveScenario();
   // Lectures limitées à l’onglet affiché.
-  const [publicationSettings, agents] = await Promise.all([
+  const real = !scenario;
+  const [publicationSettings, agents, automations, clients, health] = await Promise.all([
     tab === "security" ? getPublicationSettingsState() : Promise.resolve(null),
     tab === "agents" ? listAgents() : Promise.resolve([]),
+    real && tab === "automations" ? safeRead("automations", () => listAutomations(), []) : Promise.resolve({ data: [], unavailable: false }),
+    real && tab === "automations" ? safeRead("clients", () => listClients(), []) : Promise.resolve({ data: [], unavailable: false }),
+    real && (tab === "system" || tab === "connections") ? safeRead("health", () => getSystemHealth(), null) : Promise.resolve({ data: null, unavailable: false }),
   ]);
 
   return (
@@ -59,15 +69,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </Panel>
       )}
 
-      {tab === "connections" && (scenario ? <SimConnections /> : <RealConnections />)}
+      {tab === "connections" && (scenario ? <SimConnections /> : <><SystemStatus errors={health.data?.connectionErrors ?? []} /><div className="mt-8"><RealConnections /></div></>)}
 
       {tab === "agents" && <AgentsSettings agents={agents} />}
 
       {tab === "automations" && (scenario ? <SimAutomations /> : (
-        <EmptyState icon="calendar" title="Aucune automatisation active."
-          description="Les exécutions planifiées des agents (ex. « Tous les lundis à 08:00 » → Agent Monitoring → clients Maintenance) ne sont pas encore disponibles. Le champ « planning » d’un agent reste purement déclaratif."
-          action={<TrySimulationButton href="/settings?tab=automations">Voir le parcours en simulation</TrySimulationButton>} />
+        <AutomationsPanel automations={automations.data} unavailable={automations.unavailable} clients={clients.data.map((client) => ({ id: client.id, name: client.name }))} schedulerConfigured={isProviderConfigured("scheduler")} />
       ))}
+
+      {tab === "system" && (scenario
+        ? <EmptyState icon="dashboard" title="Observabilité indisponible en simulation." description="Cette vue lit uniquement les données réelles (jobs, exécutions, erreurs). Quittez la simulation pour la consulter." />
+        : <Observability health={health.data} unavailable={health.unavailable} />)}
 
       {tab === "simulation" && (
         <Panel className="max-w-3xl p-6">
@@ -87,15 +99,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
 
 function RealConnections() {
   const connections: RealConnection[] = [
-    { name: "Supabase", description: "Base de données métier, accès côté serveur uniquement.", status: { label: "Actif", tone: "green" }, action: null },
-    { name: "Google Ads", description: "Lecture seule, configurée et testée depuis chaque fiche client.", status: { label: "Lecture seule", tone: "green" }, action: <Action href="/clients">Voir les clients</Action> },
+    { name: "Google Ads", description: "Lecture seule : identifiant de compte renseigné et testé depuis chaque fiche client.", status: { label: "Lecture seule", tone: "green" }, action: <Action href="/clients">Voir les clients</Action> },
     { name: "Meta & Google Business Profile", description: "Connexion des comptes de publication, projet par projet.", status: { label: "Par projet", tone: "neutral" }, action: <Action href="/projects">Choisir un projet</Action> },
-    { name: "OpenAI", description: "Génération de contenus de l’Agent Publications, selon les réglages Publications.", status: { label: "Non connecté", tone: "neutral" }, action: <Action href="/settings?tab=security">Voir les réglages</Action> },
-    { name: "Search Console", description: "Clics, positions et pages indexées pour l’Agent SEO & Site.", status: { label: "À connecter", tone: "neutral" }, action: <TrySimulationButton scenarioId="seo-progress" href="/settings?tab=connections">Voir le parcours</TrySimulationButton> },
-    { name: "Vercel", description: "Déploiements et erreurs des sites pour l’Agent Monitoring Technique.", status: { label: "À connecter", tone: "neutral" }, action: <TrySimulationButton scenarioId="site-down" href="/settings?tab=connections">Voir le parcours</TrySimulationButton> },
-    { name: "Envoi d’e-mails", description: "Envoi des rapports aux clients.", status: { label: "À venir", tone: "neutral" }, action: <TrySimulationButton scenarioId="report-ready" href="/reports">Voir le parcours</TrySimulationButton> },
   ];
   return (
+    <>
+    <SectionHeader title="Raccourcis de configuration" description="Connexions rattachées à un client ou à un projet." />
     <ul className="divide-y divide-border rounded-xl border border-border bg-surface px-5">
       {connections.map((connection) => (
         <li key={connection.name} className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -104,6 +113,7 @@ function RealConnections() {
         </li>
       ))}
     </ul>
+    </>
   );
 }
 

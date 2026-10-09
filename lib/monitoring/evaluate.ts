@@ -8,6 +8,8 @@ export const SLOW_MS = 4000;
 export function siteUrl(website: string | null | undefined): string | null {
   const value = website?.trim();
   if (!value) return null;
+  // Tout autre schéma explicite (ftp:, javascript:, file:…) est refusé, jamais « réparé ».
+  if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(value) && !/^https?:\/\//i.test(value)) return null;
   const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
   try { const url = new URL(withScheme); return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null; } catch { return null; }
 }

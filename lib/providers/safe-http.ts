@@ -4,8 +4,8 @@ import "server-only";
 // pas de contournement par rebinding DNS. Redirections suivies manuellement et revérifiées.
 // Taille de réponse et durée bornées ; aucun cookie ni identifiant transmis.
 import { lookup as dnsLookup } from "node:dns";
-import http from "node:http";
-import https from "node:https";
+import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
+import { request as httpsRequest } from "node:https";
 import type { LookupFunction } from "node:net";
 import { checkPublicUrl, isPrivateAddress } from "@/lib/providers/net-policy";
 import { ProviderError } from "@/lib/providers/errors";
@@ -25,8 +25,7 @@ const guardedLookup: LookupFunction = (hostname, options, callback) => {
 
 function once(target: URL, timeoutMs: number, maxBytes: number, accept: string): Promise<{ status: number; headers: Record<string, string>; body: string }> {
   return new Promise((resolve, reject) => {
-    const client = target.protocol === "https:" ? https : http;
-    const request = client.request(target, {
+    const request = (target.protocol === "https:" ? httpsRequest : httpRequest)(target, {
       method: "GET", lookup: guardedLookup, timeout: timeoutMs,
       headers: { "User-Agent": "CODE-V-OS/1.0 (+monitoring)", Accept: accept, "Accept-Encoding": "identity" },
     }, (response) => {
@@ -46,7 +45,7 @@ function once(target: URL, timeoutMs: number, maxBytes: number, accept: string):
   });
 }
 
-function flatten(headers: http.IncomingHttpHeaders) {
+function flatten(headers: IncomingHttpHeaders) {
   return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")]));
 }
 

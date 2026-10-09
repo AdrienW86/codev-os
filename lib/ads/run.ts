@@ -1,4 +1,5 @@
 import "server-only";
+import { recordSync } from "@/lib/connections/sync";
 // Handler « ads.monitor » : lecture des campagnes (7 jours vs 7 jours précédents), anomalies →
 // incident + recommandation + action d'optimisation PRÉPARÉE (validation et réalisation manuelles).
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -22,7 +23,9 @@ export const monitorAdsRun: RunHandler = async ({ job, agent, actor, now }) => {
   let thisWeek, lastWeek;
   try {
     [thisWeek, lastWeek] = await Promise.all([campaignMetrics(connection.external_account_id, current, { managerId: manager }), campaignMetrics(connection.external_account_id, previous, { managerId: manager })]);
+    await recordSync(job.client_id, "google_ads", null);
   } catch (failure) {
+    await recordSync(job.client_id, "google_ads", failure);
     if (failure instanceof ProviderError) throw new RunError(failure.message, failure.retryable);
     throw failure;
   }

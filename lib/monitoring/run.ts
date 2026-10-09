@@ -1,4 +1,5 @@
 import "server-only";
+import { recordSync } from "@/lib/connections/sync";
 // Handler « monitoring.check_sites » : disponibilité HTTP des sites des clients Maintenance / Site web,
 // derniers déploiements Vercel et commits GitHub si connectés. Analyse automatique ;
 // toute correction est une ACTION préparée, à valider puis réaliser manuellement.
@@ -57,14 +58,16 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
       try {
         if (connection.provider === "vercel" && metadata.project_id) {
           const deployment = await latestDeployment(metadata.project_id);
+          await recordSync(client.id, "vercel", null);
           if (deployment?.state === "ERROR") await openIncident(actor, { clientId: client.id, agentId: agent.id, source: "monitoring", severity: "medium", title: "Dernier déploiement Vercel en échec", fingerprint: `vercel-error:${client.id}:${deployment.id}`, details: { deployment: deployment.id } });
         }
         if (connection.provider === "github" && metadata.repository) {
           const commits = await recentCommits(metadata.repository);
+          await recordSync(client.id, "github", null);
           const today = now.toISOString().slice(0, 10);
           await supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "github", metric_key: "recent_commits", period_start: today, period_end: today, data: { commits } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" });
         }
-      } catch { counts.partial++; }
+      } catch (failure) { counts.partial++; await recordSync(client.id, connection.provider, failure); }
     }
   }
   const parts = [`${counts.up} en ligne`, counts.slow ? `${counts.slow} lent(s)` : null, counts.down ? `${counts.down} indisponible(s)` : null, counts.skipped ? `${counts.skipped} sans adresse contrôlable` : null, counts.partial ? `${counts.partial} source(s) complémentaire(s) indisponible(s)` : null].filter(Boolean);

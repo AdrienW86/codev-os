@@ -1,4 +1,5 @@
 import "server-only";
+import { recordSync } from "@/lib/connections/sync";
 // Handler « seo.analyze » : Search Console (28 j vs 28 j précédents) + PageSpeed mobile.
 // Constats → recommandations ; aucune modification du site sans action validée.
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -31,7 +32,8 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     const [pagesNow, pagesBefore, queriesNow, queriesBefore] = await Promise.all([
       searchAnalytics(property, { ...current, dimensions: ["page"] }), searchAnalytics(property, { ...previous, dimensions: ["page"] }),
       searchAnalytics(property, { ...current, dimensions: ["query"] }), searchAnalytics(property, { ...previous, dimensions: ["query"] }),
-    ]).catch(wrap);
+    ]).catch(async (failure) => { await recordSync(client.id, "search-console", failure); return wrap(failure); });
+    await recordSync(client.id, "search-console", null);
     const summary = totals(pagesNow);
     await supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "search-console", metric_key: "summary", period_start: current.startDate, period_end: current.endDate, data: { ...summary, previous_clicks: totals(pagesBefore).clicks } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" });
     for (const finding of analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore)) {

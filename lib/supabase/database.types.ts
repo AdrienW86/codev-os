@@ -1,5 +1,6 @@
 import type { Client, ClientInput } from "@/lib/clients/types";
 import type { PublicationTables, PublicationFunctions } from "@/lib/publications/types";
+import type { WhatsAppFunctions, WhatsAppTables } from "@/lib/whatsapp/types";
 import type { CoreFunctions, CoreTables } from "@/lib/supabase/core.types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
@@ -300,7 +301,7 @@ export type ClientServiceInsert = {
 
 export type Database = {
   public: {
-    Tables: PublicationTables & CoreTables & {
+    Tables: PublicationTables & CoreTables & WhatsAppTables & {
       agent_project_assignments: {
         Row: {agent_id:string;client_id:string;project_id:string;enabled:boolean;created_at:string;updated_at:string};
         Insert: {agent_id:string;client_id:string;project_id:string;enabled?:boolean;created_at?:string;updated_at?:string};
@@ -505,7 +506,7 @@ export type Database = {
       };
     };
     Views: { [key: string]: never };
-    Functions: PublicationFunctions & CoreFunctions & {
+    Functions: PublicationFunctions & CoreFunctions & WhatsAppFunctions & {
       agent_set_scope: { Args:{p_agent_id:string;p_scope:"client"|"project";p_actor_id:string};Returns:undefined };
       agent_project_assignment_set: { Args:{p_agent_id:string;p_project_id:string;p_enabled:boolean;p_actor_id:string};Returns:undefined };
     };

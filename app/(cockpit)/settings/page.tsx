@@ -99,6 +99,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
 
 function RealConnections() {
   const connections: RealConnection[] = [
+    { name: "Photos WhatsApp", description: "Réception des photos et import dans le dossier Drive du client.", status: { label: "À configurer", tone: "neutral" }, action: <Action href="/settings/whatsapp">Configurer les photos</Action> },
     { name: "Google Ads", description: "Lecture seule : identifiant de compte renseigné et testé depuis chaque fiche client.", status: { label: "Lecture seule", tone: "green" }, action: <Action href="/clients">Voir les clients</Action> },
     { name: "Meta & Google Business Profile", description: "Connexion des comptes de publication, projet par projet.", status: { label: "Par projet", tone: "neutral" }, action: <Action href="/projects">Choisir un projet</Action> },
   ];

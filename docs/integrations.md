@@ -33,6 +33,8 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 - Lecture : `speechSynthesis` (voix française si disponible ; message explicite sinon).
 - **Vérifier** : bouton micro → autoriser → parler → la demande s’affiche et part ; micro refusé → message « Accès au micro refusé ».
 
+- **Diagnostiquer un 502 de `/api/assistant/transcribe`** : Paramètres → Connexions → « Tester la connexion IA » vérifie aussi le modèle de transcription (`ASSISTANT_STT_MODEL`, défaut `whisper-1`), sans audio ni coût. Logs Vercel : `[voice] Transcription en échec` avec `model`, `mime`, `container`, `size`, `kind`, `status`, `code` (jamais la clé, l’audio ni la transcription). L’interface affiche la raison (quota, clé, modèle, format…).
+
 <a id="search-console"></a>
 ## Google Search Console — Agent SEO
 

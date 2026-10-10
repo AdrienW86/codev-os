@@ -25,7 +25,7 @@ select pg_temp.ok((select scope = '{}'::jsonb from public.reports where id = 'ff
 select pg_temp.fails($$insert into public.reports(client_id, kind, period_start, period_end) values ('aaaaaaaa-0000-4000-8000-0000000000a1', 'weekly', '2026-09-28', '2026-10-04')$$, '23505', 'weekly uniqueness kept');
 select pg_temp.fails($$insert into public.reports(client_id, kind, period_start, period_end) values (null, 'monthly', '2026-09-01', '2026-09-30'), (null, 'monthly', '2026-09-01', '2026-09-30')$$, '23505', 'nulls not distinct kept for recurring reports');
 select pg_temp.fails($$insert into public.reports(client_id, kind, period_start, period_end) values ('aaaaaaaa-0000-4000-8000-0000000000a1', 'quarterly', '2026-07-01', '2026-09-30')$$, '23514', 'unknown kind rejected');
-update public.reports set summary = 'modifié' where id = 'ffffffff-0000-4000-8000-0000000000a1';
+update public.reports set summary = 'modifié', version=version+1 where id = 'ffffffff-0000-4000-8000-0000000000a1';
 select pg_temp.ok((select summary = 'modifié' from public.reports where id = 'ffffffff-0000-4000-8000-0000000000a1'), 'recurring report still editable');
 
 -- Rapport Google Ads : périmètre obligatoire et cohérent avec la période.
@@ -51,8 +51,7 @@ update public.reports set client_content = '{"summary":"v2"}', version = 2 where
 select pg_temp.ok((select status = 'ready_for_review' and approved_at is null and scope->'campaignIds' = '["111"]' from public.reports where id = 'ffffffff-0000-4000-8000-0000000000a2'), 'new version invalidates approval and keeps scope');
 
 -- Versions : périmètre facultatif (versions historiques), objet sinon.
-insert into public.report_versions(report_id, version, scope) values ('ffffffff-0000-4000-8000-0000000000a2', 1, '{"start":"2026-09-01","end":"2026-09-30","campaignIds":["111"]}');
-insert into public.report_versions(report_id, version) values ('ffffffff-0000-4000-8000-0000000000a1', 1);
+select pg_temp.ok(exists(select 1 from public.report_versions where report_id='ffffffff-0000-4000-8000-0000000000a2' and version=1), 'transactional first snapshot');
 select pg_temp.fails($$insert into public.report_versions(report_id, version, scope) values ('ffffffff-0000-4000-8000-0000000000a2', 2, '"x"')$$, '23514', 'version scope must be an object');
 
 select pg_temp.ok(not has_function_privilege('anon', 'codev_private.reports_scope_guard()', 'EXECUTE'), 'guard not executable by anon');

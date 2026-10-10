@@ -34,3 +34,11 @@ Une seule boucle annulable alterne capture, pause détectée, transcription serv
 
 La voix continue exige HTTPS, MediaRecorder, AudioContext, une transcription configurée et une synthèse vocale autorisée par le navigateur. Aucun fonctionnement en arrière-plan ou écran verrouillé n’est garanti. « oui » ne confirme jamais une écriture. Les tests unitaires utilisent des énergies et une synthèse simulées ; ils ne valident pas un vrai microphone.
 
+# Rapports et e-mail
+
+La migration `20261019000000_report_delivery_claims.sql` suit la migration 18. Les nouvelles versions sont enregistrées dans la transaction du rapport ; les versions historiques restent intactes. Toute modification requiert une nouvelle version et invalide l’approbation. La prévisualisation utilise uniquement une liste autorisée de champs de `client_content`, en texte brut. L’administrateur confirme une adresse unique et la version affichée, approuve, puis envoie séparément.
+
+Le verrou PostgreSQL réserve une tentative avant Resend. Aucun nouvel essai automatique pour cette version : double clic, concurrence et réessai après délai ne renvoient rien. Une réponse incertaine ou un processus interrompu laisse le rapport figé, à vérifier dans Resend avant intervention. La clé Resend complète ce verrou, mais sa conservation limitée à vingt-quatre heures ne suffit pas à assurer l’unicité permanente ([documentation Resend](https://resend.com/changelog/idempotency-keys)). Le statut « accepté » ne confirme pas la livraison. Une erreur explicitement refusée permet de corriger en nouvelle version après vérification.
+
+Configurer hors dépôt `RESEND_API_KEY`, un `EMAIL_FROM` dont le domaine est vérifié dans Resend (DNS SPF/DKIM et DMARC), puis `EMAIL_SENDING_ENABLED=true` seulement après validation humaine. Aucun secret, domaine, e-mail réel ou paramètre de production n’a été modifié. Tests : concurrence et délais avec transport simulé, garde des versions et réservation en PostgreSQL jetable local.
+

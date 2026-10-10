@@ -22,7 +22,7 @@ export async function generateReportAction(_: MutationState, form: FormData): Pr
 export async function approveReportAction(_: MutationState, form: FormData): Promise<MutationState> {
   const id = formText(form, "id", 40);
   return adminMutation("reports", async (actor) => {
-    const result = await approveReport(actor, id);
+    const result = await approveReport(actor, id, Number(formText(form, "version", 10)));
     return result.ok ? { ok: true, message: "Rapport approuvé. Il peut maintenant être envoyé." } : result;
   }, paths(id));
 }
@@ -46,10 +46,11 @@ export async function archiveReportAction(_: MutationState, form: FormData): Pro
 
 export async function sendReportAction(_: MutationState, form: FormData): Promise<MutationState> {
   const id = formText(form, "id", 40);
-  const mode = formText(form, "mode", 10) === "email" ? "email" : "manual";
+  const mode = formText(form, "mode", 10);
   return adminMutation("reports", async (actor) => {
-    const result = await sendReport(actor, id, mode);
-    return result.ok ? { ok: true, message: mode === "email" ? "Rapport envoyé par e-mail." : "Envoi manuel consigné." } : result;
+    if (mode !== "email" && mode !== "manual") return { ok: false, message: "Mode d’envoi invalide." };
+    const result = await sendReport(actor, id, mode, { version: Number(formText(form, "version", 10)), recipient: formText(form, "recipient", 321), digest: formText(form, "digest", 65), confirmed: formText(form, "recipient_confirmed", 10) === "yes" });
+    return result.ok ? { ok: true, message: mode === "email" ? "E-mail accepté par Resend. La livraison n’est pas confirmée." : "Envoi manuel consigné." } : result;
   }, paths(id));
 }
 

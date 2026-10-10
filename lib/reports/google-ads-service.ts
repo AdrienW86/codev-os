@@ -14,7 +14,6 @@ import { buildGoogleAdsReport } from "./google-ads";
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (what: string): never => { throw new Error(`report ${what}`); };
-const createdBy = (actor: Actor) => actor.kind === "system" ? `system:${actor.worker}` : actor.userId;
 const migrationMessage = "Les rapports Google Ads nécessitent la migration 20261016000000_google_ads_reports (non appliquée sur cette base).";
 /** Colonne scope absente (42703 / PGRST204) ou type google_ads refusé par l'ancienne contrainte (23514). */
 const missingMigration = (error: { code?: string } | null) => ["42703", "PGRST204", "23514"].includes(error?.code ?? "");
@@ -56,8 +55,6 @@ export async function prepareGoogleAdsReport(actor: Actor, clientId: string, sco
   }).select("id").single();
   if (missingMigration(error)) return { ok: false, message: migrationMessage };
   if (error || !created) fail("insert");
-  const { error: versionError } = await db().from("report_versions").insert({ report_id: created!.id, version: 1, summary: content.summary, internal_content: content.internal_content, client_content: content.client_content, scope: stored, created_by: createdBy(actor) });
-  if (versionError) fail("version");
   await writeAudit(actor, { action: "report.generated", resource_type: "report", resource_id: created!.id, metadata: { client_id: clientId, kind: "google_ads", period_start: result.stored.start, period_end: result.stored.end, campaigns: result.stored.campaignIds.length } });
   return { ok: true, id: created!.id, version: 1 };
 }
@@ -81,8 +78,6 @@ export async function regenerateGoogleAdsReport(actor: Actor, reportId: string):
     .eq("id", reportId).eq("version", report.version).select("id");
   if (updateError) fail("update");
   if (!updated?.length) return { ok: false, message: "Le rapport a changé entre-temps : rechargez-le." };
-  const { error: versionError } = await db().from("report_versions").insert({ report_id: reportId, version, summary: content.summary, internal_content: content.internal_content, client_content: content.client_content, scope: report.scope, created_by: createdBy(actor) });
-  if (versionError) fail("version");
   await writeAudit(actor, { action: "report.regenerated", resource_type: "report", resource_id: reportId, metadata: { version, kind: "google_ads" } });
   return { ok: true, id: reportId, version };
 }

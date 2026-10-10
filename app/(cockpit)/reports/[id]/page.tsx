@@ -10,7 +10,8 @@ import { MutationForm } from "@/components/ui/mutation-form";
 import { ModuleUnavailable } from "@/components/ui/module-unavailable";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { SimReports } from "@/components/simulation/views/sim-reports";
-import { getReport, listReportVersions } from "@/lib/reports/service";
+import { getReport, getReportDelivery, listReportVersions } from "@/lib/reports/service";
+import { reportEmailPreview } from "@/lib/reports/email-preview";
 import { reportKindLabels, reportStatusLabels } from "@/lib/reports/labels";
 import { periodLabel, type ReportContent } from "@/lib/reports/build";
 import { emailSendingStatus } from "@/lib/providers/email";
@@ -56,7 +57,10 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
   const tab = view === "internal" ? "internal" : "client";
   const state = reportStatusLabels[item.status];
   const email = emailSendingStatus();
-  const editable = !["sent", "archived"].includes(item.status);
+  const delivery = await getReportDelivery(id, item.version);
+  const sending = ["sending", "uncertain"].includes(delivery?.state ?? "");
+  const editable = !["sent", "archived"].includes(item.status) && !sending;
+  const preview = await safeRead("reports", async () => reportEmailPreview(item), null);
   const scope = item.kind === "google_ads" ? await getReportScope(id) : null;
 
   return (
@@ -95,20 +99,26 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
 
           <Panel className="space-y-4 p-5">
             <h2 className="font-semibold">Étapes</h2>
-            {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
+            {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id, version: String(item.version) }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
             {item.status === "approved" && (
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
-                {email.enabled
-                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email" }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer la version client approuvée par e-mail ?" disableOnSuccess flashOnSuccess />
-                  : <InlineNotice title="Envoi e-mail désactivé.">{email.reason}</InlineNotice>}
-                <MutationForm action={sendReportAction} fields={{ id, mode: "manual" }} label="Marquer comme envoyé manuellement" confirm="Confirmer que la version approuvée a été envoyée en dehors de CODE-V OS ?" disableOnSuccess flashOnSuccess />
+                {email.enabled && preview.data && !delivery
+                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer le texte prévisualisé au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
+                      <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={item.client?.email ?? ""} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
+                      <label className="flex gap-2 text-sm"><input type="checkbox" name="recipient_confirmed" value="yes" required />Je confirme cette adresse et la version client prévisualisée.</label>
+                    </MutationForm>
+                  : <InlineNotice title="Envoi e-mail indisponible.">{!email.enabled ? email.reason : "Cette version ne peut pas faire l’objet d’une nouvelle tentative."}</InlineNotice>}
+                {delivery && <InlineNotice title="Tentative enregistrée.">État : {delivery.state}. Aucune répétition automatique. Si l’état est incertain ou reste en cours, vérifiez Resend avant une intervention.</InlineNotice>}
+                {!sending && <MutationForm action={sendReportAction} fields={{ id, mode: "manual", version: String(item.version) }} label="Marquer comme envoyé manuellement" confirm="Confirmer que la version approuvée a été envoyée en dehors de CODE-V OS ?" disableOnSuccess flashOnSuccess />}
               </>
             )}
-            {item.status === "sent" && <p className="text-sm text-muted">Envoyé le {formatDate(item.sent_at)}. Le contenu est figé.</p>}
+            {item.status === "sent" && <p className="text-sm text-muted">{delivery?.state === "accepted" ? "Accepté par Resend ; livraison non confirmée" : "Envoi consigné"} le {formatDate(item.sent_at)}. Le contenu est figé.</p>}
             {item.status === "archived" && <p className="text-sm text-muted">Archivé le {formatDate(item.archived_at)}. Consultable, non modifiable.</p>}
-            {item.status !== "archived" && <MutationForm action={archiveReportAction} fields={{ id }} label="Archiver" variant="ghost" confirm="Archiver ce rapport ? Il reste consultable." disableOnSuccess />}
+            {item.status !== "archived" && !sending && <MutationForm action={archiveReportAction} fields={{ id }} label="Archiver" variant="ghost" confirm="Archiver ce rapport ? Il reste consultable." disableOnSuccess />}
           </Panel>
+
+          {preview.data && <Panel className="p-5"><h2 className="font-semibold">Prévisualisation de l’e-mail · v{item.version}</h2><p className="mt-2 text-sm">Objet : {preview.data.subject}</p><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm">{preview.data.text}</pre><p className="mt-3 text-xs text-muted">Texte client uniquement. L’approbation et l’envoi sont deux actions distinctes.</p></Panel>}
 
           {editable && (
             <Panel className="p-5">

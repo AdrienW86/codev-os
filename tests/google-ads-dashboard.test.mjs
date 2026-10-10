@@ -420,13 +420,12 @@ test("preparing a report stores the explicit scope on the report and its first v
   const outcome = plain(await context.adsModule.prepareGoogleAdsReport(admin, clientId, scope));
   assert.deepEqual(outcome, { ok: true, id: reportId, version: 1 });
   assert.deepEqual(context.loads[0][1].period, { preset: "custom", start: "2026-09-01", end: "2026-09-30" });
-  const [report, version] = context.writes.map((write) => plain(write));
+  const [report] = context.writes.map((write) => plain(write));
   assert.equal(report.table, "reports");
   assert.deepEqual([report.value.kind, report.value.period_start, report.value.period_end, report.value.status], ["google_ads", "2026-09-01", "2026-09-30", "ready_for_review"]);
   assert.deepEqual(report.value.scope.campaignIds, ["123"]);
   assert.equal(report.value.scope.accountId, account.id);
-  assert.equal(version.table, "report_versions");
-  assert.deepEqual(version.value.scope, report.value.scope);
+  assert.equal(context.writes.length, 1); // snapshot is created atomically by the database trigger
   assert.equal(context.audits[0].metadata.kind, "google_ads");
 
   const unknown = reportServiceSetup();
@@ -444,11 +443,11 @@ test("regenerating reuses the STORED scope, never touches it, and refuses sent, 
   const context = reportServiceSetup({ report: base });
   assert.deepEqual(plain(await context.adsModule.regenerateGoogleAdsReport(admin, reportId)), { ok: true, id: reportId, version: 3 });
   assert.deepEqual(context.loads[0][1].period, { preset: "custom", start: storedScope.start, end: storedScope.end });
-  const [update, version] = context.writes.map((write) => plain(write));
+  const [update] = context.writes.map((write) => plain(write));
   assert.equal("scope" in update.value || "period_start" in update.value || "kind" in update.value, false);
   assert.deepEqual([update.value.status, update.value.approved_version, update.value.version], ["ready_for_review", null, 3]);
   assert.deepEqual(update.filters, [["id", reportId], ["version", 2]]);
-  assert.deepEqual(version.value.scope, storedScope);
+  assert.equal(context.writes.length, 1); // snapshot keeps the stored scope in the database transaction
 
   for (const status of ["sent", "archived"]) {
     const frozen = reportServiceSetup({ report: { ...base, status } });

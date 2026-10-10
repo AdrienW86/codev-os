@@ -49,5 +49,18 @@ select pg_temp.ok(not public.codev_claim_ads_analysis('aaaaaaaa-0000-4000-8000-0
 update public.ads_analysis_leases set expires_at=now() where client_id='aaaaaaaa-0000-4000-8000-0000000000a1';
 select pg_temp.ok(not public.codev_claim_ads_analysis('aaaaaaaa-0000-4000-8000-0000000000a1','22222222-2222-4222-8222-222222222222'), 'minute cooldown remains after release');
 
+insert into public.reports(id,client_id,kind,period_start,period_end,status,title,client_content) values
+('ffffffff-0000-4000-8000-0000000000d1','aaaaaaaa-0000-4000-8000-0000000000a1','weekly','2026-10-01','2026-10-07','ready_for_review','Test client','{"summary":"Client only","sections":[]}');
+select pg_temp.ok(exists(select 1 from public.report_versions where report_id='ffffffff-0000-4000-8000-0000000000d1' and version=1),'initial version atomic');
+select pg_temp.ok(not has_table_privilege('authenticated','public.report_deliveries','select'),'delivery protected');
+select pg_temp.ok(not public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','client@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'unapproved send refused');
+update public.reports set status='approved',approved_version=1 where id='ffffffff-0000-4000-8000-0000000000d1';
+select pg_temp.ok(public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','client@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'approved send claimed');
+select pg_temp.ok(not public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'22222222-2222-4222-8222-222222222222','other@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'second sender refused');
+select pg_temp.fails($$update public.reports set title='Changed',version=2 where id='ffffffff-0000-4000-8000-0000000000d1'$$,'55000','edit during sending refused');
+select pg_temp.ok(not public.codev_finish_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'22222222-2222-4222-8222-222222222222','accepted','fake'),'wrong send token refused');
+select pg_temp.ok(public.codev_finish_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','accepted','fake'),'provider acceptance atomic');
+select pg_temp.ok((select status='sent' and delivery->>'state'='accepted' from public.reports where id='ffffffff-0000-4000-8000-0000000000d1'),'accepted is persisted separately from delivery');
+select pg_temp.fails($$update public.reports set title='Changed',version=2 where id='ffffffff-0000-4000-8000-0000000000d1'$$,'55000','sent subject frozen');
 select 'ADS_WORKSPACE_CHECKS=' || passed from workspace_checks;
 rollback;

@@ -18,12 +18,13 @@ Branche `feature/ads-workspace-voice-notifications`, depuis `ed8f39e`. Les six p
 Prérequis : migrations historiques jusqu’à `20261015000000_codev_os_core.sql` incluses. Vérifier l’état distant avant une future application autorisée. Selon le contexte fourni, la migration 16 est encore en attente ; ce lot n’interroge ni ne modifie l’historique des migrations distant.
 
 1. `20261016000000_google_ads_reports.sql` — déjà présente avant ce lot, périmètre des rapports.
-2. `20261017000000_google_ads_campaign_tracking.sql` — suivi, unicité et révisions.
-3. `20261018000000_google_ads_client_context.sql` — contexte commercial et réservations d’analyse.
-4. `20261019000000_report_delivery_claims.sql` — versions transactionnelles et réservations d’envoi.
-5. `20261020000000_notifications_web_push.sql` — notifications, préférences, abonnements et file push.
+2. `20261016000001_whatsapp_drive_ingestion.sql` — import photos WhatsApp, ajouté par la PR #14 ; réception désactivée tant que les accès ne sont pas configurés. Voir `docs/whatsapp-drive.md`.
+3. `20261017000000_google_ads_campaign_tracking.sql` — suivi, unicité et révisions.
+4. `20261018000000_google_ads_client_context.sql` — contexte commercial et réservations d’analyse.
+5. `20261019000000_report_delivery_claims.sql` — versions transactionnelles et réservations d’envoi.
+6. `20261020000000_notifications_web_push.sql` — notifications, préférences, abonnements et file push.
 
-Elles sont rejouées avec le schéma historique dans PostgreSQL jetable local. Les rapports historiques restent intacts ; la migration 19 est requise avant la création ou modification de rapports. Aucun `schema_migrations` écrit manuellement. Sauvegarde et vérification sur copie avant toute application future ; ne pas appliquer les migrations depuis cette PR sans validation de l’opération.
+Les migrations du lot Ads ont été rejouées avec le schéma historique dans PostgreSQL jetable local. La migration WhatsApp a été vérifiée séparément dans PostgreSQL WASM (PGlite), une seule connexion, sans validation multiworkers. Les rapports historiques restent intacts ; la migration 19 est requise avant la création ou modification de rapports. Aucun `schema_migrations` écrit manuellement. Sauvegarde et vérification sur copie avant toute application future ; ne pas appliquer les migrations depuis cette PR sans validation de l’opération.
 
 ## Configuration à compléter
 

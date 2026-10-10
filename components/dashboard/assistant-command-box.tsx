@@ -17,7 +17,7 @@ export const defaultSuggestions: AssistantSuggestion[] = [
 
 type Link_ = { label: string; href: string };
 type Proposal = { tool: string; input: Record<string, unknown>; summary: string };
-type Reply = { reply?: string; links?: Link_[]; proposal?: Proposal; degraded?: boolean; error?: string };
+type Reply = { reply?: string; links?: Link_[]; proposal?: Proposal; degraded?: boolean; degradedReason?: string; error?: string };
 type Turn = { role: "user" | "assistant"; content: string; links?: Link_[] };
 
 const failure = "L’assistant est momentanément indisponible. Réessayez dans un instant.";
@@ -51,7 +51,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
     const text = data.reply ?? failure;
     setTurns((current) => [...current, { role: "assistant" as const, content: text, links: data.links }].slice(-8));
     setProposal(data.proposal ?? null);
-    setNotice(data.degraded ? "IA indisponible : réponse en mode simplifié." : "");
+    setNotice(data.degraded ? `IA indisponible${data.degradedReason ? ` (${data.degradedReason})` : ""} : réponse en mode simplifié.` : "");
     if (voiceOutputRef.current) {
       const result = speak(text);
       if (result !== "ok") setNotice(result === "no_voice" ? "Aucune voix française disponible sur cet appareil." : "La lecture vocale n’est pas prise en charge par ce navigateur.");

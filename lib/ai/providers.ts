@@ -13,9 +13,15 @@ function parseArguments(raw: unknown) {
   try { return JSON.parse(raw); } catch { return { __invalid: true }; }
 }
 
+/** Modèles de raisonnement OpenAI (gpt-5*, o1/o3/o4…) : température non réglable. */
+export const isOpenAIReasoningModel = (model: string) => /^(o\d|gpt-5)/i.test(model);
+
 export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: FetchLike): AIProvider {
   return {
     id: "openai", model,
+    async ping(signal) {
+      await providerJson("openai", `https://api.openai.com/v1/models/${encodeURIComponent(model)}`, { fetchImpl, signal, timeoutMs: 10_000, headers: { Authorization: `Bearer ${apiKey}` } });
+    },
     async complete({ system, messages, tools, toolResults = [], signal }) {
       const pending = toolResults.length ? [
         { role: "assistant", content: null, tool_calls: toolResults.map(({ call }) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments ?? {}) } })) },
@@ -25,7 +31,9 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
         method: "POST", fetchImpl, signal, timeoutMs: 30_000,
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model, max_tokens: MAX_TOKENS, temperature: 0.2,
+          // max_completion_tokens : accepté par tous les modèles de chat actuels (max_tokens est refusé par gpt-5 / o*).
+          model, max_completion_tokens: isOpenAIReasoningModel(model) ? MAX_TOKENS * 4 : MAX_TOKENS,
+          ...(isOpenAIReasoningModel(model) ? {} : { temperature: 0.2 }),
           messages: [{ role: "system", content: system }, ...messages, ...pending],
           ...(tools.length ? { tools: tools.map((tool) => ({ type: "function", function: tool })), tool_choice: "auto", parallel_tool_calls: false } : {}),
         }),
@@ -41,6 +49,9 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
 export function createAnthropicProvider(apiKey: string, model: string, fetchImpl?: FetchLike): AIProvider {
   return {
     id: "anthropic", model,
+    async ping(signal) {
+      await providerJson("anthropic", `https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`, { fetchImpl, signal, timeoutMs: 10_000, headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } });
+    },
     async complete({ system, messages, tools, toolResults = [], signal }) {
       const pending = toolResults.length ? [
         { role: "assistant", content: toolResults.map(({ call }) => ({ type: "tool_use", id: call.id, name: call.name, input: call.arguments ?? {} })) },

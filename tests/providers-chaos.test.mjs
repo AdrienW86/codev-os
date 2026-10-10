@@ -49,7 +49,7 @@ test("Google token exchange: missing credentials → not_configured without netw
   assert.equal(calls, 0);
   const creds = { clientId: "a", clientSecret: "b", refreshToken: "c" };
   assert.equal(await kindOf(api.googleAccessToken("search-console", creds, async () => response(200, JSON.stringify({ access_token: "abc\r\nX-Evil: 1" })))), "malformed");
-  assert.equal(await kindOf(api.googleAccessToken("search-console", creds, async () => response(400, "{\"error\":\"invalid_grant\"}"))), "malformed");
+  assert.equal(await kindOf(api.googleAccessToken("search-console", creds, async () => response(400, "{\"error\":\"invalid_grant\"}"))), "rejected");
   assert.equal(await api.googleAccessToken("search-console", creds, async () => response(200, "{\"access_token\":\"ya29.ok\"}")), "ya29.ok");
 });
 

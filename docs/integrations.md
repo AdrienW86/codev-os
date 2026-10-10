@@ -12,6 +12,13 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 - **Vérifier** : Paramètres → Connexions → OpenAI ✓ ; sur l’accueil, « Quelles sont mes urgences ? » répond sans la mention « mode simplifié ».
 - Sans clé : l’assistant fonctionne en mode déterministe ; la dictée se replie sur la reconnaissance vocale du navigateur.
 
+### Diagnostiquer « IA indisponible »
+
+1. **Paramètres → Connexions → « Tester la connexion IA »** : indique le fournisseur et le modèle retenus par le déploiement en cours (environnement + commit), puis vérifie la clé par `GET /v1/models/{modèle}` — aucune génération, aucun coût. La clé n’est jamais affichée.
+2. Le message de l’assistant précise désormais la raison du repli : quota épuisé (`insufficient_quota` → facturation du compte OpenAI), clé refusée, modèle inaccessible, requête refusée (`unsupported_parameter`…), délai, indisponibilité.
+3. Logs Vercel (Functions) : ligne `[assistant] Fournisseur IA en échec` avec `provider`, `model`, `kind`, `status`, `code` — jamais la clé, les en-têtes ni le corps des réponses. Une ligne `[assistant] Outil en échec` signale au contraire une erreur de données, sans lien avec l’IA.
+4. Une variable ajoutée ou modifiée dans Vercel ne s’applique qu’aux **nouveaux déploiements** : redéployer la production après tout changement.
+
 <a id="anthropic"></a>
 ## Anthropic (Claude) — assistant
 

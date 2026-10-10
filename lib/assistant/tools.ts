@@ -53,7 +53,7 @@ export const toolDefinitions = {
   },
   create_task: {
     kind: "write", description: "Crée une tâche pour un client.",
-    input: z.object({ client: clientName, title: z.string().trim().min(2).max(200), due_date: date.optional(), priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne") }).strict(), capability: null,
+    input: z.object({ client: clientName, title: z.string().trim().min(2).max(200), due_date: date.optional(), due_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne") }).strict(), capability: null,
   },
 } as const satisfies Record<string, { kind: "read" | "write"; description: string; input: z.ZodType; capability: CapabilityId | null }>;
 
@@ -85,7 +85,7 @@ export function describeProposal(name: ToolName, input: Record<string, unknown>)
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;
   if (name === "schedule_check") return `Planifier ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""} le ${input.date} à ${input.time} (heure de Paris).`;
-  if (name === "create_task") return `Créer la tâche « ${input.title} » pour ${input.client}${input.due_date ? `, échéance ${input.due_date}` : ""}, priorité ${String(input.priority ?? "Moyenne").toLowerCase()}.`;
+  if (name === "create_task") return `Créer la tâche « ${input.title} » pour ${input.client}${input.due_date ? `, échéance ${input.due_date}${input.due_time ? ` à ${input.due_time}` : ""}` : ""}, priorité ${String(input.priority ?? "Moyenne").toLowerCase()}.`;
   return toolDefinitions[name].description;
 }
 

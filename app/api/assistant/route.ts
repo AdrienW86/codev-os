@@ -5,7 +5,7 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { checkSameOrigin, createRateLimiter, readJsonBody } from "@/lib/core/request-guard";
 import { selectAIProvider } from "@/lib/ai/providers";
 import { confirmProposal, respond, type OrchestratorDeps } from "@/lib/assistant/orchestrator";
-import { executeTool } from "@/lib/assistant/executor";
+import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
   const deps: OrchestratorDeps = {
     provider: simulation ? null : selectAIProvider(), today: todayInParis(), simulation,
     execute: (name, input) => executeTool(actor, name, input),
+    prepare: (name, input) => prepareProposal(name, input),
   };
   try {
     if ("confirm" in parsed.data) {

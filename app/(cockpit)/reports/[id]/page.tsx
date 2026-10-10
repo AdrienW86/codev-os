@@ -16,7 +16,10 @@ import { periodLabel, type ReportContent } from "@/lib/reports/build";
 import { emailSendingStatus } from "@/lib/providers/email";
 import { safeRead } from "@/lib/core/safe-read";
 import { formatDate } from "@/lib/format-date";
-import { approveReportAction, archiveReportAction, editReportSummaryAction, sendReportAction } from "../actions";
+import { getReportScope } from "@/lib/reports/google-ads-service";
+import { describeDates } from "@/lib/integrations/google-ads/periods";
+import { typeLabel } from "@/lib/integrations/google-ads/dashboard";
+import { approveReportAction, archiveReportAction, editReportSummaryAction, regenerateGoogleAdsReportAction, sendReportAction } from "../actions";
 
 export const metadata: Metadata = { title: "Rapport" };
 
@@ -54,12 +57,13 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
   const state = reportStatusLabels[item.status];
   const email = emailSendingStatus();
   const editable = !["sent", "archived"].includes(item.status);
+  const scope = item.kind === "google_ads" ? await getReportScope(id) : null;
 
   return (
     <>
       <p className="mb-4 text-sm"><Link href="/reports" className="text-muted hover:text-foreground">← Rapports</Link></p>
       <PageHeading eyebrow={`Rapport ${reportKindLabels[item.kind].toLowerCase()}`} title={item.client?.name ?? "Tous les clients"}
-        description={`${periodLabel(item.kind, { start: item.period_start, end: item.period_end })} · version ${item.version}`}
+        description={`Période couverte : ${periodLabel(item.kind, { start: item.period_start, end: item.period_end })} · version ${item.version} · généré le ${formatDate(item.generated_at)}`}
         action={<StatusBadge label={state.label} tone={state.tone} />} />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -70,6 +74,25 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
         </Panel>
 
         <div className="space-y-5">
+          {item.kind === "google_ads" && (
+            <Panel className="p-5">
+              <h2 className="font-semibold">Périmètre enregistré</h2>
+              {scope ? (
+                <>
+                  <p className="mt-1 text-sm text-muted">Figé à la préparation : les filtres de l’onglet Campagnes ne le modifient pas.</p>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    <div><dt className="text-xs text-muted">Période</dt><dd>{describeDates(scope)} ({scope.days} j, fuseau {scope.timezone})</dd></div>
+                    <div><dt className="text-xs text-muted">Compte Google Ads</dt><dd>{scope.accountId} · {scope.currency}</dd></div>
+                    <div><dt className="text-xs text-muted">Filtres d’origine</dt><dd>{scope.status === "enabled" ? "Actives" : scope.status === "paused" ? "En pause" : "Tous statuts"}{scope.types.length ? ` · ${scope.types.map(typeLabel).join(", ")}` : ""}</dd></div>
+                    <div><dt className="text-xs text-muted">Campagnes ({scope.campaignIds.length})</dt><dd><ul className="mt-1 space-y-1">{scope.campaignIds.map((campaignId) => <li key={campaignId}>{scope.campaignNames[campaignId] ?? "Sans nom"} <span className="text-xs text-muted">ID {campaignId}</span></li>)}</ul></dd></div>
+                  </dl>
+                  <p className="mt-3 text-xs text-muted">Le statut et les métriques de chaque campagne à la date de génération figurent dans la version interne.</p>
+                </>
+              ) : <p className="mt-2 text-sm text-muted">Périmètre indisponible.</p>}
+              {editable && scope && <MutationForm action={regenerateGoogleAdsReportAction} fields={{ id }} label="Actualiser les données (nouvelle version)" className="mt-4" confirm="Relire Google Ads pour ce même périmètre et créer une nouvelle version ? L’approbation éventuelle sera invalidée." disableOnSuccess flashOnSuccess />}
+            </Panel>
+          )}
+
           <Panel className="space-y-4 p-5">
             <h2 className="font-semibold">Étapes</h2>
             {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}

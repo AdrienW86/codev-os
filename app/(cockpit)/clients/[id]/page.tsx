@@ -8,6 +8,10 @@ import { ClientAgenticActivity } from "@/components/clients/client-agentic-activ
 import { ClientServicesPanel } from "@/components/clients/client-services-panel";
 import { ServicesAgentsSection } from "@/components/clients/services-agents-section";
 import { GoogleAdsPanel } from "@/components/clients/google-ads-panel";
+import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
+import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
+import { ANALYSIS_ENGINE_NOTE, loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
+import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
 import { listClientSources } from "@/lib/connections/service";
 import { safeRead } from "@/lib/core/safe-read";
@@ -37,7 +41,7 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { deleteClientAction } from "@/app/(cockpit)/clients/[id]/actions";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
-const tabIds = ["overview", "projects", "agents", "activity", "information"] as const;
+const tabIds = ["overview", "projects", "ads", "agents", "activity", "information"] as const;
 type TabId = (typeof tabIds)[number];
 
 // Aucun generateStaticParams : les UUID réels sont résolus à chaque requête.
@@ -63,7 +67,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const search = await searchParams;
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
-  const adsDays = typeof search.ads_days === "string" && ["7", "30", "90"].includes(search.ads_days) ? Number(search.ads_days) : 30;
+  // Campagnes Google Ads : filtres lus dans l'URL, données chargées côté serveur pour le premier rendu ;
+  // les changements de filtres sont ensuite rechargés sur place par le composant (aucune navigation).
+  const adsFilters = tab === "ads" ? parseFilters(search) : null;
+  const adsInitial = adsFilters ? await loadCampaignDashboard(client.id, adsFilters) : null;
   const [projects, tasks, assignments, agents, recommendations, runs, actions, services, projectAssignments] = await Promise.all([
     listProjectsByClient(client.id),
     listTasksByClient(client.id),
@@ -89,6 +96,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       <Tabs label="Sections du dossier client" current={tab} items={[
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
+        { id: "ads", label: "Campagnes", href: href("ads") },
         { id: "agents", label: "Agents", href: href("agents") },
         { id: "activity", label: "Activité", href: href("activity") },
         { id: "information", label: "Informations", href: href("information") },
@@ -162,11 +170,16 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         return (
           <>
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
-            <GoogleAdsPanel clientId={client.id} days={adsDays} />
+            <GoogleAdsPanel clientId={client.id} />
             <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} /></div>
           </>
         );
       })()}
+
+      {tab === "ads" && adsFilters && adsInitial && (
+        <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
+          prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
+      )}
 
       {tab === "activity" && <ActivityTab clientId={client.id} recommendations={recommendations} runs={runs} actions={actions} />}
 

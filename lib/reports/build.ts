@@ -3,13 +3,16 @@
 // - version client concise (partageable, sans détail technique interne).
 // Fonctions pures : testables sans base ni réseau.
 
-export type ReportKind = "weekly" | "monthly";
+import type { ReportKind } from "@/lib/supabase/core.types";
+
+/** Rapports récurrents (période close). Les rapports Google Ads ont leur propre construction (google-ads.ts). */
+export type RecurringReportKind = "weekly" | "monthly";
 export type Period = { start: string; end: string };
 
 const fmt = (date: Date) => date.toISOString().slice(0, 10);
 
 /** Période close précédente : semaine lundi→dimanche, ou mois civil, relative à `today` (AAAA-MM-JJ). */
-export function previousPeriod(kind: ReportKind, today: string): Period {
+export function previousPeriod(kind: RecurringReportKind, today: string): Period {
   const date = new Date(`${today}T00:00:00Z`);
   if (kind === "weekly") {
     const monday = new Date(date);
@@ -45,6 +48,7 @@ const plural = (count: number, singular: string, pluralForm: string) => `${count
 const frDate = (value: string) => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
 
 export function periodLabel(kind: ReportKind, period: Period) {
+  if (kind === "google_ads") return period.start === period.end ? `le ${frDate(period.start)} ${period.start.slice(0, 4)}` : `du ${frDate(period.start)} ${period.start.slice(0, 4)} au ${frDate(period.end)} ${period.end.slice(0, 4)}`;
   if (kind === "monthly") return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${period.start}T00:00:00Z`));
   return `semaine du ${frDate(period.start)} au ${frDate(period.end)}`;
 }
@@ -55,7 +59,7 @@ function nextDays(today: string, days: number) {
   return fmt(date);
 }
 
-export function buildReport(kind: ReportKind, input: ReportInput, today: string): { internal: ReportContent; client: ReportContent; title: string } {
+export function buildReport(kind: RecurringReportKind, input: ReportInput, today: string): { internal: ReportContent; client: ReportContent; title: string } {
   const p = input.period;
   const completed = input.tasks.filter((task) => inPeriod(task.completed_at, p) || (task.status === "Terminé" && inPeriod(task.created_at, p)));
   const open = input.tasks.filter((task) => task.status !== "Terminé");

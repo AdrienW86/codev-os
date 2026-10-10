@@ -1,8 +1,8 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
-import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, GoogleAdsReadClient } from "./types";
+import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient } from "./types";
 
 export class GoogleAdsError extends Error {
   constructor(public readonly kind: "configuration" | "authentication" | "access" | "quota" | "unavailable" | "response", public readonly requestId: string | null = null) {
@@ -98,6 +98,51 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       return { id: String(campaign.id), name: text(campaign.name) ?? "Campagne", status: text(campaign.status) ?? "UNKNOWN", channel: text(campaign.advertisingChannelType) ?? "UNKNOWN", budget: budget === null ? null : budget / 1_000_000, startDate: text(campaign.startDateTime), endDate: text(campaign.endDateTime), metrics: byId.get(String(campaign.id)) ?? normalizeMetrics() };
     });
     return { campaigns, totals: normalizeMetrics(totals[0]?.metrics) };
+  }
+
+  // Tableau de bord : même transport privé (mêmes credentials, pagination, requireAdmin à chaque recherche).
+  // Requêtes bornées : 3, +2 en comparaison, +1 si une campagne Local Services existe.
+  async getCampaignDashboard(account: AdsAccount, period: AdsPeriod, previous: AdsPeriod | null, managerId?: string): Promise<CampaignDashboardRaw> {
+    const search = (query: string) => this.#search(account.id, query, managerId);
+    const inventoryRows = await search(campaignInventoryQuery);
+    const metricsById = async (range: AdsPeriod) => new Map((await search(campaignMetricsQuery(range))).map((row) => {
+      if (!/^\d+$/.test(String(row.campaign?.id))) throw new GoogleAdsError("response");
+      return [String(row.campaign?.id), normalizeMetrics(row.metrics)] as const;
+    }));
+    const current = await metricsById(period);
+    const accountNow = normalizeMetrics((await search(accountPerformanceQuery(period)))[0]?.metrics);
+    const before = previous ? await metricsById(previous) : null;
+    const accountBefore = previous ? normalizeMetrics((await search(accountPerformanceQuery(previous)))[0]?.metrics) : null;
+    const inventory = inventoryRows.map((row) => {
+      const campaign = row.campaign, budget = row.campaignBudget;
+      if (!campaign || !/^\d+$/.test(String(campaign.id))) throw new GoogleAdsError("response");
+      const amount = numeric(budget?.amountMicros);
+      return {
+        id: String(campaign.id), name: text(campaign.name) ?? "Campagne", status: text(campaign.status) ?? "UNKNOWN",
+        type: text(campaign.advertisingChannelType) ?? "UNKNOWN", subType: text(campaign.advertisingChannelSubType),
+        budget: { amount: amount === null ? null : amount / 1_000_000, shared: typeof budget?.explicitlyShared === "boolean" ? budget.explicitlyShared : null, period: text(budget?.period) },
+      };
+    });
+    // Leads Local Services : intégration distincte ; un échec la rend « indisponible » sans bloquer le tableau.
+    let leads: CampaignDashboardRaw["leads"] = null;
+    if (inventory.some((campaign) => campaign.type === "LOCAL_SERVICES")) {
+      try {
+        const rows = await search(localServicesLeadsQuery(period));
+        const byType: Record<string, number> = {};
+        let charged = 0, chargedKnown = 0;
+        for (const row of rows) {
+          const lead = row.localServicesLead;
+          const type = text(lead?.leadType) ?? "UNKNOWN";
+          byType[type] = (byType[type] ?? 0) + 1;
+          if (typeof lead?.leadCharged === "boolean") { chargedKnown++; if (lead.leadCharged) charged++; }
+        }
+        // Facturation inconnue si le champ n'est renvoyé pour aucun lead : « indisponible », pas zéro.
+        leads = { available: true, total: rows.length, byType, charged: rows.length && !chargedKnown ? null : charged };
+      } catch (error) {
+        leads = { available: false, reason: error instanceof GoogleAdsError && error.kind === "access" ? "Accès refusé à la ressource des leads Local Services." : "Leads Local Services indisponibles via l’API pour ce compte." };
+      }
+    }
+    return { inventory, current: Object.fromEntries(current), previous: before ? Object.fromEntries(before) : null, accountTotals: accountNow, accountPrevious: accountBefore, leads };
   }
 }
 

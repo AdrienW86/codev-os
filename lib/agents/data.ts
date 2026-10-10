@@ -5,7 +5,7 @@ import { writeAuditLog } from "@/lib/audit-logs";
 import type { AgentAssignmentRecord, AgentFormState, AgentMutationResult, AgentRecord, AssignmentMutationResult, ClientAgentAssignmentRecord } from "./types";
 import { isAgentUuid, validateAgentForm, validateAssignmentIds } from "./validation";
 
-const agentColumns = "id,name,description,status,instructions,model,schedule,autonomy_level,enabled,max_monthly_budget_eur,created_at,updated_at,agent_scope,scope_review_required";
+const agentColumns = "id,name,description,status,instructions,model,schedule,autonomy_level,enabled,max_monthly_budget_eur,created_at,updated_at,agent_scope,scope_review_required,agent_type";
 const assignmentColumns = `agent_id,client_id,enabled,client_instructions,created_at,agent:agents(${agentColumns})`;
 const genericAssignmentError = "Impossible de mettre à jour cette assignation. Vérifiez les informations et réessayez.";
 

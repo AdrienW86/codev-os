@@ -78,8 +78,8 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 
 - **Variables** : `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN` ; facultatif `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (compte gestionnaire).
 - **Scope** : `https://www.googleapis.com/auth/adwords`. Le jeton développeur doit être approuvé (niveau « Basic » minimum pour les comptes réels).
-- **Par client** : fiche client → Agents → Google Ads (identifiant client à 10 chiffres). Voir [google-ads-read-only.md](google-ads-read-only.md).
-- **V1** : surveillance uniquement (coûts, conversions, anomalies). **Aucune modification de campagne** : les optimisations sont des actions manuelles à valider.
+- **Par client** : fiche client → Agents → Google Ads (identifiant client à 10 chiffres) ; exploration dans l’onglet **Campagnes**. Voir [google-ads-read-only.md](google-ads-read-only.md).
+- **Lecture seule** : tableau de bord par campagne, rapports Google Ads à périmètre figé, analyse déterministe (sans IA). **Aucune modification de campagne ni de budget**.
 
 <a id="email"></a>
 ## E-mail (Resend) — envoi des rapports

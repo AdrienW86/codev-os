@@ -1,4 +1,5 @@
 import type { AdsPeriod } from "./types";
+import { MAX_PERIOD_DAYS } from "./periods";
 
 export function normalizeCustomerId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -24,5 +25,5 @@ export function getAdsPeriod(timezone: string, days = 30, now = new Date()): Ads
 export function validatePeriod(period: AdsPeriod) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(period.start) || !/^\d{4}-\d{2}-\d{2}$/.test(period.end)) throw new Error("Période invalide.");
   const start = Date.parse(period.start), end = Date.parse(period.end);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || (end - start) / 86400000 + 1 !== period.days || !Number.isInteger(period.days) || period.days < 1 || period.days > 90) throw new Error("Période invalide.");
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || (end - start) / 86400000 + 1 !== period.days || !Number.isInteger(period.days) || period.days < 1 || period.days > MAX_PERIOD_DAYS) throw new Error("Période invalide.");
 }

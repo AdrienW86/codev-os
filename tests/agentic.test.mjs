@@ -96,6 +96,7 @@ function setup({ deny = false, missingAgent = false, missingClient = false, fail
   const audit = { writeAuditLog: async (entry) => audits.push(clone(entry)) };
   const common = { "@/lib/require-admin": { requireAdmin: guard }, "@/lib/supabase/server": { getSupabaseServerClient: () => supabase }, "@/lib/audit-logs": audit };
   common["@/lib/agents/scope"]=load("lib/agents/scope.ts",common,logs);
+  common["@/lib/integrations/google-ads/scope"] = load("lib/integrations/google-ads/scope.ts", { "./periods": load("lib/integrations/google-ads/periods.ts") });
   const agentValidation = load("lib/agents/validation.ts");
   const recommendationValidation = load("lib/recommendations/validation.ts");
   const actionRegistry = load("lib/actions/registry.ts", { zod });
@@ -150,10 +151,16 @@ test("run metadata accepts the Google Ads read-only type and rejects arbitrary c
   const created = await context.runRepository.createAgentRun({ agent_id: agentId, client_id: clientId, metadata: { run_type: "google_ads_read_only" } });
   assert.equal(created.ok, true);
   assert.equal(created.run.metadata.run_type, "google_ads_read_only");
-  for (const metadata of [{ run_type: "google_ads_mutation" }, { run_type: "google_ads_read_only", refresh_token: "not-allowed" }]) {
+  const scope = { start: "2026-09-01", end: "2026-09-30", status: "enabled", types: ["SEARCH"], campaignIds: ["123"], days: 30, timezone: "Europe/Paris", currency: "EUR", accountId: "1234567890", campaignNames: { 123: "Search" } };
+  assert.equal((await context.runRepository.createAgentRun({ agent_id: agentId, client_id: clientId, metadata: { run_type: "google_ads_read_only", engine: "deterministic", scope } })).ok, true);
+  for (const metadata of [
+    { run_type: "google_ads_mutation" }, { run_type: "google_ads_read_only", refresh_token: "not-allowed" },
+    { run_type: "google_ads_read_only", engine: "llm" }, { run_type: "google_ads_read_only", scope: { ...scope, campaignIds: [] } },
+    { run_type: "google_ads_read_only", scope: { ...scope, accountId: "abc" } },
+  ]) {
     assert.equal((await context.runRepository.createAgentRun({ agent_id: agentId, client_id: clientId, metadata })).ok, false);
   }
-  assert.equal(context.rows.agent_runs.length, 1);
+  assert.equal(context.rows.agent_runs.length, 2);
 });
 
 test("creates recommendations after validating existing agent and client", async () => {

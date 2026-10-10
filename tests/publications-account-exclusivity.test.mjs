@@ -21,7 +21,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
   return exports;}
  return read(resolve(root,file));}
 const json=v=>JSON.parse(JSON.stringify(v));
-const src=f=>readFileSync(resolve(root,f),'utf8');
+const src=f=>readFileSync(resolve(root,f),'utf8').replace(/\r\n/g,'\n');
 const ENV={PUBLICATIONS_OAUTH_BASE_URL:'http://localhost:3000',META_APP_ID:'123456789012345',META_APP_SECRET:'meta-app-secret-value-0123'};
 
 test('Meta OAuth: Graph API v26.0, minimum permissions by default, Business Manager permissions only on explicit opt-in',()=>{

@@ -26,7 +26,8 @@ export function useVoice(onTranscript: (text: string, signal: AbortSignal) => Pr
   const [state, setState] = useState<VoiceState>("idle");
   const [message, setMessage] = useState("");
   const [continuous, setContinuous] = useState(false);
-  const callback = useRef(onTranscript); callback.current = onTranscript;
+  const callback = useRef(onTranscript);
+  useEffect(() => { callback.current = onTranscript; }, [onTranscript]);
   const current = useRef<AbortController | null>(null);
   const finish = useRef<(() => void) | null>(null);
   const preferBrowser = useRef(false);

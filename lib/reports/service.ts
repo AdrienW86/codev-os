@@ -8,6 +8,7 @@ import { buildReport, previousPeriod, type Period, type RecurringReportKind, typ
 import { requireAdmin } from "@/lib/require-admin";
 import { reportEmailPreview, recipientSchema } from "@/lib/reports/email-preview";
 import { ProviderError } from "@/lib/providers/errors";
+import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
@@ -54,6 +55,7 @@ export type GenerateResult = { status: "created" | "updated" | "frozen"; id: str
 /** Génère (ou régénère en nouvelle version) le rapport d'une période. Un rapport envoyé ou archivé n'est jamais modifié. */
 export async function generateReport(actor: Actor, input: { clientId: string; kind: RecurringReportKind; today: string; period?: Period }): Promise<GenerateResult> {
   if (!uuid.test(input.clientId)) fail("client");
+  await requireReportVersionStorage();
   const period = input.period ?? previousPeriod(input.kind, input.today);
   const data = await gatherReportInput(input.clientId, period);
   const built = buildReport(input.kind, data, input.today);
@@ -133,6 +135,7 @@ export async function approveReport(actor: Actor & { kind: "admin" }, id: string
 /** Modification de la synthèse client : nouvelle version, approbation invalidée. */
 export async function editReportSummary(actor: Actor & { kind: "admin" }, id: string, summary: string): Promise<Outcome> {
   await requireAdmin();
+  await requireReportVersionStorage();
   const text = summary.trim();
   if (!text || text.length > 4000) return { ok: false, message: "Synthèse vide ou trop longue (4 000 caractères maximum)." };
   const report = await getReport(id);

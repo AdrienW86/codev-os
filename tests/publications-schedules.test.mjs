@@ -15,7 +15,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
   return exports;}
  return read(resolve(root,file));}
 const json=value=>JSON.parse(JSON.stringify(value));
-const src=file=>readFileSync(resolve(root,file),'utf8');
+const src=file=>readFileSync(resolve(root,file),'utf8').replace(/\r\n/g,'\n');
 const uid=(prefix,n)=>`${prefix}0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const model=load('lib/publications/channel-schedule-model.ts');
 const C=uid(1,1),FB=uid(6,1),IG=uid(6,2),GBP=uid(6,3),S1=uid(8,1),S2=uid(8,2);

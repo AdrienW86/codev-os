@@ -104,7 +104,7 @@ test("buildWorkItems maps every source to a business section and an existing rou
 test("V2 navigation lists the daily-use entries and keeps legacy routes reachable", () => {
   const navigation = read("components/layout/navigation.tsx");
   const hrefs = [...navigation.matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
-  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/clients", "Clients"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/publications", "Publications"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
+  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/clients", "Clients"], ["/advertising", "Campagnes publicitaires"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/publications", "Publications"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
   for (const route of ["projects", "tasks", "recommendations", "actions", "dashboard", "clients", "publications", "agents", "settings", "work", "agenda", "reports"]) {
     assert.ok(existsSync(new URL(`../app/(cockpit)/${route}/page.tsx`, import.meta.url)), `${route} page exists`);
   }

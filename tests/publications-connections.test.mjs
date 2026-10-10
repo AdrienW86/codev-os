@@ -20,7 +20,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
   return exports;}
  return read(resolve(root,file));}
 const json=value=>JSON.parse(JSON.stringify(value));
-const src=file=>readFileSync(resolve(root,file),'utf8');
+const src=file=>readFileSync(resolve(root,file),'utf8').replace(/\r\n/g,'\n');
 const uid=(prefix,n)=>`${prefix}0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const C=uid(1,1),OTHER=uid(1,2),P=uid(3,1),META=uid(5,1),FB1=uid(6,1),FB2=uid(6,2),IG1=uid(6,3),LEGACY=uid(6,9);
 const REF='vault:connection/'+uid(9,1);

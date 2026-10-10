@@ -17,7 +17,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
   return exports;}
  return read(resolve(root,file));}
 const json=value=>JSON.parse(JSON.stringify(value));
-const src=file=>readFileSync(resolve(root,file),'utf8');
+const src=file=>readFileSync(resolve(root,file),'utf8').replace(/\r\n/g,'\n');
 const uuidPattern=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,visible=html=>html.replace(/<[^>]+>/g,' ');
 const uid=(prefix,n)=>`${prefix}0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const C1=uid(1,1),P1=uid(3,1),PUB=uid(4,1),R1=uid(7,1),R2=uid(7,2),ASSET=uid(9,1),OTHER=uid(4,9);

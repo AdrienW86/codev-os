@@ -6,21 +6,13 @@ import { createGoogleAdsReadClient } from "./client";
 import { isAgentUuid } from "@/lib/agents/validation";
 import { getAdsPeriod } from "./validation";
 import type { GoogleAdsConnection } from "./types";
+import { readCampaignTracking } from "./tracking-store";
 
 export type CampaignTracking = { available: boolean; revision: number; ids: string[] | null };
-const missing = (code?: string) => ["42P01", "PGRST205"].includes(code ?? "");
 
 export async function loadCampaignTracking(connection: GoogleAdsConnection): Promise<CampaignTracking> {
   await requireAdmin();
-  const db = getSupabaseServerClient();
-  const { data, error } = await db.from("client_ads_scopes").select("revision,account_id,connection_id").eq("client_id", connection.client_id).maybeSingle();
-  if (missing(error?.code)) return { available: false, revision: 0, ids: null };
-  if (error) throw new Error("Sélection des campagnes indisponible.");
-  if (!data) return { available: true, revision: 0, ids: null };
-  if (data.connection_id !== connection.id || data.account_id !== connection.external_account_id) throw new Error("Sélection liée à un autre compte.");
-  const selected = await db.from("client_ads_campaigns").select("campaign_id").eq("client_id", connection.client_id).eq("account_id", data.account_id);
-  if (selected.error) throw new Error("Sélection des campagnes indisponible.");
-  return { available: true, revision: data.revision, ids: (selected.data ?? []).map((row) => row.campaign_id) };
+  return readCampaignTracking(connection);
 }
 
 export async function saveCampaignTracking(connection: GoogleAdsConnection, ids: unknown, revision: unknown) {

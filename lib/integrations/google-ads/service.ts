@@ -1,5 +1,6 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
+import { getActiveScenario } from "@/lib/simulation/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getClient as getClientById } from "@/lib/clients/data";
@@ -135,6 +136,7 @@ export const ANALYSIS_ENGINE_NOTE = "Les règles déterministes détectent les d
  */
 export async function runGoogleAdsAnalysis(agentId: string, clientId: string, input: { scope?: AdsScope; period?: PeriodSelection; mode?: "deterministic" | "ai" } = {}): Promise<AdsFormState> {
   await requireAdmin();
+  if (await getActiveScenario()) return { message: "Simulation active : aucune analyse réelle n’est lancée." };
   if (!isAgentUuid(agentId) || !isAgentUuid(clientId)) return { message: genericMessage };
   let runId: string | null = null;
   let connectionId: string | null = null;

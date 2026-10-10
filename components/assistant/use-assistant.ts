@@ -43,12 +43,16 @@ export function useAssistant() {
   const busy = useRef(false);
 
   const call = useCallback(async (body: unknown, signal?: AbortSignal): Promise<Reply> => {
+    const own = signal ? null : new AbortController();
+    if (own) request.current = own;
+    const activeSignal = signal ?? AbortSignal.any([own!.signal, AbortSignal.timeout(60_000)]);
     try {
-      const response = await postAssistant(body, signal);
+      const response = await postAssistant(body, activeSignal);
       if (response.status === 401) return { reply: "Session expirée : rechargez la page pour vous reconnecter.", error: "unauthorized" };
       const data = await response.json().catch(() => ({})) as Reply;
       return response.ok ? data : { reply: data.reply ?? failure, error: data.error ?? "failed" };
-    } catch { return { reply: failure, error: "network" }; }
+    } catch { return { reply: failure, error: activeSignal.aborted ? "cancelled" : "network" }; }
+    finally { if (own && request.current === own) request.current = null; }
   }, []);
 
   const deliver = useCallback((data: Reply) => {
@@ -108,29 +112,31 @@ export function useAssistant() {
   }, [failed, send, turns]);
 
   const voice = useVoice(useCallback((text: string, signal: AbortSignal) => send(text, "voice", turns, signal), [send, turns]));
-  const stopVoice = useCallback(() => { voice.cancel(); request.current?.abort(); playback.current?.abort(); stopSpeaking(); }, [voice.cancel]);
+  const { cancel: cancelVoice, continuous, state: voiceState, toggleContinuous: toggleVoiceContinuous } = voice;
+  const stopVoice = useCallback(() => { cancelVoice(); request.current?.abort(); playback.current?.abort(); stopSpeaking(); }, [cancelVoice]);
   const toggleContinuous = useCallback(() => {
-    if (voice.continuous || voice.state !== "idle") { stopVoice(); return; }
+    if (continuous || voiceState !== "idle") { stopVoice(); return; }
     if (busy.current) return;
-    voiceOutputRef.current = true; setVoiceOutput(true); voice.toggleContinuous();
-  }, [stopVoice, voice.continuous, voice.state, voice.toggleContinuous]);
+    voiceOutputRef.current = true; setVoiceOutput(true); toggleVoiceContinuous();
+  }, [stopVoice, continuous, voiceState, toggleVoiceContinuous]);
 
   const confirm = useCallback(async () => {
     // Même règle que le bouton : désactivé seulement pendant une requête en cours.
     if (!proposal || busy.current) return;
-    voice.cancel(); playback.current?.abort();
+    cancelVoice(); playback.current?.abort();
     busy.current = true;
     setPending(true);
     const current = proposal;
     setProposal(null);
     const reply = await call({ confirm: { tool: current.tool, input: current.input } });
+    if (reply.error === "cancelled") { setPending(false); busy.current = false; return; }
     deliver(reply);
     // Échec technique (quota, réseau, session) : la proposition reste disponible pour réessayer.
     if (reply.error) setProposal(current);
     await readReply(reply.reply ?? failure);
     setPending(false);
     busy.current = false;
-  }, [call, deliver, proposal, readReply, voice.cancel]);
+  }, [call, deliver, proposal, readReply, cancelVoice]);
 
   const cancelProposal = useCallback(() => {
     setProposal(null);
@@ -140,15 +146,16 @@ export function useAssistant() {
   /** Bouton d'une vue : le serveur valide et décrit la proposition ; rien n'est exécuté avant « Confirmer ». */
   const proposeFromView = useCallback(async (tool: string, input: Record<string, unknown>) => {
     if (busy.current) return { ok: false, message: "Une demande est déjà en cours." };
-    voice.cancel(); playback.current?.abort();
+    cancelVoice(); playback.current?.abort();
     busy.current = true;
     setPending(true);
     const reply = await call({ propose: { tool, input } });
     setPending(false);
     busy.current = false;
+    if (reply.error === "cancelled") return { ok: false, message: "Demande annulée." };
     if (reply.proposal) { setProposal(reply.proposal); return { ok: true, message: "Proposition prête : vérifiez-la puis confirmez en bas du panneau." }; }
     return { ok: false, message: reply.reply ?? failure };
-  }, [call, voice.cancel]);
+  }, [call, cancelVoice]);
 
   /** Filtres modifiés directement dans la vue : les demandes suivantes partent de cet état. */
   const syncAdsFilters = useCallback((clientId: string, clientName: string, filters: DashboardFilters) => {
@@ -164,6 +171,11 @@ export function useAssistant() {
   }, [stopVoice]);
 
   useEffect(() => () => { request.current?.abort(); playback.current?.abort(); stopSpeaking(); }, []);
+  useEffect(() => {
+    const hidden = () => { if (document.visibilityState !== "visible") stopVoice(); };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [stopVoice]);
 
   return {
     turns, proposal, pending, refreshing, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,

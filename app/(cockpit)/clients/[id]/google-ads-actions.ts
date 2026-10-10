@@ -59,6 +59,7 @@ export async function runGoogleAdsScopeAnalysisAction(clientId: unknown, scopeIn
   if (!agent) return { ok: false, message: "Aucun agent Google Ads (type google-ads) assigné et actif pour ce client." };
   const result = await runGoogleAdsAnalysis(agent.agent_id, clientId, { scope });
   revalidatePath("/recommendations", "layout");
+  revalidatePath("/advertising");
   revalidatePath(`/agents/${agent.agent_id}`);
   return { ok: Boolean(result.ok), message: result.message, href: result.runId ? `/advertising/analyses/${result.runId}` : undefined };
 }
@@ -71,6 +72,7 @@ export async function runGoogleAdsScopeAIAnalysisAction(clientId: unknown, scope
   if (!assignment) return { ok: false, message: "Assignez un agent Google Ads actif à ce client." };
   const result = await runGoogleAdsAnalysis(assignment.agent_id, clientId, { scope, mode: "ai" });
   revalidatePath("/recommendations", "layout");
+  revalidatePath("/advertising");
   revalidatePath(`/agents/${assignment.agent_id}`);
   return { ok: Boolean(result.ok), message: result.message, href: result.runId ? `/advertising/analyses/${result.runId}` : undefined };
 }

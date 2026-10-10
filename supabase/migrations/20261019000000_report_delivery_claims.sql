@@ -57,7 +57,7 @@ returns boolean language plpgsql security invoker set search_path=pg_catalog as 
 declare r public.reports;
 begin
   select * into r from public.reports where id=p_report_id for update;
-  if not found or r.status<>'approved' or r.version<>p_version or r.approved_version<>p_version or r.client_id is null
+  if not found or r.status<>'approved' or r.version is distinct from p_version or r.approved_version is distinct from p_version or r.client_id is null
     or r.title<>p_subject or r.client_content is distinct from p_content then return false; end if;
   if p_token is null or p_recipient is null or p_recipient !~ '^[^[:space:]@,;<>]+@[^[:space:]@,;<>]+\.[a-zA-Z]{2,}$' then
     raise exception 'Invalid recipient' using errcode='22023';

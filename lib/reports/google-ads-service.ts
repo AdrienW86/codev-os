@@ -10,6 +10,7 @@ import { loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
 import { DEFAULT_FILTERS } from "@/lib/integrations/google-ads/dashboard";
 import { isStoredScope, storeScope, type AdsScope, type StoredAdsScope } from "@/lib/integrations/google-ads/scope";
 import { buildGoogleAdsReport } from "./google-ads";
+import { requireReportVersionStorage } from "./version-storage";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,6 +46,7 @@ const contentOf = (built: ReturnType<typeof buildGoogleAdsReport>) => ({
 
 export async function prepareGoogleAdsReport(actor: Actor, clientId: string, scope: AdsScope): Promise<GoogleAdsReportOutcome> {
   if (!uuid.test(clientId)) return { ok: false, message: "Client invalide." };
+  try { await requireReportVersionStorage(); } catch { return { ok: false, message: "La migration 20261019000000 des versions transactionnelles est requise pour préparer un rapport." }; }
   const result = await snapshot(clientId, scope);
   if (!result.ok) return result;
   const content = contentOf(result.built);
@@ -62,6 +64,7 @@ export async function prepareGoogleAdsReport(actor: Actor, clientId: string, sco
 /** Nouvelle version avec le périmètre ENREGISTRÉ (jamais celui des filtres affichés). Refusé si envoyé ou archivé. */
 export async function regenerateGoogleAdsReport(actor: Actor, reportId: string): Promise<GoogleAdsReportOutcome> {
   if (!uuid.test(reportId)) return { ok: false, message: "Rapport introuvable." };
+  try { await requireReportVersionStorage(); } catch { return { ok: false, message: "La migration 20261019000000 des versions transactionnelles est requise pour actualiser un rapport." }; }
   const { data: report, error } = await db().from("reports").select("id,client_id,kind,status,version,scope").eq("id", reportId).maybeSingle();
   if (missingMigration(error)) return { ok: false, message: migrationMessage };
   if (error) fail("read");

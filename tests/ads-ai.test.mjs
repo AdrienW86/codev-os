@@ -51,7 +51,7 @@ test("business context keeps absent budgets null, rejects extra fields and isola
   assert.equal((await service.getAdsBusinessContext("aaaaaaaa-0000-4000-8000-0000000000b1")).context, null);
 });
 
-function runSetup({ failure = false, unavailable = false, mode = "ai" } = {}) {
+function runSetup({ failure = false, unavailable = false, simulation = false, mode = "ai" } = {}) {
   const clientId = "aaaaaaaa-0000-4000-8000-0000000000a1", agentId = "cccccccc-0000-4000-8000-0000000000a1", runId = "dddddddd-0000-4000-8000-0000000000a1";
   const fake = createFakeSupabase({ client_connections: [{ id: "eeeeeeee-0000-4000-8000-0000000000a1", client_id: clientId, provider: "google_ads", external_account_id: scope.accountId, status: "connected", metadata: {}, updated_at: "2026-01-01" }] });
   let metadata, released = 0, calls = 0; const recommendations = [];
@@ -59,6 +59,7 @@ function runSetup({ failure = false, unavailable = false, mode = "ai" } = {}) {
   const transport = { getAccountSummary: async () => ({ id: scope.accountId, currency: "EUR", timezone: "Europe/Paris" }), getCampaignDashboard: async () => ({ inventory: rows, current: { 123: metrics, 456: rows[1].metrics }, previous: null }) };
   const service = loadTs("lib/integrations/google-ads/service.ts", {
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: "admin" }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
+    "@/lib/simulation/server": { getActiveScenario: async () => simulation ? "fixture" : null },
     "@/lib/clients/data": { getClient: async () => ({ id: clientId }) }, "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, agent_type: "google-ads", status: "Actif", enabled: true, instructions: snapshot.global }), listClientsForAgent: async () => [{ client_id: clientId, enabled: true, client_instructions: snapshot.client }] },
     "@/lib/agents/validation": { isAgentUuid: (id) => /^[a-f0-9-]{36}$/.test(id) }, "@/lib/audit-logs": { writeAuditLog: async () => {} },
     "@/lib/agent-runs/data": { createAgentRun: async (input) => { metadata = input.metadata; return { ok: true, run: { id: runId } }; }, completeAgentRun: async () => ({ ok: true }), failAgentRun: async () => ({ ok: true }) },
@@ -78,6 +79,11 @@ test("successful AI run stores the exact scope, instruction snapshot, provider/m
   assert.equal(state.metadata.instruction_snapshot.client, snapshot.client);
   assert.equal(state.metadata.provider, "openai"); assert.equal(state.metadata.model, "unit-model");
   assert.equal(state.released, 1); assert.equal(state.calls, 1);
+});
+
+test("Simulation cannot start a real analysis, provider request or run", async () => {
+  const s = runSetup({ simulation: true }); const result = await s.run(); const state = s.get();
+  assert.match(result.message, /Simulation active/); assert.equal(state.calls, 0); assert.equal(state.metadata, undefined); assert.equal(state.released, 0);
 });
 test("failed or missing AI provider is an explicit deterministic fallback, never a claimed AI success", async () => {
   for (const options of [{ failure: true }, { unavailable: true }]) {

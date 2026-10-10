@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   try {
     if ("confirm" in parsed.data) {
       const reply = await confirmProposal(parsed.data.confirm.tool, parsed.data.confirm.input, deps);
-      if (!simulation) await writeAudit(actor, { action: "assistant.confirmed", resource_type: "assistant_tool", resource_id: null, metadata: { tool: parsed.data.confirm.tool, input: parsed.data.confirm.input } });
+      if (!simulation) await writeAudit(actor, { action: "assistant.confirmed", resource_type: "assistant_tool", resource_id: null, metadata: { tool: parsed.data.confirm.tool } });
       return NextResponse.json(reply, { headers });
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });

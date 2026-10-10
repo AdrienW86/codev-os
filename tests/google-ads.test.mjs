@@ -81,6 +81,7 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
   } };
   const service = load("lib/integrations/google-ads/service.ts", {
     "@/lib/require-admin": { requireAdmin: guard },
+    "@/lib/simulation/server": { getActiveScenario: async () => null },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
     "@/lib/clients/data": { getClient: async () => ({ id: clientId }) },
     "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, name: "Agent Ads", agent_type: agentType, status: active ? "Actif" : "En pause", enabled: active }), listClientsForAgent: async () => assigned ? [{ client_id: clientId, enabled: true }] : [] },

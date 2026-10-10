@@ -10,6 +10,7 @@ const dashboard = loadTs("lib/integrations/google-ads/dashboard.ts", { "./period
 function setup(initial = {}, options = {}, deny = false) {
   const fake = createFakeSupabase(initial, options), audits = [], reads = [];
   const service = loadTs("lib/integrations/google-ads/tracking.ts", {
+    "./tracking-store": loadTs("lib/integrations/google-ads/tracking-store.ts", { "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client } }),
     "@/lib/require-admin": { requireAdmin: async () => { if (deny) throw new Error("denied"); return { userId: "admin-test" }; } },
     "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
     "@/lib/audit-logs": { writeAuditLog: async (entry) => audits.push(entry) },

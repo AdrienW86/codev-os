@@ -3,6 +3,15 @@ import { randomUUID } from "node:crypto";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
+import { isAgentUuid } from "@/lib/agents/validation";
+
+export async function listClientAdsAnalyses(clientId: string) {
+  await requireAdmin();
+  if (!isAgentUuid(clientId)) throw new Error("Client invalide.");
+  const { data, error } = await getSupabaseServerClient().from("agent_runs").select("id,status,started_at,summary").eq("client_id", clientId).contains("metadata", { run_type: "google_ads_read_only" }).order("started_at", { ascending: false }).limit(10);
+  if (error) throw new Error("Historique des analyses indisponible.");
+  return data ?? [];
+}
 
 export async function reserveAdsAnalysis(clientId: string) {
   await requireAdmin();

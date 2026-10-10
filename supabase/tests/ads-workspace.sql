@@ -54,6 +54,8 @@ insert into public.reports(id,client_id,kind,period_start,period_end,status,titl
 select pg_temp.ok(exists(select 1 from public.report_versions where report_id='ffffffff-0000-4000-8000-0000000000d1' and version=1),'initial version atomic');
 select pg_temp.ok(not has_table_privilege('authenticated','public.report_deliveries','select'),'delivery protected');
 select pg_temp.ok(not public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','client@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'unapproved send refused');
+update public.reports set status='approved',approved_version=null where id='ffffffff-0000-4000-8000-0000000000d1';
+select pg_temp.ok(not public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','client@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'missing approved version refused');
 update public.reports set status='approved',approved_version=1 where id='ffffffff-0000-4000-8000-0000000000d1';
 select pg_temp.ok(public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','client@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'approved send claimed');
 select pg_temp.ok(not public.codev_claim_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'22222222-2222-4222-8222-222222222222','other@example.test','Test client','Client only','{"summary":"Client only","sections":[]}'),'second sender refused');
@@ -62,7 +64,6 @@ select pg_temp.ok(not public.codev_finish_report_delivery('ffffffff-0000-4000-80
 select pg_temp.ok(public.codev_finish_report_delivery('ffffffff-0000-4000-8000-0000000000d1',1,'11111111-1111-4111-8111-111111111111','accepted','fake'),'provider acceptance atomic');
 select pg_temp.ok((select status='sent' and delivery->>'state'='accepted' from public.reports where id='ffffffff-0000-4000-8000-0000000000d1'),'accepted is persisted separately from delivery');
 select pg_temp.fails($$update public.reports set title='Changed',version=2 where id='ffffffff-0000-4000-8000-0000000000d1'$$,'55000','sent subject frozen');
-select 'ADS_WORKSPACE_CHECKS=' || passed from workspace_checks;
 select pg_temp.ok(not has_table_privilege('authenticated','public.admin_notifications','select'),'notifications server only');
 select pg_temp.ok(not has_table_privilege('anon','public.admin_push_subscriptions','select'),'push endpoint private');
 select pg_temp.ok((select count(*)=1 from public.admin_notifications where event_key='report:ffffffff-0000-4000-8000-0000000000d1:v1'),'report event once');

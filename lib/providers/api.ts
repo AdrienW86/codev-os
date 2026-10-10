@@ -16,7 +16,7 @@ export async function providerJson<T = unknown>(provider: string, url: string, i
   const { timeoutMs = 20_000, fetchImpl = fetch, ...rest } = init;
   let response: Response;
   try {
-    response = await fetchImpl(target, { ...rest, cache: "no-store", redirect: "error", signal: rest.signal ?? AbortSignal.timeout(timeoutMs) });
+    response = await fetchImpl(target, { ...rest, cache: "no-store", redirect: "error", signal: rest.signal ? AbortSignal.any([rest.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     const name = (error as { name?: string }).name;
     throw new ProviderError(provider, name === "TimeoutError" || name === "AbortError" ? "timeout" : "unavailable");

@@ -12,6 +12,7 @@ function setup({ denied = false, failure = null } = {}) {
     finished.push(input); return { data: true };
   } };
   const service = loadTs("lib/reports/service.ts", {
+    "./version-storage": { requireReportVersionStorage: async () => {} },
     "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": {},
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/providers/errors": errors,
     "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },

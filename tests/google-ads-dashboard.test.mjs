@@ -68,6 +68,7 @@ function serviceSetup({ deny = false, connected = true, dashboardError = null } 
   const supabase = { from: (table) => { calls.push(["db", table]); const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: connection, error: null }) }; return query; } };
   const service = load("lib/integrations/google-ads/service.ts", {
     "@/lib/require-admin": { requireAdmin: async () => { calls.push("auth"); if (deny) throw new Error("denied"); return { userId: "unit-admin" }; } },
+    "@/lib/simulation/server": { getActiveScenario: async () => null },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
     "@/lib/clients/data": { getClient: async () => ({ id: clientId }) },
     "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, name: "Agent Ads", agent_type: "google-ads", status: "Actif", enabled: true }), listClientsForAgent: async () => [{ client_id: clientId, enabled: true }] },
@@ -403,6 +404,7 @@ function reportServiceSetup({ report = null, insertError = null, dashboard: load
   } };
   const defaultLoad = { ok: true, data: { account: { ...account, currency: "EUR", timezone: "Europe/Paris" }, period: { start: "2026-09-01", end: "2026-09-30", days: 30, includesToday: false }, campaigns: serviceSetup().service.buildCampaignRows(rawDashboard()), leads: null } };
   const adsModule = load("lib/reports/google-ads-service.ts", {
+    "./version-storage": { requireReportVersionStorage: async () => {} },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
     "@/lib/core/audit": { writeAudit: async (_actor, entry) => audits.push(entry) },
     "@/lib/integrations/google-ads/service": { loadCampaignDashboard: async (...args) => { loads.push(plain(args)); return loaded ?? defaultLoad; } },

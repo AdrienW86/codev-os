@@ -90,10 +90,12 @@ const internalLabel = (error: unknown) => {
 
 /** Raison lisible d'une panne du fournisseur d'IA, à partir du type et du code normalisés. */
 export function providerFailureReason(error: unknown, provider: string): string {
-  const { kind, code, status } = (error ?? {}) as { kind?: string; code?: string | null; status?: number | null };
+  const { kind, code, status, scopes } = (error ?? {}) as { kind?: string; code?: string | null; status?: number | null; scopes?: string[] };
   const name = provider === "anthropic" ? "Anthropic" : "OpenAI";
   if (code === "insufficient_quota") return `quota ${name} épuisé (vérifiez la facturation du compte)`;
-  if (code === "invalid_api_key" || kind === "unauthorized") return `clé ${name} refusée ou sans accès (HTTP ${status ?? "?"})`;
+  if (code === "invalid_api_key") return `clé ${name} invalide (invalid_api_key)`;
+  if (code === "missing_scope") return `clé ${name} sans la permission requise${scopes?.length ? ` (${scopes.join(", ")})` : ""} : vérifiez « Model capabilities » et votre rôle sur le projet`;
+  if (kind === "unauthorized") return `${name} refuse cette opération pour cette clé (HTTP ${status ?? "?"}${code ? `, ${code}` : ""})`;
   if (code === "model_not_found" || kind === "not_found") return `modèle ${name} introuvable ou non accessible avec cette clé`;
   if (kind === "rejected") return `requête refusée par ${name}${code ? ` (${code})` : ""}`;
   if (kind === "rate_limited") return `limite de débit ${name} atteinte`;
@@ -119,8 +121,8 @@ export async function respond(messages: ChatMessage[], deps: OrchestratorDeps): 
       response = await provider.complete({ system: systemPrompt(deps.today), messages, tools: toolSpecs(), toolResults });
     } catch (error) {
       // Panne du FOURNISSEUR uniquement (clé, quota, modèle, réseau…) : journal assaini, raison affichée, repli déterministe.
-      const details = error as { kind?: string; status?: number | null; code?: string | null };
-      (deps.log ?? defaultLog)("[assistant] Fournisseur IA en échec", { provider: provider.id, model: provider.model.slice(0, 80), kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null });
+      const details = error as { kind?: string; status?: number | null; code?: string | null; type?: string | null; scopes?: string[] };
+      (deps.log ?? defaultLog)("[assistant] Fournisseur IA en échec", { provider: provider.id, model: provider.model.slice(0, 80), kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null, type: details?.type ?? null, scopes: details?.scopes?.join(",") || null });
       return viaRules(last, deps, { degraded: true, degradedReason: providerFailureReason(error, provider.id) });
     }
     const call: ToolCall | undefined = response.toolCalls[0];

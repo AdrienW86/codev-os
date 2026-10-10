@@ -14,7 +14,9 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 
 ### Diagnostiquer « IA indisponible »
 
-1. **Paramètres → Connexions → « Tester la connexion IA »** : indique le fournisseur et le modèle retenus par le déploiement en cours (environnement + commit), puis vérifie la clé par `GET /v1/models/{modèle}` — aucune génération, aucun coût. La clé n’est jamais affichée.
+1. **Paramètres → Connexions → « Tester la connexion IA »** : indique le fournisseur et les modèles retenus par le déploiement en cours (environnement + commit), puis exécute **les mêmes requêtes que l’usage réel** — une réponse minimale de l’assistant et la transcription d’une seconde de silence (coût négligeable). Lire la liste des modèles ne suffit pas : une clé peut lire `GET /v1/models` sans avoir le droit d’appeler un modèle. La clé n’est jamais affichée.
+   - `invalid_api_key` : OpenAI ne reconnaît pas la clé.
+   - `missing_scope` (HTTP 401, portée indiquée, ex. `api.model.audio.request`) : clé reconnue mais sans la permission d’appeler le modèle — permission « Model capabilities » de la clé, ou rôle insuffisant (Reader) sur le projet OpenAI. Remplacer la clé ne change rien tant que le rôle ou la permission ne sont pas corrigés.
 2. Le message de l’assistant précise désormais la raison du repli : quota épuisé (`insufficient_quota` → facturation du compte OpenAI), clé refusée, modèle inaccessible, requête refusée (`unsupported_parameter`…), délai, indisponibilité.
 3. Logs Vercel (Functions) : ligne `[assistant] Fournisseur IA en échec` avec `provider`, `model`, `kind`, `status`, `code` — jamais la clé, les en-têtes ni le corps des réponses. Une ligne `[assistant] Outil en échec` signale au contraire une erreur de données, sans lien avec l’IA.
 4. Une variable ajoutée ou modifiée dans Vercel ne s’applique qu’aux **nouveaux déploiements** : redéployer la production après tout changement.

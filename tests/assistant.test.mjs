@@ -257,7 +257,9 @@ test("a failing TOOL is not reported as an AI outage; a failing PROVIDER is, wit
 
   for (const [error, reason] of [
     [new errors.ProviderError("openai", "rate_limited", 429, "insufficient_quota"), /quota OpenAI épuisé/],
-    [new errors.ProviderError("openai", "unauthorized", 401, "invalid_api_key"), /clé OpenAI refusée/],
+    [new errors.ProviderError("openai", "unauthorized", 401, "invalid_api_key"), /clé OpenAI invalide/],
+    [new errors.ProviderError("openai", "unauthorized", 401, "missing_scope", { type: "invalid_request_error", scopes: ["api.model.request"] }), /sans la permission requise \(api\.model\.request\)/],
+    [new errors.ProviderError("openai", "unauthorized", 401, "invalid_request_error"), /refuse cette opération pour cette clé \(HTTP 401, invalid_request_error\)/],
     [new errors.ProviderError("openai", "not_found", 404, "model_not_found"), /modèle OpenAI introuvable/],
     [new errors.ProviderError("openai", "rejected", 400, "unsupported_parameter"), /requête refusée par OpenAI \(unsupported_parameter\)/],
     [new errors.ProviderError("openai", "timeout"), /n’a pas répondu à temps/],
@@ -269,7 +271,7 @@ test("a failing TOOL is not reported as an AI outage; a failing PROVIDER is, wit
     assert.equal(reply.reply, "résultat get_priorities", "deterministic fallback still answers");
     const [message, details] = logs.at(-1);
     assert.equal(message, "[assistant] Fournisseur IA en échec");
-    assert.deepEqual(Object.keys(details).sort(), ["code", "kind", "model", "provider", "status"]);
+    assert.deepEqual(Object.keys(details).sort(), ["code", "kind", "model", "provider", "scopes", "status", "type"]);
   }
   assert.doesNotMatch(JSON.stringify(logs), /sk-|Bearer|Authorization/i);
 });

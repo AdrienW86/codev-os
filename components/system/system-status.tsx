@@ -59,7 +59,7 @@ export function SystemStatus({ errors }: { errors: SystemHealth["connectionError
       </ul>
       <div className="mt-6 rounded-xl border border-border bg-surface p-5">
         <h3 className="font-medium">Assistant et dictée : tester la connexion IA</h3>
-        <p className="mt-1 text-sm text-muted">Vérifie le fournisseur, le modèle de l’assistant et celui de la transcription retenus par ce déploiement, et que la clé est acceptée. Aucune génération ni transcription, aucun coût ; la clé n’est jamais affichée.</p>
+        <p className="mt-1 text-sm text-muted">Exécute les mêmes requêtes que l’usage réel : une réponse minimale de l’assistant et la transcription d’une seconde de silence (coût négligeable). Indique le fournisseur, les modèles et le déploiement ; la clé n’est jamais affichée.</p>
         <MutationForm action={testAIProviderAction} label="Tester la connexion IA" pendingLabel="Test en cours…" className="mt-3" />
       </div>
       <p className="mt-3 text-xs text-muted">Les secrets se configurent uniquement côté serveur (variables d’environnement Vercel / coffre). Ils ne sont jamais saisis ni affichés ici.</p>

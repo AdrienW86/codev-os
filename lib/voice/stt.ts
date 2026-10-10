@@ -48,9 +48,11 @@ export function selectSpeechToText(env: Record<string, string | undefined> = pro
 
 /** Raison lisible d'un échec de transcription (affichée à l'administrateur ; aucun secret, aucun message brut). */
 export function sttFailureReason(error: unknown, model: string): { reason: string; message: string } {
-  const { kind, code, status } = (error ?? {}) as { kind?: string; code?: string | null; status?: number | null };
+  const { kind, code, status, scopes } = (error ?? {}) as { kind?: string; code?: string | null; status?: number | null; scopes?: string[] };
   if (code === "insufficient_quota") return { reason: "quota", message: "Quota OpenAI épuisé : vérifiez la facturation du compte OpenAI." };
-  if (code === "invalid_api_key" || kind === "unauthorized") return { reason: "unauthorized", message: `Clé OpenAI refusée ou sans accès à la transcription (HTTP ${status ?? "?"}).` };
+  if (code === "invalid_api_key") return { reason: "unauthorized", message: "Clé OpenAI invalide (invalid_api_key) : OpenAI ne la reconnaît pas." };
+  if (code === "missing_scope") return { reason: "permission", message: `Clé OpenAI acceptée mais sans la permission requise pour la transcription${scopes?.length ? ` (portée manquante : ${scopes.join(", ")})` : ""}. Vérifiez la permission « Model capabilities » de la clé et votre rôle sur le projet OpenAI (Reader ne suffit pas).` };
+  if (kind === "unauthorized") return { reason: "permission", message: `OpenAI refuse cette opération pour cette clé (HTTP ${status ?? "?"}${code ? `, ${code}` : ""}) alors que la clé est reconnue ailleurs : vérifiez ses permissions et le rôle sur le projet.` };
   if (code === "model_not_found" || kind === "not_found") return { reason: "model", message: `Modèle de transcription « ${model} » introuvable ou non accessible avec cette clé (ASSISTANT_STT_MODEL).` };
   if (code === "unsupported_audio_type") return { reason: "format", message: "Format audio non pris en charge par la transcription." };
   if (kind === "rejected") return { reason: "rejected", message: `Fichier audio ou paramètre refusé par OpenAI${code ? ` (${code})` : ""}.` };

@@ -4,10 +4,11 @@ import "server-only";
 // Ne renvoie jamais la clé, ni un en-tête, ni le corps d'une réponse.
 import { selectAIProvider } from "@/lib/ai/providers";
 import { providerFailureReason } from "@/lib/assistant/orchestrator";
+import { selectSpeechToText, sttFailureReason } from "@/lib/voice/stt";
 
 export type AIDiagnostic = { ok: boolean; message: string };
 
-export async function diagnoseAIProvider(env: Record<string, string | undefined> = process.env): Promise<AIDiagnostic> {
+async function diagnoseAssistant(env: Record<string, string | undefined> = process.env): Promise<AIDiagnostic> {
   const deployment = [env.VERCEL_ENV ? `environnement ${env.VERCEL_ENV}` : null, env.VERCEL_GIT_COMMIT_SHA ? `déploiement ${env.VERCEL_GIT_COMMIT_SHA.slice(0, 7)}` : null].filter(Boolean).join(", ");
   const where = deployment ? ` (${deployment})` : "";
   const provider = selectAIProvider(env);
@@ -21,4 +22,23 @@ export async function diagnoseAIProvider(env: Record<string, string | undefined>
     console.error("[assistant] Diagnostic du fournisseur IA en échec", { provider: provider.id, model: provider.model.slice(0, 80), kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null });
     return { ok: false, message: `${label}${where} : ${providerFailureReason(error, provider.id)}.` };
   }
+}
+
+/** Transcription vocale : modèle retenu et accès vérifiés (GET /v1/models/{modèle}, sans audio ni coût). */
+async function diagnoseSpeechToText(env: Record<string, string | undefined>): Promise<AIDiagnostic> {
+  const stt = selectSpeechToText(env);
+  if (!stt) return { ok: false, message: "Transcription : OPENAI_API_KEY absente, la dictée utilise le navigateur." };
+  try {
+    await stt.ping();
+    return { ok: true, message: `Transcription · ${stt.model} : modèle accessible.` };
+  } catch (error) {
+    const details = error as { kind?: string; status?: number | null; code?: string | null };
+    console.error("[voice] Diagnostic de la transcription en échec", { model: stt.model.slice(0, 80), kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null });
+    return { ok: false, message: `Transcription · ${stt.model} : ${sttFailureReason(error, stt.model).message}` };
+  }
+}
+
+export async function diagnoseAIProvider(env: Record<string, string | undefined> = process.env): Promise<AIDiagnostic> {
+  const [assistant, speech] = await Promise.all([diagnoseAssistant(env), diagnoseSpeechToText(env)]);
+  return { ok: assistant.ok && speech.ok, message: `${assistant.message} ${speech.message}` };
 }

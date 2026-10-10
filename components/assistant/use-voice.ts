@@ -36,6 +36,7 @@ export function useVoice(onTranscript: (text: string) => void) {
   const cancelled = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const preferBrowser = useRef(false);
 
   const stopTracks = () => recorder.current?.stream.getTracks().forEach((track) => track.stop());
 
@@ -61,10 +62,17 @@ export function useVoice(onTranscript: (text: string) => void) {
     controller.current = new AbortController();
     try {
       const response = await postTranscription(blob, controller.current.signal);
-      const data = await response.json().catch(() => ({})) as { text?: string; error?: string };
+      const data = await response.json().catch(() => ({})) as { text?: string; error?: string; reason?: string; message?: string };
       if (response.ok && data.text) { setMessage(""); onTranscript(data.text); return; }
       if (data.error === "stt_not_configured" && speechRecognitionCtor()) { setMessage("Transcription serveur non configurée : utilisation de la dictée du navigateur."); browserRecognition(); return; }
-      setMessage(data.error === "no_speech" ? errorMessages.no_speech : data.error === "stt_not_configured" ? "Transcription serveur non configurée : voir Paramètres → Connexions." : errorMessages.failed);
+      if (data.error === "no_speech") { setMessage(errorMessages.no_speech); return; }
+      if (data.error === "stt_not_configured") { setMessage("Transcription serveur non configurée : voir Paramètres → Connexions."); return; }
+      // Raison précise renvoyée par le serveur (quota, clé, modèle, format…), sinon message générique.
+      const reason = typeof data.message === "string" && data.message ? data.message.slice(0, 240) : errorMessages.failed;
+      // Panne durable côté serveur : la prochaine pression utilise la dictée du navigateur si elle existe.
+      const lasting = ["quota", "unauthorized", "model", "format", "rejected", "blocked"].includes(data.reason ?? "");
+      if (lasting && speechRecognitionCtor()) preferBrowser.current = true;
+      setMessage(lasting && speechRecognitionCtor() ? `${reason} Appuyez de nouveau sur le micro pour utiliser la dictée du navigateur.` : reason);
     } catch (error) {
       setMessage((error as { name?: string }).name === "AbortError" ? errorMessages.cancelled : errorMessages.failed);
     } finally {
@@ -76,7 +84,7 @@ export function useVoice(onTranscript: (text: string) => void) {
   const start = useCallback(async () => {
     cancelled.current = false;
     setMessage("");
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { browserRecognition(); return; }
+    if (preferBrowser.current || typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { browserRecognition(); return; }
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (error) {
       const name = (error as { name?: string }).name;

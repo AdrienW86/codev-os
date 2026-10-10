@@ -45,9 +45,9 @@ export async function POST(request: Request) {
     if (!text) return NextResponse.json({ error: "no_speech" }, { status: 422, headers });
     return NextResponse.json({ text }, { headers });
   } catch (error) {
-    const details = error as { kind?: string; status?: number | null; code?: string | null };
+    const details = error as { kind?: string; status?: number | null; code?: string | null; type?: string | null; scopes?: string[] };
     const failure = sttFailureReason(error, provider.model);
-    console.error("[voice] Transcription en échec", { ...context, kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null, ms: Date.now() - started });
+    console.error("[voice] Transcription en échec", { ...context, kind: details?.kind ?? "unexpected", status: details?.status ?? null, code: details?.code ?? null, type: details?.type ?? null, scopes: details?.scopes?.join(",") || null, ms: Date.now() - started });
     return NextResponse.json({ error: "stt_failed", reason: failure.reason, message: failure.message }, { status: details?.kind === "timeout" ? 504 : 502, headers });
   }
 }

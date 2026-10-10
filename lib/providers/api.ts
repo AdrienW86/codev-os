@@ -1,6 +1,6 @@
 import "server-only";
 // Appels JSON vers les API fournisseurs (hôtes connus uniquement), avec délai et erreurs normalisées.
-import { ProviderError, errorCodeFromBody, kindFromStatus } from "@/lib/providers/errors";
+import { ProviderError, errorDetailsFromBody, kindFromStatus } from "@/lib/providers/errors";
 
 const ALLOWED_HOSTS = new Set([
   "oauth2.googleapis.com", "searchconsole.googleapis.com", "www.googleapis.com", "pagespeedonline.googleapis.com",
@@ -24,7 +24,8 @@ export async function providerJson<T = unknown>(provider: string, url: string, i
   if (!response.ok) {
     // Seul le code d'erreur structuré est conservé (jamais le corps ni les en-têtes).
     const body = await response.text().catch(() => "");
-    throw new ProviderError(provider, kindFromStatus(response.status), response.status, errorCodeFromBody(body.slice(0, 8_000)));
+    const details = errorDetailsFromBody(body.slice(0, 8_000));
+    throw new ProviderError(provider, kindFromStatus(response.status), response.status, details.code, details);
   }
   const text = await response.text();
   if (text.length > 5_000_000) throw new ProviderError(provider, "malformed");

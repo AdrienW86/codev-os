@@ -1,11 +1,13 @@
 // Analyseur d'intentions déterministe (français) : utilisé sans fournisseur d'IA ou en repli.
 // Ne produit que des appels d'outils du registre ; tout le reste reçoit une aide.
 import type { ToolName } from "@/lib/assistant/tools";
+import { normalize } from "@/lib/assistant/text";
+import { hasAdsChange, parseAdsRequest } from "@/lib/assistant/ads-intents";
+import type { AssistantContext } from "@/lib/assistant/views";
 
 /** Appel d'outil, ou question de précision quand une information indispensable manque ou est ambiguë. */
 export type Intent = { tool: ToolName; input: Record<string, unknown> } | { clarify: string };
 
-const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
 
 /** Nom de client après « pour », « de », « du client »… (texte d'origine conservé). */
 function clientAfter(original: string, markers = ["pour le client", "du client", "pour", "client", "chez", "de"]) {
@@ -114,7 +116,23 @@ function parseTask(original: string, value: string, today: string): Intent | nul
   };
 }
 
-export function parseIntent(text: string, today: string): Intent | null {
+/** Paramètres de l'outil ads_campaigns à partir d'une demande lue (seuls les éléments mentionnés). */
+function adsInput(request: ReturnType<typeof parseAdsRequest>): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  if (request.client) input.client = request.client;
+  if (request.period) {
+    input.period = request.period.preset;
+    if (request.period.date) input.date = request.period.date;
+    if (request.period.start) input.start = request.period.start;
+    if (request.period.end) input.end = request.period.end;
+  }
+  if (request.status) input.status = request.status;
+  if (request.types) input.types = request.types;
+  if (request.compare !== undefined) input.compare = request.compare;
+  return input;
+}
+
+export function parseIntent(text: string, today: string, context: AssistantContext = {}): Intent | null {
   const original = text.trim().slice(0, 500);
   const value = normalize(original);
   if (!value) return null;
@@ -122,6 +140,16 @@ export function parseIntent(text: string, today: string): Intent | null {
   // Création de tâche : prioritaire sur toute autre lecture de la phrase (le sujet peut contenir « SEO », « vérifier »…).
   const task = parseTask(original, value, today);
   if (task) return task;
+
+  // Google Ads en consultation : nouvelle vue, ou suite de la vue courante (« et sur 7 jours ? », « uniquement Local Services »).
+  const ads = parseAdsRequest(original);
+  const inAdsView = context.view === "ads_campaigns";
+  const launches = /\b(verifie|controle|lance|analyse|check|audit|planifie|programme)\b/.test(value);
+  const followUp = inAdsView && !launches && (hasAdsChange(ads) || (ads.followUp && Boolean(ads.client)));
+  if ((ads.mentionsAds && ads.display && !launches) || followUp) {
+    if (ads.clarify) return { clarify: ads.clarify };
+    return { tool: "ads_campaigns", input: adsInput(ads) };
+  }
 
   if (/\bactions?\b.*\b(a valider|en attente)|\b(a valider|en attente)\b.*\bactions?\b/.test(value)) return { tool: "list_pending_actions", input: {} };
   if (/\bclients?\b.*\b(attention|surveiller|probleme|a risque)/.test(value)) return { tool: "clients_attention", input: {} };
@@ -153,4 +181,4 @@ export function parseIntent(text: string, today: string): Intent | null {
   return null;
 }
 
-export const assistantHelp = "Je peux : résumer vos urgences, faire le point sur un client, afficher l’agenda du jour, lister ou générer un rapport, lancer ou planifier un contrôle des sites, une analyse SEO ou la veille Google Ads, lister les actions à valider, repérer les clients à surveiller et créer une tâche. Exemple : « Génère le rapport hebdomadaire pour Boulangerie Martin ».";
+export const assistantHelp = "Je peux : afficher les campagnes Google Ads d’un client (période, statut, type, comparaison), résumer vos urgences, faire le point sur un client, afficher l’agenda du jour, lister ou générer un rapport, lancer ou planifier un contrôle des sites, une analyse SEO ou la veille Google Ads, lister les actions à valider, repérer les clients à surveiller et créer une tâche. Exemple : « Génère le rapport hebdomadaire pour Boulangerie Martin ».";

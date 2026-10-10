@@ -24,3 +24,12 @@ insert into public.tasks (client_id, title, status, priority, due_date, assignee
   ('11111111-1111-4111-8111-111111111111', 'Relancer le devis cuisine', 'À faire', 'Haute', current_date - 2, 'admin'),
   ('22222222-2222-4222-8222-222222222222', 'Mettre à jour les horaires de Noël', 'En cours', 'Moyenne', current_date, 'admin'),
   ('22222222-2222-4222-8222-222222222222', 'Photos de la nouvelle vitrine', 'Terminé', 'Basse', current_date - 5, 'admin');
+
+-- Google Ads (lecture seule, réponses simulées par e2e/harness/google-ads-fake.mjs) : compte connecté
+-- pour Jrenov et Agent Google Ads actif, rattaché à Jrenov.
+insert into public.client_connections (client_id, provider, status, external_account_id, metadata, last_checked_at) values
+  ('11111111-1111-4111-8111-111111111111', 'google_ads', 'connected', '1234567890', '{"auth_strategy":"single_user","connection_version":1,"account_name":"Compte E2E Jrenov","currency_code":"EUR","timezone":"Europe/Paris"}', now());
+update public.agents set enabled = true, status = 'Actif' where agent_type = 'google-ads';
+insert into public.agent_client_assignments (agent_id, client_id, enabled, source)
+  select a.id, '11111111-1111-4111-8111-111111111111', true, 'manual' from public.agents a where a.agent_type = 'google-ads'
+  on conflict do nothing;

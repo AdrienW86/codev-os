@@ -6,11 +6,31 @@
 // Aucun outil n'offre de shell, de fichier, d'URL arbitraire ni d'accès aux identifiants.
 import { z } from "zod";
 import type { CapabilityId, RunType } from "@/lib/agents/registry";
+import { PERIOD_PRESETS, describeDates } from "@/lib/integrations/google-ads/periods";
 
 const clientName = z.string().trim().min(1).max(120);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const adsType = z.string().regex(/^[A-Z_]{2,40}$/);
+const adsStatus = z.enum(["enabled", "paused", "all"]);
+/** Périmètre exact d'une écriture Google Ads côté CODE-V (rapport, analyse) — revalidé par parseScope. */
+const adsScopeInput = z.object({
+  client_id: z.string().uuid(), client_name: clientName.optional(), start: date, end: date, status: adsStatus,
+  types: z.array(adsType).max(20), campaignIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(50),
+}).strict();
 
 export const toolDefinitions = {
+  ads_campaigns: {
+    kind: "read",
+    description: "Campagnes Google Ads d’un client (lecture seule) : dépenses, clics, conversions par campagne, total du périmètre et total du compte. "
+      + "Paramètres facultatifs : seuls ceux fournis modifient la vue courante, les autres sont conservés (suite de conversation). "
+      + "period : today, yesterday, last_7, last_14, last_30, last_90, this_week, last_week, this_month, last_month, day (avec date), custom (avec start et end). "
+      + "status : enabled (actives), paused (en pause), all. types : types API (SEARCH, LOCAL_SERVICES, PERFORMANCE_MAX, DISPLAY…), [] pour tous. "
+      + "campaigns : noms ou identifiants de campagnes ([] pour toutes). compare : comparer à la période précédente.",
+    input: z.object({
+      client: clientName.optional(), period: z.enum(PERIOD_PRESETS).optional(), date: date.optional(), start: date.optional(), end: date.optional(),
+      compare: z.boolean().optional(), status: adsStatus.optional(), types: z.array(adsType).max(20).optional(), campaigns: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
+    }).strict(), capability: null,
+  },
   get_priorities: {
     kind: "read", description: "Résumé des urgences : actions à valider, incidents ouverts, tâches en retard ou du jour, rapports à relire.",
     input: z.object({}).strict(), capability: null,
@@ -51,6 +71,14 @@ export const toolDefinitions = {
     kind: "write", description: "Lance maintenant une analyse d’agent : contrôle des sites, analyse SEO, veille Google Ads (lecture seule) ou veille tech.",
     input: z.object({ check: z.enum(["monitoring.check_sites", "seo.analyze", "ads.monitor", "news.fetch"]), client: clientName.optional() }).strict(), capability: null,
   },
+  ads_prepare_report: {
+    kind: "write", description: "Prépare un rapport Google Ads enregistré pour un périmètre exact (dates + campagnes), à relire avant tout envoi.",
+    input: adsScopeInput, capability: null,
+  },
+  ads_run_analysis: {
+    kind: "write", description: "Lance l’analyse réelle de l’Agent Ads (règles déterministes, sans IA, lecture seule) sur un périmètre exact.",
+    input: adsScopeInput, capability: null,
+  },
   create_task: {
     kind: "write", description: "Crée une tâche pour un client.",
     input: z.object({ client: clientName, title: z.string().trim().min(2).max(200), due_date: date.optional(), due_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne") }).strict(), capability: null,
@@ -82,6 +110,13 @@ const checkLabels: Record<string, string> = { "monitoring.check_sites": "le cont
 
 /** Phrase de confirmation présentée à l'administrateur avant toute écriture. */
 export function describeProposal(name: ToolName, input: Record<string, unknown>) {
+  if (name === "ads_prepare_report" || name === "ads_run_analysis") {
+    const ids = Array.isArray(input.campaignIds) ? input.campaignIds.length : 0;
+    const scope = `${ids} campagne${ids > 1 ? "s" : ""}, ${describeDates({ start: String(input.start), end: String(input.end), days: 0 })}`;
+    return name === "ads_prepare_report"
+      ? `Préparer un rapport Google Ads pour ${input.client_name ?? "ce client"} (${scope}). Il sera à relire avant tout envoi ; aucune modification Google Ads.`
+      : `Lancer l’analyse réelle de l’Agent Ads pour ${input.client_name ?? "ce client"} (${scope}) : règles déterministes, sans IA, lecture seule.`;
+  }
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;
   if (name === "schedule_check") return `Planifier ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""} le ${input.date} à ${input.time} (heure de Paris).`;

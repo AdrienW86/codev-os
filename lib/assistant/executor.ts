@@ -9,7 +9,7 @@ import { agentDefinitions, isAgentType, runTypes, type CapabilityId } from "@/li
 import { getAgentByType } from "@/lib/agents/outputs";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { generateReport, listReports } from "@/lib/reports/service";
-import { reportStatusLabels } from "@/lib/reports/labels";
+import { reportKindLabels, reportStatusLabels } from "@/lib/reports/labels";
 import { periodLabel } from "@/lib/reports/build";
 import { createAutomation, runNow } from "@/lib/automations/service";
 import { describeAction } from "@/lib/actions/registry";
@@ -20,24 +20,13 @@ import { listAgendaItems } from "@/lib/agenda/service";
 import { addDays, expandOccurrences } from "@/lib/agenda/occurrences";
 import { zonedToUtc } from "@/lib/scheduler/recurrence";
 import type { PrepareResult, ToolOutcome } from "@/lib/assistant/orchestrator";
+import { resolveClient } from "@/lib/assistant/clients";
+import { adsCampaignsTool, prepareAdsWrite, runAdsWrite } from "@/lib/assistant/ads-tool";
+import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
+
+export { resolveClient };
 
 const db = () => getSupabaseServerClient();
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
-
-/** Résout un nom de client saisi librement ; refuse l'ambiguïté plutôt que de deviner. */
-export async function resolveClient(name: string): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }> {
-  const query = name.trim().slice(0, 120);
-  if (!query) return { ok: false, message: "Précisez le client." };
-  const { data, error } = await db().from("clients").select("id,name").ilike("name", `%${escapeLike(query)}%`).order("name").limit(6);
-  if (error) throw new Error("client search");
-  const rows = data ?? [];
-  const exact = rows.find((row) => row.name.localeCompare(query, "fr", { sensitivity: "base" }) === 0);
-  if (exact) return { ok: true, id: exact.id, name: exact.name };
-  if (rows.length === 1) return { ok: true, id: rows[0].id, name: rows[0].name };
-  if (!rows.length) return { ok: false, message: `Aucun client ne correspond à « ${query} ».` };
-  return { ok: false, message: `Plusieurs clients correspondent à « ${query} » : ${rows.slice(0, 5).map((row) => row.name).join(", ")}. Précisez lequel.` };
-}
-
 /** Vérifie qu'un agent actif du registre détient la capacité (et que ses connexions sont prêtes). */
 async function authorizeCapability(capability: CapabilityId): Promise<{ ok: true } | { ok: false; message: string }> {
   const definition = Object.values(agentDefinitions).find((item) => item.capabilities.includes(capability));
@@ -53,9 +42,11 @@ const count = async (query: PromiseLike<{ count: number | null; error: unknown }
   return error ? null : value ?? 0;
 };
 
-export async function executeTool(actor: Actor, name: ToolName, input: Record<string, unknown>): Promise<ToolOutcome> {
+export async function executeTool(actor: Actor, name: ToolName, input: Record<string, unknown>, context: AssistantContext = {}): Promise<ToolOutcome> {
   const today = todayInParis();
   switch (name) {
+    case "ads_campaigns": return adsCampaignsTool(input, context);
+    case "ads_prepare_report": case "ads_run_analysis": return runAdsWrite(actor, name, input);
     case "get_priorities": {
       const [actions, incidents, overdue, dueToday, reports] = await Promise.all([
         count(db().from("actions").select("id", { count: "exact", head: true }).eq("status", "pending_approval")),
@@ -68,7 +59,15 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
         actions ? `${actions} action(s) à valider` : null, incidents ? `${incidents} incident(s) ouvert(s)` : null,
         overdue ? `${overdue} tâche(s) en retard` : null, dueToday ? `${dueToday} tâche(s) pour aujourd’hui` : null, reports ? `${reports} rapport(s) à relire` : null,
       ].filter(Boolean);
-      return { ok: true, text: parts.length ? `À traiter : ${parts.join(", ")}.` : "Rien d’urgent pour le moment.", links: [{ label: "Ouvrir Travail", href: "/work?view=review" }, ...(reports ? [{ label: "Rapports à relire", href: "/reports?status=ready_for_review" }] : [])] };
+      const metric = (label: string, value: number | null, href: string): MetricItem => ({ label, value: value === null ? "Indisponible" : String(value), tone: value ? "amber" : "neutral", href });
+      return {
+        ok: true, text: parts.length ? `À traiter : ${parts.join(", ")}.` : "Rien d’urgent pour le moment.",
+        links: [{ label: "Ouvrir Travail", href: "/work?view=review" }, ...(reports ? [{ label: "Rapports à relire", href: "/reports?status=ready_for_review" }] : [])],
+        view: { type: "metrics", title: "Urgences", caption: `Au ${today}`, items: [
+          metric("Actions à valider", actions, "/work?view=review"), metric("Incidents ouverts", incidents, "/work"), metric("Tâches en retard", overdue, "/work?view=todo"),
+          metric("Tâches du jour", dueToday, "/work?view=todo"), metric("Rapports à relire", reports, "/reports?status=ready_for_review"),
+        ], link: { label: "Ouvrir Travail", href: "/work?view=review" } },
+      };
     }
     case "client_overview": {
       const client = await resolveClient(String(input.client));
@@ -81,7 +80,16 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
       ]);
       const active = (services.data ?? []).filter((item) => (item as { lifecycle?: string }).lifecycle !== "ended").map((item) => item.service_type);
       const lastReport = report.data ? `dernier rapport : ${periodLabel(report.data.kind, { start: report.data.period_start, end: report.data.period_end })} (${reportStatusLabels[report.data.status].label.toLowerCase()})` : "aucun rapport";
-      return { ok: true, text: `${client.name} — services : ${active.length ? active.join(", ") : "aucun"} ; ${tasks ?? "?"} tâche(s) ouverte(s) ; ${incidents ?? 0} incident(s) ouvert(s) ; ${lastReport}.`, links: [{ label: `Fiche ${client.name}`, href: `/clients/${client.id}` }] };
+      return {
+        ok: true, text: `${client.name} — services : ${active.length ? active.join(", ") : "aucun"} ; ${tasks ?? "?"} tâche(s) ouverte(s) ; ${incidents ?? 0} incident(s) ouvert(s) ; ${lastReport}.`,
+        links: [{ label: `Fiche ${client.name}`, href: `/clients/${client.id}` }],
+        view: { type: "metrics", title: client.name, caption: `Services : ${active.length ? active.join(", ") : "aucun"}`, items: [
+          { label: "Tâches ouvertes", value: tasks === null ? "Indisponible" : String(tasks), href: `/clients/${client.id}?tab=projects` },
+          { label: "Incidents ouverts", value: String(incidents ?? 0), tone: incidents ? "amber" : "neutral" },
+          { label: "Dernier rapport", value: lastReport.replace(/^dernier rapport : /, "") },
+        ], link: { label: `Fiche ${client.name}`, href: `/clients/${client.id}` } },
+        context: { clientId: client.id, clientName: client.name },
+      };
     }
     case "agenda_today": {
       const day = typeof input.date === "string" ? input.date : today;
@@ -108,9 +116,14 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
         if (!client.ok) return { ok: false, text: client.message };
         clientId = client.id;
       }
-      const reports = (await listReports({ clientId })).slice(0, 5);
-      if (!reports.length) return { ok: true, text: "Aucun rapport pour l’instant.", links: [{ label: "Rapports", href: "/reports" }] };
-      return { ok: true, text: reports.map((report) => `${report.client?.name ?? "Global"} — ${periodLabel(report.kind, { start: report.period_start, end: report.period_end })} : ${reportStatusLabels[report.status].label.toLowerCase()}`).join(" · "), links: reports.slice(0, 3).map((report) => ({ label: `Rapport ${report.client?.name ?? ""}`.trim(), href: `/reports/${report.id}` })) };
+      const reports = (await listReports({ clientId })).slice(0, 10);
+      const view = {
+        type: "table" as const, title: "Rapports récents", caption: "Période couverte et date de génération sont distinctes.", columns: ["Client", "Type", "Période couverte", "Statut", "Généré le"],
+        rows: reports.map((report) => ({ cells: [report.client?.name ?? "Global", reportKindLabels[report.kind], periodLabel(report.kind, { start: report.period_start, end: report.period_end }), reportStatusLabels[report.status].label, report.generated_at ? report.generated_at.slice(0, 10) : "—"], href: `/reports/${report.id}` })),
+        empty: "Aucun rapport pour l’instant.", link: { label: "Tous les rapports", href: clientId ? `/reports?client=${clientId}` : "/reports" },
+      };
+      if (!reports.length) return { ok: true, text: "Aucun rapport pour l’instant.", links: [{ label: "Rapports", href: "/reports" }], view };
+      return { ok: true, text: reports.slice(0, 5).map((report) => `${report.client?.name ?? "Global"} — ${periodLabel(report.kind, { start: report.period_start, end: report.period_end })} : ${reportStatusLabels[report.status].label.toLowerCase()}`).join(" · "), links: reports.slice(0, 3).map((report) => ({ label: `Rapport ${report.client?.name ?? ""}`.trim(), href: `/reports/${report.id}` })), view };
     }
     case "list_news": {
       const news = await topNews(3);
@@ -141,10 +154,12 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
       return { ok: result.ok, text: result.message ?? (result.ok ? "Analyse lancée." : "Analyse impossible."), links: [{ label: "Observabilité", href: "/settings?tab=system" }, { label: "Travail", href: "/work" }] };
     }
     case "list_pending_actions": {
-      const { data, error } = await db().from("actions").select("action_type,parameters,client:clients(name)").eq("status", "pending_approval").order("created_at", { ascending: false }).limit(6);
+      const { data, error } = await db().from("actions").select("action_type,parameters,created_at,client:clients(name)").eq("status", "pending_approval").order("created_at", { ascending: false }).limit(10);
       if (error) throw new Error("actions read");
-      if (!data?.length) return { ok: true, text: "Aucune action en attente de validation.", links: [{ label: "Travail", href: "/work" }] };
-      return { ok: true, text: `${data.length} action(s) à valider : ${data.slice(0, 5).map((item) => `${(item.client as { name?: string } | null)?.name ?? "Client"} — ${describeAction(item.action_type, item.parameters)}`).join(" · ")}`, links: [{ label: "Valider dans Travail", href: "/work?view=review" }] };
+      // Lecture seule : la validation se fait dans Travail (parcours d'approbation existant), jamais ici.
+      const view = { type: "table" as const, title: "Actions à valider", caption: "La validation se fait dans Travail.", columns: ["Client", "Action", "Préparée le"], rows: (data ?? []).map((item) => ({ cells: [(item.client as { name?: string } | null)?.name ?? "Client", describeAction(item.action_type, item.parameters), String(item.created_at ?? "").slice(0, 10)], href: "/work?view=review" })), empty: "Aucune action en attente de validation.", link: { label: "Valider dans Travail", href: "/work?view=review" } };
+      if (!data?.length) return { ok: true, text: "Aucune action en attente de validation.", links: [{ label: "Travail", href: "/work" }], view };
+      return { ok: true, text: `${data.length} action(s) à valider : ${data.slice(0, 5).map((item) => `${(item.client as { name?: string } | null)?.name ?? "Client"} — ${describeAction(item.action_type, item.parameters)}`).join(" · ")}`, links: [{ label: "Valider dans Travail", href: "/work?view=review" }], view };
     }
     case "clients_attention": {
       const [incidents, tasks, actions] = await Promise.all([
@@ -159,7 +174,11 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
       const ranked = [...score.entries()].sort(([, a], [, b]) => (b.incidents * 3 + b.overdue * 2 + b.actions) - (a.incidents * 3 + a.overdue * 2 + a.actions)).slice(0, 5);
       const { data: clients } = await db().from("clients").select("id,name").in("id", ranked.map(([id]) => id));
       const name = (id: string) => clients?.find((client) => client.id === id)?.name ?? "Client";
-      return { ok: true, text: ranked.map(([id, entry]) => `${name(id)} : ${[entry.incidents ? `${entry.incidents} incident(s)` : null, entry.overdue ? `${entry.overdue} tâche(s) en retard` : null, entry.actions ? `${entry.actions} action(s) à valider` : null].filter(Boolean).join(", ")}`).join(" · "), links: ranked.slice(0, 3).map(([id]) => ({ label: name(id), href: `/clients/${id}` })) };
+      return {
+        ok: true, text: ranked.map(([id, entry]) => `${name(id)} : ${[entry.incidents ? `${entry.incidents} incident(s)` : null, entry.overdue ? `${entry.overdue} tâche(s) en retard` : null, entry.actions ? `${entry.actions} action(s) à valider` : null].filter(Boolean).join(", ")}`).join(" · "),
+        links: ranked.slice(0, 3).map(([id]) => ({ label: name(id), href: `/clients/${id}` })),
+        view: { type: "table", title: "Clients à surveiller", columns: ["Client", "Incidents", "Tâches en retard", "Actions à valider"], rows: ranked.map(([id, entry]) => ({ cells: [name(id), String(entry.incidents), String(entry.overdue), String(entry.actions)], href: `/clients/${id}` })), empty: "Aucun client à surveiller.", link: { label: "Clients", href: "/clients" } },
+      };
     }
     case "schedule_check": {
       const runType = runCheckType(input.check);
@@ -196,6 +215,7 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
  * échéance non passée. Sinon, une question de précision est renvoyée et rien n'est proposé.
  */
 export async function prepareProposal(name: ToolName, input: Record<string, unknown>): Promise<PrepareResult> {
+  if (name === "ads_prepare_report" || name === "ads_run_analysis") return prepareAdsWrite(input);
   const next = { ...input };
   if (typeof input.client === "string") {
     const client = await resolveClient(input.client);

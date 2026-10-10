@@ -206,7 +206,7 @@ test('P11-b scope: nothing triggers publishing, OAuth transport still read-only,
   assert.doesNotMatch(code,/console\.log/,f);for(const m of code.matchAll(/console\.error\(([^;]*)\)/g))assert.doesNotMatch(m[1],/token|credential|body|url|text|message|error\b/i,`${f}: generic logs`);}
  const doc=src('docs/publications-meta-publisher.md');for(const s of ['v26.0','/feed','/photos','/media_publish','status_code','pages_manage_posts','instagram_content_publish','uncertain','App Review'])assert.ok(doc.includes(s),s);
  assert.doesNotMatch(doc,/EAAB|appsecret_proof=[a-f0-9]{10}/);
- const list=readdirSync(resolve(root,'supabase/migrations')).sort();assert.equal(list.length,23);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
+ const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[20],'20261012000000_publications_meta_publisher.sql');
  const sql=src('supabase/migrations/20261012000000_publications_meta_publisher.sql').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/security definer|create policy|http|cron|insert into public\.publication_jobs/i);});
 
 test('Gate 4: Meta reconciliation never concludes "missing" from a full page of newer posts (a false missing would allow a duplicate)',async()=>{

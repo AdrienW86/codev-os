@@ -227,7 +227,7 @@ test('removal from the board is an audited, reversible masking that never delete
  const restore=visibility(fixtures());assert.equal((await restore.m.setBoardVisibility(form([['publication_id',P.ready]]),false)).ok,true);assert.equal(restore.writes[0][2].action,'publication.board_restored');
  for(const f of ['lib/publications/board-visibility.ts','app/(cockpit)/publications/board-actions.ts','lib/publications/board.ts','components/publications/publications-board.tsx'])assert.doesNotMatch(src(f),/\.delete\(|\.update\(|\.upsert\(|\.remove\(|\.rpc\(/,f);
  const actions=src('app/(cockpit)/publications/board-actions.ts');assert.equal((actions.match(/await requireAdmin\(\)/g)??[]).length,2);assert.match(actions,/^"use server";/);
- assert.equal(readdirSync(resolve(root,'supabase/migrations')).length,23,'no migration added by this lot (23 = 9 + Lot 4.3 P1 … P5 + P7 … P13)');});
+ assert.equal(readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').length,23,'no migration added by this lot (23 = 9 + Lot 4.3 P1 … P5 + P7 … P13)');});
 
 test('filter bar: client-only, instant, no Filtrer button, reset kept, debounced search',async()=>{
  const out=await html({client:C1,status:'draft',q:'toiture'});const form=out.match(/<form[^>]*data-board-filters="instant"[^>]*>[\s\S]*?<\/form>/)[0];
@@ -298,7 +298,7 @@ test('media rule: approval (Brouillon → À publier) is refused server-side whi
  const withMedia=renderToStaticMarkup(jsx.jsx(card.ReviewApproveForm,{card:{...data,variants:[{platform:'facebook',assetIds:['a1']}]}}));assert.match(withMedia,/<button[^>]*>Valider<\/button>/);});
 
 test('video audit: the current backend stores images only, so the UI never claims video support',()=>{
- const migrations=readdirSync(resolve(root,'supabase/migrations')).map(f=>src(`supabase/migrations/${f}`)).join('\n');
+ const migrations=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').map(f=>src(`supabase/migrations/${f}`)).join('\n');
  assert.match(migrations,/mime_type text not null check \(mime_type in \('image\/jpeg','image\/png','image\/webp'\)\)/,'publication_assets accepts images only');
  assert.match(migrations,/'publication-images','publication-images',false,786432,array\['image\/jpeg','image\/png','image\/webp'\]/,'the private bucket accepts images only, 768 KB');
  assert.match(migrations,/'publication-originals','publication-originals',false,8388608,array\['image\/jpeg','image\/png','image\/webp'\]/);

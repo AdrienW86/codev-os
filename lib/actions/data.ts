@@ -5,8 +5,9 @@ import { writeAuditLog } from "@/lib/audit-logs";
 import { validateAgentContext } from "@/lib/agents/scope";
 import type { InternalActionRecord, ActionResult } from "./types";
 import { canTransitionAction, isActionUuid, isValidActionParameters, validateCreateActionInput } from "./validation";
+import { getActionType } from "./registry";
 
-const columns = "id,recommendation_id,agent_id,client_id,project_id,action_type,parameters,status,requires_approval,approved_at,executed_at,result,error_message,created_at,updated_at,agent:agents(id,name),client:clients(id,name),project:projects(id,name),recommendation:recommendations(id,title)";
+const columns = "id,recommendation_id,agent_id,client_id,project_id,action_type,parameters,status,requires_approval,approved_at,executed_at,result,error_message,created_at,updated_at,payload_hash,approved_payload_hash,approved_by,execution_mode,agent:agents(id,name),client:clients(id,name),project:projects(id,name),recommendation:recommendations(id,title)";
 const genericError = "Impossible de traiter cette action. Rechargez l’état et réessayez.";
 
 function storageFailure(operation: "list" | "detail" | "create" | "transition" | "execute"): never {
@@ -139,7 +140,12 @@ export async function cancelAction(id: string): Promise<ActionResult> {
   return transitionAction(id, "cancelled");
 }
 
-async function transitionAction(id: string, target: "approved" | "cancelled"): Promise<ActionResult> {
+/** Refus explicite d'une action en attente de validation (historique conservé). */
+export async function rejectAction(id: string): Promise<ActionResult> {
+  return transitionAction(id, "rejected");
+}
+
+async function transitionAction(id: string, target: "approved" | "cancelled" | "rejected"): Promise<ActionResult> {
   const { userId } = await requireAdmin();
   if (!isActionUuid(id)) return { ok: false, message: genericError };
   try {
@@ -148,19 +154,19 @@ async function transitionAction(id: string, target: "approved" | "cancelled"): P
     if (readError) throw new Error();
     if (!before || !canTransitionAction(before.status, target)) return { ok: false, message: genericError };
     if (target === "approved" && (!before.requires_approval || !await hasValidActionContext(supabase, before))) return { ok: false, message: genericError };
-    const patch = target === "approved" ? { status: target, approved_at: new Date().toISOString() } : { status: target };
+    const patch = target === "approved" ? { status: target, approved_at: new Date().toISOString(), approved_by: userId } : { status: target };
     const { data: after, error: updateError } = await supabase.from("actions").update(patch).eq("id", id).eq("status", before.status).select(columns).maybeSingle();
     if (updateError) throw new Error();
     if (!after) return { ok: false, message: genericError };
     await writeAuditLog({
-      action: target === "approved" ? "action.approved" : "action.cancelled",
+      action: target === "approved" ? "action.approved" : target === "rejected" ? "action.rejected" : "action.cancelled",
       actor_type: "admin",
       actor_id: userId,
       resource_type: "action",
       resource_id: id,
       before_data: auditSnapshot(before),
       after_data: auditSnapshot(after),
-      metadata: {},
+      metadata: { payload_hash: after.payload_hash ?? null },
     });
     return { ok: true, action: after };
   } catch { storageFailure("transition"); }
@@ -189,7 +195,8 @@ export async function executeAction(id: string): Promise<ActionResult> {
     const supabase = getSupabaseServerClient();
     const { data: current, error: readError } = await supabase.from("actions").select(columns).eq("id", id).maybeSingle();
     if (readError) throw new Error();
-    if (!current || current.status !== "approved" || !current.requires_approval || !await hasValidActionContext(supabase, current)) {
+    if (!current || current.status !== "approved" || !current.requires_approval || getActionType(current.action_type)?.executionMode !== "internal"
+      || (current.approved_payload_hash !== undefined && current.approved_payload_hash !== current.payload_hash) || !await hasValidActionContext(supabase, current)) {
       return { ok: false, message: genericError };
     }
     const { data: executing, error: startError } = await supabase.from("actions").update({ status: "executing" }).eq("id", id).eq("status", "approved").select(columns).maybeSingle();
@@ -232,5 +239,27 @@ export async function executeAction(id: string): Promise<ActionResult> {
       return { ok: false, message: genericError };
     }
     return { ok: true, action: executed };
+  } catch { storageFailure("execute"); }
+}
+
+
+/**
+ * Action « manuelle » approuvée, réalisée par un humain hors de CODE-V OS : confirmation explicite.
+ * Le payload reste celui qui a été approuvé (vérifié par le hash en base).
+ */
+export async function completeManualAction(id: string): Promise<ActionResult> {
+  const { userId } = await requireAdmin();
+  if (!isActionUuid(id)) return { ok: false, message: genericError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: current, error: readError } = await supabase.from("actions").select(columns).eq("id", id).maybeSingle();
+    if (readError) throw new Error();
+    if (!current || current.status !== "approved" || getActionType(current.action_type)?.executionMode !== "manual"
+      || (current.approved_payload_hash ?? null) !== (current.payload_hash ?? null)) return { ok: false, message: genericError };
+    const { data: done, error } = await supabase.from("actions").update({ status: "executed", executed_at: new Date().toISOString(), result: { manual: true, confirmed_by: userId } }).eq("id", id).eq("status", "approved").select(columns).maybeSingle();
+    if (error) throw new Error();
+    if (!done) return { ok: false, message: genericError };
+    await writeAuditLog({ action: "action.completed_manually", actor_type: "admin", actor_id: userId, resource_type: "action", resource_id: id, before_data: auditSnapshot(current), after_data: auditSnapshot(done), metadata: { payload_hash: done.payload_hash ?? null } });
+    return { ok: true, action: done };
   } catch { storageFailure("execute"); }
 }

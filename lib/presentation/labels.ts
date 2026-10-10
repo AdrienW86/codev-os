@@ -18,6 +18,8 @@ const actionStatusLabels: Record<string, Label> = {
   executed: { label: "Réalisée", tone: "green" },
   failed: { label: "Échec · à vérifier", tone: "amber" },
   cancelled: { label: "Annulée", tone: "neutral" },
+  rejected: { label: "Refusée", tone: "neutral" },
+  uncertain: { label: "Résultat incertain · à vérifier", tone: "amber" },
 };
 
 const runStatusLabels: Record<string, Label> = {
@@ -43,6 +45,10 @@ const severityLabels: Record<string, Label> = {
 
 const actionTypeLabels: Record<string, string> = {
   "internal.test": "Vérification interne",
+  "seo.site_change": "Amélioration SEO du site",
+  "ads.optimization": "Optimisation Google Ads",
+  "monitoring.fix": "Correctif technique",
+  "report.send": "Envoi de rapport",
 };
 
 const unknown: Label = { label: "Statut inconnu", tone: "neutral" };

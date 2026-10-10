@@ -112,8 +112,20 @@ test("V2 navigation lists the daily-use entries and keeps legacy routes reachabl
   assert.doesNotMatch(read("components/layout/header.tsx"), /Cockpit interne|Espace CODE-V|autres domaines démo/);
 });
 
-test("new pages stay behind the admin guard and the assistant box makes no network call", () => {
+test("new pages stay behind the admin guard; the assistant box only talks to its same-origin API", () => {
   for (const route of ["work", "agenda", "reports", "dashboard"]) assert.match(read(`app/(cockpit)/${route}/page.tsx`), /await requireAdmin\(\);/);
   const box = read("components/dashboard/assistant-command-box.tsx");
-  assert.doesNotMatch(box, /fetch\(|openai|MediaRecorder|getUserMedia|speechSynthesis|SpeechRecognition|@\/app\//i);
+  // Aucun fournisseur ni clé côté navigateur : uniquement /api/assistant (session admin, même origine).
+  assert.doesNotMatch(box, /openai|anthropic|api_key|NEXT_PUBLIC|@\/app\//i);
+  const voice = read("components/assistant/use-voice.ts");
+  assert.doesNotMatch(voice, /openai|api_key|NEXT_PUBLIC/i);
+  for (const source of [box, voice]) assert.doesNotMatch(source, /\bfetch\s*\(/, "network only through lib/assistant/client-api");
+  const clientApi = read("lib/assistant/client-api.ts");
+  assert.deepEqual([...clientApi.matchAll(/fetch\("([^"]+)"/g)].map((match) => match[1]), ["/api/assistant", "/api/assistant/transcribe"]);
+  assert.doesNotMatch(clientApi, /https?:\/\/|process\.env/);
+  for (const route of ["app/api/assistant/route.ts", "app/api/assistant/transcribe/route.ts"]) {
+    const source = read(route);
+    assert.match(source, /await requireAdmin\(\);/, route);
+    assert.match(source, /checkSameOrigin\(/, route);
+  }
 });

@@ -9,13 +9,15 @@ import { SimWork } from "@/components/simulation/views/sim-work";
 import { listTasks } from "@/lib/tasks/data";
 import { listRecommendations } from "@/lib/recommendations/data";
 import { listActions } from "@/lib/actions/data";
+import { listIncidents } from "@/lib/incidents/data";
+import { safeRead } from "@/lib/core/safe-read";
 import { buildWorkItems, groupWorkItems, isWorkSectionId, workSections, type WorkSectionId } from "@/lib/work/items";
 import { getActiveScenario } from "@/lib/simulation/server";
 
 export const metadata: Metadata = { title: "Travail" };
 
 const DONE_LIMIT = 15;
-const kinds = [{ value: "task", label: "Tâches" }, { value: "recommendation", label: "Recommandations" }, { value: "action", label: "Actions" }];
+const kinds = [{ value: "task", label: "Tâches" }, { value: "recommendation", label: "Recommandations" }, { value: "action", label: "Actions" }, { value: "incident", label: "Incidents" }];
 const priorities = [{ value: "high", label: "Haute" }, { value: "medium", label: "Moyenne" }, { value: "low", label: "Basse" }];
 const one = (value: string | string[] | undefined) => (typeof value === "string" ? value : "");
 
@@ -25,8 +27,8 @@ export default async function WorkPage({ searchParams }: PageProps<"/work">) {
   if (await getActiveScenario()) return <SimWork initialView={one(params.view) || undefined} initialClient={one(params.client) || undefined} />;
   const view: WorkSectionId | null = isWorkSectionId(params.view) ? params.view : null;
   const filters = { client: one(params.client), project: one(params.project), kind: one(params.kind), priority: one(params.priority) };
-  const [tasks, recommendations, actions] = await Promise.all([listTasks(), listRecommendations(), listActions()]);
-  const all = buildWorkItems({ tasks, recommendations, actions });
+  const [tasks, recommendations, actions, incidents] = await Promise.all([listTasks(), listRecommendations(), listActions(), safeRead("incidents", () => listIncidents(), [])]);
+  const all = buildWorkItems({ tasks, recommendations, actions, incidents: incidents.data });
   const items = all.filter((item) => (!filters.client || item.client.id === filters.client) && (!filters.project || item.project?.id === filters.project)
     && (!filters.kind || item.kind === filters.kind) && (!filters.priority || item.priorityKey === filters.priority));
   const groups = groupWorkItems(items);
@@ -44,7 +46,7 @@ export default async function WorkPage({ searchParams }: PageProps<"/work">) {
 
   return (
     <>
-      <PageHeading eyebrow="Organisation" title="Travail" description="Tâches, recommandations des agents et actions à valider, réunies au même endroit." action={<Action href="/tasks/new" variant="primary">+ Nouvelle tâche</Action>} />
+      <PageHeading eyebrow="Organisation" title="Travail" description="Tâches, incidents, recommandations des agents et actions à valider, réunis au même endroit." action={<Action href="/tasks/new" variant="primary">+ Nouvelle tâche</Action>} />
       <FilterBar resetHref="/work" fields={[
         { name: "client", label: "Client", value: filters.client, options: clients },
         { name: "project", label: "Projet", value: filters.project, options: projects },

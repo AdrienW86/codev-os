@@ -5,6 +5,7 @@ import { MobileNavigation, Sidebar } from "@/components/layout/navigation";
 import { SimulationBanner } from "@/components/simulation/simulation-banner";
 import { SimulationProvider } from "@/components/simulation/simulation-provider";
 import { getActiveScenario } from "@/lib/simulation/server";
+import { FlashRegion } from "@/components/ui/flash";
 
 export default async function CockpitLayout({ children }: { children: ReactNode }) {
   await requireAdmin();
@@ -25,6 +26,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
           </footer>
         </main>
       </div>
+      <FlashRegion />
     </SimulationProvider>
   );
 }

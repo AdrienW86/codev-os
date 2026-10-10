@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Manual database backups contain real business data: never commit
 /backups/
+
+# E2E harness output (screenshots, logs, temporary app copy)
+/e2e/output/

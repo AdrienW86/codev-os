@@ -12,6 +12,7 @@
     "test:clients": "node --test tests/clients.test.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:publications": "node --test tests/publications.test.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
     "test:publications:db": "node scripts/test-publications-db.mjs",
     "test:scope:db": "node --test tests/agent-scope-db.test.mjs",
     "test:remote-schema:db": "node scripts/test-remote-schema-db.mjs",
@@ -23,7 +24,8 @@
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

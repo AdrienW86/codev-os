@@ -16,3 +16,12 @@ export function formatDate(date: string | null | undefined) {
   const value = dateOnly ? calendarDate : new Date(/(?:Z|[+-]\d{2}:\d{2})$/i.test(date) ? date : `${date}Z`);
   return Number.isNaN(value.getTime()) ? "—" : dateFormatter.format(value);
 }
+
+const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+
+/** Instant affiché en heure de Paris (« 12 oct., 08:00 »). */
+export function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : dateTimeFormatter.format(date);
+}

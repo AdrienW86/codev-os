@@ -9,7 +9,7 @@ export const workSections = [
   { id: "done", label: "Terminé" },
 ] as const;
 export type WorkSectionId = (typeof workSections)[number]["id"];
-export type WorkKind = "task" | "recommendation" | "action";
+export type WorkKind = "task" | "recommendation" | "action" | "incident";
 
 export type WorkItem = {
   key: string; id: string; kind: WorkKind; kindLabel: string; section: WorkSectionId;
@@ -32,6 +32,8 @@ type TaskInput = { id: string; client_id: string; project_id: string | null; tit
 type RecommendationInput = { id: string; client_id: string; project_id: string | null; title: string; status: string; severity: string; updated_at: string; reason?: string | null; client?: Ref; project?: Ref; agent?: Ref };
 type ActionInput = { id: string; client_id: string; project_id: string | null; action_type: string; status: string; requires_approval: boolean; updated_at: string; client?: Ref; project?: Ref; agent?: Ref; recommendation?: { id: string; title: string } | null };
 
+type IncidentInput = { id: string; client_id: string; project_id: string | null; title: string; status: string; severity: string; source: string; detected_at: string; updated_at: string; client?: Ref; project?: Ref; agent?: Ref };
+
 const taskPriorityKey = (priority: string) => priority === "Haute" ? "high" : priority === "Basse" ? "low" : "medium";
 const severityKey = (severity: string) => severity === "high" || severity === "critical" ? "high" : severity === "medium" ? "medium" : "low";
 
@@ -48,14 +50,21 @@ function recommendationSection(status: string): WorkSectionId {
 
 function actionSection(status: string, requiresApproval: boolean): WorkSectionId {
   if (status === "pending_approval") return requiresApproval ? "review" : "waiting";
-  if (status === "approved" || status === "executing" || status === "failed") return "follow";
+  if (status === "approved" || status === "executing" || status === "failed" || status === "uncertain") return "follow";
   if (status === "draft") return "waiting";
   return "done";
 }
 
+function incidentSection(status: string): WorkSectionId {
+  if (status === "resolved") return "done";
+  return status === "investigating" ? "follow" : "todo";
+}
+
+const incidentStatus = (status: string): Label => status === "resolved" ? { label: "Résolu", tone: "green" } : status === "investigating" ? { label: "En cours d’analyse", tone: "neutral" } : { label: "Incident ouvert", tone: "amber" };
+
 const project = (id: string | null, name: string | undefined | null) => (id && name ? { id, name } : null);
 
-export function buildWorkItems(input: { tasks: readonly TaskInput[]; recommendations: readonly RecommendationInput[]; actions: readonly ActionInput[] }): WorkItem[] {
+export function buildWorkItems(input: { tasks: readonly TaskInput[]; recommendations: readonly RecommendationInput[]; actions: readonly ActionInput[]; incidents?: readonly IncidentInput[] }): WorkItem[] {
   const items: WorkItem[] = [
     ...input.tasks.map((task): WorkItem => ({
       key: `task:${task.id}`, id: task.id, kind: "task", summary: null, agent: null, source: null, fullHref: `/tasks/${task.id}/edit`, priorityKey: taskPriorityKey(task.priority), kindLabel: "Tâche", section: taskSection(task.status),
@@ -77,6 +86,13 @@ export function buildWorkItems(input: { tasks: readonly TaskInput[]; recommendat
       href: `/actions?status=${encodeURIComponent(item.status)}`, status: actionStatusLabel(item.status),
       client: { id: item.client_id, name: item.client?.name ?? null }, project: project(item.project_id, item.project?.name),
       priority: null, dueDate: null, updatedAt: item.updated_at,
+    })),
+    ...(input.incidents ?? []).map((item): WorkItem => ({
+      key: `incident:${item.id}`, id: item.id, kind: "incident", summary: `Détecté automatiquement (${item.source}). Les correctifs proposés apparaissent comme actions à valider.`, agent: item.agent ?? null,
+      source: null, fullHref: null, priorityKey: severityKey(item.severity), kindLabel: "Incident", section: incidentSection(item.status),
+      title: item.title, href: `/clients/${item.client_id}`, status: incidentStatus(item.status),
+      client: { id: item.client_id, name: item.client?.name ?? null }, project: project(item.project_id, item.project?.name),
+      priority: severityLabel(item.severity), dueDate: null, updatedAt: item.updated_at,
     })),
   ];
   return items.sort((a, b) =>

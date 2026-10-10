@@ -8,6 +8,9 @@ import { ClientAgenticActivity } from "@/components/clients/client-agentic-activ
 import { ClientServicesPanel } from "@/components/clients/client-services-panel";
 import { ServicesAgentsSection } from "@/components/clients/services-agents-section";
 import { GoogleAdsPanel } from "@/components/clients/google-ads-panel";
+import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
+import { listClientSources } from "@/lib/connections/service";
+import { safeRead } from "@/lib/core/safe-read";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
 import { Action } from "@/components/ui/button";
@@ -59,6 +62,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const client = await getClientOrNotFound(id);
   const search = await searchParams;
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
+  const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
   const adsDays = typeof search.ads_days === "string" && ["7", "30", "90"].includes(search.ads_days) ? Number(search.ads_days) : 30;
   const [projects, tasks, assignments, agents, recommendations, runs, actions, services, projectAssignments] = await Promise.all([
     listProjectsByClient(client.id),
@@ -97,7 +101,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         });
         return (
           <>
-            <ServicesAgentsSection services={servicesView.services} otherServices={servicesView.otherServices} />
+            <ServicesAgentsSection clientId={client.id} services={servicesView.services} otherServices={servicesView.otherServices} />
             {toHandle > 0 && (
               <section aria-labelledby="client-work" className="mt-10">
                 <SectionHeader id="client-work" title="Travail à traiter" count={toHandle} action={<Link href="/work" className="text-sm text-accent hover:underline">Ouvrir Travail</Link>} />
@@ -159,6 +163,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
           <>
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} days={adsDays} />
+            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} /></div>
           </>
         );
       })()}

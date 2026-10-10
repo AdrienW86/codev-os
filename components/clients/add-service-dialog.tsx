@@ -5,6 +5,7 @@ import { AgentStateBadge, CapabilityLegend, CapabilityList } from "@/components/
 import { ServiceStatusBadge } from "@/components/clients/service-card";
 import { Icon } from "@/components/ui/icon";
 import Link from "next/link";
+import { ServiceMutationForm } from "@/components/clients/service-mutation-form";
 import { TrySimulationButton } from "@/components/simulation/simulation-banner";
 import { scopeLabels } from "@/lib/agents/catalog";
 import type { ClientServiceView } from "@/lib/services/client-view";
@@ -12,16 +13,13 @@ import type { ClientServiceView } from "@/lib/services/client-view";
 export type ServiceDialogView = { mode: "catalog" } | { mode: "detail"; serviceId: string; fromCatalog?: boolean };
 
 /**
- * Panneau « Services » : catalogue et détail d’un service.
- * Aucune écriture : l’ajout se fait en aperçu local à la page.
+ * Panneau « Services » : catalogue, détail, activation et désactivation réelles d’un service.
  */
-export function AddServiceDialog({ view, services, previewIds, onNavigate, onPreview, onRemovePreview, onClose }: {
+export function AddServiceDialog({ clientId, view, services, onNavigate, onClose }: {
+  clientId: string;
   view: ServiceDialogView | null;
   services: ClientServiceView[];
-  previewIds: ReadonlySet<string>;
   onNavigate: (view: ServiceDialogView) => void;
-  onPreview: (serviceId: string) => void;
-  onRemovePreview: (serviceId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -34,9 +32,8 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
     if (!view && dialog.open) dialog.close();
   }, [view]);
 
-  const available = services.filter((service) => service.status === "not-subscribed" && !previewIds.has(service.id));
+  const available = services.filter((service) => service.status === "not-subscribed");
   const service = view?.mode === "detail" ? services.find((item) => item.id === view.serviceId) ?? null : null;
-  const isPreview = service ? previewIds.has(service.id) : false;
 
   return (
     <dialog
@@ -84,7 +81,7 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
       {service && (
         <div className="space-y-6 p-5">
           <div className="flex flex-wrap items-center gap-3">
-            <ServiceStatusBadge status={service.status} preview={isPreview} />
+            <ServiceStatusBadge status={service.status} />
             <p className="text-sm text-muted">{service.description}</p>
           </div>
           {service.recordedAs.length > 0 && <p className="text-xs text-muted">Enregistré sous : {service.recordedAs.join(", ")}</p>}
@@ -113,22 +110,17 @@ export function AddServiceDialog({ view, services, previewIds, onNavigate, onPre
           </section>
 
           {service.status === "included" ? (
-            <Notice>Inclus pour tous les clients actifs. L’agent Rapport rassemblera publications, SEO, Ads, tâches, recommandations, incidents et performances. Le moteur de rapport n’est pas encore disponible.</Notice>
-          ) : isPreview ? (
-            <div className="space-y-3">
-              <Notice tone="amber">Aperçu uniquement : ce service n’est pas enregistré et disparaîtra au rechargement de la page.</Notice>
-              <button type="button" onClick={() => onRemovePreview(service.id)} className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium">Retirer l’aperçu</button>
-            </div>
+            <Notice>Inclus pour tous les clients actifs. L’Agent Rapport rassemble projets, tâches, publications, recommandations, actions, incidents et performances dans les rapports hebdomadaires et mensuels.</Notice>
           ) : service.status === "not-subscribed" ? (
             <div className="space-y-3">
-              <Notice tone="amber">L’activation des services n’est pas encore connectée. Vous pouvez afficher ce service en aperçu sur cette fiche, sans rien enregistrer. Pour consigner un contrat existant, utilisez « Services enregistrés » plus bas.</Notice>
-              <button type="button" onClick={() => onPreview(service.id)} className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-background">Afficher en aperçu</button>
+              <Notice>Les agents associés seront rattachés au client. Un agent en pause ou sans connexion rend le service « À configurer ».</Notice>
+              <ServiceMutationForm clientId={clientId} serviceKey={service.id} mode="activate" />
             </div>
           ) : (
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Désactiver ce service</h3>
-              <Notice>Une fois disponible, la désactivation arrêtera les agents liés pour les prochaines exécutions. L’historique (publications, recommandations, tâches) restera conservé. Rien n’est supprimé.</Notice>
-              <TrySimulationButton scenarioId="all-services" href="/clients/sim-renov">Voir la désactivation en simulation</TrySimulationButton>
+              <Notice>Les agents liés seront arrêtés pour ce client et leurs automatisations mises en pause. L’historique (publications, recommandations, tâches, rapports) reste conservé. Rien n’est supprimé.</Notice>
+              <ServiceMutationForm clientId={clientId} serviceKey={service.id} mode="deactivate" />
             </div>
           )}
         </div>

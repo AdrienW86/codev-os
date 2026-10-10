@@ -297,6 +297,11 @@ function settingsMocks(context) {
     "@/components/simulation/views/sim-settings": { SimAutomations: () => null, SimConnections: () => null },
     "@/lib/agents/data": { listAgents: async () => [] }, "@/lib/agents/catalog": load("lib/agents/catalog.ts", { "@/lib/services/catalog": servicesCatalog }),
     "@/lib/simulation/server": { getActiveScenario: async () => null },
+    "@/components/automations/automations-panel": { AutomationsPanel: () => null },
+    "@/components/system/system-status": { SystemStatus: () => null, Observability: () => null },
+    "@/lib/automations/service": { listAutomations: async () => [] }, "@/lib/clients/data": { listClients: async () => [] },
+    "@/lib/system/health": { getSystemHealth: async () => null }, "@/lib/system/providers": { isProviderConfigured: () => false },
+    "@/lib/core/safe-read": { safeRead: async (_scope, read, fallback) => { try { return { data: await read(), unavailable: false }; } catch { return { data: fallback, unavailable: true }; } } },
   };
 }
 

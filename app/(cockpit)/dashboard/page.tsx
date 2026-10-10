@@ -7,6 +7,9 @@ import { AttentionCard } from "@/components/dashboard/attention-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { TechNews } from "@/components/dashboard/tech-news";
 import { demoNews } from "@/lib/news/types";
+import { topNews } from "@/lib/news/data";
+import { listReports } from "@/lib/reports/service";
+import { listIncidents } from "@/lib/incidents/data";
 import { listClients } from "@/lib/clients/data";
 import { listProjects } from "@/lib/projects/data";
 import { listTasks } from "@/lib/tasks/data";
@@ -30,10 +33,13 @@ async function firstName() {
 export default async function DashboardPage() {
   await requireAdmin();
   if (await getActiveScenario()) return <SimDashboard name={await firstName()} />;
-  const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications] = await Promise.all([
+  const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications, news, reportsToReview, incidents] = await Promise.all([
     firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 4 }),
-    // Les publications sont facultatives sur la home : leur indisponibilité ne bloque pas la page.
+    // Modules facultatifs sur la home : leur indisponibilité (migration non appliquée, panne) ne bloque pas la page.
     listPublications().catch(() => null),
+    topNews(3).catch(() => []),
+    listReports({ status: "ready_for_review" }).catch(() => []),
+    listIncidents().then((items) => items.filter((item) => item.status !== "resolved")).catch(() => []),
   ]);
   const summary = summarizeDashboard({ clients, projects, tasks, agents, recommendations, actions });
   const pendingRecommendations = recommendations.filter((item) => item.status === "pending");
@@ -67,6 +73,16 @@ export default async function DashboardPage() {
       title: countLabel(publicationsToPrepare.length, "publication à préparer", "publications à préparer"),
       items: publicationsToPrepare.slice(0, 3).map((item) => ({ id: item.id, title: item.subject, detail: item.client?.name ?? "Client", href: `/publications?publication=${item.id}` })),
     },
+    {
+      key: "incidents", count: incidents.length, urgent: true, icon: "alert" as const, href: "/work?kind=incident", linkLabel: "Voir les incidents",
+      title: countLabel(incidents.length, "incident ouvert", "incidents ouverts"),
+      items: incidents.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: item.client?.name ?? "Client", href: "/work?kind=incident" })),
+    },
+    {
+      key: "reports", count: reportsToReview.length, urgent: false, icon: "reports" as const, href: "/reports?status=ready_for_review", linkLabel: "Relire les rapports",
+      title: countLabel(reportsToReview.length, "rapport à relire", "rapports à relire"),
+      items: reportsToReview.slice(0, 3).map((item) => ({ id: item.id, title: item.title, detail: item.client?.name ?? "Global", href: `/reports/${item.id}` })),
+    },
   ].filter((card) => card.count > 0); // Aucune carte vide.
 
   return (
@@ -98,7 +114,7 @@ export default async function DashboardPage() {
       )}
 
       <div className="mt-12">
-        <TechNews items={demoNews} demo />
+        <TechNews items={news.length ? news : demoNews} demo={!news.length} />
       </div>
     </>
   );

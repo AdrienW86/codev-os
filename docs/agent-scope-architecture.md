@@ -10,7 +10,7 @@ Un **client** représente l’entreprise. Un **projet** représente un domaine o
 
 - L’agent client, dont le futur Account Manager, travaille avec `project_id = null`. Il accède aux projets et à leur synthèse déterministe depuis sa fiche. Aucun rôle n’est déduit de son nom.
 - Le spécialiste travaille avec un projet explicite, une portée projet confirmée, un rattachement client actif et une autorisation projet active. Son activation globale et son statut Actif restent nécessaires. Le moteur actuel conserve uniquement ses actions internes autorisées ; aucune autonomie supplémentaire.
-- L’ancien nom « Ads Agent » reste une condition de l’intégration Ads historique, mais ne détermine jamais la portée. Cette intégration utilise une connexion au niveau client. Elle ne peut actuellement pas exécuter de run spécialisé ni attribuer arbitrairement les métriques d’un compte Ads à une campagne/projet.
+- L’intégration Ads identifie son agent par `agent_type = 'google-ads'` (le nom est libre) ; le type ne détermine jamais la portée. Cette intégration utilise une connexion au niveau client. Elle ne peut actuellement pas exécuter de run spécialisé ni attribuer arbitrairement les métriques d’un compte Ads à une campagne/projet.
 
 Exemple Jrenov : `jrenov.com` et SEO sont des projets distincts si leur périmètre métier le justifie ; Ads Lyon, Social, GBP et Maintenance restent distincts. Un spécialiste peut être autorisé sur plusieurs projets mais chaque run en cible exactement un. L’Account Manager cible Jrenov sans projet, puis agrège les activités classées par projet.
 

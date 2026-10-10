@@ -22,6 +22,7 @@ export const metadata: Metadata = { title: "Rapports" };
 
 const selectClass = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
 const uuid = /^[0-9a-f-]{36}$/i;
+const day = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
   await requireAdmin();
@@ -30,20 +31,23 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   const status = isReportStatus(params.status) ? params.status : undefined;
   const kind = isReportKind(params.kind) ? params.kind : undefined;
   const clientId = typeof params.client === "string" && uuid.test(params.client) ? params.client : undefined;
+  // Période COUVERTE (chevauchement avec [du, au]) — distincte de la date de génération.
+  const from = typeof params.from === "string" && day.test(params.from) ? params.from : undefined;
+  const to = typeof params.to === "string" && day.test(params.to) ? params.to : undefined;
   const [reports, clients] = await Promise.all([
-    safeRead("reports", () => listReports({ status, kind, clientId, includeArchived: status === "archived" }), []),
+    safeRead("reports", () => listReports({ status, kind, clientId, from, to, includeArchived: status === "archived" }), []),
     safeRead("clients", () => listClients(), []),
   ]);
   const toReview = reports.data.filter((report) => report.status === "ready_for_review").length;
 
   return (
     <>
-      <PageHeading eyebrow="Suivi" title="Rapports" description="Rapports hebdomadaires et mensuels préparés par l’Agent Rapport : relisez, ajustez, approuvez, puis envoyez la version client." />
+      <PageHeading eyebrow="Suivi" title="Rapports" description="Documents enregistrés, versionnés et soumis à approbation : rapports hebdomadaires et mensuels de l’Agent Rapport, et rapports Google Ads préparés depuis l’onglet Campagnes d’un client." />
       {reports.unavailable && <div className="mb-6"><ModuleUnavailable module="Rapports" /></div>}
 
       <Panel className="mb-8 p-5">
         <h2 className="font-semibold">Générer un rapport</h2>
-        <p className="mt-1 text-sm text-muted">Période close précédente (semaine lundi→dimanche ou mois civil). Les rapports sont aussi générés automatiquement par les automatisations.</p>
+        <p className="mt-1 text-sm text-muted">Période close précédente (semaine lundi→dimanche ou mois civil). Les rapports sont aussi générés automatiquement par les automatisations. Un rapport Google Ads se prépare depuis la fiche client → Campagnes, pour une période et des campagnes explicites.</p>
         {clients.data.length ? (
           <MutationForm action={generateReportAction} label="Générer" pendingLabel="Génération…" variant="primary" className="mt-4 grid items-end gap-3 sm:flex sm:flex-wrap">
             <label className="min-w-0 text-xs text-muted sm:w-64">Client
@@ -67,6 +71,9 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         { name: "status", label: "Statut", value: status ?? "", options: Object.entries(reportStatusLabels).map(([value, item]) => ({ value, label: item.label })) },
         { name: "kind", label: "Type", value: kind ?? "", options: Object.entries(reportKindLabels).map(([value, label]) => ({ value, label })) },
         { name: "client", label: "Client", value: clientId ?? "", options: clients.data.map((client) => ({ value: client.id, label: client.name })) },
+      ]} dates={[
+        { name: "from", label: "Période couverte — du", value: from ?? "" },
+        { name: "to", label: "Période couverte — au", value: to ?? "" },
       ]} />
       {reports.data.length ? (
         <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
@@ -77,7 +84,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
                 <Link href={`/reports/${report.id}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-white/[0.02]">
                   <div className="min-w-0">
                     <p className="font-medium">{report.client?.name ?? "Tous les clients"} · {reportKindLabels[report.kind]}</p>
-                    <p className="text-sm text-muted">{periodLabel(report.kind, { start: report.period_start, end: report.period_end })} · v{report.version} · généré le {formatDate(report.generated_at)}</p>
+                    <p className="text-sm text-muted">Période couverte : {periodLabel(report.kind, { start: report.period_start, end: report.period_end })} · v{report.version}</p>
+                    <p className="text-xs text-muted">Généré le {formatDate(report.generated_at)}</p>
                   </div>
                   <StatusBadge label={state.label} tone={state.tone} />
                 </Link>
@@ -86,7 +94,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
           })}
         </ul>
       ) : !reports.unavailable && (
-        <EmptyState icon="reports" title={status || kind || clientId ? "Aucun rapport pour ces filtres." : "Aucun rapport pour l’instant."}
+        <EmptyState icon="reports" title={status || kind || clientId || from || to ? "Aucun rapport pour ces filtres." : "Aucun rapport pour l’instant."}
           description="Générez un premier rapport ci-dessus, ou créez une automatisation « Rapports hebdomadaires » dans Paramètres → Automatisations." />
       )}
     </>

@@ -14,3 +14,20 @@ export function campaignPerformanceQuery(period: AdsPeriod) {
 export function accountPerformanceQuery(period: AdsPeriod) {
   return `SELECT ${metrics} FROM customer WHERE ${dateClause(period)}`;
 }
+
+// --- Tableau de bord des campagnes (lecture seule) ---------------------------------------------
+// Inventaire complet, y compris les campagnes supprimées : une campagne retirée peut porter des dépenses
+// sur la période ; elle n'est affichée qu'avec le filtre « tous statuts ».
+export const campaignInventoryQuery = "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign.advertising_channel_sub_type, campaign_budget.amount_micros, campaign_budget.explicitly_shared, campaign_budget.period FROM campaign";
+/** Métriques agrégées par campagne sur la période (une ligne par campagne ayant de l'activité). */
+export function campaignMetricsQuery(period: AdsPeriod) {
+  return `SELECT campaign.id, ${metrics} FROM campaign WHERE ${dateClause(period)}`;
+}
+/**
+ * Leads Local Services (ressource local_services_lead, lecture seule). Seuls le type, le statut, la
+ * facturation et la date sont lus : jamais les coordonnées (contact_details) ni les conversations.
+ */
+export function localServicesLeadsQuery(period: AdsPeriod) {
+  validatePeriod(period);
+  return `SELECT local_services_lead.lead_type, local_services_lead.lead_status, local_services_lead.lead_charged, local_services_lead.creation_date_time FROM local_services_lead WHERE local_services_lead.creation_date_time >= '${period.start} 00:00:00' AND local_services_lead.creation_date_time <= '${period.end} 23:59:59'`;
+}

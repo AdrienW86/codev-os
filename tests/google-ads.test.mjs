@@ -22,8 +22,11 @@ function load(path, mocks = {}, globals = {}) {
   } });
   return exports;
 }
-const validation = load("lib/integrations/google-ads/validation.ts");
+const periods = load("lib/integrations/google-ads/periods.ts");
+const validation = load("lib/integrations/google-ads/validation.ts", { "./periods": periods });
 const queries = load("lib/integrations/google-ads/queries.ts", { "./validation": validation });
+const dashboard = load("lib/integrations/google-ads/dashboard.ts", { "./periods": periods });
+const scopes = load("lib/integrations/google-ads/scope.ts", { "./periods": periods });
 function transport({ env = {}, deny = false, respond = async () => ({}) } = {}) {
   const calls = [], logs = [];
   const clientModule = load("lib/integrations/google-ads/client.ts", {
@@ -38,7 +41,12 @@ function transport({ env = {}, deny = false, respond = async () => ({}) } = {}) 
 function response(body, status = 200) { return { ok: status < 400, status, headers: new Headers(), json: async () => body }; }
 const fakeEnv = { GOOGLE_ADS_CLIENT_ID: "unit-client", GOOGLE_ADS_CLIENT_SECRET: "unit-secret", GOOGLE_ADS_REFRESH_TOKEN: "unit-refresh" };
 
-function serviceSetup({ deny = false, connected = true, assigned = true, active = true, signal = true, googleError = false, connectionExists = true } = {}) {
+const inventory = [
+  { id: "123", name: "Campagne", status: "ENABLED", type: "SEARCH", subType: null, budget: { amount: 10, shared: false, period: "DAILY" } },
+  { id: "456", name: "Ancienne", status: "PAUSED", type: "SEARCH", subType: null, budget: { amount: 5, shared: true, period: "DAILY" } },
+  { id: "789", name: "LSA", status: "ENABLED", type: "LOCAL_SERVICES", subType: null, budget: { amount: null, shared: null, period: null } },
+];
+function serviceSetup({ deny = false, connected = true, assigned = true, active = true, signal = true, googleError = false, connectionExists = true, agentType = "google-ads", dashboardError = null, recommendationFails = false } = {}) {
   const calls = [], audits = [], recommendations = [], runs = [], changes = [];
   let connection = connectionExists ? { id: connectionId, client_id: clientId, provider: "google_ads", external_account_id: account.id, status: connected ? "connected" : "disconnected", metadata: { auth_strategy: "single_user", connection_version: 1, refresh_token: "must-not-forward", manager_customer_id: "9876543210" }, last_checked_at: null, created_at: "2026-01-01", updated_at: "2026-01-01" } : null;
   const guard = async () => { calls.push("auth"); if (deny) throw new Error("denied"); return { userId: "unit-admin" }; };
@@ -46,6 +54,15 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
   const readClient = {
     getAccountSummary: async (...args) => { calls.push(["account", ...args]); if (googleError) throw new clientModule.GoogleAdsError("access"); return account; },
     getCampaignPerformance: async () => { calls.push("read_campaigns"); return { campaigns: [{ ...campaign, metrics: { ...metrics, conversions: signal ? 0 : 2 } }], totals: metrics }; },
+    getCampaignDashboard: async (...args) => {
+      calls.push(["dashboard", ...args]);
+      if (dashboardError) throw new clientModule.GoogleAdsError(dashboardError);
+      return {
+        inventory, current: { 123: { ...metrics, conversions: signal ? 0 : 2 }, 456: { ...metrics, cost: 7, conversions: 1 } },
+        previous: args[2] ? { 123: metrics } : null, accountTotals: { ...metrics, cost: 57 }, accountPrevious: args[2] ? metrics : null,
+        leads: { available: false, reason: "Accès refusé à la ressource des leads Local Services." },
+      };
+    },
   };
   const supabase = { from: (table) => {
     calls.push(["db", table]);
@@ -66,7 +83,7 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
     "@/lib/require-admin": { requireAdmin: guard },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
     "@/lib/clients/data": { getClient: async () => ({ id: clientId }) },
-    "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, name: "Ads Agent", status: active ? "Actif" : "En pause", enabled: active }), listClientsForAgent: async () => assigned ? [{ client_id: clientId, enabled: true }] : [] },
+    "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, name: "Agent Ads", agent_type: agentType, status: active ? "Actif" : "En pause", enabled: active }), listClientsForAgent: async () => assigned ? [{ client_id: clientId, enabled: true }] : [] },
     "@/lib/agents/validation": { isAgentUuid: (id) => /^[\da-f-]{36}$/.test(id) },
     "@/lib/audit-logs": { writeAuditLog: async (entry) => audits.push(entry) },
     "@/lib/agent-runs/data": {
@@ -74,9 +91,9 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
       completeAgentRun: async (_id, summary) => { runs.at(-1).status = "completed"; runs.at(-1).summary = summary; return { ok: true }; },
       failAgentRun: async () => { runs.at(-1).status = "failed"; return { ok: true }; },
     },
-    "@/lib/recommendations/data": { createRecommendation: async (input) => { recommendations.push(input); return { ok: true, recommendation: { id: connectionId } }; } },
-    "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.GoogleAdsError },
-    "./validation": validation,
+    "@/lib/recommendations/data": { createRecommendation: async (input) => { if (recommendationFails) return { ok: false, message: "unit" }; recommendations.push(input); return { ok: true, recommendation: { id: connectionId } }; } },
+    "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.GoogleAdsError, normalizeMetrics: clientModule.normalizeMetrics },
+    "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
   });
   return { service, calls, audits, recommendations, runs, changes };
 }
@@ -158,7 +175,7 @@ test("inaccessible accounts fail a connection test with safe metadata", async ()
 });
 
 test("analysis refuses missing connections, inactive agents and inactive assignments before creating a run", async () => {
-  for (const options of [{ connectionExists: false }, { connected: false }, { assigned: false }, { active: false }]) {
+  for (const options of [{ connectionExists: false }, { connected: false }, { assigned: false }, { active: false }, { agentType: "seo" }]) {
     const context = serviceSetup(options);
     assert.equal((await context.service.runGoogleAdsAnalysis(agentId, clientId)).ok, undefined);
     assert.equal(context.runs.length, 0);
@@ -182,16 +199,22 @@ test("no signal completes a run without inventing a recommendation", async () =>
   const context = serviceSetup({ signal: false });
   assert.equal((await context.service.runGoogleAdsAnalysis(agentId, clientId)).ok, true);
   assert.equal(context.recommendations.length, 0);
-  assert.match(context.runs[0].summary, /aucune recommandation/);
+  assert.match(context.runs[0].summary, /aucun signal/);
   assert.equal(context.service.findAdsAnomalies([{ ...campaign, metrics: { ...metrics, conversions: null } }]).length, 0);
 });
 
-test("Google read failures mark the started run failed", async () => {
-  const context = serviceSetup({ googleError: true });
+test("Google read failures are audited without a run or recommendation; later failures mark the run failed", async () => {
+  for (const options of [{ googleError: true }, { dashboardError: "quota" }]) {
+    const context = serviceSetup(options);
+    assert.equal((await context.service.runGoogleAdsAnalysis(agentId, clientId)).ok, undefined);
+    assert.equal(context.runs.length, 0);
+    assert.equal(context.recommendations.length, 0);
+    assert.ok(context.audits.some((item) => item.action === "google_ads.analysis_failed"));
+  }
+  const context = serviceSetup({ recommendationFails: true });
   assert.equal((await context.service.runGoogleAdsAnalysis(agentId, clientId)).ok, undefined);
   assert.equal(context.runs[0].status, "failed");
-  assert.equal(context.recommendations.length, 0);
-  assert.ok(context.audits.some((item) => item.action === "google_ads.analysis_failed"));
+  assert.ok(context.audits.some((item) => item.action === "google_ads.analysis_failed" && item.metadata.run_id));
 });
 
 test("non-admin cannot reach storage or the Google Ads transport", async () => {

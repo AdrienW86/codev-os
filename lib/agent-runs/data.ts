@@ -1,4 +1,5 @@
 import "server-only";
+import { isStoredScope } from "@/lib/integrations/google-ads/scope";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/lib/audit-logs";
@@ -80,7 +81,11 @@ export async function createAgentRun(input: unknown): Promise<AgentRunResult> {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return { ok: false, message: genericError };
   const metadataRecord = metadata as Record<string, unknown>;
   const internalMetadata = Object.keys(metadataRecord).every((key) => key === "internal_test") && (!("internal_test" in metadataRecord) || metadataRecord.internal_test === true);
-  const adsMetadata = Object.keys(metadataRecord).length === 1 && metadataRecord.run_type === "google_ads_read_only";
+  // Analyse Google Ads : type d'exécution, moteur et périmètre explicite (revalidé) uniquement.
+  const adsKeys = Object.keys(metadataRecord);
+  const adsMetadata = metadataRecord.run_type === "google_ads_read_only" && adsKeys.every((key) => ["run_type", "engine", "scope"].includes(key))
+    && (metadataRecord.engine === undefined || metadataRecord.engine === "deterministic")
+    && (metadataRecord.scope === undefined || isStoredScope(metadataRecord.scope));
   if (!internalMetadata && !adsMetadata) return { ok: false, message: genericError };
 
   try {

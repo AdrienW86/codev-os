@@ -28,7 +28,7 @@ export type JobInsert = {
   payload?: Json; scheduled_for?: string; idempotency_key: string; trigger?: JobTrigger; max_attempts?: number;
 };
 
-export type ReportKind = "weekly" | "monthly";
+export type ReportKind = "weekly" | "monthly" | "google_ads";
 export type ReportStatus = "draft" | "ready_for_review" | "approved" | "sent" | "archived";
 export type ReportRow = {
   id: string; client_id: string | null; kind: ReportKind; period_start: string; period_end: string; status: ReportStatus; version: number;
@@ -36,7 +36,9 @@ export type ReportRow = {
   approved_by: string | null; approved_version: number | null; sent_at: string | null; archived_at: string | null; delivery: Json;
   created_at: string; updated_at: string;
 };
-export type ReportInsert = Partial<Omit<ReportRow, "id" | "created_at" | "updated_at">> & Pick<ReportRow, "kind" | "period_start" | "period_end">;
+// scope : colonne ajoutée par 20261016000000_google_ads_reports.sql ; volontairement absente de ReportRow
+// (les listes ne la lisent pas, pour rester compatibles avec une base où la migration n'est pas appliquée).
+export type ReportInsert = Partial<Omit<ReportRow, "id" | "created_at" | "updated_at">> & Pick<ReportRow, "kind" | "period_start" | "period_end"> & { scope?: Json };
 export type ReportVersionRow = { id: string; report_id: string; version: number; summary: string; internal_content: Json; client_content: Json; created_by: string | null; created_at: string };
 
 export type AgendaKind = "event" | "meeting" | "work_block" | "check" | "automation";
@@ -64,8 +66,8 @@ export type NewsItemRow = { id: string; source_id: string; source_name: string; 
 export type CoreTables = {
   automations: Table<AutomationRow, AutomationInsert>;
   jobs: Table<JobRow, JobInsert, Partial<Omit<JobRow, "id" | "idempotency_key" | "created_at">>>;
-  reports: Table<ReportRow, ReportInsert>;
-  report_versions: Table<ReportVersionRow, Omit<ReportVersionRow, "id" | "created_at">, never>;
+  reports: Table<ReportRow & { scope?: Json }, ReportInsert>;
+  report_versions: Table<ReportVersionRow & { scope?: Json | null }, Omit<ReportVersionRow, "id" | "created_at"> & { scope?: Json | null }, never>;
   agenda_items: Table<AgendaItemRow, AgendaItemInsert>;
   incidents: Table<IncidentRow, IncidentInsert>;
   site_checks: Table<SiteCheckRow, Omit<SiteCheckRow, "id" | "checked_at" | "details" | "job_id"> & { details?: Json; job_id?: string | null; checked_at?: string }>;

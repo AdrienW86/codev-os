@@ -4,13 +4,15 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { describeAction } from "@/lib/actions/registry";
-import { buildReport, previousPeriod, type Period, type ReportInput, type ReportKind } from "@/lib/reports/build";
+import { buildReport, previousPeriod, type Period, type RecurringReportKind, type ReportInput } from "@/lib/reports/build";
+import { getReportScope } from "@/lib/reports/google-ads-service";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
-import type { ReportRow, ReportStatus } from "@/lib/supabase/core.types";
+import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const day = /^\d{4}-\d{2}-\d{2}$/;
 const fail = (what: string): never => { throw new Error(`report ${what}`); };
 
 export async function gatherReportInput(clientId: string, period: Period): Promise<ReportInput> {
@@ -48,7 +50,7 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
 export type GenerateResult = { status: "created" | "updated" | "frozen"; id: string; version: number };
 
 /** Génère (ou régénère en nouvelle version) le rapport d'une période. Un rapport envoyé ou archivé n'est jamais modifié. */
-export async function generateReport(actor: Actor, input: { clientId: string; kind: ReportKind; today: string; period?: Period }): Promise<GenerateResult> {
+export async function generateReport(actor: Actor, input: { clientId: string; kind: RecurringReportKind; today: string; period?: Period }): Promise<GenerateResult> {
   if (!uuid.test(input.clientId)) fail("client");
   const period = input.period ?? previousPeriod(input.kind, input.today);
   const data = await gatherReportInput(input.clientId, period);
@@ -77,12 +79,15 @@ export async function generateReport(actor: Actor, input: { clientId: string; ki
 const columns = "id,client_id,kind,period_start,period_end,status,version,title,summary,internal_content,client_content,generated_at,approved_at,approved_by,approved_version,sent_at,archived_at,delivery,created_at,updated_at";
 export type ReportRecord = ReportRow & { client: { id: string; name: string } | null };
 
-export async function listReports(filters: { status?: ReportStatus; kind?: ReportKind; clientId?: string; includeArchived?: boolean } = {}): Promise<ReportRecord[]> {
+/** Filtres : `from` / `to` portent sur la PÉRIODE COUVERTE (chevauchement), pas sur la date de génération. */
+export async function listReports(filters: { status?: ReportStatus; kind?: ReportKind; clientId?: string; includeArchived?: boolean; from?: string; to?: string } = {}): Promise<ReportRecord[]> {
   let query = db().from("reports").select(`${columns},client:clients(id,name)`).order("period_start", { ascending: false }).limit(200);
   if (filters.status) query = query.eq("status", filters.status);
   else if (!filters.includeArchived) query = query.neq("status", "archived");
   if (filters.kind) query = query.eq("kind", filters.kind);
   if (filters.clientId && uuid.test(filters.clientId)) query = query.eq("client_id", filters.clientId);
+  if (filters.from && day.test(filters.from)) query = query.gte("period_end", filters.from);
+  if (filters.to && day.test(filters.to)) query = query.lte("period_start", filters.to);
   const { data, error } = await query;
   if (error) fail("list");
   return (data ?? []) as unknown as ReportRecord[];
@@ -125,7 +130,9 @@ export async function editReportSummary(actor: Actor & { kind: "admin" }, id: st
   const { data, error } = await db().from("reports").update({ client_content: clientContent as Json, summary: text, version, status: "ready_for_review", approved_at: null, approved_by: null, approved_version: null }).eq("id", id).eq("version", report.version).select("id");
   if (error) fail("edit");
   if (!data?.length) return { ok: false, message: "Le rapport a changé entre-temps : rechargez-le." };
-  await db().from("report_versions").insert({ report_id: id, version, summary: text, internal_content: report.internal_content, client_content: clientContent as Json, created_by: actor.userId });
+  // Rapport Google Ads : la version porte le même périmètre que le rapport (inchangé par une modification de synthèse).
+  const scope = report.kind === "google_ads" ? await getReportScope(id) : null;
+  await db().from("report_versions").insert({ report_id: id, version, summary: text, internal_content: report.internal_content, client_content: clientContent as Json, created_by: actor.userId, ...(scope ? { scope: scope as unknown as Json } : {}) });
   await writeAudit(actor, { action: "report.edited", resource_type: "report", resource_id: id, metadata: { version } });
   return { ok: true };
 }

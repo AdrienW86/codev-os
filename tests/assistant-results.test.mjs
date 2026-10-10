@@ -276,7 +276,7 @@ test("the result panel is a single accessible dialog that never renders model HT
   }
   const session = read("components/assistant/use-assistant.ts");
   // Lecture vocale : la phrase de synthèse uniquement, jamais la vue.
-  assert.match(session, /speak\(text\)/);
+  assert.match(session, /speak\(text,/);
   assert.doesNotMatch(session, /speak\([^)]*view/);
   assert.match(box, /Actualisation en cours… le résultat précédent est masqué/);
 });

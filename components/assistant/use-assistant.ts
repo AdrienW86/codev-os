@@ -3,7 +3,7 @@
 // État de l'assistant partagé par la zone d'accueil et le panneau de résultats : fil de conversation,
 // contexte (client, vue, filtres), dernière vue structurée, proposition en attente, dictée.
 // Toutes les données viennent du serveur (/api/assistant) ; le navigateur ne fait que les afficher.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { speak, stopSpeaking, useVoice } from "@/components/assistant/use-voice";
 import { postAssistant } from "@/lib/assistant/client-api";
 import { writeFilters, type DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
@@ -30,6 +30,9 @@ export function useAssistant() {
   const [failed, setFailed] = useState<{ content: string; via: "text" | "voice" } | null>(null);
   const [voiceOutput, setVoiceOutput] = useState(false);
   const voiceOutputRef = useRef(false);
+  const [speaking, setSpeaking] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  const playback = useRef<AbortController | null>(null);
   const context = useRef<AssistantContext>({});
   /** Élément qui a déclenché la demande (hors panneau) : le focus y revient à la fermeture, même s'il a été désactivé entre-temps. */
   const trigger = useRef<HTMLElement | null>(null);
@@ -39,9 +42,9 @@ export function useAssistant() {
   };
   const busy = useRef(false);
 
-  const call = useCallback(async (body: unknown): Promise<Reply> => {
+  const call = useCallback(async (body: unknown, signal?: AbortSignal): Promise<Reply> => {
     try {
-      const response = await postAssistant(body);
+      const response = await postAssistant(body, signal);
       if (response.status === 401) return { reply: "Session expirée : rechargez la page pour vous reconnecter.", error: "unauthorized" };
       const data = await response.json().catch(() => ({})) as Reply;
       return response.ok ? data : { reply: data.reply ?? failure, error: data.error ?? "failed" };
@@ -55,17 +58,24 @@ export function useAssistant() {
     if (data.context) context.current = data.context;
     if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(true); }
     setNotice(data.degraded ? `IA indisponible${data.degradedReason ? ` (${data.degradedReason})` : ""} : réponse en mode simplifié.` : "");
-    // Lecture vocale : la phrase de synthèse uniquement, jamais le contenu d'un tableau.
-    if (voiceOutputRef.current) {
-      const result = speak(text);
-      if (result !== "ok") setNotice(result === "no_voice" ? "Aucune voix française disponible sur cet appareil." : "La lecture vocale n’est pas prise en charge par ce navigateur.");
-    }
   }, []);
 
-  const send = useCallback(async (text: string, via: "text" | "voice" = "text", base: Turn[] = turns) => {
+  const readReply = useCallback(async (text: string, signal?: AbortSignal) => {
+    if (!voiceOutputRef.current) return true;
+    const controller = new AbortController(); playback.current?.abort(); playback.current = controller;
+    setSpeaking(true);
+    const result = await speak(text, signal ? AbortSignal.any([signal, controller.signal]) : controller.signal);
+    if (playback.current === controller) { playback.current = null; setSpeaking(false); }
+    if (result !== "ok" && !signal?.aborted) setNotice("Lecture vocale interrompue ou indisponible. Utilisez le bouton micro ou le clavier.");
+    return result === "ok";
+  }, []);
+
+  const send = useCallback(async (text: string, via: "text" | "voice" = "text", base: Turn[] = turns, externalSignal?: AbortSignal) => {
     const content = text.trim().slice(0, 2000);
-    if (!content || busy.current) return;
+    if (!content || busy.current || externalSignal?.aborted) return false;
     busy.current = true;
+    const controller = new AbortController(); request.current = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000), ...(externalSignal ? [externalSignal] : [])]);
     rememberTrigger();
     const history = [...base, { role: "user" as const, content, ...(via === "voice" ? { via } : {}) }].slice(-12);
     setTurns(history);
@@ -74,15 +84,22 @@ export function useAssistant() {
     setFailed(null);
     setPending(true);
     setRefreshing(true);
-    const data = await call({ messages: history.map(({ role, content: message }) => ({ role, content: message.slice(0, 2000) })), context: context.current, via });
+    try {
+    const data = await call({ messages: history.map(({ role, content: message }) => ({ role, content: message.slice(0, 2000) })), context: context.current, via }, signal);
+    if (signal.aborted) return false;
     deliver(data);
     // « oui » écrit ou dicté : la proposition reste à confirmer par le bouton, rien n'a été exécuté.
     if (data.keepProposal && waiting) setProposal(waiting);
     if (data.error) setFailed({ content, via });
+    const spoken = !data.error && await readReply(data.reply ?? failure, signal);
+    return !data.error && spoken;
+    } finally {
     setRefreshing(false);
     setPending(false);
     busy.current = false;
-  }, [call, deliver, proposal, turns]);
+    if (request.current === controller) request.current = null;
+    }
+  }, [call, deliver, proposal, readReply, turns]);
 
   const retry = useCallback(() => {
     if (!failed) return;
@@ -90,11 +107,18 @@ export function useAssistant() {
     void send(failed.content, failed.via, turns.slice(0, -2));
   }, [failed, send, turns]);
 
-  const voice = useVoice(useCallback((text: string) => { void send(text, "voice"); }, [send]));
+  const voice = useVoice(useCallback((text: string, signal: AbortSignal) => send(text, "voice", turns, signal), [send, turns]));
+  const stopVoice = useCallback(() => { voice.cancel(); request.current?.abort(); playback.current?.abort(); stopSpeaking(); }, [voice.cancel]);
+  const toggleContinuous = useCallback(() => {
+    if (voice.continuous || voice.state !== "idle") { stopVoice(); return; }
+    if (busy.current) return;
+    voiceOutputRef.current = true; setVoiceOutput(true); voice.toggleContinuous();
+  }, [stopVoice, voice.continuous, voice.state, voice.toggleContinuous]);
 
   const confirm = useCallback(async () => {
     // Même règle que le bouton : désactivé seulement pendant une requête en cours.
-    if (!proposal || pending) return;
+    if (!proposal || busy.current) return;
+    voice.cancel(); playback.current?.abort();
     busy.current = true;
     setPending(true);
     const current = proposal;
@@ -103,9 +127,10 @@ export function useAssistant() {
     deliver(reply);
     // Échec technique (quota, réseau, session) : la proposition reste disponible pour réessayer.
     if (reply.error) setProposal(current);
+    await readReply(reply.reply ?? failure);
     setPending(false);
     busy.current = false;
-  }, [call, deliver, pending, proposal]);
+  }, [call, deliver, proposal, readReply, voice.cancel]);
 
   const cancelProposal = useCallback(() => {
     setProposal(null);
@@ -115,6 +140,7 @@ export function useAssistant() {
   /** Bouton d'une vue : le serveur valide et décrit la proposition ; rien n'est exécuté avant « Confirmer ». */
   const proposeFromView = useCallback(async (tool: string, input: Record<string, unknown>) => {
     if (busy.current) return { ok: false, message: "Une demande est déjà en cours." };
+    voice.cancel(); playback.current?.abort();
     busy.current = true;
     setPending(true);
     const reply = await call({ propose: { tool, input } });
@@ -122,7 +148,7 @@ export function useAssistant() {
     busy.current = false;
     if (reply.proposal) { setProposal(reply.proposal); return { ok: true, message: "Proposition prête : vérifiez-la puis confirmez en bas du panneau." }; }
     return { ok: false, message: reply.reply ?? failure };
-  }, [call]);
+  }, [call, voice.cancel]);
 
   /** Filtres modifiés directement dans la vue : les demandes suivantes partent de cet état. */
   const syncAdsFilters = useCallback((clientId: string, clientName: string, filters: DashboardFilters) => {
@@ -133,13 +159,15 @@ export function useAssistant() {
     const next = !voiceOutputRef.current;
     voiceOutputRef.current = next;
     setVoiceOutput(next);
-    if (!next) stopSpeaking();
+    if (!next) { stopVoice(); playback.current?.abort(); }
     setNotice(next ? "Mode vocal activé : seules les phrases de synthèse sont lues, jamais les tableaux." : "Mode vocal désactivé.");
-  }, []);
+  }, [stopVoice]);
+
+  useEffect(() => () => { request.current?.abort(); playback.current?.abort(); stopSpeaking(); }, []);
 
   return {
     turns, proposal, pending, refreshing, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,
-    trigger, rememberTrigger, send, retry, confirm, cancelProposal, proposeFromView, syncAdsFilters, toggleVoiceOutput,
+    speaking, stopVoice, toggleContinuous, trigger, rememberTrigger, send, retry, confirm, cancelProposal, proposeFromView, syncAdsFilters, toggleVoiceOutput,
   };
 }
 

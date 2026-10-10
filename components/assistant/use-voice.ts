@@ -1,150 +1,144 @@
 "use client";
 
-// Voix V1 : dictée push-to-talk (MediaRecorder → /api/assistant/transcribe), repli sur la
-// reconnaissance vocale du navigateur, lecture des réponses par speechSynthesis.
-// Chaque état d'échec a un message explicite : micro refusé, navigateur incompatible,
-// aucune voix détectée, échec de transcription, annulation.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postTranscription } from "@/lib/assistant/client-api";
+import { createSilenceDetector } from "@/lib/voice/silence";
+import { MAX_AUDIO_BYTES } from "@/lib/voice/audio";
 
-export type VoiceState = "idle" | "recording" | "transcribing";
+export type VoiceState = "idle" | "requesting" | "recording" | "transcribing" | "responding";
 type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start(): void; stop(): void; abort(): void; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: ((event: { error: string }) => void) | null; onend: (() => void) | null };
-
-const MAX_RECORDING_MS = 60_000;
-
-function speechRecognitionCtor(): (new () => Recognition) | null {
-  if (typeof window === "undefined") return null;
+function recognitionCtor() {
   const w = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
-
-const errorMessages: Record<string, string> = {
-  denied: "Accès au micro refusé. Autorisez le micro dans les réglages du navigateur pour dicter.",
-  unsupported: "Ce navigateur ne permet pas la dictée. Tapez votre demande.",
-  no_speech: "Aucune voix détectée. Réessayez en parlant plus près du micro.",
-  failed: "La transcription a échoué. Réessayez ou tapez votre demande.",
-  cancelled: "Dictée annulée.",
-  no_device: "Aucun micro détecté.",
+const errors: Record<string, string> = {
+  NotAllowedError: "Accès au micro refusé. Autorisez-le dans les réglages du navigateur.",
+  SecurityError: "Le micro nécessite une page HTTPS et votre autorisation.",
+  NotFoundError: "Aucun micro détecté.",
+  empty: "Aucune voix détectée. Réessayez avec le bouton micro.",
+  large: "Enregistrement trop volumineux. Dictez une demande plus courte.",
+  unsupported: "Voix continue indisponible ici. Utilisez le bouton micro ou le clavier.",
+  failed: "La dictée a échoué. Réessayez avec le bouton micro ou le clavier.",
 };
 
-export function useVoice(onTranscript: (text: string) => void) {
+/** One cancellable loop; no effect can restart it. Each cycle closes the microphone before sending. */
+export function useVoice(onTranscript: (text: string, signal: AbortSignal) => Promise<boolean>) {
   const [state, setState] = useState<VoiceState>("idle");
   const [message, setMessage] = useState("");
-  const recorder = useRef<MediaRecorder | null>(null);
-  const recognition = useRef<Recognition | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  const cancelled = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const controller = useRef<AbortController | null>(null);
+  const [continuous, setContinuous] = useState(false);
+  const callback = useRef(onTranscript); callback.current = onTranscript;
+  const current = useRef<AbortController | null>(null);
+  const finish = useRef<(() => void) | null>(null);
   const preferBrowser = useRef(false);
-
-  const stopTracks = () => recorder.current?.stream.getTracks().forEach((track) => track.stop());
-
-  const browserRecognition = useCallback(() => {
-    const Ctor = speechRecognitionCtor();
-    if (!Ctor) { setMessage(errorMessages.unsupported); setState("idle"); return false; }
-    const instance = new Ctor();
-    instance.lang = "fr-FR"; instance.interimResults = false; instance.maxAlternatives = 1;
-    let heard = false;
-    instance.onresult = (event) => { const text = event.results[0]?.[0]?.transcript?.trim(); if (text) { heard = true; setMessage(""); onTranscript(text); } };
-    instance.onerror = (event) => setMessage(event.error === "not-allowed" || event.error === "service-not-allowed" ? errorMessages.denied : event.error === "no-speech" ? errorMessages.no_speech : event.error === "aborted" ? errorMessages.cancelled : errorMessages.failed);
-    instance.onend = () => { setState("idle"); recognition.current = null; if (!heard && !cancelled.current) setMessage((current) => current || errorMessages.no_speech); };
-    recognition.current = instance;
-    setState("recording");
-    setMessage("Parlez… appuyez de nouveau pour terminer.");
-    instance.start();
-    return true;
-  }, [onTranscript]);
-
-  const upload = useCallback(async (blob: Blob) => {
-    setState("transcribing");
-    setMessage("Transcription…");
-    controller.current = new AbortController();
-    try {
-      const response = await postTranscription(blob, controller.current.signal);
-      const data = await response.json().catch(() => ({})) as { text?: string; error?: string; reason?: string; message?: string };
-      if (response.ok && data.text) { setMessage(""); onTranscript(data.text); return; }
-      if (data.error === "stt_not_configured" && speechRecognitionCtor()) { setMessage("Transcription serveur non configurée : utilisation de la dictée du navigateur."); browserRecognition(); return; }
-      if (data.error === "no_speech") { setMessage(errorMessages.no_speech); return; }
-      if (data.error === "stt_not_configured") { setMessage("Transcription serveur non configurée : voir Paramètres → Connexions."); return; }
-      // Raison précise renvoyée par le serveur (quota, clé, modèle, format…), sinon message générique.
-      const reason = typeof data.message === "string" && data.message ? data.message.slice(0, 240) : errorMessages.failed;
-      // Panne durable côté serveur : la prochaine pression utilise la dictée du navigateur si elle existe.
-      const lasting = ["quota", "unauthorized", "model", "format", "rejected", "blocked"].includes(data.reason ?? "");
-      if (lasting && speechRecognitionCtor()) preferBrowser.current = true;
-      setMessage(lasting && speechRecognitionCtor() ? `${reason} Appuyez de nouveau sur le micro pour utiliser la dictée du navigateur.` : reason);
-    } catch (error) {
-      setMessage((error as { name?: string }).name === "AbortError" ? errorMessages.cancelled : errorMessages.failed);
-    } finally {
-      controller.current = null;
-      setState((current) => (current === "transcribing" ? "idle" : current));
-    }
-  }, [browserRecognition, onTranscript]);
-
-  const start = useCallback(async () => {
-    cancelled.current = false;
-    setMessage("");
-    if (preferBrowser.current || typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { browserRecognition(); return; }
-    let stream: MediaStream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (error) {
-      const name = (error as { name?: string }).name;
-      setMessage(name === "NotAllowedError" || name === "SecurityError" ? errorMessages.denied : name === "NotFoundError" ? errorMessages.no_device : errorMessages.failed);
-      return;
-    }
-    const type = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg", "audio/mp4"].find((candidate) => MediaRecorder.isTypeSupported?.(candidate)) ?? "";
-    const instance = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-    chunks.current = [];
-    instance.ondataavailable = (event) => { if (event.data.size) chunks.current.push(event.data); };
-    instance.onstop = () => {
-      stream.getTracks().forEach((track) => track.stop());
-      if (timer.current) clearTimeout(timer.current);
-      if (cancelled.current) { setState("idle"); setMessage(errorMessages.cancelled); return; }
-      const blob = new Blob(chunks.current, { type: instance.mimeType || "audio/webm" });
-      if (blob.size < 1_000) { setState("idle"); setMessage(errorMessages.no_speech); return; }
-      void upload(blob);
-    };
-    recorder.current = instance;
-    instance.start();
-    setState("recording");
-    setMessage("Enregistrement… appuyez de nouveau pour envoyer, Échap pour annuler.");
-    timer.current = setTimeout(() => { if (instance.state === "recording") instance.stop(); }, MAX_RECORDING_MS);
-  }, [browserRecognition, upload]);
-
-  const stop = useCallback(() => {
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    recognition.current?.stop();
-  }, []);
-
   const cancel = useCallback(() => {
-    cancelled.current = true;
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    recognition.current?.abort();
-    controller.current?.abort();
-    setState("idle");
-    setMessage(errorMessages.cancelled);
+    current.current?.abort(); current.current = null; finish.current = null;
+    stopSpeaking(); setContinuous(false); setState("idle"); setMessage("Voix arrêtée.");
   }, []);
 
-  const toggle = useCallback(() => { if (state === "recording") stop(); else if (state === "idle") void start(); }, [start, state, stop]);
-
-  useEffect(() => () => { stopTracks(); recognition.current?.abort(); controller.current?.abort(); if (timer.current) clearTimeout(timer.current); }, []);
-
-  return { state, message, setMessage, toggle, cancel };
+  const start = useCallback(async (loop: boolean) => {
+    if (current.current) return;
+    const controller = new AbortController(); const { signal } = controller;
+    current.current = controller; setContinuous(loop); setMessage("");
+    const active = () => !signal.aborted && current.current === controller;
+    try {
+      if (loop && (preferBrowser.current || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined" || typeof AudioContext === "undefined" || !("speechSynthesis" in window))) throw new Error("unsupported");
+      do {
+        setState("requesting"); setMessage("Autorisation du micro…");
+        let text: string;
+        if (preferBrowser.current || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+          const Ctor = recognitionCtor(); if (!Ctor || loop) throw new Error("unsupported");
+          text = await new Promise<string>((resolve, reject) => {
+            const recognition = new Ctor(); let heard = "";
+            recognition.lang = "fr-FR"; recognition.interimResults = false; recognition.maxAlternatives = 1;
+            const timeout = setTimeout(() => recognition.stop(), 60_000);
+            const abort = () => { recognition.abort(); reject(new DOMException("Cancelled", "AbortError")); };
+            signal.addEventListener("abort", abort, { once: true });
+            recognition.onresult = (event) => { heard = event.results[0]?.[0]?.transcript?.trim() ?? ""; };
+            recognition.onerror = (event) => reject(new Error(["not-allowed", "service-not-allowed"].includes(event.error) ? "NotAllowedError" : "failed"));
+            recognition.onend = () => { clearTimeout(timeout); signal.removeEventListener("abort", abort); finish.current = null; if (heard) resolve(heard); else reject(new Error("empty")); };
+            finish.current = () => recognition.stop();
+            setState("recording"); setMessage("Dictée du navigateur : appuyez de nouveau pour terminer."); recognition.start();
+          });
+        } else {
+          // getUserMedia cannot be aborted: close a late stream before using it.
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+          if (!active()) { stream.getTracks().forEach((track) => track.stop()); return; }
+          const blob = await new Promise<Blob>((resolve, reject) => {
+            let recorder: MediaRecorder | null = null; let audio: AudioContext | null = null;
+            let interval: ReturnType<typeof setInterval> | undefined; let timeout: ReturnType<typeof setTimeout> | undefined;
+            const chunks: Blob[] = []; let bytes = 0; let failure: string | null = null;
+            const cleanup = () => { clearInterval(interval); clearTimeout(timeout); stream.getTracks().forEach((track) => track.stop()); void audio?.close().catch(() => {}); signal.removeEventListener("abort", abort); finish.current = null; };
+            const stop = () => { if (recorder?.state === "recording") recorder.stop(); };
+            const abort = () => { cleanup(); stop(); reject(new DOMException("Cancelled", "AbortError")); };
+            signal.addEventListener("abort", abort, { once: true });
+            try {
+              const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg", "audio/mp4"].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+              recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+              recorder.ondataavailable = (event) => { bytes += event.data.size; if (bytes > MAX_AUDIO_BYTES) { failure = "large"; stop(); } else if (event.data.size) chunks.push(event.data); };
+              recorder.onerror = () => { cleanup(); reject(new Error("failed")); };
+              recorder.onstop = () => { const type = recorder?.mimeType || "audio/webm"; cleanup(); if (signal.aborted) return; if (failure) reject(new Error(failure)); else if (bytes < 1000) reject(new Error("empty")); else resolve(new Blob(chunks, { type })); };
+              if (loop) {
+                audio = new AudioContext(); const analyser = audio.createAnalyser(); analyser.fftSize = 1024;
+                audio.createMediaStreamSource(stream).connect(analyser);
+                const samples = new Float32Array(analyser.fftSize); const detect = createSilenceDetector(performance.now());
+                void audio.resume().catch(() => { failure = "unsupported"; stop(); });
+                interval = setInterval(() => {
+                  analyser.getFloatTimeDomainData(samples); const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+                  const outcome = detect(rms, performance.now()); if (outcome !== "listen") { if (outcome === "empty") failure = "empty"; stop(); }
+                }, 100);
+              }
+              finish.current = stop; recorder.start(250);
+              timeout = setTimeout(stop, loop ? 30_000 : 60_000);
+              setState("recording"); setMessage(loop ? "Écoute… une pause termine votre demande. Arrêter reste disponible." : "Enregistrement… appuyez de nouveau pour envoyer, Échap pour annuler.");
+            } catch { cleanup(); reject(new Error("unsupported")); }
+          });
+          if (!active()) return;
+          setState("transcribing"); setMessage("Transcription…");
+          const response = await postTranscription(blob, AbortSignal.any([signal, AbortSignal.timeout(35_000)]));
+          const data = await response.json() as { text?: string; error?: string };
+          if (!response.ok || !data.text?.trim()) {
+            if (data.error === "stt_not_configured" && recognitionCtor()) preferBrowser.current = true;
+            throw new Error(data.error === "no_speech" ? "empty" : data.error === "stt_not_configured" ? "unsupported" : "failed");
+          }
+          text = data.text.trim().slice(0, 2000);
+        }
+        if (!active()) return;
+        setState("responding"); setMessage("Traitement de votre demande… micro suspendu.");
+        const succeeded = await callback.current(text, signal);
+        if (active()) setMessage(succeeded ? "" : "Session vocale interrompue. Consultez la réponse puis réessayez avec le bouton micro.");
+        if (!succeeded) break;
+      } while (loop && active() && document.visibilityState === "visible");
+    } catch (error) {
+      if (active()) { const value = error as Error; setMessage(errors[value.name] ?? errors[value.message] ?? errors.failed); }
+    } finally {
+      if (current.current === controller) { current.current = null; finish.current = null; setState("idle"); setContinuous(false); }
+    }
+  }, []);
+  const toggle = useCallback(() => { if (finish.current) finish.current(); else if (!current.current) void start(false); }, [start]);
+  const toggleContinuous = useCallback(() => { if (current.current) cancel(); else void start(true); }, [cancel, start]);
+  useEffect(() => {
+    const hide = () => { if (document.visibilityState !== "visible") cancel(); };
+    document.addEventListener("visibilitychange", hide); window.addEventListener("pagehide", cancel);
+    return () => { document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", cancel); current.current?.abort(); stopSpeaking(); };
+  }, [cancel]);
+  return { state, message, setMessage, continuous, toggle, toggleContinuous, cancel };
 }
 
-/** Lecture vocale des réponses (voix française si disponible). */
-export function speak(text: string): "ok" | "unsupported" | "no_voice" {
+/** Resolve after playback ends so the recording loop cannot hear the synthesized reply. */
+export async function speak(text: string, signal?: AbortSignal): Promise<"ok" | "unsupported" | "no_voice" | "failed"> {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return "unsupported";
-  const voices = window.speechSynthesis.getVoices();
-  const voice = voices.find((item) => item.lang?.toLowerCase().startsWith("fr")) ?? null;
+  if (signal?.aborted) return "failed";
+  const voices = window.speechSynthesis.getVoices(); const voice = voices.find((item) => item.lang.toLowerCase().startsWith("fr"));
   if (voices.length && !voice) return "no_voice";
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text.slice(0, 600));
-  utterance.lang = "fr-FR";
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.speak(utterance);
-  return "ok";
+  stopSpeaking();
+  return new Promise((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, 450)); utterance.lang = "fr-FR"; if (voice) utterance.voice = voice;
+    let settled = false;
+    const done = (result: "ok" | "failed") => { if (settled) return; settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", abort); resolve(result); };
+    const abort = () => { stopSpeaking(); done("failed"); };
+    const timeout = setTimeout(abort, 30_000); signal?.addEventListener("abort", abort, { once: true });
+    utterance.onend = () => done("ok"); utterance.onerror = () => done("failed");
+    try { window.speechSynthesis.speak(utterance); } catch { done("failed"); }
+  });
 }
-
-export function stopSpeaking() {
-  if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
-}
+export function stopSpeaking() { if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel(); }

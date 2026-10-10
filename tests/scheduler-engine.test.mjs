@@ -38,6 +38,7 @@ function setup({ automations = [], jobs = [], handlers = {}, configured = () => 
     "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry,
     "@/lib/system/providers": { isProviderConfigured: configured }, "@/lib/agents/outputs": outputs,
     "@/lib/runs/handlers": { runHandlers: Object.fromEntries(Object.keys(registry.runTypes).map((type) => [type, async () => handlers[type] ?? (async () => ({ status: "succeeded", summary: "ok" }))])) },
+    "@/lib/reports/recurring/service": { enqueueDueAdsReports: async () => 0 },
     "@/lib/runs/types": types, "@/lib/scheduler/recurrence": recurrence,
   });
   return { engine, fake };
@@ -181,3 +182,9 @@ test("cron authorization: secret required, constant-time comparison, no prefix t
   assert.equal(cronAuth.checkCronAuthorization(`Bearer ${secret}`, undefined).status, 503);
   assert.equal(cronAuth.checkCronAuthorization("Bearer short", "short").status, 503, "weak secret refused");
 });
+
+ test("recurring transport can record missing approval even before email setup; external transport remains inside its guarded handler", async () => {
+ let ran=false;
+ const {engine}=setup({jobs:[{id:"job-recurring",run_type:"ads.report.send",client_id:CLIENT,idempotency_key:"recurring"}],configured:()=>false,handlers:{"ads.report.send":async()=>{ran=true;return{status:"skipped",summary:"Envoi bloqué : validation nécessaire."};}}});
+ const result=await engine.processJobs(system,"worker-A");assert.equal(result.skipped,1);assert.equal(ran,true);
+ });

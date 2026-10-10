@@ -65,11 +65,13 @@ function runSetup({ failure = false, unavailable = false, simulation = false, mo
     "@/lib/agent-runs/data": { createAgentRun: async (input) => { metadata = input.metadata; return { ok: true, run: { id: runId } }; }, completeAgentRun: async () => ({ ok: true }), failAgentRun: async () => ({ ok: true }) },
     "@/lib/recommendations/data": { createRecommendation: async (input) => { recommendations.push(input); return { ok: true, recommendation: { id: "reco-unit" } }; } },
     "./client": { createGoogleAdsReadClient: () => transport, normalizeMetrics: () => ({}), GoogleAdsError: class extends Error {} }, "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
+    "./tracking-store": { readCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "./tracking": { loadCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai,
+    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, context: snapshot.business }) },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => { released++; } }), saveAdsAnalysisMetadata: async (_id, _client, _agent, value) => { metadata = value; } },
-  });
+  }, { performance });
   return { run: () => service.runGoogleAdsAnalysis(agentId, clientId, { scope: { start: scope.start, end: scope.end, status: scope.status, types: scope.types, campaignIds: scope.campaignIds }, mode }), get: () => ({ metadata, recommendations, released, calls }) };
 }
 test("successful AI run stores the exact scope, instruction snapshot, provider/model and validated result", async () => {

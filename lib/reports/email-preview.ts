@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 const line = z.string().max(10000);
 const contentSchema = z.object({ summary: z.string().max(4000), highlights: z.array(line).max(100).optional(), sections: z.array(z.object({ title: line, lines: z.array(line).max(200) }).strict()).max(50), empty: z.boolean().optional() }).strict();
-export const recipientSchema = z.string().trim().max(320).email().refine((value) => !/[\s,;<>\r\n]/.test(value));
+export { recipientSchema } from "./recipient";
 /** Whitelist client content, plain text only. Never inspect internal_content. */
 export function reportEmailPreview(report: { title: string; version: number; client_content: unknown }) {
   const content = contentSchema.parse(report.client_content);

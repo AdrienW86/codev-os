@@ -47,7 +47,8 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
       {turns.length > 0 && !open && (
         <ol ref={list} aria-label="Conversation avec l’assistant" aria-live="polite" className="mb-4 max-h-80 space-y-3 overflow-y-auto pr-1">
           {turns.map((turn, index) => <TurnItem key={index} turn={turn} />)}
-          {pending && <li className="text-sm text-muted">L’assistant réfléchit…</li>}
+          {session.latencyMs !== null && <li className="text-xs text-muted">Réponse et affichage : {session.latencyMs} ms{voice.transcriptionMs !== null ? ` · transcription ${voice.transcriptionMs} ms` : ""}{session.synthesisMs !== null ? ` · lecture vocale ${session.synthesisMs} ms` : ""}</li>}
+          {pending && <li className="text-sm text-muted">Résolution du client, lecture des données et analyse en cours…</li>}
         </ol>
       )}
       {view && (

@@ -144,6 +144,10 @@ export function parseIntent(text: string, today: string, context: AssistantConte
   // Google Ads en consultation : nouvelle vue, ou suite de la vue courante (« et sur 7 jours ? », « uniquement Local Services »).
   const ads = parseAdsRequest(original);
   const inAdsView = context.view === "ads_campaigns";
+  if ((ads.mentionsAds || inAdsView) && /\b(recommand\w*|conseill\w*|conseils?|optimis\w*)\b/.test(value)) {
+    if (ads.clarify) return { clarify: ads.clarify };
+    return { tool: "ads_recommendations", input: { ...adsInput(ads), ...(/\b(actualis\w*|rafraich\w*)\b/.test(value) ? { refresh: true } : {}) } };
+  }
   const launches = /\b(verifie|controle|lance|analyse|check|audit|planifie|programme)\b/.test(value);
   const followUp = inAdsView && !launches && (hasAdsChange(ads) || (ads.followUp && Boolean(ads.client)));
   if ((ads.mentionsAds && ads.display && !launches) || followUp) {

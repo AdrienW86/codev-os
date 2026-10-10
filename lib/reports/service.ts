@@ -165,9 +165,15 @@ export async function archiveReport(actor: Actor & { kind: "admin" }, id: string
  */
 export async function sendReport(actor: Actor & { kind: "admin" }, id: string, mode: "email" | "manual", preview: { version: number; recipient?: string; digest?: string; confirmed?: boolean }): Promise<Outcome> {
   await requireAdmin();
+  return transportApprovedReport(actor, id, mode, preview);
+}
+
+/** Server-only transport shared with the scheduler. System sends require a transactional occurrence authorization. */
+export async function transportApprovedReport(actor: Actor, id: string, mode: "email" | "manual", preview: { version: number; recipient?: string; digest?: string; confirmed?: boolean }, occurrenceId?: string, lease?: { jobId: string; worker: string }): Promise<Outcome> {
+  if (actor.kind === "system" && (mode !== "email" || !occurrenceId || !lease)) return { ok: false, message: "Autorisation d’échéance requise." };
   const report = await getReport(id);
   if (!report || report.status !== "approved" || report.approved_version !== report.version || report.version !== preview.version) return { ok: false, message: "Seule la version approuvée et prévisualisée d’un rapport peut être envoyée." };
-  const delivery: Record<string, unknown> = { mode: "manual", recorded_by: actor.userId };
+  const delivery: Record<string, unknown> = { mode: "manual", recorded_by: actor.kind === "system" ? "scheduler" : actor.userId };
   if (mode === "email") {
     const status = emailSendingStatus();
     if (!status.enabled) return { ok: false, message: status.reason };
@@ -176,7 +182,9 @@ export async function sendReport(actor: Actor & { kind: "admin" }, id: string, m
     const email = reportEmailPreview(report);
     if (email.digest !== preview.digest) return { ok: false, message: "Le contenu a changé : rechargez la prévisualisation." };
     const token = crypto.randomUUID();
-    const { data: claimed, error: claimError } = await db().rpc("codev_claim_report_delivery", { p_report_id: id, p_version: report.version, p_token: token, p_recipient: parsed.data, p_subject: email.subject, p_body: email.text, p_content: report.client_content });
+    const { data: claimed, error: claimError } = await (actor.kind === "system" && occurrenceId
+      ? db().rpc("codev_claim_recurring_delivery", { p_occurrence: occurrenceId, p_job: lease!.jobId, p_worker: lease!.worker, p_report_id: id, p_version: report.version, p_token: token, p_recipient: parsed.data, p_subject: email.subject, p_body: email.text, p_content: report.client_content })
+      : db().rpc("codev_claim_report_delivery", { p_report_id: id, p_version: report.version, p_token: token, p_recipient: parsed.data, p_subject: email.subject, p_body: email.text, p_content: report.client_content }));
     if (claimError) return { ok: false, message: "Envoi indisponible : vérifiez la migration locale de suivi des envois." };
     if (!claimed) return { ok: false, message: "Une tentative existe déjà ou la version a changé. Aucun nouvel e-mail envoyé." };
     let providerId: string;

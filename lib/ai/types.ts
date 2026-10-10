@@ -10,5 +10,7 @@ export type AIResponse = { text: string; toolCalls: ToolCall[] };
 export interface AIProvider {
   readonly id: "openai" | "anthropic";
   readonly model: string;
+  /** Vérification sans coût de génération : la clé est acceptée et le modèle accessible. */
+  ping(signal?: AbortSignal): Promise<void>;
   complete(input: { system: string; messages: ChatMessage[]; tools: ToolSpec[]; toolResults?: ToolResultMessage[]; signal?: AbortSignal }): Promise<AIResponse>;
 }

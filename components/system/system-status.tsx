@@ -6,6 +6,8 @@ import { ModuleUnavailable } from "@/components/ui/module-unavailable";
 import { allProviderStatuses, connectionState, type ConnectionState } from "@/lib/system/providers";
 import type { SystemHealth } from "@/lib/system/health";
 import { formatDateTime } from "@/lib/format-date";
+import { MutationForm } from "@/components/ui/mutation-form";
+import { testAIProviderAction } from "@/app/(cockpit)/settings/ai-actions";
 
 const states: Record<ConnectionState, { symbol: string; label: string; tone: "green" | "neutral" | "amber" }> = {
   ok: { symbol: "✓", label: "Configuré", tone: "green" },
@@ -55,6 +57,11 @@ export function SystemStatus({ errors }: { errors: SystemHealth["connectionError
           );
         })}
       </ul>
+      <div className="mt-6 rounded-xl border border-border bg-surface p-5">
+        <h3 className="font-medium">Assistant : tester la connexion IA</h3>
+        <p className="mt-1 text-sm text-muted">Vérifie le fournisseur et le modèle retenus par ce déploiement, et que la clé est acceptée. Aucune génération, aucun coût de jetons ; la clé n’est jamais affichée.</p>
+        <MutationForm action={testAIProviderAction} label="Tester la connexion IA" pendingLabel="Test en cours…" className="mt-3" />
+      </div>
       <p className="mt-3 text-xs text-muted">Les secrets se configurent uniquement côté serveur (variables d’environnement Vercel / coffre). Ils ne sont jamais saisis ni affichés ici.</p>
     </section>
   );

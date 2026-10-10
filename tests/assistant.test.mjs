@@ -207,3 +207,104 @@ test("every assistant tool named by the agent registry exists in the tool regist
   const { registry } = loadRegistry();
   for (const definition of Object.values(registry.agentDefinitions)) for (const tool of definition.tools) assert.ok(tools.isToolName(tool), `${definition.type}: ${tool}`);
 });
+
+test("regression: « Crée une tâche pour vérifier le référencement de … lundi à 9 h » proposes a TASK, never an SEO analysis", () => {
+  // TODAY = vendredi 2026-10-09 → lundi = 2026-10-12.
+  assert.deepEqual(plain(intents.parseIntent("Crée une tâche pour vérifier le référencement de Couverture Catalane lundi à 9 h", TODAY)), {
+    tool: "create_task", input: { title: "Vérifier le référencement de Couverture Catalane", client: "Couverture Catalane", due_date: "2026-10-12", due_time: "09:00", priority: "Moyenne" },
+  });
+  const seoWords = ["Ajoute une tâche : audit SEO de Jrenov demain", "Créer une tâche lancer l’analyse Google Ads pour Jrenov", "Note une tâche vérifier le site de Boulangerie Martin le 2026-10-20 à 14h30"];
+  for (const text of seoWords) assert.equal(intents.parseIntent(text, TODAY).tool, "create_task", text);
+  assert.deepEqual(plain(intents.parseIntent("Note une tâche vérifier le site de Boulangerie Martin le 2026-10-20 à 14h30", TODAY).input), { title: "Vérifier le site de Boulangerie Martin", client: "Boulangerie Martin", due_date: "2026-10-20", due_time: "14:30", priority: "Moyenne" });
+  assert.equal(intents.parseIntent("Lance une analyse SEO pour Jrenov", TODAY).tool, "run_check", "analysis requests are unchanged");
+});
+
+test("task creation asks for precision when client or date is missing or ambiguous", () => {
+  const clarify = (text) => intents.parseIntent(text, TODAY).clarify;
+  assert.match(clarify("Crée une tâche pour vérifier le référencement lundi à 9 h"), /Pour quel client/);
+  assert.match(clarify("Crée une tâche pour Jrenov la semaine prochaine"), /date précise/);
+  assert.match(clarify("Crée une tâche relancer le devis de Jrenov à 9h"), /Pour quel jour à 09:00/);
+  assert.match(clarify("Crée une tâche relancer Jrenov le 12"), /date exacte/);
+  assert.match(clarify("Crée une tâche"), /intitulé/);
+  assert.match(clarify("Crée une tâche appeler Jrenov à 25h"), /heure/);
+});
+
+test("proposals are pre-validated: unknown client → question, no proposal; canonical client name otherwise", async () => {
+  const prepare = async (_name, input) => input.client === "Couverture Catalane" ? { ok: false, question: "Aucun client ne correspond à « Couverture Catalane ». Précisez le client." } : { ok: true, input: { ...input, client: "Jrenov SAS" } };
+  const { calls, deps: d } = deps({ prepare });
+  const unknown = await orchestrator.respond(user("Crée une tâche pour vérifier le référencement de Couverture Catalane lundi à 9 h"), d);
+  assert.equal(unknown.proposal, undefined, "nothing to confirm");
+  assert.match(unknown.reply, /Précisez le client/);
+  const known = await orchestrator.respond(user("Crée une tâche relancer le devis pour jrenov demain"), d);
+  assert.equal(known.proposal.tool, "create_task");
+  assert.equal(known.proposal.input.client, "Jrenov SAS");
+  assert.match(known.proposal.summary, /Créer la tâche « Relancer le devis » pour Jrenov SAS, échéance 2026-10-10/);
+  assert.equal(calls.length, 0, "confirmation still required");
+  const refused = await orchestrator.confirmProposal("create_task", { client: "Couverture Catalane", title: "X y" }, { ...d, prepare });
+  assert.match(refused.reply, /Précisez le client/);
+  assert.equal(calls.length, 0);
+});
+
+test("a failing TOOL is not reported as an AI outage; a failing PROVIDER is, with a sanitized reason and log", async () => {
+  const logs = [];
+  const log = (message, details) => logs.push([message, plain(details)]);
+  const toolCall = { id: "openai", model: "gpt-4.1-mini", complete: async () => ({ text: "", toolCalls: [{ id: "c", name: "get_priorities", arguments: {} }] }) };
+  const broken = deps({ provider: toolCall, log, execute: async () => { throw new Error("health read"); } }).deps;
+  const toolFailure = await orchestrator.respond(user("urgences"), broken);
+  assert.equal(toolFailure.degraded, undefined, "not an AI outage");
+  assert.match(toolFailure.reply, /n’a pas pu aboutir/);
+  assert.deepEqual(logs.at(-1), ["[assistant] Outil en échec", { tool: "get_priorities", error: "health read" }]);
+
+  for (const [error, reason] of [
+    [new errors.ProviderError("openai", "rate_limited", 429, "insufficient_quota"), /quota OpenAI épuisé/],
+    [new errors.ProviderError("openai", "unauthorized", 401, "invalid_api_key"), /clé OpenAI refusée/],
+    [new errors.ProviderError("openai", "not_found", 404, "model_not_found"), /modèle OpenAI introuvable/],
+    [new errors.ProviderError("openai", "rejected", 400, "unsupported_parameter"), /requête refusée par OpenAI \(unsupported_parameter\)/],
+    [new errors.ProviderError("openai", "timeout"), /n’a pas répondu à temps/],
+  ]) {
+    const failing = { id: "openai", model: "gpt-5-mini", complete: async () => { throw error; } };
+    const reply = await orchestrator.respond(user("mes urgences"), deps({ provider: failing, log }).deps);
+    assert.equal(reply.degraded, true);
+    assert.match(reply.degradedReason, reason);
+    assert.equal(reply.reply, "résultat get_priorities", "deterministic fallback still answers");
+    const [message, details] = logs.at(-1);
+    assert.equal(message, "[assistant] Fournisseur IA en échec");
+    assert.deepEqual(Object.keys(details).sort(), ["code", "kind", "model", "provider", "status"]);
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /sk-|Bearer|Authorization/i);
+});
+
+test("system prompt carries today’s date and the task / clarification rules", () => {
+  const prompt = orchestrator.systemPrompt(TODAY);
+  assert.match(prompt, /vendredi 2026-10-09/);
+  assert.match(prompt, /create_task, même si le sujet/);
+  assert.match(prompt, /question de précision/);
+});
+
+test("OpenAI request: max_completion_tokens everywhere, no temperature for reasoning models; ping costs no tokens", async () => {
+  const bodies = [];
+  const fetchImpl = async (url, init) => { bodies.push({ url: String(url), method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : null }); return jsonResponse(200, { choices: [{ message: { content: "ok" } }], id: "m" }); };
+  await ai.createOpenAIProvider("sk-test", "gpt-4.1-mini", fetchImpl).complete({ system: "S", messages: [{ role: "user", content: "x" }], tools: [] });
+  await ai.createOpenAIProvider("sk-test", "gpt-5-mini", fetchImpl).complete({ system: "S", messages: [{ role: "user", content: "x" }], tools: [] });
+  assert.equal(bodies[0].body.max_tokens, undefined);
+  assert.equal(bodies[0].body.max_completion_tokens, 800);
+  assert.equal(bodies[0].body.temperature, 0.2);
+  assert.equal(bodies[1].body.temperature, undefined, "gpt-5 / o* reject a custom temperature");
+  assert.ok(bodies[1].body.max_completion_tokens >= 800);
+  await ai.createOpenAIProvider("sk-test", "gpt-4.1-mini", fetchImpl).ping();
+  assert.deepEqual(bodies.at(-1), { url: "https://api.openai.com/v1/models/gpt-4.1-mini", method: "GET", body: null });
+});
+
+test("provider error codes are extracted from the body, sanitized, and never carry the message or secrets", async () => {
+  const failing = (status, body) => api.providerJson("openai", "https://api.openai.com/v1/chat/completions", { fetchImpl: async () => ({ ok: false, status, text: async () => body }) }).then(() => null, (error) => error);
+  const quota = await failing(429, JSON.stringify({ error: { message: "You exceeded your quota sk-abc", type: "insufficient_quota", code: "insufficient_quota" } }));
+  assert.equal(quota.kind, "rate_limited");
+  assert.equal(quota.code, "insufficient_quota");
+  assert.doesNotMatch(quota.message, /sk-abc|exceeded/);
+  const param = await failing(400, JSON.stringify({ error: { message: "Unsupported parameter: 'max_tokens'", code: "unsupported_parameter", param: "max_tokens" } }));
+  assert.equal(param.kind, "rejected");
+  assert.equal(param.code, "unsupported_parameter");
+  assert.equal((await failing(400, "<html>oops</html>")).code, null);
+  assert.equal((await failing(401, JSON.stringify({ error: { code: "invalid key with spaces & <script>" } }))).code, null, "only identifiers are kept");
+  assert.equal((await failing(401, JSON.stringify({ error: { code: "invalid_api_key" } }))).kind, "unauthorized");
+});

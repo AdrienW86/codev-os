@@ -19,7 +19,7 @@ import { runCheckType, type ToolName } from "@/lib/assistant/tools";
 import { listAgendaItems } from "@/lib/agenda/service";
 import { addDays, expandOccurrences } from "@/lib/agenda/occurrences";
 import { zonedToUtc } from "@/lib/scheduler/recurrence";
-import type { ToolOutcome } from "@/lib/assistant/orchestrator";
+import type { PrepareResult, ToolOutcome } from "@/lib/assistant/orchestrator";
 
 const db = () => getSupabaseServerClient();
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
@@ -181,11 +181,31 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
       if (!client.ok) return { ok: false, text: client.message };
       const { data, error } = await db().from("tasks").insert({
         client_id: client.id, title: String(input.title).slice(0, 200), status: "À faire", priority: String(input.priority ?? "Moyenne"),
-        due_date: typeof input.due_date === "string" ? input.due_date : null, assignee_type: "admin",
+        due_date: typeof input.due_date === "string" ? input.due_date : null,
+        due_time: typeof input.due_date === "string" && typeof input.due_time === "string" ? input.due_time : null, assignee_type: "admin",
       }).select("id").single();
       if (error || !data) throw new Error("task insert");
       await writeAudit(actor, { action: "task.created", resource_type: "task", resource_id: data.id, metadata: { client_id: client.id, via: "assistant" } });
       return { ok: true, text: `Tâche créée pour ${client.name}.`, links: [{ label: "Voir la tâche", href: `/tasks/${data.id}/edit` }] };
     }
   }
+}
+
+/**
+ * Vérifie une écriture AVANT de la proposer : client existant et non ambigu (nom canonique repris),
+ * échéance non passée. Sinon, une question de précision est renvoyée et rien n'est proposé.
+ */
+export async function prepareProposal(name: ToolName, input: Record<string, unknown>): Promise<PrepareResult> {
+  const next = { ...input };
+  if (typeof input.client === "string") {
+    const client = await resolveClient(input.client);
+    if (!client.ok) return { ok: false, question: `${client.message} Précisez le client.` };
+    next.client = client.name;
+  }
+  const today = todayInParis();
+  for (const key of ["due_date", "date"] as const) {
+    if (typeof input[key] === "string" && (input[key] as string) < today) return { ok: false, question: `La date ${input[key]} est passée. Quelle date souhaitez-vous ?` };
+  }
+  if (name === "create_task" && typeof input.due_time === "string" && typeof input.due_date !== "string") return { ok: false, question: `Pour quel jour à ${input.due_time} ?` };
+  return { ok: true, input: next };
 }

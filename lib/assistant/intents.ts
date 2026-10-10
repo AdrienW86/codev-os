@@ -2,7 +2,8 @@
 // Ne produit que des appels d'outils du registre ; tout le reste reçoit une aide.
 import type { ToolName } from "@/lib/assistant/tools";
 
-export type Intent = { tool: ToolName; input: Record<string, unknown> };
+/** Appel d'outil, ou question de précision quand une information indispensable manque ou est ambiguë. */
+export type Intent = { tool: ToolName; input: Record<string, unknown> } | { clarify: string };
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
 
@@ -38,10 +39,89 @@ function scheduleParts(value: string, today: string): { date: string; time: stri
   return { date: isoDate(today, ((index - current + 7) % 7) || 7), time };
 }
 
+const weekdayPattern = "lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche";
+/** Acronymes et noms de produits qui ne désignent jamais un client. */
+const notClients = new Set(["SEO", "SEA", "Ads", "Google", "Search", "Console", "Meta", "Facebook", "Instagram", "IA", "AI", "PageSpeed", "Vercel", "GitHub", "CODE-V", "OS"]);
+
+/**
+ * « Crée une tâche … » : toujours une création de tâche, quel que soit le sujet (SEO, site, Ads…).
+ * Extrait date / heure (« lundi à 9 h », « demain », « 2026-10-20 »), client et intitulé ;
+ * demande une précision si le client ou la date manquent ou sont ambigus. Jamais de valeur inventée.
+ */
+function parseTask(original: string, value: string, today: string): Intent | null {
+  if (!/\b(cree|creer|creez|ajoute|ajouter|ajoutez|note|noter|notez)\b( moi)? (une |la |un )?(nouvelle )?tache\b/.test(value)) return null;
+  const start = original.search(/t[âa]che/i);
+  let rest = original.slice(start + 5).replace(/^\s*[:\-–—]\s*/, "").trim();
+
+  // Date et heure (retirées de l'intitulé).
+  const vague = /\b(la semaine prochaine|le mois prochain|fin du mois|bient[ôo]t|prochainement|plus tard|un de ces jours)\b/i.exec(rest);
+  if (vague) return { clarify: `Quelle date précise pour cette tâche (« ${vague[1]} » est ambigu) ? Par exemple « lundi », « demain » ou « 2026-10-20 ».` };
+  let due_date: string | undefined, due_time: string | undefined;
+  // Pas de \b devant « à » : en JavaScript, \b ignore les lettres accentuées.
+  const time = /(?:\s+(?:à|a|vers))?\s*(?<![\d-])(\d{1,2})\s*(?:h|:)\s*(\d{2})?(?![\d])/i.exec(rest);
+  if (time) {
+    const [hour, minute] = [Number(time[1]), Number(time[2] ?? 0)];
+    if (hour > 23 || minute > 59) return { clarify: "L’heure indiquée n’est pas valide. À quelle heure (HH:MM) ?" };
+    due_time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    rest = (rest.slice(0, time.index) + " " + rest.slice(time.index + time[0].length)).trim();
+  }
+  const iso = /\s*\b(?:le\s+)?(\d{4}-\d{2}-\d{2})\b/i.exec(rest);
+  const relative = new RegExp(`\\s*\\b(?:(?:ce|le)\\s+)?(demain|aujourd['’]hui|${weekdayPattern})(?:\\s+prochain)?\\b`, "i").exec(rest);
+  if (iso) {
+    due_date = iso[1];
+    rest = (rest.slice(0, iso.index) + " " + rest.slice(iso.index + iso[0].length)).trim();
+  } else if (relative) {
+    const word = normalize(relative[1]);
+    if (word === "demain") due_date = isoDate(today, 1);
+    else if (word === "aujourd hui") due_date = today;
+    else {
+      const index = weekdayNames.indexOf(word);
+      const current = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+      due_date = isoDate(today, ((index - current + 7) % 7) || 7);
+    }
+    rest = (rest.slice(0, relative.index) + " " + rest.slice(relative.index + relative[0].length)).trim();
+  } else if (/\ble\s+\d{1,2}(\s|\/|$)/i.test(rest)) {
+    return { clarify: "Quelle date exacte pour cette tâche ? Indiquez par exemple « lundi » ou « 2026-10-20 »." };
+  }
+  if (due_time && !due_date) return { clarify: `Pour quel jour à ${due_time} ? Indiquez par exemple « lundi » ou « demain ».` };
+  rest = rest.replace(/\s{2,}/g, " ").replace(/[\s,.;!?]+$/, "").trim();
+
+  // Client : mention explicite, sinon dernier nom propre (hors acronymes), sinon « pour <nom> » final.
+  let client: string | null = null;
+  let title = rest;
+  const explicit = /\b(?:pour le client|du client|client)\s+([^,.;:!?]+)$/i.exec(rest);
+  if (explicit) { client = explicit[1].trim(); title = rest.slice(0, explicit.index).trim(); }
+  else {
+    const words = [...rest.matchAll(/[\p{Lu}][\p{L}\d'’&.-]*(?:\s+(?:&\s+)?[\p{Lu}][\p{L}\d'’&.-]*)*/gu)]
+      .filter((match) => match.index! > 0 && !match[0].split(/\s+/).every((word) => notClients.has(word)));
+    const last = words.at(-1);
+    if (last) {
+      client = last[0].split(/\s+/).filter((word) => !notClients.has(word)).join(" ");
+      const before = rest.slice(0, last.index).trimEnd();
+      // « … pour Jrenov » en fin de phrase : le client ne fait pas partie de l'intitulé.
+      if (/\b(pour|chez)$/i.test(before) && last.index! + last[0].length >= rest.length) title = before.replace(/\s*\b(pour|chez)$/i, "").trim();
+    } else {
+      const trailing = /\s+pour\s+([\p{L}\d'’&.-]+(?:\s+[\p{L}\d'’&.-]+){0,3})$/u.exec(rest);
+      if (trailing && !/^(v[ée]rifier|faire|pr[ée]parer|relancer|corriger|mettre|envoyer|appeler)\b/i.test(trailing[1])) { client = trailing[1]; title = rest.slice(0, trailing.index).trim(); }
+    }
+  }
+  title = title.replace(/^(pour|afin de|de)\s+/i, "").replace(/^[«"]\s*|\s*[»"]$/g, "").trim();
+  if (title.length < 2) return { clarify: "Quel est l’intitulé de la tâche à créer ?" };
+  if (!client) return { clarify: `Pour quel client dois-je créer la tâche « ${title.slice(0, 80)} » ?` };
+  return {
+    tool: "create_task",
+    input: { title: (title[0].toUpperCase() + title.slice(1)).slice(0, 200), client: client.slice(0, 120), ...(due_date ? { due_date } : {}), ...(due_time ? { due_time } : {}), priority: /\b(urgent|prioritaire)\b/.test(value) ? "Haute" : "Moyenne" },
+  };
+}
+
 export function parseIntent(text: string, today: string): Intent | null {
   const original = text.trim().slice(0, 500);
   const value = normalize(original);
   if (!value) return null;
+
+  // Création de tâche : prioritaire sur toute autre lecture de la phrase (le sujet peut contenir « SEO », « vérifier »…).
+  const task = parseTask(original, value, today);
+  if (task) return task;
 
   if (/\bactions?\b.*\b(a valider|en attente)|\b(a valider|en attente)\b.*\bactions?\b/.test(value)) return { tool: "list_pending_actions", input: {} };
   if (/\bclients?\b.*\b(attention|surveiller|probleme|a risque)/.test(value)) return { tool: "clients_attention", input: {} };
@@ -49,12 +129,6 @@ export function parseIntent(text: string, today: string): Intent | null {
   if (/\b(actualit|veille|news|nouveaute)/.test(value) && !/\blance|relance|rafraich/.test(value)) return { tool: "list_news", input: {} };
   const schedulingAnalysis = /\b(planifie|programme|prevois)\b.*\b(sites?|seo|audit|ads|campagnes?|veille|monitoring)\b/.test(value);
   if (!schedulingAnalysis && /\b(agenda|planning|programme|aujourd hui|ma journee)\b/.test(value) && !/\btache\b.*\bcree|cree.*tache/.test(value)) return { tool: "agenda_today", input: {} };
-
-  const taskMatch = original.match(/(?:cr[ée]e|ajoute|note)[r]?\s+(?:une\s+)?t[âa]che\s+(?:«\s*|")?(.+?)(?:\s*»|")?\s+pour\s+([^,.;:!?]+?)(?:\s+(demain|aujourd['’]hui))?\s*[.!?]?$/i);
-  if (taskMatch) {
-    const due = taskMatch[3] ? isoDate(today, /demain/i.test(taskMatch[3]) ? 1 : 0) : undefined;
-    return { tool: "create_task", input: { title: taskMatch[1].trim().slice(0, 200), client: taskMatch[2].trim(), ...(due ? { due_date: due } : {}), priority: /urgent|prioritaire/.test(value) ? "Haute" : "Moyenne" } };
-  }
 
   if (/\brapport/.test(value)) {
     const client = clientAfter(original);

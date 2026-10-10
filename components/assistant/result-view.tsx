@@ -4,7 +4,7 @@
 // Aucune chaîne n'est interprétée comme du HTML.
 import Link from "next/link";
 import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
-import { loadGoogleAdsDashboardAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
+import { loadGoogleAdsDashboardAction, runGoogleAdsScopeAnalysisAction, runGoogleAdsScopeAIAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { isSafeHref, type AssistantView, type MetricsView, type TableView, type ViewLink } from "@/lib/assistant/views";
 import type { DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import type { Proposal } from "@/components/assistant/use-assistant";
@@ -59,16 +59,17 @@ export function ResultView({ view, version, onAdsFilters, propose }: {
   return (
     <div className="space-y-4">
       {view.type !== "ads_campaigns" && "caption" in view && view.caption && <p className="text-sm text-muted">{view.caption}</p>}
+      {view.type === "ads_recommendations" && <section className="space-y-3"><p className="text-sm">{view.scope}</p><p className="text-xs text-muted">Récupéré le {new Date(view.result.fetchedAt).toLocaleString("fr-FR")} · {view.result.reused ? "Résultat réutilisé (moins de 5 minutes)" : "Nouvelle analyse"} · client {view.result.resolutionMs ?? "—"} ms · Google Ads {view.result.googleReadMs ?? "—"} ms · analyse {view.result.elapsedMs} ms, IA {view.result.aiMs} ms</p><p className="whitespace-pre-wrap text-sm">{view.result.text}</p><p className="text-xs text-muted">Pour actualiser : demandez « Actualise tes recommandations pour ce client ».</p></section>}
       {view.type === "metrics" && <Metrics view={view} />}
       {view.type === "table" && <Table view={view} />}
       {view.type === "ads_campaigns" && (
         <CampaignDashboard key={version} clientId={view.clientId} initial={{ ok: true, data: view.data }} initialFilters={view.filters} load={loadGoogleAdsDashboardAction}
           syncUrl={false} onFiltersChange={(filters) => onAdsFilters(view.clientId, view.clientName, filters)}
-          actionLabels={{ report: "Proposer le rapport", analysis: "Proposer l’analyse", aiAnalysis: "Proposer l’analyse IA" }}
-          analysisNote="IA facultative utilisant les instructions et le contexte commercial. Proposée ici, exécutée seulement après confirmation. Repli déterministe explicite si l’IA échoue."
+          actionLabels={{ report: "Proposer le rapport", analysis: "Consulter les constats", aiAnalysis: "Obtenir les recommandations IA" }}
+          analysisNote="IA facultative utilisant les instructions et le contexte commercial. Analyse interne directe, sans modification de campagne. Repli déterministe explicite si l’IA échoue."
           prepareReport={(clientId, scope) => propose("ads_prepare_report", { client_id: clientId, ...scope })}
-          runAnalysis={(clientId, scope) => propose("ads_run_analysis", { client_id: clientId, ...scope })}
-          runAIAnalysis={(clientId, scope) => propose("ads_run_analysis", { client_id: clientId, ...scope, mode: "ai" })} />
+          runAnalysis={runGoogleAdsScopeAnalysisAction}
+          runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} />
       )}
       {view.link && <p><SafeLink link={view.link} /></p>}
     </div>

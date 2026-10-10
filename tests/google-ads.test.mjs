@@ -1,3 +1,4 @@
+import { loadTs } from "./helpers/load-ts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
@@ -15,7 +16,7 @@ function load(path, mocks = {}, globals = {}) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, Date, Intl, URLSearchParams, AbortSignal, console: { error: () => {} }, ...globals, require: (name) => {
+  vm.runInNewContext(code, { exports, performance, Date, Intl, URLSearchParams, AbortSignal, console: { error: () => {} }, ...globals, require: (name) => {
     if (name === "server-only") return {};
     if (name in mocks) return mocks[name];
     throw new Error(`Unexpected import: ${name}`);
@@ -95,9 +96,11 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
     "@/lib/recommendations/data": { createRecommendation: async (input) => { if (recommendationFails) return { ok: false, message: "unit" }; recommendations.push(input); return { ok: true, recommendation: { id: connectionId } }; } },
     "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.GoogleAdsError, normalizeMetrics: clientModule.normalizeMetrics },
     "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
+    "./tracking-store": { readCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
     "./tracking": { loadCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
     "@/lib/ai/providers": { selectAIProvider: () => null },
     "./ai-analysis": {},
+    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => null }, "./ai-analysis": { ANALYSIS_LIMITATIONS: [] } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, revision: 0, context: null }) },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => {} }), saveAdsAnalysisMetadata: async (_id, _client, _agent, metadata) => { runs.at(-1).metadata = JSON.parse(JSON.stringify(metadata)); } },
   });

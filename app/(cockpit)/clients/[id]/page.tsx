@@ -1,3 +1,4 @@
+import { RecurringReportsPanel } from "@/components/reports/recurring-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProjectActivity } from "@/components/projects/project-activity";
@@ -181,6 +182,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
           prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
       )}
+
+      {tab === "ads" && <RecurringReportsPanel clientId={client.id} campaigns={adsInitial?.ok ? adsInitial.data.campaigns : []} />}
 
       {tab === "activity" && <ActivityTab clientId={client.id} recommendations={recommendations} runs={runs} actions={actions} />}
 

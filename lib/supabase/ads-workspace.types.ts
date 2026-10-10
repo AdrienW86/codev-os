@@ -1,7 +1,12 @@
 export type AdsScopeRow = { client_id: string; connection_id: string; provider: "google_ads"; account_id: string; revision: number; updated_at: string };
 export type AdsCampaignAssignmentRow = { account_id: string; campaign_id: string; client_id: string };
 type Table<R, I> = { Row: R; Insert: I; Update: Partial<I>; Relationships: [] };
+export type AdsReportSettingsRow = { client_id: string; revision: number; config: Json; next_due_at: string; next_prepare_at: string; updated_at: string };
+export type AdsReportOccurrenceRow = { id: string; client_id: string; revision: number; config: Json; period_window: Json; due_at: string; prepare_at: string; report_id: string; preparation: string; transport: string; reason: string | null; created_at: string };
 export type AdsWorkspaceTables = {
+  client_ads_report_settings: Table<AdsReportSettingsRow, Omit<AdsReportSettingsRow, "updated_at">>;
+  ads_report_occurrences: Table<AdsReportOccurrenceRow, Omit<AdsReportOccurrenceRow, "id" | "created_at">>;
+
   client_ads_scopes: Table<AdsScopeRow, Omit<AdsScopeRow, "revision" | "updated_at" | "provider">>;
   client_ads_campaigns: Table<AdsCampaignAssignmentRow, AdsCampaignAssignmentRow>;
   client_ads_context: Table<{ client_id: string; context: Json; revision: number; updated_at: string }, { client_id: string; context: Json; revision?: number }>;
@@ -14,6 +19,11 @@ export type AdsWorkspaceTables = {
   admin_push_deliveries: Table<PushDelivery, { notification_id: string; subscription_id: string; state?: string; token?: string | null; updated_at?: string }>;
 };
 export type AdsWorkspaceFunctions = {
+  codev_save_ads_report_settings: { Args: { p_client_id: string; p_revision: number; p_config: Json; p_due: string; p_prepare: string }; Returns: number };
+  codev_enqueue_ads_report: { Args: { p_client_id: string; p_revision: number; p_due: string; p_window: Json; p_next_due: string; p_next_prepare: string; p_manual?: boolean }; Returns: string | null };
+  codev_store_ads_report: { Args: { p_occurrence: string; p_job: string; p_worker: string; p_report: Json }; Returns: boolean };
+  codev_claim_recurring_delivery: { Args: { p_occurrence: string; p_job: string; p_worker: string; p_report_id: string; p_version: number; p_token: string; p_recipient: string; p_subject: string; p_body: string; p_content: Json }; Returns: boolean };
+
   codev_set_ads_campaigns: { Args: { p_client_id: string; p_connection_id: string; p_account_id: string; p_campaign_ids: string[]; p_revision: number }; Returns: number };
   codev_save_ads_context: { Args: { p_client_id: string; p_context: Json; p_revision: number }; Returns: number };
   codev_claim_ads_analysis: { Args: { p_client_id: string; p_token: string }; Returns: boolean };

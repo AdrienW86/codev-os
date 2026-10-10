@@ -83,6 +83,7 @@ export type DashboardData = {
   campaigns: CampaignRow[]; accountTotals: AdsMetrics; accountPrevious: AdsMetrics | null;
   leads: LocalServicesLeads | null;
   fetchedAt: string;
+  googleReadMs?: number; clientResolutionMs?: number;
   tracking?: { available: boolean; revision: number; ids: string[] | null };
 };
 

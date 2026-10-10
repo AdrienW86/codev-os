@@ -21,6 +21,9 @@ export function useAssistant() {
   const [pending, setPending] = useState(false);
   /** Une nouvelle demande remplacera la vue : l'ancien résultat est masqué pendant ce temps (pas pour une proposition). */
   const [refreshing, setRefreshing] = useState(false);
+  const [latency, setLatency] = useState("");
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [synthesisMs, setSynthesisMs] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<AssistantView | null>(null);
   /** Incrémenté à chaque nouvelle vue serveur : remonte le composant avec ses nouvelles données. */
@@ -68,7 +71,9 @@ export function useAssistant() {
     if (!voiceOutputRef.current) return true;
     const controller = new AbortController(); playback.current?.abort(); playback.current = controller;
     setSpeaking(true);
+    const synthesisStart = performance.now();
     const result = await speak(text, signal ? AbortSignal.any([signal, controller.signal]) : controller.signal);
+    setSynthesisMs(Math.round(performance.now() - synthesisStart));
     if (playback.current === controller) { playback.current = null; setSpeaking(false); }
     if (result !== "ok" && !signal?.aborted) setNotice("Lecture vocale interrompue ou indisponible. Utilisez le bouton micro ou le clavier.");
     return result === "ok";
@@ -89,9 +94,13 @@ export function useAssistant() {
     setPending(true);
     setRefreshing(true);
     try {
+    const requestStart = performance.now();
+    setLatency("Résolution du client, lecture des données et analyse en cours…");
     const data = await call({ messages: history.map(({ role, content: message }) => ({ role, content: message.slice(0, 2000) })), context: context.current, via }, signal);
     if (signal.aborted) return false;
     deliver(data);
+    requestAnimationFrame(() => setLatencyMs(Math.round(performance.now() - requestStart)));
+    setLatency("Détail affiché ; la synthèse vocale ne lit que le résumé.");
     // « oui » écrit ou dicté : la proposition reste à confirmer par le bouton, rien n'a été exécuté.
     if (data.keepProposal && waiting) setProposal(waiting);
     if (data.error) setFailed({ content, via });
@@ -178,7 +187,7 @@ export function useAssistant() {
   }, [stopVoice]);
 
   return {
-    turns, proposal, pending, refreshing, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,
+    turns, proposal, pending, refreshing, latency, latencyMs, synthesisMs, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,
     speaking, stopVoice, toggleContinuous, trigger, rememberTrigger, send, retry, confirm, cancelProposal, proposeFromView, syncAdsFilters, toggleVoiceOutput,
   };
 }

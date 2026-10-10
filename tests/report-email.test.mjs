@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./helpers/load-ts.mjs";
-const previewModule = loadTs("lib/reports/email-preview.ts");
+const previewModule = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts") });
 const errors = loadTs("lib/providers/errors.ts");
 const id = "11111111-1111-4111-8111-111111111111";
 const report = { id, client_id: id, status: "approved", version: 2, approved_version: 2, title: "Rapport client", client_content: { summary: "Synthèse", sections: [{ title: "Résultats", lines: ["Mesures"] }] }, internal_content: { secret: "NEVER" } };

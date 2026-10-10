@@ -1,3 +1,5 @@
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { recurringConfigSchema } from "@/lib/reports/recurring/domain";
 import { requireAdmin } from "@/lib/require-admin";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -61,6 +63,9 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
   const sending = ["sending", "uncertain"].includes(delivery?.state ?? "");
   const editable = !["sent", "archived"].includes(item.status) && !sending;
   const preview = await safeRead("reports", async () => reportEmailPreview(item), null);
+  const occurrence = await getSupabaseServerClient().from("ads_report_occurrences").select("config,due_at,transport").eq("report_id", id).maybeSingle();
+  const recurring = occurrence.error ? null : occurrence.data;
+  const recipient = recurring ? recurringConfigSchema.parse(recurring.config).recipient : item.client?.email ?? "";
   const scope = item.kind === "google_ads" ? await getReportScope(id) : null;
 
   return (
@@ -98,14 +103,15 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
           )}
 
           <Panel className="space-y-4 p-5">
-            <h2 className="font-semibold">Étapes</h2>
+            <h2 id="send-report" className="font-semibold">Étapes</h2>
+            {recurring && <p className="text-sm">Destinataire prévu : {recipient} · échéance {formatDate(recurring.due_at)}. Configuration figée à la préparation.</p>}
             {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id, version: String(item.version) }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
             {item.status === "approved" && (
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
                 {email.enabled && preview.data && !delivery
                   ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer le texte prévisualisé au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
-                      <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={item.client?.email ?? ""} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
+                      <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={recipient} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
                       <label className="flex gap-2 text-sm"><input type="checkbox" name="recipient_confirmed" value="yes" required />Je confirme cette adresse et la version client prévisualisée.</label>
                     </MutationForm>
                   : <InlineNotice title="Envoi e-mail indisponible.">{!email.enabled ? email.reason : "Cette version ne peut pas faire l’objet d’une nouvelle tentative."}</InlineNotice>}

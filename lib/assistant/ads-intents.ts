@@ -41,10 +41,10 @@ function period(value: string): Pick<AdsRequest, "period" | "clarify"> {
 }
 
 function clientIn(original: string): string | undefined {
-  const match = original.match(/(?:^|\s)(?:(?:pour le client|du client|pour|chez|client|de)\s+|d['’]\s*)([^,.;:!?]+?)(?=\s+(?:sur|en|depuis|du|des|au|aux|uniquement|seulement|hier|aujourd|cette|ce|et|avec|par|compar\S*|vs|pendant|la semaine|le mois)\b|[,.;:!?]|$)/i);
-  const candidate = match?.[1]?.trim();
-  if (!candidate || candidate.length < 2 || notAClient.test(normalize(candidate))) return undefined;
-  return candidate.slice(0, 120);
+  // Lookahead keeps scanning inside an earlier rejected clause (« pour les campagnes de … »).
+  const pattern = /(?=(?:^|\s)(?:(?:pour le client|du client|pour|chez|client|de)\s+|d['’]\s*)([^,.;:!?]+?)(?=\s+(?:sur|en|depuis|du|des|au|aux|uniquement|seulement|hier|aujourd|cette|ce|et|avec|par|compar\S*|vs|pendant|la semaine|le mois)\b|[,.;:!?]|$))/gi;
+  const candidates = [...original.matchAll(pattern)].map(match => match[1]?.trim()).filter(candidate => candidate && candidate.length >= 2 && !notAClient.test(normalize(candidate)));
+  return candidates.at(-1)?.slice(0, 120);
 }
 
 export function parseAdsRequest(text: string): AdsRequest {

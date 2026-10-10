@@ -63,13 +63,15 @@ export const capabilities: Record<CapabilityId, CapabilityDefinition> = {
 };
 
 /** Types d'exécution planifiables (jobs). Chacun appartient à un agent et exige une capacité. */
-export type RunType = "report.generate" | "monitoring.check_sites" | "seo.analyze" | "ads.monitor" | "news.fetch";
+export type RunType = "ads.report.prepare" | "ads.report.send" | "report.generate" | "monitoring.check_sites" | "seo.analyze" | "ads.monitor" | "news.fetch";
 
 export type RunTypeDefinition = {
   id: RunType;
   label: string;
   agent: AgentType;
   capability: CapabilityId;
+  /** Deferred until actual transport: the handler can record a blocked approval without a provider. */
+  deferProviderCheck?: boolean;
   /** Portée attendue de l'automatisation. */
   scope: "global" | "client";
   /** Description affichée ; la charge utile acceptée est validée par lib/automations/definitions.ts (runConfigSchemas). */
@@ -77,6 +79,9 @@ export type RunTypeDefinition = {
 };
 
 export const runTypes: Record<RunType, RunTypeDefinition> = {
+  "ads.report.prepare": { id: "ads.report.prepare", label: "Préparer le rapport Ads récurrent", agent: "report", capability: "generate_report", scope: "client", description: "Instantané Ads de l’échéance, à examiner avant approbation." },
+  "ads.report.send": { id: "ads.report.send", label: "Envoyer le rapport Ads approuvé", agent: "report", capability: "send_report", deferProviderCheck: true, scope: "client", description: "Transport explicitement autorisé d’une version approuvée, sans approbation automatique." },
+
   "report.generate": { id: "report.generate", label: "Générer les rapports", agent: "report", capability: "generate_report", scope: "global", description: "Rapport hebdomadaire ou mensuel d’un client, ou de tous les clients actifs." },
   "monitoring.check_sites": { id: "monitoring.check_sites", label: "Contrôle technique des sites", agent: "monitoring", capability: "check_http", scope: "global", description: "Disponibilité, code HTTP et temps de réponse des sites des clients Maintenance / Site web." },
   "seo.analyze": { id: "seo.analyze", label: "Analyse SEO", agent: "seo", capability: "analyze_search_console", scope: "client", description: "Search Console et PageSpeed : pertes, gains, pages à améliorer." },
@@ -105,7 +110,7 @@ export const agentDefinitions: Record<AgentType, AgentDefinition> = {
   report: {
     type: "report", name: "Agent Rapport", description: "Account manager : rassemble toute l’activité du client en rapports hebdomadaires et mensuels.",
     scopes: ["client"], services: ["reporting"], capabilities: ["aggregate_activity", "generate_report", "send_report"],
-    tools: ["list_reports", "generate_report"], runTypes: ["report.generate"], defaultAutonomy: 0, attachToAllClients: true,
+    tools: ["list_reports", "generate_report"], runTypes: ["report.generate", "ads.report.prepare", "ads.report.send"], defaultAutonomy: 0, attachToAllClients: true,
   },
   seo: {
     type: "seo", name: "Agent SEO & Site", description: "Analyse Search Console et PageSpeed, détecte pertes et opportunités, propose des améliorations.",

@@ -11,7 +11,7 @@ Chaîne complète : **AUTOMATISATION → JOB → EXÉCUTION (agent_run) → RÉS
 | `agent_runs` | Trace de l’exécution par l’agent, liée au job. |
 | `audit_logs` | `job.enqueued`, `job.succeeded`, `job.failed`, `job.retry_scheduled`, `automation.*`. |
 
-Types d’exécution (registre `lib/agents/registry.ts`) : `report.generate`, `monitoring.check_sites`, `seo.analyze`, `ads.monitor`, `news.fetch`. Tout autre type est refusé (automatisation passée en erreur, jamais exécutée).
+Types d’exécution (registre `lib/agents/registry.ts`) : `ads.report.prepare`, `ads.report.send`, `report.generate`, `monitoring.check_sites`, `seo.analyze`, `ads.monitor`, `news.fetch`. Tout autre type est refusé (automatisation passée en erreur, jamais exécutée).
 
 ## Garanties
 
@@ -56,3 +56,7 @@ curl -i -H "Authorization: Bearer $CRON_SECRET" https://<domaine>/api/internal/s
 ## Interface
 
 **Paramètres → Automatisations** : liste (prochaine / dernière exécution, échecs), modèles recommandés en un clic, création (fréquence, heure de Paris, jours, client), pause, reprise, archivage, **Exécuter maintenant** (job manuel traité immédiatement, résultat affiché). L’agenda affiche les exécutions prévues.
+
+## Rapports Ads récurrents
+
+La configuration par client met en file les préparations et échéances dans ce même moteur. Voir [ads-recurring-delivery.md](ads-recurring-delivery.md) pour les périodes closes, l’approbation, les réservations et la cadence minute nécessaire aux horaires choisis. Le cron quotidien Hobby ne garantit pas 18 h. Aucun déclencheur réel n’est activé par le code.

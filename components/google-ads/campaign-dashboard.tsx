@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { change, createRequestTracker, describeScope, filterCampaigns, groupByType, parseFilters, periodKey, reconcile, statusLabels, sumCampaigns, typeLabel, writeFilters, type CampaignRow, type DashboardData, type DashboardFilters, type StatusFilter } from "@/lib/integrations/google-ads/dashboard";
 import { PERIOD_PRESETS, describeDates, presetLabels, type PeriodPreset } from "@/lib/integrations/google-ads/periods";
 import type { AdsMetrics } from "@/lib/integrations/google-ads/types";
@@ -22,11 +22,18 @@ const chip = (active: boolean) => `min-h-9 rounded-full border px-3 text-sm ${ac
  * - Une réponse arrivée après une demande plus récente est ignorée (compteur de requêtes).
  * - Pendant un chargement ou après une erreur, aucun ancien chiffre n'est présenté comme celui de la nouvelle période.
  */
-export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, analysisNote }: {
+export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, analysisNote, syncUrl = true, onFiltersChange, actionLabels }: {
   clientId: string; initial: DashboardResult; initialFilters: DashboardFilters;
   load: (clientId: string, query: string) => Promise<DashboardResult>;
   prepareReport?: ScopeAction; runAnalysis?: ScopeAction; analysisNote?: string;
+  /** false dans l'assistant : la vue vit dans un panneau, l'URL de la page ne change pas. */
+  syncUrl?: boolean;
+  /** Filtres courants remontés (contexte de conversation de l'assistant). */
+  onFiltersChange?: (filters: DashboardFilters) => void;
+  /** Libellés des actions (l'assistant les PROPOSE avant confirmation au lieu de les exécuter). */
+  actionLabels?: { report?: string; analysis?: string };
 }) {
+  const titleId = useId();
   // Filtres analysés côté serveur depuis la même URL : rendu serveur et navigateur identiques.
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
   const [view, setView] = useState<View>(initial.ok ? { status: "ready", data: initial.data } : { status: "error", data: null, message: initial.message });
@@ -46,13 +53,17 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
 
   const commit = useCallback((next: DashboardFilters) => {
     const reload = periodKey(next) !== requested.current;
-    const params = writeFilters(new URLSearchParams(window.location.search), next);
-    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
+    if (syncUrl) {
+      const params = writeFilters(new URLSearchParams(window.location.search), next);
+      window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
+    }
     setFilters(next);
+    onFiltersChange?.(next);
     if (reload) void fetchPeriod(next);
-  }, [fetchPeriod]);
+  }, [fetchPeriod, syncUrl, onFiltersChange]);
 
   useEffect(() => {
+    if (!syncUrl) return;
     const onPop = () => {
       const next = parseFilters(new URLSearchParams(window.location.search));
       const reload = periodKey(next) !== requested.current;
@@ -61,15 +72,15 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [fetchPeriod]);
+  }, [fetchPeriod, syncUrl]);
 
   const data = view.status === "ready" ? view.data : null;
   const selected = useMemo(() => (data ? filterCampaigns(data.campaigns, filters) : []), [data, filters]);
 
   return (
-    <section aria-labelledby="ads-dashboard-title" className="space-y-6">
+    <section aria-labelledby={titleId} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="ads-dashboard-title" className="text-lg font-semibold">Campagnes Google Ads</h2>
+        <h2 id={titleId} className="text-lg font-semibold">Campagnes Google Ads</h2>
         <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-muted">Lecture seule · aucune modification Google Ads</span>
       </div>
       <PeriodControls filters={filters} onChange={commit} busy={view.status === "loading"} />
@@ -80,7 +91,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
           <button type="button" onClick={() => void fetchPeriod(filters)} className="mt-3 min-h-10 rounded-lg border border-border px-3 text-sm text-foreground">Réessayer</button>
         </div>
       )}
-      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} analysisNote={analysisNote} />}
+      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} analysisNote={analysisNote} actionLabels={actionLabels} />}
     </section>
   );
 }
@@ -121,9 +132,9 @@ function PeriodControls({ filters, onChange, busy }: { filters: DashboardFilters
   );
 }
 
-function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, analysisNote }: {
+function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, analysisNote, actionLabels }: {
   data: DashboardData; filters: DashboardFilters; selected: CampaignRow[]; onChange: (next: DashboardFilters) => void; clientId: string;
-  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; analysisNote?: string;
+  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; analysisNote?: string; actionLabels?: { report?: string; analysis?: string };
 }) {
   const money = useMemo(() => new Intl.NumberFormat("fr-FR", { style: "currency", currency: data.account.currency }), [data.account.currency]);
   const fmt = useMemo(() => formatters(money), [money]);
@@ -204,8 +215,8 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
 
       {(prepareReport || runAnalysis) && (
         <div className="grid gap-4 md:grid-cols-2">
-          {prepareReport && <ScopeButton title="Rapport Google Ads" description={`Enregistre un rapport pour ce périmètre exact (${selected.length} campagne${selected.length > 1 ? "s" : ""}, ${describeDates(data.period)}). Il n’évoluera plus avec les filtres.`} label="Préparer le rapport" disabled={!selected.length} run={() => prepareReport(clientId, scopeForServer)} />}
-          {runAnalysis && <ScopeButton title="Analyse réelle de l’Agent Ads" description={analysisNote ?? "Données Google Ads réelles, règles déterministes (sans IA)."} label="Lancer l’analyse sur ce périmètre" disabled={!selected.length} run={() => runAnalysis(clientId, scopeForServer)} />}
+          {prepareReport && <ScopeButton title="Rapport Google Ads" description={`Enregistre un rapport pour ce périmètre exact (${selected.length} campagne${selected.length > 1 ? "s" : ""}, ${describeDates(data.period)}). Il n’évoluera plus avec les filtres.`} label={actionLabels?.report ?? "Préparer le rapport"} disabled={!selected.length} run={() => prepareReport(clientId, scopeForServer)} />}
+          {runAnalysis && <ScopeButton title="Analyse réelle de l’Agent Ads" description={analysisNote ?? "Données Google Ads réelles, règles déterministes (sans IA)."} label={actionLabels?.analysis ?? "Lancer l’analyse sur ce périmètre"} disabled={!selected.length} run={() => runAnalysis(clientId, scopeForServer)} />}
         </div>
       )}
     </>

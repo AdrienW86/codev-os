@@ -95,7 +95,9 @@ async function main() {
   const build = spawnSync(join(app, "node_modules/.bin/next"), ["build"], { cwd: app, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (build.status !== 0) throw new Error(`next build : ${(build.stdout + build.stderr).slice(-3000)}`);
   // Groupe de processus dédié : l'arrêt emporte aussi next-server (pas de serveur orphelin sur le port).
-  const next = spawn(join(app, "node_modules/.bin/next"), ["start", "-p", String(APP_PORT)], { cwd: app, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+  // Google Ads : identifiants factices et réponses simulées (e2e/harness/google-ads-fake.mjs), dans ce seul processus.
+  const serverEnv = { ...env, GOOGLE_ADS_CLIENT_ID: "e2e-client", GOOGLE_ADS_CLIENT_SECRET: "e2e-client-secret", GOOGLE_ADS_REFRESH_TOKEN: "e2e-refresh", NODE_OPTIONS: `${env.NODE_OPTIONS ?? ""} --import ${join(app, "e2e/harness/google-ads-fake.mjs")}`.trim() };
+  const next = spawn(join(app, "node_modules/.bin/next"), ["start", "-p", String(APP_PORT)], { cwd: app, env: serverEnv, stdio: ["ignore", "pipe", "pipe"], detached: true });
   const stopNext = () => { try { process.kill(-next.pid, "SIGTERM"); } catch { /* déjà arrêté */ } };
   for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { stopNext(); rest?.kill("SIGTERM"); process.exit(130); });
   const log = createWriteStream(join(output, "next.log"));

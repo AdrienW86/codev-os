@@ -46,7 +46,7 @@ export function useVoice(onTranscript: (text: string) => void) {
     const instance = new Ctor();
     instance.lang = "fr-FR"; instance.interimResults = false; instance.maxAlternatives = 1;
     let heard = false;
-    instance.onresult = (event) => { const text = event.results[0]?.[0]?.transcript?.trim(); if (text) { heard = true; onTranscript(text); } };
+    instance.onresult = (event) => { const text = event.results[0]?.[0]?.transcript?.trim(); if (text) { heard = true; setMessage(""); onTranscript(text); } };
     instance.onerror = (event) => setMessage(event.error === "not-allowed" || event.error === "service-not-allowed" ? errorMessages.denied : event.error === "no-speech" ? errorMessages.no_speech : event.error === "aborted" ? errorMessages.cancelled : errorMessages.failed);
     instance.onend = () => { setState("idle"); recognition.current = null; if (!heard && !cancelled.current) setMessage((current) => current || errorMessages.no_speech); };
     recognition.current = instance;

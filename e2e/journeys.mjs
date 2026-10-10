@@ -20,9 +20,23 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
   let passed = 0;
 
   const only = process.env.E2E_VIEWPORTS?.split(",");
+  let viewportIndex = -1;
   for (const [name, viewport] of viewports.filter(([label]) => !only || only.includes(label))) {
+    viewportIndex++;
     await resetData();
     const context = await browser.newContext({ viewport, locale: "fr-FR", timezoneId: "Europe/Paris" });
+    // Dictée simulée (navigateur de test uniquement) : la reconnaissance vocale du navigateur renvoie la
+    // transcription fixée par le parcours (window.__e2eTranscript), sinon un refus du micro.
+    await context.addInitScript(() => {
+      if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = undefined;
+      class FakeRecognition {
+        start() { setTimeout(() => { const text = window.__e2eTranscript; window.__e2eTranscript = null; if (text) this.onresult?.({ results: [[{ transcript: text }]] }); else this.onerror?.({ error: "not-allowed" }); this.onend?.(); }, 50); }
+        stop() {}
+        abort() { this.onend?.(); }
+      }
+      window.SpeechRecognition = FakeRecognition;
+      window.webkitSpeechRecognition = FakeRecognition;
+    });
     const page = await context.newPage();
     const consoleErrors = [];
     page.on("console", (message) => { if (message.type() === "error" && !/DevTools|Download the React|favicon/.test(message.text())) consoleErrors.push(message.text().slice(0, 300)); });
@@ -66,7 +80,13 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
       const input = page.getByLabel("Votre demande à l’assistant");
       await input.fill("Quelles sont mes urgences ?");
       await page.getByRole("button", { name: "Envoyer" }).click();
-      await page.getByText(/À traiter|Rien d’urgent/).first().waitFor();
+      // Résultat structuré : panneau unique (indicateurs), fermeture accessible.
+      const panel = page.locator("dialog[open]");
+      await panel.getByRole("heading", { name: "Urgences" }).waitFor();
+      await panel.getByText(/À traiter|Rien d’urgent/).first().waitFor();
+      await panel.getByText("Tâches en retard").waitFor();
+      await panel.getByRole("button", { name: "Fermer le panneau de résultats" }).click();
+      await page.locator("dialog[open]").waitFor({ state: "detached" });
       await input.fill("Génère le rapport hebdomadaire pour Jrenov");
       await page.getByRole("button", { name: "Envoyer" }).click();
       const proposal = page.getByRole("group", { name: "Action proposée" });
@@ -182,6 +202,71 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
       if (anonymous.status() !== 401) throw new Error(`tick sans secret : ${anonymous.status()}`);
       const tick = await page.request.get(`${base}/api/internal/scheduler/tick`, { headers: { Authorization: `Bearer ${cronSecret}` } });
       if (tick.status() !== 200 || !(await tick.json()).ok) throw new Error(`tick authentifié : ${tick.status()}`);
+    });
+
+    await journey("assistant : dictée → campagnes Google Ads → suivi et filtre → proposition confirmée", async () => {
+      let step = "dictée et ouverture";
+      // Limite de l'assistant (30 demandes/min/utilisateur, mémoire du serveur partagée entre viewports) :
+      // après les parcours d'un viewport précédent, on laisse passer une fenêtre plutôt que d'assouplir la limite.
+      if (viewportIndex > 0) await page.waitForTimeout(61_000);
+      try {
+      await go("/dashboard");
+      // 1. Dictée : la demande part avec via=voice ; le panneau s'ouvre sur la vue serveur.
+      await page.evaluate(() => { window.__e2eTranscript = "Montre les campagnes Google Ads de Jrenov"; });
+      const mic = page.getByRole("button", { name: "Dicter avec le micro" });
+      await mic.click();
+      const panel = page.locator("dialog[open]");
+      await panel.getByRole("heading", { name: "Campagnes Google Ads — Jrenov" }).waitFor();
+      await panel.getByText(/2 campagnes \(2 types\) actives · du /).first().waitFor();
+      await shot("assistant-ads-panel");
+      step = "suite de conversation";
+      // 2. Suite de conversation dans le panneau : le contexte (client, filtres) est conservé.
+      const follow = panel.getByLabel("Affiner ou poser une autre question");
+      await follow.fill("uniquement Local Services");
+      await follow.press("Enter");
+      await panel.getByText(/1 campagne Local Services active · du /).first().waitFor();
+      await follow.fill("et sur 7 jours ?");
+      await follow.press("Enter");
+      await panel.getByText(/Jrenov — 1 campagne Local Services active · du .* : 35,00\s€ dépensés/).waitFor();
+      if (await panel.getByRole("combobox").first().inputValue() !== "last_7") throw new Error("période non appliquée dans la vue");
+      step = "filtre et proposition";
+      // 3. Filtre direct dans la vue (sans nouvelle demande) puis proposition sur ce périmètre.
+      await panel.getByRole("button", { name: "Toutes", exact: true }).click();
+      await panel.getByText(/1 campagne Local Services \(tous statuts\)/).first().waitFor();
+      await panel.getByRole("button", { name: "Proposer le rapport" }).click();
+      const proposal = panel.getByRole("group", { name: "Action proposée" });
+      await proposal.getByText(/Préparer un rapport Google Ads pour Jrenov \(1 campagne, du /).waitFor();
+      step = "oui dicté";
+      // 4. Un « oui » dicté n'exécute rien : la proposition reste, le bouton est obligatoire.
+      await page.evaluate(() => { window.__e2eTranscript = "oui"; });
+      await panel.getByRole("button", { name: "Dicter avec le micro" }).click();
+      await panel.getByText(/utilisez le bouton « Confirmer »/).waitFor();
+      await proposal.getByRole("button", { name: "Confirmer" }).waitFor();
+      await shot("assistant-ads-proposal");
+      await proposal.getByRole("button", { name: "Confirmer" }).click();
+      await panel.getByText(/Rapport Google Ads enregistré pour ce périmètre/).waitFor();
+      step = "fermeture et focus";
+      // 5. Fermeture : le focus revient au micro qui avait ouvert le panneau.
+      await panel.getByRole("button", { name: "Fermer le panneau de résultats" }).click();
+      await page.locator("dialog[open]").waitFor({ state: "detached" });
+      const focused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+      if (focused !== "Dicter avec le micro") throw new Error(`focus non restauré : ${focused}`);
+      step = "modification refusée";
+      // 6. Modification Google Ads : refusée, rien proposé.
+      await page.getByLabel("Votre demande à l’assistant").fill("Mets en pause la campagne Search Toulouse");
+      await page.getByRole("button", { name: "Envoyer", exact: true }).click();
+      await page.getByText(/Les modifications Google Ads .* ne sont pas disponibles/).waitFor();
+      if (await page.getByRole("group", { name: "Action proposée" }).count()) throw new Error("proposition inattendue");
+      step = "rapport enregistré";
+      // 7. Le rapport porte le périmètre exact.
+      await go("/reports?kind=google_ads");
+      await page.getByText(/Jrenov · Google Ads/).first().click();
+      await page.getByText("Périmètre enregistré").waitFor();
+      await page.getByText("Local Services Jrenov").first().waitFor();
+          } catch (error) {
+        const last = await page.locator("ol[aria-label='Conversation avec l’assistant'] li").last().textContent().catch(() => "");
+        throw new Error(`étape « ${step} » : ${String(error.message ?? error).split("\n")[0]} — dernier message : ${String(last).slice(0, 160)}`);
+      }
     });
 
     await journey("voix : micro indisponible → message explicite, rien d’envoyé", async () => {

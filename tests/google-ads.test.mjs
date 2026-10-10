@@ -94,6 +94,7 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
     "@/lib/recommendations/data": { createRecommendation: async (input) => { if (recommendationFails) return { ok: false, message: "unit" }; recommendations.push(input); return { ok: true, recommendation: { id: connectionId } }; } },
     "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.GoogleAdsError, normalizeMetrics: clientModule.normalizeMetrics },
     "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
+    "./tracking": { loadCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
   });
   return { service, calls, audits, recommendations, runs, changes };
 }

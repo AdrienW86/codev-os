@@ -23,7 +23,7 @@ export type GoogleAdsReportOutcome = { ok: true; id: string; version: number } |
 
 /** Instantané des campagnes du périmètre, lu en direct (lecture seule) sur le compte associé au client. */
 async function snapshot(clientId: string, scope: AdsScope, expectedAccountId?: string) {
-  const loaded = await loadCampaignDashboard(clientId, { ...DEFAULT_FILTERS, period: { preset: "custom", start: scope.start, end: scope.end }, status: "all" });
+  const loaded = await loadCampaignDashboard(clientId, { ...DEFAULT_FILTERS, period: { preset: "custom", start: scope.start, end: scope.end }, status: "all", includeUntracked: true });
   if (!loaded.ok) return { ok: false as const, message: loaded.message };
   const { data } = loaded;
   if (expectedAccountId && data.account.id !== expectedAccountId) return { ok: false as const, message: "Le compte Google Ads associé à ce client a changé : ce rapport ne peut pas être actualisé." };

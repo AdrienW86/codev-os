@@ -8,6 +8,7 @@ import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
 import { PageHeading, Panel } from "@/components/ui/primitives";
 import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "../clients/[id]/google-ads-actions";
 import { getActiveScenario } from "@/lib/simulation/server";
+import { saveTrackedCampaignsAction } from "./actions";
 
 export const metadata: Metadata = { title: "Campagnes publicitaires" };
 
@@ -19,7 +20,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   const client = clients.find((item) => item.id === search.client);
   const filters = parseFilters(search);
   // Le changement de client conserve la période, mais jamais les identifiants des campagnes de l'ancien compte.
-  const preserved = writeFilters(new URLSearchParams(), { ...filters, campaigns: [] });
+  const preserved = writeFilters(new URLSearchParams(), { ...filters, campaigns: [], includeUntracked: false });
   let connection = null;
   let connectionError = false;
   if (client) try { connection = await getGoogleAdsConnection(client.id); } catch { connectionError = true; }
@@ -42,6 +43,6 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
       : !client ? <p role={search.client ? "alert" : "status"}>{search.client ? "Client introuvable. Choisissez un client de votre portefeuille." : "Choisissez un client pour consulter son compte publicitaire."}</p>
       : connectionError ? <p role="alert">Connexion indisponible. Rechargez la page pour réessayer.</p>
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
-      : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />}
+      : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
   </>;
 }

@@ -14,6 +14,7 @@ import { normalizeMetrics } from "./client";
 import { PeriodError, describeDates, previousPeriod, resolvePeriod, type PeriodSelection } from "./periods";
 import { storeScope, type AdsScope } from "./scope";
 import { sumCampaigns, type CampaignRow, type DashboardData, type DashboardFilters } from "./dashboard";
+import { loadCampaignTracking } from "./tracking";
 
 const connectionColumns = "id,client_id,provider,status,external_account_id,metadata,last_checked_at,created_at,updated_at";
 const genericMessage = "Google Ads est indisponible. Vérifiez la configuration et les droits du compte, puis réessayez.";
@@ -107,8 +108,11 @@ export async function buildGoogleAdsAnalysisContext(clientId: string, days = 30)
   const client = createGoogleAdsReadClient();
   const account = await client.getAccountSummary(connection.external_account_id!, connection.metadata.manager_customer_id);
   const period = getAdsPeriod(account.timezone, days);
-  const { campaigns, totals } = await client.getCampaignPerformance(account, period, connection.metadata.manager_customer_id);
-  return { account, period, campaigns, totals, anomalies: findAdsAnomalies(campaigns) };
+  const { campaigns } = await client.getCampaignPerformance(account, period, connection.metadata.manager_customer_id);
+  const tracking = await loadCampaignTracking(connection);
+  const selected = campaigns.filter((row) => tracking.ids === null || tracking.ids.includes(row.id));
+  const totals = sumCampaigns(selected.map((row) => ({ ...row, type: row.channel, subType: null, localServices: row.channel === "LOCAL_SERVICES", budget: { amount: row.budget, shared: null, period: null }, hasActivity: true, previous: null }))).metrics;
+  return { account, period, campaigns: selected, totals, anomalies: findAdsAnomalies(selected) };
 }
 
 /** Agent éligible à l'analyse réelle : identifié par le registre (agent_type), jamais par son nom. */
@@ -143,7 +147,8 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       period = { start: resolved.start, end: resolved.end, days: resolved.days };
     } catch (error) { return { message: error instanceof PeriodError ? error.message : "Période invalide." }; }
     const rows = buildCampaignRows(await client.getCampaignDashboard(account, period, null, connection.metadata.manager_customer_id));
-    const requested: AdsScope = input.scope ?? { start: period.start, end: period.end, status: "enabled", types: [], campaignIds: rows.filter((row) => row.status === "ENABLED").map((row) => row.id) };
+    const tracking = await loadCampaignTracking(connection);
+    const requested: AdsScope = input.scope ?? { start: period.start, end: period.end, status: "enabled", types: [], campaignIds: rows.filter((row) => row.status === "ENABLED" && (tracking.ids === null || tracking.ids.includes(row.id))).map((row) => row.id) };
     if (!requested.campaignIds.length) return { message: "Aucune campagne dans ce périmètre." };
     const scope = storeScope(requested, rows, { days: period.days, timezone: account.timezone, currency: account.currency, accountId: account.id });
     if (!scope) return { message: "Le périmètre contient une campagne inconnue pour ce compte : rechargez le tableau de bord." };
@@ -230,10 +235,11 @@ export async function loadCampaignDashboard(clientId: string, filters: Dashboard
       return { ok: false, message: error instanceof PeriodError ? error.message : "Période invalide." };
     }
     const previous = filters.compare ? previousPeriod(period) : null;
+    const tracking = await loadCampaignTracking(connection);
     const raw = await client.getCampaignDashboard(account, { start: period.start, end: period.end, days: period.days }, previous, connection.metadata.manager_customer_id);
     return { ok: true, data: {
       account, period: { start: period.start, end: period.end, days: period.days, includesToday: period.includesToday, today: period.today, preset: period.preset },
-      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: now.toISOString(),
+      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: now.toISOString(), tracking,
     } };
   } catch (error) {
     safeFailure("dashboard", error);

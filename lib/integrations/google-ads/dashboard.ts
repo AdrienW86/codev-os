@@ -5,7 +5,7 @@ import { PERIOD_PRESETS, isValidDay, type PeriodPreset, type PeriodSelection } f
 import type { AdsAccount, AdsMetrics, AdsPeriod } from "./types";
 
 export type StatusFilter = "enabled" | "paused" | "all";
-export type DashboardFilters = { period: PeriodSelection; compare: boolean; status: StatusFilter; types: string[]; campaigns: string[] };
+export type DashboardFilters = { period: PeriodSelection; compare: boolean; status: StatusFilter; types: string[]; campaigns: string[]; includeUntracked?: boolean };
 
 export const DEFAULT_FILTERS: DashboardFilters = { period: { preset: "last_30" }, compare: false, status: "enabled", types: [], campaigns: [] };
 const MAX_SELECTED = 50;
@@ -31,13 +31,14 @@ export function parseFilters(params: Params): DashboardFilters {
     status: status === "paused" || status === "all" ? status : "enabled",
     types: list(read(params, "ads_types"), channel),
     campaigns: list(read(params, "ads_campaigns"), campaignId),
+    ...(read(params, "ads_scope") === "account" ? { includeUntracked: true } : {}),
   };
 }
 
 /** Écrit les filtres dans une copie des paramètres existants (onglet, client… conservés). */
 export function writeFilters(base: URLSearchParams, filters: DashboardFilters): URLSearchParams {
   const params = new URLSearchParams(base);
-  for (const key of ["ads_period", "ads_date", "ads_start", "ads_end", "ads_compare", "ads_status", "ads_types", "ads_campaigns", "ads_days"]) params.delete(key);
+  for (const key of ["ads_period", "ads_date", "ads_start", "ads_end", "ads_compare", "ads_status", "ads_types", "ads_campaigns", "ads_days", "ads_scope"]) params.delete(key);
   if (filters.period.preset !== DEFAULT_FILTERS.period.preset) params.set("ads_period", filters.period.preset);
   if (filters.period.preset === "day" && isValidDay(filters.period.date)) params.set("ads_date", filters.period.date);
   if (filters.period.preset === "custom") {
@@ -48,6 +49,7 @@ export function writeFilters(base: URLSearchParams, filters: DashboardFilters): 
   if (filters.status !== "enabled") params.set("ads_status", filters.status);
   if (filters.types.length) params.set("ads_types", filters.types.join(","));
   if (filters.campaigns.length) params.set("ads_campaigns", filters.campaigns.join(","));
+  if (filters.includeUntracked) params.set("ads_scope", "account");
   return params;
 }
 
@@ -81,6 +83,7 @@ export type DashboardData = {
   campaigns: CampaignRow[]; accountTotals: AdsMetrics; accountPrevious: AdsMetrics | null;
   leads: LocalServicesLeads | null;
   fetchedAt: string;
+  tracking?: { available: boolean; revision: number; ids: string[] | null };
 };
 
 export const typeLabels: Record<string, string> = {
@@ -91,8 +94,9 @@ export const typeLabel = (type: string) => typeLabels[type] ?? type.charAt(0) + 
 export const statusLabels: Record<string, string> = { ENABLED: "Active", PAUSED: "En pause", REMOVED: "Supprimée" };
 
 /** Filtrage : statut ACTUEL, types, sélection explicite. Une campagne en pause peut avoir des dépenses passées. */
-export function filterCampaigns(rows: CampaignRow[], filters: Pick<DashboardFilters, "status" | "types" | "campaigns">) {
-  return rows.filter((row) => (filters.status === "all" || (filters.status === "enabled" ? row.status === "ENABLED" : row.status === "PAUSED"))
+export function filterCampaigns(rows: CampaignRow[], filters: Pick<DashboardFilters, "status" | "types" | "campaigns" | "includeUntracked">, tracked: string[] | null = null) {
+  return rows.filter((row) => (filters.includeUntracked || tracked === null || tracked.includes(row.id))
+    && (filters.status === "all" || (filters.status === "enabled" ? row.status === "ENABLED" : row.status === "PAUSED"))
     && (!filters.types.length || filters.types.includes(row.type))
     && (!filters.campaigns.length || filters.campaigns.includes(row.id)));
 }

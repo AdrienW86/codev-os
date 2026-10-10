@@ -81,6 +81,7 @@ function serviceSetup({ deny = false, connected = true, dashboardError = null } 
     "@/lib/recommendations/data": { createRecommendation: async (input) => { recommendations.push(input); return { ok: true, recommendation: { id: "reco-1" } }; } },
     "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.adsModule.GoogleAdsError, normalizeMetrics: clientModule.adsModule.normalizeMetrics },
     "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
+    "./tracking": { loadCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
   });
   return { service, calls, audits, recommendations, runs };
 }

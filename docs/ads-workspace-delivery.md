@@ -14,3 +14,9 @@
 Aucune migration distante, modification de campagne Google Ads, modification de secrets Vercel ou activation d'automatisation. Aucun e-mail ni push réel pendant la validation. L'association Protection Nuisibles / 9206382986 n'est pas modifiée. Les données de test utilisent uniquement des identifiants factices et une base locale jetable.
 
 Les résultats de validation, migrations et prérequis de mise en production seront consignés ici à la livraison.
+
+## Validation intermédiaire — affectation
+
+39 tests unitaires/simulés Google Ads et suivi passent ; typecheck réussi. PostgreSQL 17 local : les migrations sont rejouées depuis le schéma historique, les 17 contrôles du suivi et les contrôles des rapports existants passent. Aucun appel Google Ads réel. La migration de suivi est créée par la CLI puis renommée pour suivre la migration de rapports déjà présente : `20261016000000_google_ads_reports.sql`, puis `20261017000000_google_ads_campaign_tracking.sql`.
+
+Un compte portant une sélection persistante ne peut pas être réaffecté silencieusement (clé étrangère). Un changement de compte nécessitera un parcours explicite de retrait du suivi ; aucune association existante n'est changée par ce lot.

@@ -51,7 +51,7 @@ async function targetClient(input: Record<string, unknown>, context: AssistantCo
 export function mergeAdsFilters(input: Record<string, unknown>, context: AssistantContext, clientId: string): DashboardFilters {
   const inView = context.view === "ads_campaigns" && typeof context.adsQuery === "string";
   const base = inView ? parseFilters(new URLSearchParams(context.adsQuery)) : structuredClone(DEFAULT_FILTERS);
-  if (context.clientId !== clientId) base.campaigns = [];
+  if (context.clientId !== clientId) { base.campaigns = []; delete base.includeUntracked; }
   if (typeof input.period === "string") {
     const preset = input.period as PeriodPreset;
     base.period = preset === "day" ? { preset, date: input.date as string | undefined } : preset === "custom" ? { preset, start: input.start as string | undefined, end: input.end as string | undefined } : { preset };
@@ -90,8 +90,10 @@ export async function adsCampaignsTool(input: Record<string, unknown>, context: 
     const resolved = resolveCampaigns(input.campaigns as string[], data.campaigns);
     if (!resolved.ok) return { ok: false, text: resolved.text };
     filters.campaigns = resolved.ids;
+    // Une désignation explicite est une demande de consulter ces campagnes, y compris hors suivi.
+    filters.includeUntracked = true;
   }
-  const rows = filterCampaigns(data.campaigns, filters);
+  const rows = filterCampaigns(data.campaigns, filters, data.tracking?.ids ?? null);
   const totals = sumCampaigns(rows);
   const money = (value: number | null) => value === null ? "indisponible" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: data.account.currency }).format(value);
   const count = (value: number | null) => value === null ? "indisponible" : new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value);

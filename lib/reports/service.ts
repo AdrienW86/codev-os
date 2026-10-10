@@ -5,7 +5,10 @@ import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { describeAction } from "@/lib/actions/registry";
 import { buildReport, previousPeriod, type Period, type RecurringReportKind, type ReportInput } from "@/lib/reports/build";
-import { getReportScope } from "@/lib/reports/google-ads-service";
+import { requireAdmin } from "@/lib/require-admin";
+import { reportEmailPreview, recipientSchema } from "@/lib/reports/email-preview";
+import { ProviderError } from "@/lib/providers/errors";
+import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
@@ -52,6 +55,7 @@ export type GenerateResult = { status: "created" | "updated" | "frozen"; id: str
 /** Génère (ou régénère en nouvelle version) le rapport d'une période. Un rapport envoyé ou archivé n'est jamais modifié. */
 export async function generateReport(actor: Actor, input: { clientId: string; kind: RecurringReportKind; today: string; period?: Period }): Promise<GenerateResult> {
   if (!uuid.test(input.clientId)) fail("client");
+  await requireReportVersionStorage();
   const period = input.period ?? previousPeriod(input.kind, input.today);
   const data = await gatherReportInput(input.clientId, period);
   const built = buildReport(input.kind, data, input.today);
@@ -63,15 +67,14 @@ export async function generateReport(actor: Actor, input: { clientId: string; ki
   if (existing && ["sent", "archived"].includes(existing.status)) return { status: "frozen", id: existing.id, version: existing.version };
   if (existing) {
     const version = existing.version + 1;
-    const { error: updateError } = await supabase.from("reports").update({ ...content, version, status: "ready_for_review", generated_at: now, approved_at: null, approved_by: null, approved_version: null }).eq("id", existing.id).eq("version", existing.version);
+    const { data: updated, error: updateError } = await supabase.from("reports").update({ ...content, version, status: "ready_for_review", generated_at: now, approved_at: null, approved_by: null, approved_version: null }).eq("id", existing.id).eq("version", existing.version).select("id");
     if (updateError) fail("update");
-    await supabase.from("report_versions").insert({ report_id: existing.id, version, summary: content.summary, internal_content: content.internal_content, client_content: content.client_content, created_by: actor.kind === "system" ? `system:${actor.worker}` : actor.userId });
+    if (!updated?.length) fail("stale version");
     await writeAudit(actor, { action: "report.regenerated", resource_type: "report", resource_id: existing.id, metadata: { version } });
     return { status: "updated", id: existing.id, version };
   }
   const { data: created, error: insertError } = await supabase.from("reports").insert({ client_id: input.clientId, kind: input.kind, period_start: period.start, period_end: period.end, status: "ready_for_review", version: 1, generated_at: now, ...content }).select("id").single();
   if (insertError || !created) fail("insert");
-  await supabase.from("report_versions").insert({ report_id: created!.id, version: 1, summary: content.summary, internal_content: content.internal_content, client_content: content.client_content, created_by: actor.kind === "system" ? `system:${actor.worker}` : actor.userId });
   await writeAudit(actor, { action: "report.generated", resource_type: "report", resource_id: created!.id, metadata: { client_id: input.clientId, kind: input.kind, period_start: period.start } });
   return { status: "created", id: created!.id, version: 1 };
 }
@@ -107,11 +110,21 @@ export async function listReportVersions(id: string) {
   return data ?? [];
 }
 
+export async function getReportDelivery(id: string, version: number) {
+  await requireAdmin();
+  if (!uuid.test(id)) return null;
+  const { data, error } = await db().from("report_deliveries").select("state,created_at,updated_at").eq("report_id", id).eq("version", version).maybeSingle();
+  if (["42P01", "PGRST205"].includes(error?.code ?? "")) return { state: "unavailable" };
+  if (error) fail("delivery read");
+  return data;
+}
+
 type Outcome = { ok: true } | { ok: false; message: string };
 
-export async function approveReport(actor: Actor & { kind: "admin" }, id: string): Promise<Outcome> {
+export async function approveReport(actor: Actor & { kind: "admin" }, id: string, expectedVersion: number): Promise<Outcome> {
+  await requireAdmin();
   const report = await getReport(id);
-  if (!report || report.status !== "ready_for_review") return { ok: false, message: "Seul un rapport prêt à relire peut être approuvé." };
+  if (!report || report.status !== "ready_for_review" || report.version !== expectedVersion) return { ok: false, message: "Relisez la version actuelle avant de l’approuver." };
   const { data, error } = await db().from("reports").update({ status: "approved", approved_at: new Date().toISOString(), approved_by: actor.userId, approved_version: report.version }).eq("id", id).eq("version", report.version).eq("status", "ready_for_review").select("id");
   if (error) fail("approve");
   if (!data?.length) return { ok: false, message: "Le rapport a changé entre-temps : rechargez-le." };
@@ -121,6 +134,8 @@ export async function approveReport(actor: Actor & { kind: "admin" }, id: string
 
 /** Modification de la synthèse client : nouvelle version, approbation invalidée. */
 export async function editReportSummary(actor: Actor & { kind: "admin" }, id: string, summary: string): Promise<Outcome> {
+  await requireAdmin();
+  await requireReportVersionStorage();
   const text = summary.trim();
   if (!text || text.length > 4000) return { ok: false, message: "Synthèse vide ou trop longue (4 000 caractères maximum)." };
   const report = await getReport(id);
@@ -130,14 +145,12 @@ export async function editReportSummary(actor: Actor & { kind: "admin" }, id: st
   const { data, error } = await db().from("reports").update({ client_content: clientContent as Json, summary: text, version, status: "ready_for_review", approved_at: null, approved_by: null, approved_version: null }).eq("id", id).eq("version", report.version).select("id");
   if (error) fail("edit");
   if (!data?.length) return { ok: false, message: "Le rapport a changé entre-temps : rechargez-le." };
-  // Rapport Google Ads : la version porte le même périmètre que le rapport (inchangé par une modification de synthèse).
-  const scope = report.kind === "google_ads" ? await getReportScope(id) : null;
-  await db().from("report_versions").insert({ report_id: id, version, summary: text, internal_content: report.internal_content, client_content: clientContent as Json, created_by: actor.userId, ...(scope ? { scope: scope as unknown as Json } : {}) });
   await writeAudit(actor, { action: "report.edited", resource_type: "report", resource_id: id, metadata: { version } });
   return { ok: true };
 }
 
 export async function archiveReport(actor: Actor & { kind: "admin" }, id: string): Promise<Outcome> {
+  await requireAdmin();
   const report = await getReport(id);
   if (!report || report.status === "archived") return { ok: false, message: "Rapport introuvable ou déjà archivé." };
   const { error } = await db().from("reports").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id);
@@ -150,23 +163,39 @@ export async function archiveReport(actor: Actor & { kind: "admin" }, id: string
  * Envoi de la version APPROUVÉE. Sans fournisseur e-mail configuré ET activé (EMAIL_SENDING_ENABLED=true),
  * aucun e-mail n'est envoyé : l'administrateur peut seulement consigner un envoi manuel.
  */
-export async function sendReport(actor: Actor & { kind: "admin" }, id: string, mode: "email" | "manual"): Promise<Outcome> {
+export async function sendReport(actor: Actor & { kind: "admin" }, id: string, mode: "email" | "manual", preview: { version: number; recipient?: string; digest?: string; confirmed?: boolean }): Promise<Outcome> {
+  await requireAdmin();
   const report = await getReport(id);
-  if (!report || report.status !== "approved" || report.approved_version !== report.version) return { ok: false, message: "Seule la version approuvée d’un rapport peut être envoyée." };
-  let delivery: Record<string, unknown> = { mode: "manual", recorded_by: actor.userId };
+  if (!report || report.status !== "approved" || report.approved_version !== report.version || report.version !== preview.version) return { ok: false, message: "Seule la version approuvée et prévisualisée d’un rapport peut être envoyée." };
+  const delivery: Record<string, unknown> = { mode: "manual", recorded_by: actor.userId };
   if (mode === "email") {
     const status = emailSendingStatus();
     if (!status.enabled) return { ok: false, message: status.reason };
-    const recipient = report.client?.email;
-    if (!recipient) return { ok: false, message: "Aucune adresse e-mail renseignée pour ce client." };
-    const content = report.client_content as { summary?: string; sections?: { title: string; lines: string[] }[] };
-    const text = [content.summary ?? report.summary, ...(content.sections ?? []).flatMap((section) => ["", section.title, ...section.lines.map((line) => `• ${line}`)])].join("\n");
-    const result = await sendEmail({ to: recipient, subject: report.title, text, idempotencyKey: `report-${report.id}-v${report.version}` });
-    delivery = { mode: "email", provider: "resend", message_id: result.id, recipient_domain: recipient.split("@")[1] ?? null };
+    const parsed = recipientSchema.safeParse(preview.recipient);
+    if (!parsed.success || !preview.confirmed || !report.client_id) return { ok: false, message: "Confirmez une adresse destinataire unique pour ce client." };
+    const email = reportEmailPreview(report);
+    if (email.digest !== preview.digest) return { ok: false, message: "Le contenu a changé : rechargez la prévisualisation." };
+    const token = crypto.randomUUID();
+    const { data: claimed, error: claimError } = await db().rpc("codev_claim_report_delivery", { p_report_id: id, p_version: report.version, p_token: token, p_recipient: parsed.data, p_subject: email.subject, p_body: email.text, p_content: report.client_content });
+    if (claimError) return { ok: false, message: "Envoi indisponible : vérifiez la migration locale de suivi des envois." };
+    if (!claimed) return { ok: false, message: "Une tentative existe déjà ou la version a changé. Aucun nouvel e-mail envoyé." };
+    let providerId: string;
+    try {
+      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
+    } catch (error) {
+      // Network/timeouts and malformed success are ambiguous: never retry automatically.
+      const definite = error instanceof ProviderError && ["unauthorized", "rate_limited", "rejected", "not_found"].includes(error.kind) && error.status !== null && error.status < 500 && error.status !== 409;
+      await db().rpc("codev_finish_report_delivery", { p_report_id: id, p_version: report.version, p_token: token, p_state: definite ? "failed" : "uncertain", p_provider_id: null });
+      return { ok: false, message: definite ? "Envoi refusé par le fournisseur. Cette tentative ne sera pas répétée automatiquement." : "Résultat d’envoi incertain. Vérifiez Resend avant toute intervention ; le rapport reste figé." };
+    }
+    const { data: finished, error: finishError } = await db().rpc("codev_finish_report_delivery", { p_report_id: id, p_version: report.version, p_token: token, p_state: "accepted", p_provider_id: providerId });
+    if (finishError || !finished) return { ok: false, message: "Resend a accepté l’e-mail, mais la confirmation locale a échoué. Aucun nouvel envoi : vérifiez Resend." };
+    await writeAudit(actor, { action: "report.email_accepted", resource_type: "report", resource_id: id, metadata: { version: report.version, mode } });
+    return { ok: true };
   }
   const { data, error } = await db().from("reports").update({ status: "sent", sent_at: new Date().toISOString(), delivery: delivery as Json }).eq("id", id).eq("status", "approved").eq("version", report.version).select("id");
   if (error) fail("send");
   if (!data?.length) return { ok: false, message: "Le rapport a changé entre-temps : rechargez-le." };
-  await writeAudit(actor, { action: mode === "email" ? "report.sent" : "report.marked_sent", resource_type: "report", resource_id: id, metadata: { version: report.version, mode } });
+  await writeAudit(actor, { action: "report.marked_sent", resource_type: "report", resource_id: id, metadata: { version: report.version, mode } });
   return { ok: true };
 }

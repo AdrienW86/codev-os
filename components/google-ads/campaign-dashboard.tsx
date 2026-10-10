@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import { change, createRequestTracker, describeScope, filterCampaigns, groupByType, parseFilters, periodKey, reconcile, statusLabels, sumCampaigns, typeLabel, writeFilters, type CampaignRow, type DashboardData, type DashboardFilters, type StatusFilter } from "@/lib/integrations/google-ads/dashboard";
 import { PERIOD_PRESETS, describeDates, presetLabels, type PeriodPreset } from "@/lib/integrations/google-ads/periods";
 import type { AdsMetrics } from "@/lib/integrations/google-ads/types";
+import { CampaignTrackingEditor, type SaveTracking } from "./campaign-tracking";
 
 export type DashboardResult = { ok: true; data: DashboardData } | { ok: false; message: string };
 export type ScopeActionState = { ok?: boolean; message?: string; href?: string };
@@ -22,16 +23,17 @@ const chip = (active: boolean) => `min-h-9 rounded-full border px-3 text-sm ${ac
  * - Une réponse arrivée après une demande plus récente est ignorée (compteur de requêtes).
  * - Pendant un chargement ou après une erreur, aucun ancien chiffre n'est présenté comme celui de la nouvelle période.
  */
-export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, analysisNote, syncUrl = true, onFiltersChange, actionLabels }: {
+export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, runAIAnalysis, analysisNote, syncUrl = true, onFiltersChange, actionLabels, saveTracking }: {
   clientId: string; initial: DashboardResult; initialFilters: DashboardFilters;
   load: (clientId: string, query: string) => Promise<DashboardResult>;
-  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; analysisNote?: string;
+  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; runAIAnalysis?: ScopeAction; analysisNote?: string;
   /** false dans l'assistant : la vue vit dans un panneau, l'URL de la page ne change pas. */
   syncUrl?: boolean;
   /** Filtres courants remontés (contexte de conversation de l'assistant). */
   onFiltersChange?: (filters: DashboardFilters) => void;
   /** Libellés des actions (l'assistant les PROPOSE avant confirmation au lieu de les exécuter). */
-  actionLabels?: { report?: string; analysis?: string };
+  actionLabels?: { report?: string; analysis?: string; aiAnalysis?: string };
+  saveTracking?: SaveTracking;
 }) {
   const titleId = useId();
   // Filtres analysés côté serveur depuis la même URL : rendu serveur et navigateur identiques.
@@ -75,7 +77,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
   }, [fetchPeriod, syncUrl]);
 
   const data = view.status === "ready" ? view.data : null;
-  const selected = useMemo(() => (data ? filterCampaigns(data.campaigns, filters) : []), [data, filters]);
+  const selected = useMemo(() => (data ? filterCampaigns(data.campaigns, filters, data.tracking?.ids ?? null) : []), [data, filters]);
 
   return (
     <section aria-labelledby={titleId} className="space-y-6">
@@ -83,6 +85,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
         <h2 id={titleId} className="text-lg font-semibold">Campagnes Google Ads</h2>
         <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-muted">Lecture seule · aucune modification Google Ads</span>
       </div>
+      {data?.tracking && saveTracking && <CampaignTrackingEditor key={data.tracking.revision} clientId={clientId} rows={data.campaigns} tracking={data.tracking} save={saveTracking} refresh={() => void fetchPeriod(filters)} />}
       <PeriodControls filters={filters} onChange={commit} busy={view.status === "loading"} />
       {view.status === "loading" && <p role="status" aria-live="polite" className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">Chargement de la période sélectionnée… les chiffres précédents sont masqués.</p>}
       {view.status === "error" && (
@@ -91,7 +94,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
           <button type="button" onClick={() => void fetchPeriod(filters)} className="mt-3 min-h-10 rounded-lg border border-border px-3 text-sm text-foreground">Réessayer</button>
         </div>
       )}
-      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} analysisNote={analysisNote} actionLabels={actionLabels} />}
+      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} runAIAnalysis={runAIAnalysis} analysisNote={analysisNote} actionLabels={actionLabels} />}
     </section>
   );
 }
@@ -132,9 +135,9 @@ function PeriodControls({ filters, onChange, busy }: { filters: DashboardFilters
   );
 }
 
-function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, analysisNote, actionLabels }: {
+function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, runAIAnalysis, analysisNote, actionLabels }: {
   data: DashboardData; filters: DashboardFilters; selected: CampaignRow[]; onChange: (next: DashboardFilters) => void; clientId: string;
-  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; analysisNote?: string; actionLabels?: { report?: string; analysis?: string };
+  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; runAIAnalysis?: ScopeAction; analysisNote?: string; actionLabels?: { report?: string; analysis?: string; aiAnalysis?: string };
 }) {
   const money = useMemo(() => new Intl.NumberFormat("fr-FR", { style: "currency", currency: data.account.currency }), [data.account.currency]);
   const fmt = useMemo(() => formatters(money), [money]);
@@ -155,6 +158,8 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
 
       <fieldset className="space-y-3">
         <legend className="sr-only">Filtres des campagnes</legend>
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(filters.includeUntracked)} onChange={(event) => onChange({ ...filters, includeUntracked: event.target.checked, campaigns: [] })} />Consulter aussi les autres campagnes du compte</label>
+        <p className="text-xs text-muted">{data.tracking?.ids === null || !data.tracking ? "Suivi non configuré : toutes les campagnes du compte sont disponibles." : `${data.tracking.ids.length} campagne(s) suivie(s) pour ce client.`}{data.tracking && !data.tracking.available ? " Persistance indisponible : migration requise." : ""}</p>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Statut actuel">
           {(["enabled", "paused", "all"] as const).map((status) => <button key={status} type="button" aria-pressed={filters.status === status} onClick={() => onChange({ ...filters, status })} className={chip(filters.status === status)}>{status === "enabled" ? "Actives" : status === "paused" ? "En pause" : "Toutes"}</button>)}
         </div>
@@ -171,7 +176,7 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
         <details className="rounded-xl border border-border bg-surface p-3">
           <summary className="cursor-pointer text-sm">Sélection de campagnes {filters.campaigns.length ? `(${filters.campaigns.length})` : "(toutes celles du filtre)"}</summary>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {data.campaigns.map((row) => {
+            {data.campaigns.filter((row) => filters.includeUntracked || data.tracking?.ids == null || data.tracking.ids.includes(row.id)).map((row) => {
               const checked = filters.campaigns.includes(row.id);
               return (
                 <li key={row.id}>
@@ -213,10 +218,11 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
 
       <p className="text-xs text-muted">Conversions : selon le suivi configuré dans Google Ads, parfois retardées. « Valeur des conversions » est la valeur attribuée aux conversions, distincte du chiffre d’affaires réel.</p>
 
-      {(prepareReport || runAnalysis) && (
+      {(prepareReport || runAnalysis || runAIAnalysis) && (
         <div className="grid gap-4 md:grid-cols-2">
           {prepareReport && <ScopeButton title="Rapport Google Ads" description={`Enregistre un rapport pour ce périmètre exact (${selected.length} campagne${selected.length > 1 ? "s" : ""}, ${describeDates(data.period)}). Il n’évoluera plus avec les filtres.`} label={actionLabels?.report ?? "Préparer le rapport"} disabled={!selected.length} run={() => prepareReport(clientId, scopeForServer)} />}
-          {runAnalysis && <ScopeButton title="Analyse réelle de l’Agent Ads" description={analysisNote ?? "Données Google Ads réelles, règles déterministes (sans IA)."} label={actionLabels?.analysis ?? "Lancer l’analyse sur ce périmètre"} disabled={!selected.length} run={() => runAnalysis(clientId, scopeForServer)} />}
+          {runAnalysis && <ScopeButton title="Analyse par règles" description="Données Google Ads réelles, règles déterministes (sans IA). Les instructions ne sont pas utilisées par ces règles." label={actionLabels?.analysis ?? "Lancer l’analyse sur ce périmètre"} disabled={!selected.length} run={() => runAnalysis(clientId, scopeForServer)} />}
+          {runAIAnalysis && <ScopeButton title="Analyse IA personnalisée" description={analysisNote ?? "Utilise les instructions et le contexte commercial du client. Recommandations uniquement ; un échec IA est signalé avec un repli déterministe."} label={actionLabels?.aiAnalysis ?? "Lancer l’analyse IA"} disabled={!selected.length} run={() => runAIAnalysis(clientId, scopeForServer)} />}
         </div>
       )}
     </>

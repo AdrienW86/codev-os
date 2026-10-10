@@ -17,7 +17,7 @@ function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',
   return exports;}
  return read(resolve(root,file));}
 const json=value=>JSON.parse(JSON.stringify(value));
-const src=file=>readFileSync(resolve(root,file),'utf8');
+const src=file=>readFileSync(resolve(root,file),'utf8').replace(/\r\n/g,'\n');
 const legacy=load('lib/publications/legacy-channels.ts'),channels=load('lib/publications/channels.ts');
 const uid=(prefix,n)=>`${prefix}0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const C=uid(1,1),SOCIAL=uid(3,1),GBP=uid(3,2),WEB=uid(3,3),PUB=uid(4,1),REV=uid(7,1);

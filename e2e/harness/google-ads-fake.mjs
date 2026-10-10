@@ -1,7 +1,7 @@
 // E2E UNIQUEMENT (chargé par --import dans le serveur Next de e2e/output) : remplace les réponses des
 // deux hôtes Google utilisés par le connecteur Google Ads (jeton OAuth, googleAds:search) par des
 // données fixes. Le vrai client de l'application (pagination, normalisation, périodes) est exercé ;
-// toute autre requête part au vrai fetch. Aucune écriture Google Ads n'existe à simuler.
+// Resend est aussi simulé. Toute autre destination distante est refusée ; seul le réseau local reste accessible.
 const realFetch = globalThis.fetch;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const day = 86_400_000;
@@ -18,9 +18,13 @@ const campaigns = [
 const metricsFor = (perDay, days) => ({ costMicros: String(perDay.cost * days), clicks: String(perDay.clicks * days), impressions: String(perDay.impressions * days), conversions: perDay.conversions * days, conversionsValue: 0 });
 
 globalThis.fetch = async (input, init = {}) => {
-  const url = typeof input === "string" ? input : input.url;
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (url === "https://oauth2.googleapis.com/token") return json({ access_token: "e2e-access", expires_in: 3600 });
-  if (!url.startsWith("https://googleads.googleapis.com/")) return realFetch(input, init);
+  if (url === "https://api.resend.com/emails") return json({ id: "fake-email-accepted" });
+  if (!url.startsWith("https://googleads.googleapis.com/")) {
+    if (!["127.0.0.1", "localhost"].includes(new URL(url).hostname)) throw new Error("E2E external network blocked");
+    return realFetch(input, init);
+  }
   if (!url.endsWith("/googleAds:search")) return json({ error: "e2e: seule la lecture est simulée" }, 403);
   const { query } = JSON.parse(String(init.body ?? "{}"));
   if (query.includes("FROM customer LIMIT 1")) return json({ results: [{ customer: { id: "1234567890", descriptiveName: "Compte E2E Jrenov", currencyCode: "EUR", timeZone: "Europe/Paris" } }] });

@@ -14,7 +14,9 @@ export async function runGoogleAdsAnalysisAction(_previous: AdsFormState, form: 
   await requireAdmin();
   const preset = readFormText(form, "period") ?? "last_30";
   if (!(formPresets as readonly string[]).includes(preset)) return { message: "Période invalide." };
-  const result = await runGoogleAdsAnalysis(readFormText(form, "agent_id") ?? "", readFormText(form, "client_id") ?? "", { period: { preset: preset as PeriodPreset } });
+  const mode = readFormText(form, "mode") ?? "deterministic";
+  if (mode !== "ai" && mode !== "deterministic") return { message: "Mode invalide." };
+  const result = await runGoogleAdsAnalysis(readFormText(form, "agent_id") ?? "", readFormText(form, "client_id") ?? "", { period: { preset: preset as PeriodPreset }, mode });
   revalidatePath("/agents", "layout");
   revalidatePath("/clients", "layout");
   revalidatePath("/recommendations", "layout");

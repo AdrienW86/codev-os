@@ -24,6 +24,7 @@ const paths = {
   send: "M22 2 11 13 M22 2l-7 20-4-9-9-4z",
   voice: "M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4",
   plus: "M12 5v14 M5 12h14",
+  bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4",
 } as const;
 
 export type IconName = keyof typeof paths;

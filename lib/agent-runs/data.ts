@@ -1,5 +1,6 @@
 import "server-only";
 import { isStoredScope } from "@/lib/integrations/google-ads/scope";
+import { validInstructionSnapshot } from "@/lib/integrations/google-ads/business-context";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/lib/audit-logs";
@@ -83,9 +84,13 @@ export async function createAgentRun(input: unknown): Promise<AgentRunResult> {
   const internalMetadata = Object.keys(metadataRecord).every((key) => key === "internal_test") && (!("internal_test" in metadataRecord) || metadataRecord.internal_test === true);
   // Analyse Google Ads : type d'exécution, moteur et périmètre explicite (revalidé) uniquement.
   const adsKeys = Object.keys(metadataRecord);
-  const adsMetadata = metadataRecord.run_type === "google_ads_read_only" && adsKeys.every((key) => ["run_type", "engine", "scope"].includes(key))
-    && (metadataRecord.engine === undefined || metadataRecord.engine === "deterministic")
-    && (metadataRecord.scope === undefined || isStoredScope(metadataRecord.scope));
+  const adsMetadata = metadataRecord.run_type === "google_ads_read_only" && adsKeys.every((key) => ["run_type", "engine", "scope", "requested_mode", "provider", "model", "instruction_snapshot"].includes(key))
+    && (metadataRecord.engine === undefined || metadataRecord.engine === "deterministic" || metadataRecord.engine === "ai")
+    && (metadataRecord.scope === undefined || isStoredScope(metadataRecord.scope))
+    && (metadataRecord.requested_mode === undefined || metadataRecord.requested_mode === "deterministic" || metadataRecord.requested_mode === "ai")
+    && (metadataRecord.provider === undefined || metadataRecord.provider === null || metadataRecord.provider === "openai" || metadataRecord.provider === "anthropic")
+    && (metadataRecord.model === undefined || metadataRecord.model === null || typeof metadataRecord.model === "string" && /^[a-zA-Z0-9._:-]{1,128}$/.test(metadataRecord.model))
+    && (metadataRecord.instruction_snapshot === undefined || validInstructionSnapshot(metadataRecord.instruction_snapshot));
   if (!internalMetadata && !adsMetadata) return { ok: false, message: genericError };
 
   try {

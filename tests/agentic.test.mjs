@@ -97,6 +97,7 @@ function setup({ deny = false, missingAgent = false, missingClient = false, fail
   const common = { "@/lib/require-admin": { requireAdmin: guard }, "@/lib/supabase/server": { getSupabaseServerClient: () => supabase }, "@/lib/audit-logs": audit };
   common["@/lib/agents/scope"]=load("lib/agents/scope.ts",common,logs);
   common["@/lib/integrations/google-ads/scope"] = load("lib/integrations/google-ads/scope.ts", { "./periods": load("lib/integrations/google-ads/periods.ts") });
+  common["@/lib/integrations/google-ads/business-context"] = load("lib/integrations/google-ads/business-context.ts", { zod });
   const agentValidation = load("lib/agents/validation.ts");
   const recommendationValidation = load("lib/recommendations/validation.ts");
   const actionRegistry = load("lib/actions/registry.ts", { zod });

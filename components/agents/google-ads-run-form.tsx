@@ -16,8 +16,9 @@ export function GoogleAdsRunForm({ agentId, clients }: { agentId: string; client
   return <form action={action} className="mt-4 flex flex-wrap items-end gap-3"><input type="hidden" name="agent_id" value={agentId} />
     <label className="text-xs text-muted">Client assigné<select required name="client_id" disabled={pending} className={select}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
     <label className="text-xs text-muted">Période<select name="period" defaultValue="last_30" disabled={pending} className={select}>{presets.map((preset) => <option key={preset} value={preset}>{presetLabels[preset]}</option>)}</select></label>
+    <label className="text-xs text-muted">Mode d’analyse<select name="mode" defaultValue="deterministic" disabled={pending} className={select}><option value="deterministic">Règles déterministes</option><option value="ai">IA personnalisée</option></select></label>
     <button disabled={pending} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background disabled:opacity-60">{pending ? "Analyse en cours…" : "Lancer l’analyse réelle"}</button>
-    <p className="basis-full text-xs text-muted">Campagnes actuellement actives. Pour choisir des campagnes précises, utilisez l’onglet Campagnes de la fiche client.</p>
-    {state.message && <div role={state.ok ? "status" : "alert"} className="basis-full text-sm text-muted"><p>{state.message}</p>{state.recommendationId && <Link href={`/recommendations/${state.recommendationId}`} className="mt-2 inline-block text-accent hover:underline">Ouvrir la recommandation →</Link>}</div>}
+    <p className="basis-full text-xs text-muted">Campagnes suivies actuellement actives. Pour choisir le périmètre et modifier les instructions : <Link href="/advertising" className="text-accent">Campagnes publicitaires</Link>.</p>
+    {state.message && <div role={state.ok ? "status" : "alert"} className="basis-full text-sm text-muted"><p>{state.message}</p>{state.runId && <Link href={`/advertising/analyses/${state.runId}`} className="mt-2 inline-block text-accent hover:underline">Ouvrir l’analyse →</Link>}</div>}
   </form>;
 }

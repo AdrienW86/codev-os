@@ -100,6 +100,17 @@ test("only the scheduler tick bypasses the session gate; neighbours stay protect
   }
 });
 
+test("only exact public PWA files bypass auth on read; private neighbours and writes stay protected", async () => {
+  const { proxy } = setup(null);
+  for (const path of ["/sw.js", "/offline.html", "/manifest.webmanifest", "/pwa/icon-192.png", "/pwa/icon-512.png", "/pwa/apple-touch-icon.png"]) {
+    assert.equal(await proxy(request(path)), undefined); assert.equal(await proxy(request(path, "HEAD")), undefined);
+    assert.equal((await proxy(request(path, "POST"))).status, 401);
+    assert.equal((await proxy(request(`${path}/private`))).status, 307);
+  }
+  const response = await proxy(request("/notifications?focus=11111111-1111-4111-8111-111111111111"));
+  assert.equal(new URL(response.headers.get("location")).searchParams.get("redirect_url"), "/notifications?focus=11111111-1111-4111-8111-111111111111");
+});
+
 test("actual Next.js matcher covers private paths even with file extensions", () => {
   const { unstable_doesMiddlewareMatch } = require("next/experimental/testing/server");
   const { config } = setup(null);

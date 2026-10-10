@@ -276,7 +276,7 @@ test("the result panel is a single accessible dialog that never renders model HT
   }
   const session = read("components/assistant/use-assistant.ts");
   // Lecture vocale : la phrase de synthèse uniquement, jamais la vue.
-  assert.match(session, /speak\(text\)/);
+  assert.match(session, /speak\(text,/);
   assert.doesNotMatch(session, /speak\([^)]*view/);
   assert.match(box, /Actualisation en cours… le résultat précédent est masqué/);
 });
@@ -290,5 +290,5 @@ test("the assistant route keeps admin, same-origin and strict schemas for messag
   assert.match(route, /proposeFromView\(/);
   // L'action serveur utilisée par la vue Ads vérifie elle-même la session admin.
   const actions = read("app/(cockpit)/clients/[id]/google-ads-actions.ts");
-  assert.match(actions, /export async function loadGoogleAdsDashboardAction\(clientId: unknown, query: unknown\): Promise<DashboardResult> \{\n  await requireAdmin\(\);/);
+  assert.match(actions, /export async function loadGoogleAdsDashboardAction\(clientId: unknown, query: unknown\): Promise<DashboardResult> \{\r?\n  await requireAdmin\(\);/);
 });

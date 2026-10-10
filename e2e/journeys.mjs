@@ -139,7 +139,7 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
       await page.getByRole("link", { name: "Version interne" }).click();
       await page.getByText("Usage interne uniquement.").waitFor();
       await page.getByRole("button", { name: /Approuver la version/ }).click();
-      await page.getByText("Envoi e-mail désactivé.").waitFor();
+      await page.getByText("Envoi e-mail indisponible.").waitFor();
       await shot("report-approved");
       await page.getByRole("button", { name: "Marquer comme envoyé manuellement" }).click();
       await page.getByText(/Le contenu est figé/).waitFor();

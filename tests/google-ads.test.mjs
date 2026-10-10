@@ -81,6 +81,7 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
   } };
   const service = load("lib/integrations/google-ads/service.ts", {
     "@/lib/require-admin": { requireAdmin: guard },
+    "@/lib/simulation/server": { getActiveScenario: async () => null },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
     "@/lib/clients/data": { getClient: async () => ({ id: clientId }) },
     "@/lib/agents/data": { getAgentById: async () => ({ id: agentId, name: "Agent Ads", agent_type: agentType, status: active ? "Actif" : "En pause", enabled: active }), listClientsForAgent: async () => assigned ? [{ client_id: clientId, enabled: true }] : [] },
@@ -94,6 +95,11 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
     "@/lib/recommendations/data": { createRecommendation: async (input) => { if (recommendationFails) return { ok: false, message: "unit" }; recommendations.push(input); return { ok: true, recommendation: { id: connectionId } }; } },
     "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.GoogleAdsError, normalizeMetrics: clientModule.normalizeMetrics },
     "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
+    "./tracking": { loadCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
+    "@/lib/ai/providers": { selectAIProvider: () => null },
+    "./ai-analysis": {},
+    "./context-service": { getAdsBusinessContext: async () => ({ available: true, revision: 0, context: null }) },
+    "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => {} }), saveAdsAnalysisMetadata: async (_id, _client, _agent, metadata) => { runs.at(-1).metadata = JSON.parse(JSON.stringify(metadata)); } },
   });
   return { service, calls, audits, recommendations, runs, changes };
 }

@@ -64,10 +64,11 @@ export function ResultView({ view, version, onAdsFilters, propose }: {
       {view.type === "ads_campaigns" && (
         <CampaignDashboard key={version} clientId={view.clientId} initial={{ ok: true, data: view.data }} initialFilters={view.filters} load={loadGoogleAdsDashboardAction}
           syncUrl={false} onFiltersChange={(filters) => onAdsFilters(view.clientId, view.clientName, filters)}
-          actionLabels={{ report: "Proposer le rapport", analysis: "Proposer l’analyse" }}
-          analysisNote="Analyse réelle de l’Agent Ads : données Google Ads en lecture seule, règles déterministes (sans IA). Proposée ici, exécutée seulement après confirmation."
+          actionLabels={{ report: "Proposer le rapport", analysis: "Proposer l’analyse", aiAnalysis: "Proposer l’analyse IA" }}
+          analysisNote="IA facultative utilisant les instructions et le contexte commercial. Proposée ici, exécutée seulement après confirmation. Repli déterministe explicite si l’IA échoue."
           prepareReport={(clientId, scope) => propose("ads_prepare_report", { client_id: clientId, ...scope })}
-          runAnalysis={(clientId, scope) => propose("ads_run_analysis", { client_id: clientId, ...scope })} />
+          runAnalysis={(clientId, scope) => propose("ads_run_analysis", { client_id: clientId, ...scope })}
+          runAIAnalysis={(clientId, scope) => propose("ads_run_analysis", { client_id: clientId, ...scope, mode: "ai" })} />
       )}
       {view.link && <p><SafeLink link={view.link} /></p>}
     </div>

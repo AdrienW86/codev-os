@@ -76,8 +76,8 @@ export const toolDefinitions = {
     input: adsScopeInput, capability: null,
   },
   ads_run_analysis: {
-    kind: "write", description: "Lance l’analyse réelle de l’Agent Ads (règles déterministes, sans IA, lecture seule) sur un périmètre exact.",
-    input: adsScopeInput, capability: null,
+    kind: "write", description: "Lance l’analyse de l’Agent Ads sur un périmètre exact : règles déterministes par défaut, IA personnalisée facultative avec mode=ai. Lecture seule Google Ads, confirmation par bouton obligatoire.",
+    input: adsScopeInput.extend({ mode: z.enum(["deterministic", "ai"]).optional() }), capability: null,
   },
   create_task: {
     kind: "write", description: "Crée une tâche pour un client.",
@@ -115,7 +115,7 @@ export function describeProposal(name: ToolName, input: Record<string, unknown>)
     const scope = `${ids} campagne${ids > 1 ? "s" : ""}, ${describeDates({ start: String(input.start), end: String(input.end), days: 0 })}`;
     return name === "ads_prepare_report"
       ? `Préparer un rapport Google Ads pour ${input.client_name ?? "ce client"} (${scope}). Il sera à relire avant tout envoi ; aucune modification Google Ads.`
-      : `Lancer l’analyse réelle de l’Agent Ads pour ${input.client_name ?? "ce client"} (${scope}) : règles déterministes, sans IA, lecture seule.`;
+      : `Lancer l’analyse réelle de l’Agent Ads pour ${input.client_name ?? "ce client"} (${scope}) : ${input.mode === "ai" ? "IA personnalisée, instructions client, repli déterministe si indisponible" : "règles déterministes, sans IA"}, lecture seule.`;
   }
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;

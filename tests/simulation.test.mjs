@@ -105,5 +105,5 @@ test("pages switch to the simulated view after the admin guard and before any re
     assert.ok(firstRead === -1 || body.indexOf(`return <${view}`) < firstRead, `${route}: no real read before the simulation branch`);
   }
   const client = read("app/(cockpit)/clients/[id]/page.tsx");
-  assert.ok(client.indexOf("isSimulatedId(id)") < client.indexOf("getClientOrNotFound(id);\n  const search"), "simulated client ids never reach the database");
+  assert.ok(client.indexOf("isSimulatedId(id)") < client.indexOf("getClientOrNotFound(id);"), "simulated client ids never reach the database");
 });

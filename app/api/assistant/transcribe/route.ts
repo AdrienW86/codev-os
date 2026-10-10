@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const context = { model: provider.model, mime: declared, container: container ?? "inconnu", size: buffer.byteLength };
   const started = Date.now();
   try {
-    const text = await provider.transcribe(new Blob([buffer], { type }));
+    const text = await provider.transcribe(new Blob([buffer], { type }), { signal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]) });
     console.info("[voice] Transcription réussie", { ...context, ms: Date.now() - started, empty: !text });
     if (!text) return NextResponse.json({ error: "no_speech" }, { status: 422, headers });
     return NextResponse.json({ text }, { headers });

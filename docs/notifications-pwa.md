@@ -1,0 +1,15 @@
+# Notifications et PWA
+
+Migration locale additive : `20261020000000_notifications_web_push.sql`, après 17, 18 et 19. Les événements sont dédupliqués par rapport/version, analyse/statut, incident et tentative d’envoi. Seuls les incidents importants déclenchent un événement ; pas de notifications à chaque lecture ou chaque métrique. Lecture et préférences sont conservées par identité admin. La liste montre les cent derniers événements ; la cloche compte tous les non lus des catégories actives.
+
+Les abonnements sont stockés dans des tables serveur sans politique d’accès navigateur, dix appareils au maximum. L’admin peut les révoquer individuellement depuis `/notifications`. L’autorisation navigateur est demandée uniquement au clic ; un abonnement seul n’active pas les envois. Les préférences push sont distinctes des catégories internes. Les appareils expirés (404/410) sont supprimés. Aucun envoi ni création de clés réelles n’est réalisé par les tests.
+
+Variables serveur à configurer hors dépôt : `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (mailto de contact), `PUSH_SENDING_ENABLED=true` après validation humaine. Seule la clé publique est transmise au navigateur. Le planificateur déjà authentifié par `CRON_SECRET` traite dix envois maximum par passage ; aucun cron supplémentaire ni modification de fréquence Vercel. Les événements de plus d’une heure sont ignorés pour éviter les alertes tardives. Pas de réessai automatique après résultat réseau incertain ; une réservation interrompue ne renvoie rien.
+
+Le payload push contient uniquement « Une nouvelle notification est disponible » et le lien `/notifications?focus=…`. Le lien passe par l’authentification puis ouvre la notification interne appropriée. Aucune donnée client, instruction, métrique, jeton ou adresse destinataire n’apparaît sur l’écran verrouillé.
+
+Le service worker ne conserve que `/offline.html`, publique et sans session. Il refuse une réponse redirigée lors de son installation. Pas de cache de pages authentifiées, RSC, API ou pièces jointes. L’application affiche son état hors connexion et propose un rechargement explicite lorsqu’une mise à jour attend. Les icônes sont générées localement via `node scripts/pwa-icons.mjs`.
+
+Chrome/Android et ordinateur : installation si proposée par le navigateur. iPhone/iPad : Safari → Partager → Sur l’écran d’accueil ; lancer l’application installée avant d’autoriser le push, iOS 16.4 minimum ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)). L’installation ne garantit pas la disponibilité de la dictée ou de la lecture automatique. La voix continue fonctionne uniquement au premier plan ; l’arrière-plan et le verrouillage arrêtent l’écoute.
+
+Les dépendances ajoutées sont `web-push` (serveur), ses types et Playwright (tests). L’audit npm signale une vulnérabilité de `braces` via le lint Next déjà présent ; le correctif proposé rétrograde Next à une version majeure différente et n’est pas appliqué automatiquement. Aucun paquet ajouté pour le push n’est signalé par cet audit.

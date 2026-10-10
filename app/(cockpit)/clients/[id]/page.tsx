@@ -11,7 +11,7 @@ import { GoogleAdsPanel } from "@/components/clients/google-ads-panel";
 import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
 import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
 import { ANALYSIS_ENGINE_NOTE, loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
-import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
+import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction, runGoogleAdsScopeAIAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
 import { listClientSources } from "@/lib/connections/service";
 import { safeRead } from "@/lib/core/safe-read";
@@ -93,6 +93,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
     <>
       <Link href="/clients" className="mb-6 inline-block text-xs text-accent hover:underline">← Tous les clients</Link>
       <PageHeading eyebrow="Dossier client" title={client.name} description={[client.activity, client.geographic_area].filter(Boolean).join(" · ") || "Informations enregistrées dans votre portefeuille."} action={<Action href={`/clients/${client.id}/edit`}>Modifier</Action>} />
+      <p className="mb-4 text-sm"><Link href={`/advertising?client=${client.id}`} className="text-accent">Campagnes publicitaires →</Link></p>
       <Tabs label="Sections du dossier client" current={tab} items={[
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
@@ -178,7 +179,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       {tab === "ads" && adsFilters && adsInitial && (
         <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
-          prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
+          prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
       )}
 
       {tab === "activity" && <ActivityTab clientId={client.id} recommendations={recommendations} runs={runs} actions={actions} />}

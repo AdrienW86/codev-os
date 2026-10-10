@@ -12,7 +12,7 @@ export type AssistantSuggestion = { label: string; href: string; icon: IconName 
 export const defaultSuggestions: AssistantSuggestion[] = [
   { label: "Voir les urgences", href: "/work?view=review", icon: "alert" },
   { label: "Préparer les publications", href: "/publications", icon: "publications" },
-  { label: "Vérifier les campagnes", href: "/clients", icon: "ads" },
+  { label: "Vérifier les campagnes", href: "/advertising", icon: "ads" },
   { label: "Voir les tâches du jour", href: "/work?view=todo", icon: "tasks" },
 ];
 
@@ -28,14 +28,14 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
   const statusId = useId();
   const session = useAssistant();
   const { turns, proposal, pending, notice, view, open, voice } = session;
-  const status = voice.message || notice;
+  const status = session.speaking ? "Lecture de la synthèse… micro suspendu." : voice.message || notice;
   const lastReply = [...turns].reverse().find((turn) => turn.role === "assistant");
   const list = useRef<HTMLOListElement>(null);
   // Le dernier échange reste visible : la liste défile jusqu'au message le plus récent.
   useEffect(() => { if (list.current) list.current.scrollTop = list.current.scrollHeight; }, [turns.length, pending, open]);
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Escape" && voice.state !== "idle") { event.preventDefault(); voice.cancel(); }
+    if (event.key === "Escape" && (voice.state !== "idle" || session.speaking)) { event.preventDefault(); session.stopVoice(); }
   }
 
   const proposalCard = proposal && <ProposalCard proposal={proposal} pending={pending} onConfirm={() => void session.confirm()} onCancel={session.cancelProposal} />;
@@ -126,6 +126,7 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!value.trim() || pending) return;
+    session.stopVoice();
     void session.send(value);
     setValue("");
   }
@@ -136,22 +137,22 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
         <input id={id} name="prompt" type="text" autoComplete="off" maxLength={2000} value={value} onChange={(event) => setValue(event.target.value)} disabled={pending} placeholder={placeholder}
           className="min-h-12 w-full min-w-0 flex-1 bg-transparent px-3 text-base text-foreground placeholder:text-muted/70 focus:outline-none sm:text-sm" />
         <div className={compact ? "flex items-center gap-2" : "grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 sm:flex"}>
-          <button type="button" onClick={voice.toggle} disabled={voice.state === "transcribing" || pending} aria-pressed={recording}
+          <button type="button" onClick={voice.toggle} disabled={voice.continuous || !["idle", "recording"].includes(voice.state) || pending || session.speaking} aria-pressed={recording}
             aria-label={recording ? "Arrêter la dictée et envoyer" : "Dicter avec le micro"}
             className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${recording ? "animate-pulse border-red-400/60 bg-red-400/10 text-red-200" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
             <Icon name="mic" />
           </button>
-          {!compact && (
-            <button type="button" onClick={session.toggleVoiceOutput} aria-pressed={voiceOutput} className={`flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 text-sm whitespace-nowrap transition-colors sm:px-3 ${voiceOutput ? "border-accent/60 text-accent" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
-              <Icon name="voice" />
-              <span>Mode vocal</span>
-            </button>
-          )}
           <button type="submit" disabled={pending || !value.trim()} aria-label={compact ? "Envoyer" : undefined} className="flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold whitespace-nowrap text-background transition-opacity hover:opacity-90 disabled:opacity-60 sm:px-4">
             {!compact && <span>{pending ? "Envoi…" : "Envoyer"}</span>}
             <Icon name="send" width={18} height={18} />
           </button>
         </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" onClick={session.toggleVoiceOutput} aria-pressed={voiceOutput} className="min-h-11 rounded-lg border border-border px-3">Réponses vocales : {voiceOutput ? "oui" : "non"}</button>
+        <button type="button" onClick={session.toggleContinuous} disabled={pending && !voice.continuous} aria-pressed={voice.continuous} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-60">{voice.continuous ? "Arrêter la voix continue" : "Activer la voix continue"}</button>
+        {(voice.state !== "idle" || session.speaking) && <button type="button" onClick={session.stopVoice} className="min-h-11 rounded-lg border border-red-400/50 px-3 text-red-200">Arrêter la voix</button>}
+        <span className="text-muted">Écoute au premier plan uniquement. Toute modification exige le bouton Confirmer.</span>
       </div>
     </form>
   );

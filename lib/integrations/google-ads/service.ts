@@ -1,5 +1,7 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
+import { getActiveScenario } from "@/lib/simulation/server";
+import type { Json } from "@/lib/supabase/database.types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getClient as getClientById } from "@/lib/clients/data";
 import { getAgentById, listClientsForAgent } from "@/lib/agents/data";
@@ -12,8 +14,14 @@ import { getAdsPeriod, normalizeCustomerId } from "./validation";
 import type { AdsAnalysisContext, AdsFormState, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsConnection } from "./types";
 import { normalizeMetrics } from "./client";
 import { PeriodError, describeDates, previousPeriod, resolvePeriod, type PeriodSelection } from "./periods";
-import { storeScope, type AdsScope } from "./scope";
+import { parseScope, storeScope, type AdsScope } from "./scope";
 import { sumCampaigns, type CampaignRow, type DashboardData, type DashboardFilters } from "./dashboard";
+import { loadCampaignTracking } from "./tracking";
+import { selectAIProvider } from "@/lib/ai/providers";
+import { analyzeAdsWithAI } from "./ai-analysis";
+import { getAdsBusinessContext } from "./context-service";
+import { reserveAdsAnalysis, saveAdsAnalysisMetadata } from "./analysis-state";
+import type { AdsInstructionSnapshot } from "./business-context";
 
 const connectionColumns = "id,client_id,provider,status,external_account_id,metadata,last_checked_at,created_at,updated_at";
 const genericMessage = "Google Ads est indisponible. Vérifiez la configuration et les droits du compte, puis réessayez.";
@@ -107,8 +115,11 @@ export async function buildGoogleAdsAnalysisContext(clientId: string, days = 30)
   const client = createGoogleAdsReadClient();
   const account = await client.getAccountSummary(connection.external_account_id!, connection.metadata.manager_customer_id);
   const period = getAdsPeriod(account.timezone, days);
-  const { campaigns, totals } = await client.getCampaignPerformance(account, period, connection.metadata.manager_customer_id);
-  return { account, period, campaigns, totals, anomalies: findAdsAnomalies(campaigns) };
+  const { campaigns } = await client.getCampaignPerformance(account, period, connection.metadata.manager_customer_id);
+  const tracking = await loadCampaignTracking(connection);
+  const selected = campaigns.filter((row) => tracking.ids === null || tracking.ids.includes(row.id));
+  const totals = sumCampaigns(selected.map((row) => ({ ...row, type: row.channel, subType: null, localServices: row.channel === "LOCAL_SERVICES", budget: { amount: row.budget, shared: null, period: null }, hasActivity: true, previous: null }))).metrics;
+  return { account, period, campaigns: selected, totals, anomalies: findAdsAnomalies(selected) };
 }
 
 /** Agent éligible à l'analyse réelle : identifié par le registre (agent_type), jamais par son nom. */
@@ -116,24 +127,30 @@ export function isGoogleAdsAgent(agent: { agent_type?: string | null } | null | 
   return agent?.agent_type === "google-ads";
 }
 
-export const ANALYSIS_ENGINE_NOTE = "Analyse réelle : données Google Ads lues en direct, règles déterministes (dépenses sans conversion). Aucune IA ; les instructions globales et propres au client ne sont pas utilisées par ce moteur.";
+export const ANALYSIS_ENGINE_NOTE = "Les règles déterministes détectent les dépenses sans conversion. L’analyse IA facultative utilise les instructions globales, celles du client et son contexte commercial ; elle produit uniquement des recommandations.";
 
 /**
  * Analyse réelle en lecture seule sur un périmètre EXPLICITE (dates + campagnes). Sans périmètre
  * (formulaire de la page agent), la période choisie et toutes les campagnes actuellement actives.
  * Le périmètre est enregistré dans le run et dans la recommandation.
  */
-export async function runGoogleAdsAnalysis(agentId: string, clientId: string, input: { scope?: AdsScope; period?: PeriodSelection } = {}): Promise<AdsFormState> {
+export async function runGoogleAdsAnalysis(agentId: string, clientId: string, input: { scope?: AdsScope; period?: PeriodSelection; mode?: "deterministic" | "ai" } = {}): Promise<AdsFormState> {
   await requireAdmin();
+  if (await getActiveScenario()) return { message: "Simulation active : aucune analyse réelle n’est lancée." };
   if (!isAgentUuid(agentId) || !isAgentUuid(clientId)) return { message: genericMessage };
   let runId: string | null = null;
   let connectionId: string | null = null;
+  let lease: { release: () => Promise<void> } | null = null;
+  if (input.scope && !parseScope(input.scope) || input.mode !== undefined && !["ai", "deterministic"].includes(input.mode)) return { message: "Périmètre ou mode invalide." };
   try {
     const agent = await getAgentById(agentId);
     const assignments = await listClientsForAgent(agentId);
     if (!isGoogleAdsAgent(agent) || !agent?.enabled || agent.status !== "Actif" || !assignments.some((item) => item.client_id === clientId && item.enabled)) return { message: "Un agent Google Ads (type google-ads) actif et assigné à ce client est nécessaire." };
     const connection = await checkedConnection(clientId);
     if (connection.status !== "connected") return { message: "Connectez et testez Google Ads sur la fiche client avant de lancer une analyse." };
+    const reservation = await reserveAdsAnalysis(clientId);
+    if (!reservation.acquired) return { message: reservation.message };
+    lease = reservation;
     connectionId = connection.id;
     const client = createGoogleAdsReadClient();
     const account = await client.getAccountSummary(connection.external_account_id!, connection.metadata.manager_customer_id);
@@ -143,12 +160,18 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       period = { start: resolved.start, end: resolved.end, days: resolved.days };
     } catch (error) { return { message: error instanceof PeriodError ? error.message : "Période invalide." }; }
     const rows = buildCampaignRows(await client.getCampaignDashboard(account, period, null, connection.metadata.manager_customer_id));
-    const requested: AdsScope = input.scope ?? { start: period.start, end: period.end, status: "enabled", types: [], campaignIds: rows.filter((row) => row.status === "ENABLED").map((row) => row.id) };
+    const tracking = await loadCampaignTracking(connection);
+    const requested: AdsScope = input.scope ?? { start: period.start, end: period.end, status: "enabled", types: [], campaignIds: rows.filter((row) => row.status === "ENABLED" && (tracking.ids === null || tracking.ids.includes(row.id))).map((row) => row.id) };
     if (!requested.campaignIds.length) return { message: "Aucune campagne dans ce périmètre." };
     const scope = storeScope(requested, rows, { days: period.days, timezone: account.timezone, currency: account.currency, accountId: account.id });
     if (!scope) return { message: "Le périmètre contient une campagne inconnue pour ce compte : rechargez le tableau de bord." };
     const selected = rows.filter((row) => scope.campaignIds.includes(row.id));
-    const started = await createAgentRun({ agent_id: agentId, client_id: clientId, metadata: { run_type: "google_ads_read_only", engine: "deterministic", scope } });
+    const business = await getAdsBusinessContext(clientId);
+    const assignment = assignments.find((item) => item.client_id === clientId)!;
+    const instructionSnapshot: AdsInstructionSnapshot = { global: (agent.instructions ?? "").slice(0, 10000), client: (assignment.client_instructions ?? "").slice(0, 3000), business: business.context };
+    const provider = input.mode === "ai" ? selectAIProvider() : null;
+    const metadata: Record<string, unknown> = { run_type: "google_ads_read_only", engine: input.mode === "ai" ? "ai" : "deterministic", requested_mode: input.mode ?? "deterministic", provider: provider?.id ?? null, model: provider?.model ?? null, scope, instruction_snapshot: instructionSnapshot };
+    const started = await createAgentRun({ agent_id: agentId, client_id: clientId, metadata });
     if (!started.ok) return { message: started.message };
     runId = started.run.id;
     await audit("google_ads.analysis_started", clientId, connectionId, { run_id: runId });
@@ -156,8 +179,22 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     const anomalies = selected.filter((row) => !row.localServices && row.metrics.cost !== null && row.metrics.cost > 0 && row.metrics.conversions === 0)
       .map((row) => ({ rule: "spend_without_conversions" as const, campaignId: row.id, cost: row.metrics.cost! }));
     const totals = sumCampaigns(selected).metrics;
+    let aiResult: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = null;
+    let aiFailed = false;
+    if (input.mode === "ai") {
+      try {
+        if (!provider) throw new Error("IA non configurée.");
+        aiResult = await analyzeAdsWithAI(provider, selected, scope, instructionSnapshot);
+      } catch { aiFailed = true; metadata.engine = "deterministic_fallback"; metadata.fallback_reason = "IA indisponible ou sortie structurée refusée. Repli déterministe explicite."; }
+    }
     let recommendationId: string | undefined;
-    if (anomalies.length) {
+    if (aiResult?.output.recommendations.length) {
+      const reason = aiResult.text.length > 4000 ? `${aiResult.text.slice(0, 3700)}\nAnalyse complète enregistrée avec le run ${runId}.` : aiResult.text;
+      const created = await createRecommendation({ agent_id: agentId, client_id: clientId, title: "Google Ads : analyse personnalisée", severity: "medium", status: "pending", reason,
+        payload: { source: "google_ads_read_only", engine: "ai", run_id: runId, scope: { ...scope, campaignNames: { ...scope.campaignNames } }, provider: provider!.id, model: provider!.model, analysis: aiResult.output as unknown as Json } });
+      if (!created.ok) throw new Error();
+      recommendationId = created.recommendation.id;
+    } else if (!aiResult && anomalies.length) {
       const money = new Intl.NumberFormat("fr-FR", { style: "currency", currency: account.currency });
       const lines = anomalies.slice(0, 5).map((signal) => `« ${scope.campaignNames[signal.campaignId] ?? signal.campaignId} » (${money.format(signal.cost)})`).join(", ");
       const created = await createRecommendation({
@@ -169,11 +206,14 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       recommendationId = created.recommendation.id;
       await audit("google_ads.recommendation_created", clientId, connectionId, { run_id: runId, recommendation_id: recommendationId });
     }
-    const summary = `Analyse réelle (règles déterministes, sans IA) sur ${selected.length} campagne(s) ${describeDates(period)} : ${recommendationId ? "recommandation créée" : "aucun signal"}.`;
+    metadata.analysis_text = aiResult?.text ?? `Faits : ${anomalies.length} campagne(s) hors Local Services ont dépensé sans conversion enregistrée. Vérifiez le suivi des conversions avant toute conclusion commerciale. Valeur des conversions distincte du chiffre d’affaires. Termes de recherche et mots-clés indisponibles.\n${aiFailed ? "IA indisponible : repli déterministe, les instructions ne sont pas utilisées par ces règles." : "Règles déterministes, sans IA ; les instructions ne sont pas utilisées par ces règles."}`;
+    if (aiResult) { metadata.analysis = aiResult.output; metadata.evidence = aiResult.evidence; }
+    await saveAdsAnalysisMetadata(runId, clientId, agentId, metadata);
+    const summary = `${aiFailed ? "IA indisponible : repli déterministe explicite. " : ""}${aiResult ? "Analyse IA personnalisée" : "Analyse réelle (règles déterministes, sans IA)"} sur ${selected.length} campagne(s) ${describeDates(period)} : ${recommendationId ? "recommandation créée" : aiResult ? "analyse enregistrée" : "aucun signal"}.`;
     const completed = await completeAgentRun(runId, summary);
     if (!completed.ok) throw new Error();
     await audit("google_ads.analysis_completed", clientId, connectionId, { run_id: runId, ...(recommendationId ? { recommendation_id: recommendationId } : {}) });
-    return { ok: true, message: summary, ...(recommendationId ? { recommendationId } : {}) };
+    return { ok: true, message: summary, runId, ...(recommendationId ? { recommendationId } : {}) };
   } catch (error) {
     safeFailure("analysis", error);
     // Les lectures Google Ads précèdent la création du run (le périmètre enregistré en dépend) :
@@ -181,7 +221,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     if (runId) try { await failAgentRun(runId, "Échec de l’analyse Google Ads en lecture seule. Vérifiez la connexion et réessayez."); } catch { safeFailure("fail_run", null); }
     try { await audit("google_ads.analysis_failed", clientId, connectionId, runId ? { run_id: runId } : {}); } catch { safeFailure("audit_failed_run", null); }
     return { message: genericMessage };
-  }
+  } finally { if (lease) try { await lease.release(); } catch { safeFailure("release_analysis", null); } }
 }
 
 // --- Tableau de bord des campagnes ------------------------------------------------------------
@@ -230,10 +270,11 @@ export async function loadCampaignDashboard(clientId: string, filters: Dashboard
       return { ok: false, message: error instanceof PeriodError ? error.message : "Période invalide." };
     }
     const previous = filters.compare ? previousPeriod(period) : null;
+    const tracking = await loadCampaignTracking(connection);
     const raw = await client.getCampaignDashboard(account, { start: period.start, end: period.end, days: period.days }, previous, connection.metadata.manager_customer_id);
     return { ok: true, data: {
       account, period: { start: period.start, end: period.end, days: period.days, includesToday: period.includesToday, today: period.today, preset: period.preset },
-      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: now.toISOString(),
+      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: now.toISOString(), tracking,
     } };
   } catch (error) {
     safeFailure("dashboard", error);

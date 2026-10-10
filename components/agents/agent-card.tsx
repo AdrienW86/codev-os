@@ -30,7 +30,7 @@ export function AgentCard({ agent }: { agent: AgentRecord }) {
           <dd className="text-xs leading-5">{agent.schedule ?? "Non défini"}</dd>
         </div>
         <div className="flex flex-wrap justify-between gap-2">
-          <dt className="text-muted">Budget mensuel max.</dt>
+          <dt className="text-muted">Budget de l’agent / mois</dt>
           <dd className="text-xs leading-5">{agent.max_monthly_budget_eur === null ? "Non défini" : euroFormatter.format(agent.max_monthly_budget_eur)}</dd>
         </div>
       </dl>

@@ -29,4 +29,4 @@ export type GoogleAdsConnection = {
   metadata: { account_name?: string; currency_code?: string; timezone?: string; manager_customer_id?: string; auth_strategy: "single_user"; connection_version: number };
   last_checked_at: string | null; created_at: string; updated_at: string;
 };
-export type AdsFormState = { message?: string; ok?: boolean; recommendationId?: string };
+export type AdsFormState = { message?: string; ok?: boolean; recommendationId?: string; runId?: string };

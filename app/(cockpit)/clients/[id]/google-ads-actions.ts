@@ -60,7 +60,19 @@ export async function runGoogleAdsScopeAnalysisAction(clientId: unknown, scopeIn
   const result = await runGoogleAdsAnalysis(agent.agent_id, clientId, { scope });
   revalidatePath("/recommendations", "layout");
   revalidatePath(`/agents/${agent.agent_id}`);
-  return { ok: Boolean(result.ok), message: result.message, href: result.recommendationId ? `/recommendations/${result.recommendationId}` : undefined };
+  return { ok: Boolean(result.ok), message: result.message, href: result.runId ? `/advertising/analyses/${result.runId}` : undefined };
+}
+
+export async function runGoogleAdsScopeAIAnalysisAction(clientId: unknown, scopeInput: unknown): Promise<{ ok?: boolean; message?: string; href?: string }> {
+  await requireAdmin();
+  const scope = parseScope(scopeInput);
+  if (typeof clientId !== "string" || !scope) return { ok: false, message: "Périmètre invalide." };
+  const assignment = (await listAgentsForClient(clientId)).find((item) => item.enabled && item.agent?.enabled && item.agent.status === "Actif" && isGoogleAdsAgent(item.agent));
+  if (!assignment) return { ok: false, message: "Assignez un agent Google Ads actif à ce client." };
+  const result = await runGoogleAdsAnalysis(assignment.agent_id, clientId, { scope, mode: "ai" });
+  revalidatePath("/recommendations", "layout");
+  revalidatePath(`/agents/${assignment.agent_id}`);
+  return { ok: Boolean(result.ok), message: result.message, href: result.runId ? `/advertising/analyses/${result.runId}` : undefined };
 }
 
 /**

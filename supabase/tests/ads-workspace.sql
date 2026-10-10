@@ -40,5 +40,14 @@ select pg_temp.fails($$update public.client_connections set external_account_id=
 select pg_temp.ok(public.codev_set_ads_campaigns('aaaaaaaa-0000-4000-8000-0000000000a1','cccccccc-0000-4000-8000-0000000000a1','1234567890','{}'::text[],1) = 2,'empty selection persists');
 select pg_temp.ok(exists(select 1 from public.client_ads_scopes where client_id='aaaaaaaa-0000-4000-8000-0000000000a1') and not exists(select 1 from public.client_ads_campaigns where client_id='aaaaaaaa-0000-4000-8000-0000000000a1'),'empty is configured, not legacy default');
 
+select pg_temp.ok(not has_table_privilege('authenticated','public.client_ads_context','select'), 'business context server only');
+select pg_temp.ok(not has_function_privilege('anon','public.codev_claim_ads_analysis(uuid,uuid)','execute'), 'analysis reservation server only');
+select pg_temp.ok(public.codev_save_ads_context('aaaaaaaa-0000-4000-8000-0000000000a1','{"objectives":"test"}'::jsonb,0)=1, 'context initial revision');
+select pg_temp.fails($$select public.codev_save_ads_context('aaaaaaaa-0000-4000-8000-0000000000a1','{}'::jsonb,0)$$,'40001','context stale update');
+select pg_temp.ok(public.codev_claim_ads_analysis('aaaaaaaa-0000-4000-8000-0000000000a1','11111111-1111-4111-8111-111111111111'), 'first analysis reserved');
+select pg_temp.ok(not public.codev_claim_ads_analysis('aaaaaaaa-0000-4000-8000-0000000000a1','22222222-2222-4222-8222-222222222222'), 'simultaneous analysis blocked');
+update public.ads_analysis_leases set expires_at=now() where client_id='aaaaaaaa-0000-4000-8000-0000000000a1';
+select pg_temp.ok(not public.codev_claim_ads_analysis('aaaaaaaa-0000-4000-8000-0000000000a1','22222222-2222-4222-8222-222222222222'), 'minute cooldown remains after release');
+
 select 'ADS_WORKSPACE_CHECKS=' || passed from workspace_checks;
 rollback;

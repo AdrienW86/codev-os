@@ -9,6 +9,11 @@ import { PageHeading, Panel } from "@/components/ui/primitives";
 import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "../clients/[id]/google-ads-actions";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { saveTrackedCampaignsAction } from "./actions";
+import { getAdsBusinessContext } from "@/lib/integrations/google-ads/context-service";
+import { listAgentsForClient } from "@/lib/agents/data";
+import { ClientAgentAssignments } from "@/components/agents/client-agent-assignments";
+import { AdsBusinessContextEditor } from "@/components/google-ads/business-context-editor";
+import { runGoogleAdsScopeAIAnalysisAction } from "../clients/[id]/google-ads-actions";
 
 export const metadata: Metadata = { title: "Campagnes publicitaires" };
 
@@ -25,6 +30,8 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   let connectionError = false;
   if (client) try { connection = await getGoogleAdsConnection(client.id); } catch { connectionError = true; }
   const initial = client && connection?.status === "connected" ? await loadCampaignDashboard(client.id, filters) : null;
+  const business = client ? await getAdsBusinessContext(client.id).catch(() => ({ available: false, revision: 0, context: null })) : null;
+  const assignments = client ? await listAgentsForClient(client.id).then((items) => items.filter((item) => item.agent?.agent_type === "google-ads")).catch(() => null) : [];
   return <>
     <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports par client. Google Ads reste en lecture seule." />
     <Panel className="mb-6 p-4">
@@ -43,6 +50,14 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
       : !client ? <p role={search.client ? "alert" : "status"}>{search.client ? "Client introuvable. Choisissez un client de votre portefeuille." : "Choisissez un client pour consulter son compte publicitaire."}</p>
       : connectionError ? <p role="alert">Connexion indisponible. Rechargez la page pour réessayer.</p>
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
-      : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
+      : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
+    {client && business && <div className="mt-6"><AdsBusinessContextEditor key={client.id} clientId={client.id} initial={business} /></div>}
+    {client && <details className="mt-6 rounded-xl border border-border p-4"><summary className="min-h-10 cursor-pointer font-medium">Instructions de l’agent Google Ads</summary>
+      {assignments === null ? <p role="alert">Instructions indisponibles. Rechargez la page.</p> : <>
+        {assignments.map((item) => <div key={item.agent_id} className="mt-4"><p className="text-sm font-medium">Instructions globales · <Link href={`/agents/${item.agent_id}`} className="text-accent">Consulter et modifier</Link></p><p className="mt-2 whitespace-pre-wrap text-sm text-muted">{item.agent?.instructions}</p></div>)}
+        <ClientAgentAssignments clientId={client.id} agents={[]} assignments={assignments} />
+        {!assignments.length && <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Assigner un agent Google Ads</Link>}
+      </>}
+    </details>}
   </>;
 }

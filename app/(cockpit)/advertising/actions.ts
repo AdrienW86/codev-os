@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { getGoogleAdsConnection } from "@/lib/integrations/google-ads/service";
 import { saveCampaignTracking } from "@/lib/integrations/google-ads/tracking";
 import { revalidatePath } from "next/cache";
+import { saveAdsBusinessContext } from "@/lib/integrations/google-ads/context-service";
 
 export async function saveTrackedCampaignsAction(clientId: unknown, ids: unknown, revision: unknown) {
   await requireAdmin();
@@ -14,4 +15,13 @@ export async function saveTrackedCampaignsAction(clientId: unknown, ids: unknown
     if (result.ok) { revalidatePath("/advertising"); revalidatePath(`/clients/${clientId}`); }
     return result;
   } catch { return { ok: false, message: "Sélection non enregistrée. Rechargez la page et vérifiez la connexion." }; }
+}
+
+export async function saveAdsContextAction(clientId: unknown, context: unknown, revision: unknown) {
+  await requireAdmin();
+  try {
+    const result = await saveAdsBusinessContext(clientId, context, revision);
+    if (result.ok) revalidatePath("/advertising");
+    return result;
+  } catch { return { ok: false, message: "Contexte non enregistré. Rechargez la page." }; }
 }

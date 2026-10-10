@@ -57,7 +57,8 @@ export function AgentForm({ agent }: { agent?: AgentRecord }) {
           {error("autonomy_level")}
         </div>
         <div>
-          <label htmlFor="max_monthly_budget_eur" className="text-sm font-medium">Budget mensuel maximum (€)</label>
+          <label htmlFor="max_monthly_budget_eur" className="text-sm font-medium">Budget de fonctionnement de l’agent / mois (€)</label>
+          <p className="mt-1 text-xs text-muted">Indication enregistrée pour l’agent ; ce champ ne définit pas le budget Google Ads et n’impose pas actuellement de plafond aux appels de l’assistant.</p>
           <input id="max_monthly_budget_eur" name="max_monthly_budget_eur" type="number" min={0} max={1000000} step="0.01" defaultValue={state.values?.max_monthly_budget_eur ?? agent?.max_monthly_budget_eur ?? ""} disabled={pending} aria-invalid={Boolean(state.errors?.max_monthly_budget_eur)} aria-describedby={state.errors?.max_monthly_budget_eur ? "max_monthly_budget_eur-error" : undefined} className={inputClass} />
           {error("max_monthly_budget_eur")}
         </div>

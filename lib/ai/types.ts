@@ -1,7 +1,7 @@
 // Abstraction des fournisseurs d'IA : l'orchestrateur ne connaît que ce contrat.
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string };
-export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
+export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown>; strict?: boolean };
 export type ToolCall = { id: string; name: string; arguments: unknown };
 /** Résultat d'outil renvoyé au modèle (données, jamais d'instructions). */
 export type ToolResultMessage = { call: ToolCall; result: string };

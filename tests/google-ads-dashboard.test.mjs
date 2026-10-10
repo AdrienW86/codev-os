@@ -82,6 +82,10 @@ function serviceSetup({ deny = false, connected = true, dashboardError = null } 
     "./client": { createGoogleAdsReadClient: () => readClient, GoogleAdsError: clientModule.adsModule.GoogleAdsError, normalizeMetrics: clientModule.adsModule.normalizeMetrics },
     "./validation": validation, "./periods": periods, "./scope": scopes, "./dashboard": dashboard,
     "./tracking": { loadCampaignTracking: async () => ({ available: true, revision: 0, ids: null }) },
+    "@/lib/ai/providers": { selectAIProvider: () => null },
+    "./ai-analysis": {},
+    "./context-service": { getAdsBusinessContext: async () => ({ available: true, revision: 0, context: null }) },
+    "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => {} }), saveAdsAnalysisMetadata: async (_id, _client, _agent, metadata) => { runs.at(-1).metadata = plain(metadata); } },
   });
   return { service, calls, audits, recommendations, runs };
 }
@@ -307,7 +311,7 @@ test("a real analysis stores its exact scope in the run and the recommendation a
   assert.equal(unknown.runs.length, 0);
   assert.equal(context.service.isGoogleAdsAgent({ name: "Ads Agent", agent_type: "seo" }), false);
   assert.equal(context.service.isGoogleAdsAgent({ name: "Nom libre", agent_type: "google-ads" }), true);
-  assert.match(context.service.ANALYSIS_ENGINE_NOTE, /Aucune IA/);
+  assert.match(context.service.ANALYSIS_ENGINE_NOTE, /IA facultative.*instructions globales/);
 });
 
 // --- Transport : lecture seule, Local Services --------------------------------------------------

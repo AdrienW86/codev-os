@@ -11,7 +11,7 @@ import { GoogleAdsPanel } from "@/components/clients/google-ads-panel";
 import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
 import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
 import { ANALYSIS_ENGINE_NOTE, loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
-import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
+import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction, runGoogleAdsScopeAIAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
 import { listClientSources } from "@/lib/connections/service";
 import { safeRead } from "@/lib/core/safe-read";
@@ -179,7 +179,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       {tab === "ads" && adsFilters && adsInitial && (
         <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
-          prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
+          prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
       )}
 
       {tab === "activity" && <ActivityTab clientId={client.id} recommendations={recommendations} runs={runs} actions={actions} />}

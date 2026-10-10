@@ -130,6 +130,6 @@ export async function runAdsWrite(actor: Actor, tool: "ads_prepare_report" | "ad
   }
   const assignment = (await listAgentsForClient(clientId)).find((item) => item.enabled && isGoogleAdsAgent(item.agent));
   if (!assignment) return { ok: false, text: "Aucun agent Google Ads (type google-ads) actif et assigné à ce client." };
-  const result = await runGoogleAdsAnalysis(assignment.agent_id, clientId, { scope });
+  const result = await runGoogleAdsAnalysis(assignment.agent_id, clientId, { scope, ...(input.mode === "ai" ? { mode: "ai" as const } : {}) });
   return { ok: Boolean(result.ok), text: result.message ?? "Analyse terminée.", links: result.recommendationId ? [{ label: "Voir la recommandation", href: `/recommendations/${result.recommendationId}` }] : [{ label: "Agent Ads", href: `/agents/${assignment.agent_id}` }] };
 }

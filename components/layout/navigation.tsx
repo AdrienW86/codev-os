@@ -10,6 +10,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 const navigation: { href: string; label: string; icon: IconName; matches?: string[] }[] = [
   { href: "/dashboard", label: "Accueil", icon: "home" },
   { href: "/clients", label: "Clients", icon: "clients", matches: ["/projects"] },
+  { href: "/advertising", label: "Campagnes publicitaires", icon: "ads" },
   { href: "/agenda", label: "Agenda", icon: "calendar" },
   { href: "/work", label: "Travail", icon: "work", matches: ["/tasks", "/recommendations", "/actions"] },
   { href: "/publications", label: "Publications", icon: "publications" },

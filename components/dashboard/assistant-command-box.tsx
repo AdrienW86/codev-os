@@ -12,7 +12,7 @@ export type AssistantSuggestion = { label: string; href: string; icon: IconName 
 export const defaultSuggestions: AssistantSuggestion[] = [
   { label: "Voir les urgences", href: "/work?view=review", icon: "alert" },
   { label: "Préparer les publications", href: "/publications", icon: "publications" },
-  { label: "Vérifier les campagnes", href: "/clients", icon: "ads" },
+  { label: "Vérifier les campagnes", href: "/advertising", icon: "ads" },
   { label: "Voir les tâches du jour", href: "/work?view=todo", icon: "tasks" },
 ];
 

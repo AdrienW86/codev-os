@@ -169,7 +169,7 @@ test("the dashboard updates the URL with pushState and never navigates or submit
   assert.doesNotMatch(source, /method="get"|router\.(push|replace)|location\.(assign|href\s*=)/);
   const panel = readFileSync(new URL("../components/clients/google-ads-panel.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(panel, /ads_days|method="get"/);
-  assert.match(panel, /tab=ads/);
+  assert.match(panel, /advertising\?client=/);
 });
 
 // --- Campagnes, totaux, Search / Local Services --------------------------------------------

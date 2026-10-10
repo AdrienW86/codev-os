@@ -6,6 +6,7 @@ import { SimulationBanner } from "@/components/simulation/simulation-banner";
 import { SimulationProvider } from "@/components/simulation/simulation-provider";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { FlashRegion } from "@/components/ui/flash";
+import { PwaStatus } from "@/components/layout/pwa-status";
 
 export default async function CockpitLayout({ children }: { children: ReactNode }) {
   await requireAdmin();
@@ -16,8 +17,9 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
       <Sidebar />
       <div className="min-h-screen lg:pl-60">
         <MobileNavigation />
-        <Header />
+        <Header simulation={Boolean(scenario)} />
         <SimulationBanner />
+        <div className="px-5 sm:px-8"><PwaStatus /></div>
         <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10">
           {children}
           <footer className="mt-12 flex flex-wrap justify-between gap-2 border-t border-border pt-5 text-xs text-muted">

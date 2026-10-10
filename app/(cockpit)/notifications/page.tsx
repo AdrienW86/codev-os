@@ -1,0 +1,21 @@
+import Link from "next/link";
+import { requireAdmin } from "@/lib/require-admin";
+import { listNotifications, notificationPreferences, listPushDevices } from "@/lib/notifications/service";
+import { notificationLabels, categories, safeNotificationHref } from "@/lib/notifications/schema";
+import { pushConfiguration } from "@/lib/notifications/push";
+import { PageHeading, Panel } from "@/components/ui/primitives";
+import { MutationForm } from "@/components/ui/mutation-form";
+import { PushSettings } from "@/components/notifications/push-settings";
+import { readNotificationAction, savePreferencesAction } from "./actions";
+import { getActiveScenario } from "@/lib/simulation/server";
+export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
+  await requireAdmin();
+  if (await getActiveScenario()) return <Panel className="p-5">Quittez la simulation pour consulter ou configurer vos notifications réelles.</Panel>;
+  const focus = (await searchParams).focus;
+  let data;
+  try { data = await Promise.all([listNotifications(), notificationPreferences(), listPushDevices()]); } catch { return <><PageHeading eyebrow="CODE-V OS" title="Notifications" description="" /><Panel className="p-5">Notifications indisponibles : vérifiez la migration 20261020000000.</Panel></>; }
+  const [events, prefs, devices] = data; const push = pushConfiguration();
+  return <><PageHeading eyebrow="CODE-V OS" title="Notifications" description="Événements utiles, conservés après reconnexion. Aucun contenu client dans les notifications push." />
+    <div className="grid gap-5 lg:grid-cols-2"><Panel className="space-y-4 p-5"><h2 className="font-semibold">Derniers événements · {events.filter((row) => !row.read).length} non lus sur les 100 derniers</h2>{!events.length && <p>Aucune notification dans les catégories choisies.</p>}<ul className="space-y-3">{events.map((row) => <li id={row.id} key={row.id} className={`rounded-lg border p-3 ${row.id === focus ? "border-accent" : "border-border"}`}><Link href={safeNotificationHref(row.href)} className="text-accent">{notificationLabels[row.category as keyof typeof notificationLabels] ?? "Notification"}</Link><p className="mt-1 text-xs text-muted">{new Date(row.created_at).toLocaleString("fr-FR")} · {row.read ? "Lue" : "Non lue"}</p>{!row.read && <MutationForm action={readNotificationAction} fields={{ id: row.id }} label="Marquer comme lue" className="mt-2" disableOnSuccess />}</li>)}</ul></Panel>
+    <div className="space-y-5"><Panel className="p-5"><h2 className="mb-4 font-semibold">Préférences</h2><MutationForm action={savePreferencesAction} label="Enregistrer les préférences" className="space-y-4"><fieldset className="space-y-3"><legend className="mb-2 text-sm">Cloche et liste</legend>{categories.map((category) => <label key={category} className="flex min-h-9 gap-2 text-sm"><input type="checkbox" name="category" value={category} defaultChecked={prefs.categories.includes(category)} />{notificationLabels[category]}</label>)}</fieldset><label className="flex gap-2 text-sm"><input type="checkbox" name="push_enabled" value="yes" defaultChecked={prefs.push_enabled} />Activer les envois push sur mes appareils abonnés</label><fieldset className="space-y-3"><legend className="mb-2 text-sm">Catégories push</legend>{categories.map((category) => <label key={category} className="flex min-h-9 gap-2 text-sm"><input type="checkbox" name="push_category" value={category} defaultChecked={prefs.push_categories.includes(category)} />{notificationLabels[category]}</label>)}</fieldset></MutationForm></Panel><Panel className="space-y-4 p-5"><h2 className="font-semibold">Appareils et installation</h2><PushSettings publicKey={push.publicKey} devices={devices} /><p className="text-xs text-muted">{push.enabled ? "Envoi serveur activé ; traité au prochain passage du planificateur existant." : "Envoi serveur désactivé. Aucun push réel ne part."}</p><p className="text-sm text-muted">Android/Chrome : menu Installer l’application. iPhone/iPad : Safari → Partager → Sur l’écran d’accueil, puis autorisez les notifications dans l’application installée (iOS 16.4 minimum). Sur ordinateur : icône d’installation du navigateur lorsqu’elle est proposée.</p></Panel></div></div></>;
+}

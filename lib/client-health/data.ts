@@ -51,6 +51,8 @@ export type ClientHealthOverview = {
   runs: { id: string; runType: string; status: string; summary: string | null; startedAt: string }[];
   opportunities: { fetchedAt: string; periodStart: string; periodEnd: string; findings: (SeoOpportunity & { recommendationId?: string })[]; counts: Record<string, number> } | null;
   vercelAnalytics: { fetchedAt: string; periodStart: string; periodEnd: string; data: VercelAnalyticsSummary } | null;
+  github: { fetchedAt: string; commits: { sha?: string; message?: string; date?: string; author?: string }[] } | null;
+  sources: { provider: string; status: string; lastSyncAt: string | null; lastError: string | null; identifier: string | null }[];
 };
 
 const object = (value: Json | null): Record<string, unknown> =>
@@ -58,7 +60,7 @@ const object = (value: Json | null): Record<string, unknown> =>
 
 export async function getClientHealthOverview(clientId: string): Promise<ClientHealthOverview> {
   const db = getSupabaseServerClient();
-  const [search, speed, site, incidents, runs, opportunities, recommendations, vercelAnalytics] = await Promise.all([
+  const [search, speed, site, incidents, runs, opportunities, recommendations, vercelAnalytics, github, sources] = await Promise.all([
     db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "search-console").eq("metric_key", "summary").order("fetched_at", { ascending: false }).limit(1),
     db.from("metric_snapshots").select("fetched_at,data").eq("client_id", clientId).eq("provider", "pagespeed").eq("metric_key", "mobile").order("fetched_at", { ascending: false }).limit(1),
     db.from("site_checks").select("checked_at,ok,status_code,response_ms,error_kind,url").eq("client_id", clientId).order("checked_at", { ascending: false }).limit(1),
@@ -67,15 +69,29 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
     db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "search-console").eq("metric_key", "opportunities").order("fetched_at", { ascending: false }).limit(1),
     db.from("recommendations").select("id,payload,status").eq("client_id", clientId).eq("status", "pending").order("created_at", { ascending: false }).limit(50),
     db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "vercel").eq("metric_key", "web_analytics").order("fetched_at", { ascending: false }).limit(1),
+    db.from("metric_snapshots").select("fetched_at,data").eq("client_id", clientId).eq("provider", "github").eq("metric_key", "recent_commits").order("fetched_at", { ascending: false }).limit(1),
+    db.from("client_connections").select("provider,status,last_sync_at,last_error,metadata").eq("client_id", clientId).in("provider", ["search-console","vercel","github"]),
   ]);
 
-  if (search.error || speed.error || site.error || incidents.error || runs.error || opportunities.error || recommendations.error || vercelAnalytics.error) throw new Error("client health read");
+  if (search.error || speed.error || site.error || incidents.error || runs.error || opportunities.error || recommendations.error || vercelAnalytics.error || github.error || sources.error) throw new Error("client health read");
 
   const searchRow = search.data?.[0];
   const speedRow = speed.data?.[0];
   const siteRow = site.data?.[0];
   const opportunityRow = opportunities.data?.[0];
   const vercelRow = vercelAnalytics.data?.[0];
+  const githubRow = github.data?.[0];
+  const githubData = githubRow ? object(githubRow.data) : {};
+  const githubCommits = Array.isArray(githubData.commits) ? githubData.commits.flatMap((value) => {
+    const item = object(value as Json);
+    if (typeof item.sha !== "string") return [];
+    return [{
+      sha: item.sha,
+      message: typeof item.message === "string" ? item.message : undefined,
+      date: typeof item.date === "string" ? item.date : undefined,
+      author: typeof item.author === "string" ? item.author : undefined,
+    }];
+  }) : [];
   const opportunityData = opportunityRow ? object(opportunityRow.data) : {};
   const rawFindings = Array.isArray(opportunityData.findings) ? opportunityData.findings : [];
   const recommendationByFinding = new Map<string, string>();
@@ -113,6 +129,18 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
       detectedAt: item.detected_at,
       source: item.source,
     })),
+    sources: (sources.data ?? []).map((row) => {
+      const metadata = object(row.metadata);
+      const identifier = row.provider === "search-console" ? metadata.property : row.provider === "vercel" ? metadata.project_id : row.provider === "github" ? metadata.repository : null;
+      return {
+        provider: row.provider,
+        status: row.status,
+        lastSyncAt: row.last_sync_at,
+        lastError: row.last_error,
+        identifier: typeof identifier === "string" ? identifier : null,
+      };
+    }),
+    github: githubRow ? { fetchedAt: githubRow.fetched_at, commits: githubCommits } : null,
     vercelAnalytics: vercelRow ? {
       fetchedAt: vercelRow.fetched_at,
       periodStart: vercelRow.period_start,

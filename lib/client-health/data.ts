@@ -36,7 +36,7 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
     db.from("metric_snapshots").select("fetched_at,data").eq("client_id", clientId).eq("provider", "pagespeed").eq("metric_key", "mobile").order("fetched_at", { ascending: false }).limit(1),
     db.from("site_checks").select("checked_at,ok,status_code,response_ms,error_kind,url").eq("client_id", clientId).order("checked_at", { ascending: false }).limit(1),
     db.from("incidents").select("id,title,severity,status,detected_at,source").eq("client_id", clientId).in("source", ["monitoring", "seo"]).neq("status", "resolved").order("detected_at", { ascending: false }).limit(10),
-    db.from("agent_runs").select("id,run_type,status,summary,started_at").eq("client_id", clientId).in("run_type", ["seo.analyze", "monitoring.check_sites"]).order("started_at", { ascending: false }).limit(8),
+    db.from("agent_runs").select("id,status,summary,started_at,metadata").eq("client_id", clientId).order("started_at", { ascending: false }).limit(20),
   ]);
 
   if (search.error || speed.error || site.error || incidents.error || runs.error) throw new Error("client health read");
@@ -72,12 +72,17 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
       detectedAt: item.detected_at,
       source: item.source,
     })),
-    runs: (runs.data ?? []).map((item) => ({
-      id: item.id,
-      runType: item.run_type,
-      status: item.status,
-      summary: item.summary,
-      startedAt: item.started_at,
-    })),
+    runs: (runs.data ?? []).flatMap((item) => {
+      const metadata = object(item.metadata);
+      const runType = typeof metadata.run_type === "string" ? metadata.run_type : "";
+      if (runType !== "seo.analyze" && runType !== "monitoring.check_sites") return [];
+      return [{
+        id: item.id,
+        runType,
+        status: item.status,
+        summary: item.summary,
+        startedAt: item.started_at,
+      }];
+    }).slice(0, 8),
   };
 }

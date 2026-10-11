@@ -13,6 +13,7 @@ import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
 import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
+import { addDays, dayCount, normalizeProperty } from "@/lib/integrations/search-console/model";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,8 +41,9 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
   ]);
   for (const result of [client, projects, tasks, publications, recommendations, actions, incidents, runs, checks, metrics]) if (result.error) fail("read");
   if (!client.data) fail("client");
+  const searchConsole = await gatherSearchConsoleHistory(clientId, period);
   return {
-    client: client.data, period,
+    client: client.data, period, searchConsole,
     projects: projects.data ?? [], tasks: tasks.data ?? [], publications: publications.data ?? [],
     recommendations: recommendations.data ?? [],
     actions: (actions.data ?? []).map((item) => ({ label: describeAction(item.action_type, item.parameters), status: item.status, created_at: item.created_at, executed_at: item.executed_at })),
@@ -53,6 +55,21 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
       return [{ provider: item.provider, metric_key: item.metric_key, period_start: item.period_start, period_end: item.period_end, data: (item.data ?? {}) as Record<string, unknown> }];
     }),
   };
+}
+
+/** Historique quotidien Search Console de la propriété actuellement associée au client (jamais celle d'un autre client). */
+async function gatherSearchConsoleHistory(clientId: string, period: Period): Promise<ReportInput["searchConsole"]> {
+  const supabase = db();
+  const { data: connection, error } = await supabase.from("client_connections").select("metadata").eq("client_id", clientId).eq("provider", "search-console").maybeSingle();
+  if (error) return null;
+  const property = normalizeProperty((connection?.metadata as Record<string, unknown> | null)?.property);
+  if (!property) return null;
+  const length = dayCount(period);
+  const { data, error: historyError } = await supabase.from("search_console_daily_metrics").select("date,clicks,impressions,position").eq("client_id", clientId).eq("property", property)
+    .gte("date", addDays(period.start, -length)).lte("date", period.end).order("date", { ascending: true }).limit(800);
+  // Table absente (migration non appliquée) : le rapport se génère sans section Search Console plutôt que d'échouer.
+  if (historyError) return null;
+  return { property, days: (data ?? []).map((row) => ({ date: row.date, clicks: row.clicks, impressions: row.impressions, position: row.position })) };
 }
 
 export type GenerateResult = { status: "created" | "updated" | "frozen"; id: string; version: number };

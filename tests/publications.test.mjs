@@ -301,6 +301,8 @@ function settingsMocks(context) {
     "@/components/system/system-status": { SystemStatus: () => null, Observability: () => null },
     "@/lib/automations/service": { listAutomations: async () => [] }, "@/lib/clients/data": { listClients: async () => [] },
     "@/lib/system/health": { getSystemHealth: async () => null }, "@/lib/system/providers": { isProviderConfigured: () => false },
+    "@/components/settings/search-console-panel": { SearchConsolePanel: () => null },
+    "@/lib/integrations/search-console/connection": { isOAuthOutcome: () => false, oauthOutcomeMessages: {}, searchConsoleStatus: async () => null },
     "@/lib/core/safe-read": { safeRead: async (_scope, read, fallback) => { try { return { data: await read(), unavailable: false }; } catch { return { data: fallback, unavailable: true }; } } },
   };
 }

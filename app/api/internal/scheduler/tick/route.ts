@@ -4,6 +4,7 @@ import { checkCronAuthorization } from "@/lib/scheduler/cron-auth";
 import { runTick } from "@/lib/scheduler/engine";
 import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
+import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -17,7 +18,10 @@ async function handle(request: Request) {
     const summary = await runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor) });
     let push;
     try { push = await flushPushNotifications(); } catch { push = { unavailable: true }; }
-    return NextResponse.json({ ok: true, ...summary, push }, { headers });
+    // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
+    let searchConsole;
+    try { searchConsole = await syncDueSearchConsole(new Date()); } catch { console.error("[scheduler] Synchro Search Console différée."); searchConsole = { unavailable: true }; }
+    return NextResponse.json({ ok: true, ...summary, push, searchConsole }, { headers });
   } catch {
     console.error("[scheduler] Tick interrompu.");
     return NextResponse.json({ error: "tick_failed" }, { status: 500, headers });

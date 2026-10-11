@@ -28,6 +28,16 @@ export async function saveClientSource(actor: Actor & { kind: "admin" }, clientI
   const { data: client, error: clientError } = await db().from("clients").select("id").eq("id", clientId).maybeSingle();
   if (clientError) throw new Error("client read");
   if (!client) return { ok: false, message: "Client introuvable." };
+  if (provider === "search-console" && normalized.value) {
+    // Une propriété Search Console n'appartient qu'à un client : jamais de données partagées entre deux fiches.
+    const { data: others, error: othersError } = await db().from("client_connections").select("client_id,metadata").eq("provider", provider).neq("client_id", clientId);
+    if (othersError) throw new Error("source read");
+    const owner = (others ?? []).find((row) => (row.metadata as Record<string, unknown> | null)?.property === normalized.value);
+    if (owner) {
+      const { data: other } = await db().from("clients").select("name").eq("id", owner.client_id).maybeSingle();
+      return { ok: false, message: `Cette propriété est déjà associée à ${other?.name ?? "un autre client"}. Retirez-la de cette fiche avant de l’associer ici.` };
+    }
+  }
   const { data: existing, error } = await db().from("client_connections").select("id").eq("client_id", clientId).eq("provider", provider).maybeSingle();
   if (error) throw new Error("source read");
   const patch = { status: normalized.value ? "configured" : "disconnected", metadata: normalized.value ? { [definition.field]: normalized.value } : {}, last_error: null };

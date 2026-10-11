@@ -5,6 +5,7 @@ import { recordSync } from "@/lib/connections/sync";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { searchAnalytics, searchConsoleConfigured } from "@/lib/providers/search-console";
 import { pageSpeed } from "@/lib/providers/pagespeed";
+import { readSeoPageContexts } from "@/lib/providers/github";
 import { ProviderError } from "@/lib/providers/errors";
 import { analyzeSeo, totals } from "@/lib/seo/analyze";
 import { siteUrl } from "@/lib/monitoring/evaluate";
@@ -18,14 +19,16 @@ const wrap = (error: unknown): never => { if (error instanceof ProviderError) th
 export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
   if (!job.client_id) throw new RunError("Client requis pour l’analyse SEO.", false);
   const supabase = getSupabaseServerClient();
-  const [{ data: client, error }, { data: connection }] = await Promise.all([
+  const [{ data: client, error }, { data: searchConnection }, { data: githubConnection }] = await Promise.all([
     supabase.from("clients").select("id,name,website").eq("id", job.client_id).maybeSingle(),
     supabase.from("client_connections").select("metadata").eq("client_id", job.client_id).eq("provider", "search-console").maybeSingle(),
+    supabase.from("client_connections").select("metadata").eq("client_id", job.client_id).eq("provider", "github").maybeSingle(),
   ]);
   if (error || !client) throw new RunError("Client introuvable.", false);
   const notes: string[] = [];
   let findings = 0;
-  const property = (connection?.metadata as { property?: string } | null)?.property;
+  const property = (searchConnection?.metadata as { property?: string } | null)?.property;
+  const repository = (githubConnection?.metadata as { repository?: string } | null)?.repository;
   if (searchConsoleConfigured() && property) {
     // Les données Search Console ont ~3 jours de retard.
     const current = { startDate: day(now, -30), endDate: day(now, -3) }, previous = { startDate: day(now, -58), endDate: day(now, -31) };
@@ -37,6 +40,16 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     await recordSync(client.id, "search-console", null);
     const summary = totals(pagesNow);
     const seoFindings = analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore, queryPagesNow);
+    const targetUrls = seoFindings.flatMap((finding) => {
+      const target = finding.kind === "page_drop" ? finding.key : finding.targetPage;
+      return typeof target === "string" && /^https?:\/\//i.test(target) ? [target] : [];
+    });
+    const githubContexts = repository ? await readSeoPageContexts(repository, targetUrls).catch(async (failure) => {
+      await recordSync(client.id, "github", failure);
+      return [];
+    }) : [];
+    if (repository && githubContexts.length) await recordSync(client.id, "github", null);
+    const githubByUrl = new Map(githubContexts.map((item) => [item.targetUrl, item]));
     await Promise.all([
       supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "search-console", metric_key: "summary", period_start: current.startDate, period_end: current.endDate, data: { ...summary, previous_clicks: totals(pagesBefore).clicks } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" }),
       supabase.from("metric_snapshots").upsert({
@@ -59,10 +72,13 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     for (const finding of seoFindings) {
       if (finding.kind === "page_growth") continue;
       const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
-      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, target_page: finding.targetPage ?? null, period: current } });
+      const targetUrl = finding.kind === "page_drop" ? finding.key : finding.targetPage ?? null;
+      const repositoryContext = targetUrl ? githubByUrl.get(targetUrl) ?? null : null;
+      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, target_page: finding.targetPage ?? null, repository_context: repositoryContext, period: current } });
       if (created.created) findings++;
     }
     notes.push(`Search Console : ${summary.clicks} clics, ${summary.impressions} impressions`);
+    if (repository) notes.push(githubContexts.length ? `GitHub : ${githubContexts.length} page(s) rapprochée(s) du code` : "GitHub : dépôt renseigné, aucune page source rapprochée");
   } else notes.push(searchConsoleConfigured() ? "Propriété Search Console non renseignée" : "Search Console non connectée");
 
   const url = siteUrl(client.website);

@@ -7,7 +7,7 @@ import {OccurrenceSkipForm} from "./occurrence-skip-form";
 
 // Calendar of a configured project (Lot 4.3 P3): one dated occurrence per channel slot, platforms independent.
 // Presentation only; the single write is the explicit "Préparer les prochaines semaines" form.
-const stateClasses:Record<OccurrenceState,string>={open:"border-dashed border-border",missed:"border-amber-500 bg-amber-500/10",linked:"border-emerald-600 bg-emerald-600/10",skipped:"border-border text-muted"};
+const stateClasses:Record<OccurrenceState,string>={open:"border-dashed border-border",missed:"border-warning/60 bg-warning/10",linked:"border-success/60 bg-success/10",skipped:"border-border text-muted"};
 const publicationStatusLabels:Record<string,string>={draft:"Brouillon",pending_review:"À valider",approved:"Validée",rejected:"Rejetée"};
 export type LegacyHistoryEntry={key:string;date:string;time:string|null;subject:string;platforms:string;status:string};
 export function OccurrenceCalendar({projectId,mode,from,to,previous,next,entries,error,legacy}:{projectId:string;mode:"week"|"month";from:string;to:string;previous:string;next:string;

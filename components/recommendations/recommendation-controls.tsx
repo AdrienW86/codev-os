@@ -23,13 +23,13 @@ export function RecommendationControls({ id, status, seoActionAvailable = false 
     <div className="flex flex-wrap gap-2">{nextStatuses.map((nextStatus) => <StatusButton key={nextStatus} id={id} status={nextStatus} label={labels[nextStatus]} />)}</div>
     {seoActionAvailable && status === "accepted" && <form action={createSeoAction} className="border-t border-border pt-5">
       <input type="hidden" name="id" value={id} />
-      <button type="submit" disabled={seoPending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{seoPending ? "Préparation…" : "Préparer l’action SEO"}</button>
+      <button type="submit" disabled={seoPending} className="rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-60">{seoPending ? "Préparation…" : "Préparer l’action SEO"}</button>
       <p className="mt-2 text-xs text-muted">Crée une action structurée à approuver. CODE-V OS ne modifie pas le site automatiquement.</p>
       {seoState.message && <p role="status" className="mt-2 text-sm text-muted">{seoState.message}</p>}
     </form>}
     <form action={createAction} className="border-t border-border pt-5">
       <input type="hidden" name="id" value={id} />
-      <button type="submit" disabled={actionPending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{actionPending ? "Création…" : "Proposer une action de test"}</button>
+      <button type="submit" disabled={actionPending} className="rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-60">{actionPending ? "Création…" : "Proposer une action de test"}</button>
       {actionState.message && <p role="status" className="mt-2 text-sm text-muted">{actionState.message}</p>}
     </form>
     <form action={messageAction} className="border-t border-border pt-5">

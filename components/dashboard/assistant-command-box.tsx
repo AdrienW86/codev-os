@@ -62,7 +62,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
       <div className="flex min-h-5 items-start justify-between gap-2 px-1 pt-2">
         <p id={statusId} role="status" aria-live="polite" className="text-xs text-muted">{open ? "" : status}</p>
         {voice.state === "recording" && !open && <button type="button" onClick={voice.cancel} className="-mt-1 min-h-9 rounded-lg px-2 text-xs text-muted hover:text-foreground">Annuler la dictée</button>}
-        {voice.state !== "recording" && status && !open && <button type="button" onClick={() => { session.setNotice(""); voice.setMessage(""); }} aria-label="Fermer le message" className="-mt-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground"><span aria-hidden="true">×</span></button>}
+        {voice.state !== "recording" && status && !open && <button type="button" onClick={() => { session.setNotice(""); voice.setMessage(""); }} aria-label="Fermer le message" className="-mt-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground"><span aria-hidden="true">×</span></button>}
       </div>
       <ul aria-label="Suggestions rapides" className="mt-1 flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (
@@ -86,9 +86,9 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
               <p id={`${statusId}-panel`} role="status" aria-live="polite" className="min-h-4 text-xs text-muted">{status}</p>
             </div>
           }>
-          {lastReply && <p aria-live="polite" className="mb-4 rounded-xl bg-white/[0.04] px-3 py-2 text-sm leading-6">{lastReply.content}</p>}
+          {lastReply && <p aria-live="polite" className="mb-4 rounded-xl bg-surface-raised/60 px-3 py-2 text-sm leading-6">{lastReply.content}</p>}
           {session.failed && (
-            <div role="alert" className="mb-4 rounded-xl border border-amber-300/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+            <div role="alert" className="mb-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               La demande n’a pas abouti.
               <button type="button" onClick={session.retry} className="ml-2 min-h-9 rounded-lg border border-border px-3 text-foreground">Réessayer</button>
             </div>
@@ -107,7 +107,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
 
 function TurnItem({ turn }: { turn: Turn }) {
   return (
-    <li className={turn.role === "user" ? "ml-auto max-w-[85%] rounded-xl bg-white/5 px-3 py-2 text-sm" : "max-w-[95%] text-sm leading-6"}>
+    <li className={turn.role === "user" ? "ml-auto max-w-[85%] rounded-xl bg-surface-raised px-3 py-2 text-sm" : "max-w-[95%] text-sm leading-6"}>
       <span className="sr-only">{turn.role === "user" ? (turn.via === "voice" ? "Vous (dictée) : " : "Vous : ") : "Assistant : "}</span>
       {turn.content}
       {turn.links && turn.links.length > 0 && (
@@ -140,10 +140,10 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
         <div className={compact ? "flex items-center gap-2" : "grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 sm:flex"}>
           <button type="button" onClick={voice.toggle} disabled={voice.continuous || !["idle", "recording"].includes(voice.state) || pending || session.speaking} aria-pressed={recording}
             aria-label={recording ? "Arrêter la dictée et envoyer" : "Dicter avec le micro"}
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${recording ? "animate-pulse border-red-400/60 bg-red-400/10 text-red-200" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${recording ? "animate-pulse border-danger/60 bg-danger/10 text-danger" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
             <Icon name="mic" />
           </button>
-          <button type="submit" disabled={pending || !value.trim()} aria-label={compact ? "Envoyer" : undefined} className="flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold whitespace-nowrap text-background transition-opacity hover:opacity-90 disabled:opacity-60 sm:px-4">
+          <button type="submit" disabled={pending || !value.trim()} aria-label={compact ? "Envoyer" : undefined} className="flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent-strong px-3 text-sm font-semibold whitespace-nowrap text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:px-4">
             {!compact && <span>{pending ? "Envoi…" : "Envoyer"}</span>}
             <Icon name="send" width={18} height={18} />
           </button>
@@ -152,7 +152,7 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <button type="button" onClick={session.toggleVoiceOutput} aria-pressed={voiceOutput} className="min-h-11 rounded-lg border border-border px-3">Réponses vocales : {voiceOutput ? "oui" : "non"}</button>
         <button type="button" onClick={session.toggleContinuous} disabled={pending && !voice.continuous} aria-pressed={voice.continuous} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-60">{voice.continuous ? "Arrêter la voix continue" : "Activer la voix continue"}</button>
-        {(voice.state !== "idle" || session.speaking) && <button type="button" onClick={session.stopVoice} className="min-h-11 rounded-lg border border-red-400/50 px-3 text-red-200">Arrêter la voix</button>}
+        {(voice.state !== "idle" || session.speaking) && <button type="button" onClick={session.stopVoice} className="min-h-11 rounded-lg border border-danger/50 px-3 text-danger">Arrêter la voix</button>}
         <span className="text-muted">Écoute au premier plan uniquement. Toute modification exige le bouton Confirmer.</span>
       </div>
     </form>

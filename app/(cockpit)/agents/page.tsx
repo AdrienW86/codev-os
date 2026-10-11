@@ -37,10 +37,10 @@ export default async function AgentsPage() {
         eyebrow="Registre"
         title="Agents"
         description="Les agents CODE-V, les services qu’ils servent et ce qu’ils savent faire aujourd’hui."
-        action={<Link href="/agents/new" className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background">+ Nouvel agent</Link>}
+        action={<Link href="/agents/new" className="rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold text-accent-foreground">+ Nouvel agent</Link>}
       />
       <div className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted" aria-label="Légende">
-        {legend.map((item) => <span key={item.label}><span aria-hidden="true" className={item.tone === "green" ? "text-accent" : ""}>{item.symbol}</span> {item.label}</span>)}
+        {legend.map((item) => <span key={item.label}><span aria-hidden="true" className={item.tone === "green" ? "text-success" : ""}>{item.symbol}</span> {item.label}</span>)}
         <CapabilityLegend />
       </div>
 

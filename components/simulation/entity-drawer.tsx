@@ -217,7 +217,7 @@ function PublicationView({ ctx, id }: { ctx: Ctx; id: string }) {
           <div className="rounded-xl border border-border bg-background/60 p-4">
             <p className="text-xs text-muted">{clientName(ctx.world, publication.clientId)}</p>
             <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{publication.text}</p>
-            <div aria-hidden="true" className="mt-3 h-28 rounded-lg bg-gradient-to-br from-white/10 to-white/[0.02]" />
+            <div aria-hidden="true" className="mt-3 h-28 rounded-lg bg-surface-raised" />
           </div>
         )}
       </Section>
@@ -226,7 +226,7 @@ function PublicationView({ ctx, id }: { ctx: Ctx; id: string }) {
           <li key={channel.platform} className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>{platformLabels[channel.platform]}</span>
             <StatusBadge label={channel.status === "published" ? "Publiée" : channel.status === "failed" ? "Échec" : "En attente"} tone={channel.status === "published" ? "green" : channel.status === "failed" ? "red" : "neutral"} />
-            {channel.error && <p className="w-full text-xs text-red-300">{channel.error}</p>}
+            {channel.error && <p className="w-full text-xs text-danger">{channel.error}</p>}
           </li>
         ))}</ul>
       </Section>
@@ -380,7 +380,7 @@ function AgentView({ ctx, id }: { ctx: Ctx; id: string }) {
 
       <Section title="Services"><div className="flex flex-wrap gap-2">{blueprint.services.map((serviceId) => <RelationLink key={serviceId} kind="Service" label={getService(serviceId)?.name ?? serviceId} />)}</div></Section>
       <Section title="Capacités">
-        <ul className="space-y-1.5 text-sm">{blueprint.capabilities.map((capability) => <li key={capability.label} className={`flex gap-2 ${working ? "" : "text-muted"}`}><span aria-hidden="true" className={`w-4 text-center ${working ? "text-accent" : ""}`}>{working ? "✓" : "○"}</span>{capability.label}<span className="sr-only">{working ? " (active en simulation)" : " (prévue)"}</span></li>)}</ul>
+        <ul className="space-y-1.5 text-sm">{blueprint.capabilities.map((capability) => <li key={capability.label} className={`flex gap-2 ${working ? "" : "text-muted"}`}><span aria-hidden="true" className={`w-4 text-center ${working ? "text-success" : ""}`}>{working ? "✓" : "○"}</span>{capability.label}<span className="sr-only">{working ? " (active en simulation)" : " (prévue)"}</span></li>)}</ul>
       </Section>
       <Section title={`Clients (${clients.length})`}>
         {clients.length ? <div className="flex flex-wrap gap-2" onClickCapture={ctx.close}>{clients.map((client) => <RelationLink key={client.id} kind="Client" label={client.name} href={`/clients/${client.id}`} />)}</div> : <p className="text-sm text-muted">Aucun client abonné au service.</p>}
@@ -427,7 +427,7 @@ function CampaignView({ ctx, id }: { ctx: Ctx; id: string }) {
       <StatusBadge label={campaign.state === "anomaly" ? "Anomalie" : campaign.state === "growing" ? "En progression" : "Stable"} tone={campaign.state === "anomaly" ? "red" : "green"} />
       <p className="mt-4 text-sm">{campaign.note}</p>
       <dl className="mt-5 grid grid-cols-3 gap-3 text-sm">
-        {[["Dépenses", `${campaign.spend} € / ${campaign.budget} €`], ["Conversions", String(campaign.conversions)], ["Coût / conversion", `${campaign.cpa} €`]].map(([label, value]) => <div key={label} className="rounded-lg bg-white/[0.03] p-3"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
+        {[["Dépenses", `${campaign.spend} € / ${campaign.budget} €`], ["Conversions", String(campaign.conversions)], ["Coût / conversion", `${campaign.cpa} €`]].map(([label, value]) => <div key={label} className="rounded-lg bg-surface-raised/60 p-3"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
       </dl>
       <Section title="Liens"><Relations ctx={ctx} clientId={campaign.clientId} agentId="google-ads" /></Section>
       <Section title="Travail lié"><WorkList ctx={ctx} items={ctx.world.work.filter((item) => item.clientId === campaign.clientId && item.agentId === "google-ads")} empty="Aucune recommandation." /></Section>
@@ -442,7 +442,7 @@ function SiteView({ ctx, id }: { ctx: Ctx; id: string }) {
     <>
       <StatusBadge label={site.status === "up" ? "En ligne" : site.status === "down" ? "Indisponible" : "Dégradé"} tone={site.status === "up" ? "green" : "red"} />
       <dl className="mt-5 grid grid-cols-3 gap-3 text-sm">
-        {[["Disponibilité", site.uptime], ["Performance", `${site.performance} / 100`], ["Dernier contrôle", formatSimDateTime(site.lastCheck)]].map(([label, value]) => <div key={label} className="rounded-lg bg-white/[0.03] p-3"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
+        {[["Disponibilité", site.uptime], ["Performance", `${site.performance} / 100`], ["Dernier contrôle", formatSimDateTime(site.lastCheck)]].map(([label, value]) => <div key={label} className="rounded-lg bg-surface-raised/60 p-3"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
       </dl>
       <Section title="Liens"><Relations ctx={ctx} clientId={site.clientId} agentId="monitoring" /></Section>
       <Section title="Incidents et corrections"><WorkList ctx={ctx} items={ctx.world.work.filter((item) => item.clientId === site.clientId && item.agentId === "monitoring")} empty="Aucun incident." /></Section>

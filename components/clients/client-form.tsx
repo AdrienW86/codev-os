@@ -31,12 +31,12 @@ export function ClientForm({ client }: { client?: Client }) {
             <label htmlFor={name} className="text-sm font-medium">{label}{name === "name" ? " *" : ""}</label>
             {name === "notes" ? <textarea id={name} name={name} rows={4} defaultValue={state.values?.[name] ?? client?.[name] ?? ""} maxLength={clientFieldLimits[name]} disabled={pending} aria-invalid={Boolean(state.errors?.[name])} aria-describedby={state.errors?.[name] ? `${name}-error` : undefined} className={inputClass} /> :
               <input id={name} name={name} type={type} autoComplete={autoComplete} defaultValue={state.values?.[name] ?? client?.[name] ?? ""} required={name === "name"} maxLength={clientFieldLimits[name]} placeholder={name === "website" ? "https://…" : undefined} disabled={pending} aria-invalid={Boolean(state.errors?.[name])} aria-describedby={state.errors?.[name] ? `${name}-error` : undefined} className={inputClass} />}
-            {state.errors?.[name] && <p id={`${name}-error`} className="mt-2 text-xs text-amber-300">{state.errors[name]}</p>}
+            {state.errors?.[name] && <p id={`${name}-error`} className="mt-2 text-xs text-warning">{state.errors[name]}</p>}
           </div>
         ))}
       </div>
-      {state.message && <p role="alert" className="text-sm text-amber-300">{state.message}</p>}
-      <button type="submit" disabled={pending} className="rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-background disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement en cours…" : client ? "Enregistrer les modifications" : "Créer le client"}</button>
+      {state.message && <p role="alert" className="text-sm text-warning">{state.message}</p>}
+      <button type="submit" disabled={pending} className="rounded-lg bg-accent-strong px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement en cours…" : client ? "Enregistrer les modifications" : "Créer le client"}</button>
     </form>
   );
 }

@@ -14,7 +14,7 @@ export function ClientSourcesPanel({ clientId, sources, unavailable }: { clientI
     <Panel className="p-6">
       <h2 className="font-semibold">Sources de données</h2>
       <p className="mt-1 text-sm text-muted">Identifiants utilisés par les agents pour ce client. Les accès (jetons) se configurent côté serveur : Paramètres → Connexions.</p>
-      {unavailable ? <p className="mt-4 text-sm text-amber-200">Sources indisponibles (migration du noyau V1 à appliquer).</p> : (
+      {unavailable ? <p className="mt-4 text-sm text-warning">Sources indisponibles (migration du noyau V1 à appliquer).</p> : (
         <ul className="mt-4 grid gap-5 md:grid-cols-3">
           {sourceDefinitions.map((definition) => {
             const source = sources.find((item) => item.provider === definition.provider);
@@ -31,7 +31,7 @@ export function ClientSourcesPanel({ clientId, sources, unavailable }: { clientI
                     <input name="value" defaultValue={source?.value ?? ""} placeholder={definition.placeholder} maxLength={200} autoComplete="off" spellCheck={false} className={field} />
                   </label>
                 </MutationForm>
-                {source?.lastError && <p className="mt-1 text-xs text-amber-200">{source.lastError}</p>}
+                {source?.lastError && <p className="mt-1 text-xs text-warning">{source.lastError}</p>}
               </li>
             );
           })}

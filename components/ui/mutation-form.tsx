@@ -27,7 +27,7 @@ export function MutationForm({ action, fields = {}, label, pendingLabel = "Enreg
       {Object.entries(fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {children}
       <button type="submit" disabled={disabled || pending || (disableOnSuccess && state.ok === true)} className={actionClass(variant)}>{pending ? pendingLabel : label}</button>
-      {state.message && <p role="status" className={`mt-2 text-sm ${state.ok ? "text-accent" : "text-amber-300"}`}>{state.message}</p>}
+      {state.message && <p role="status" className={`mt-2 text-sm ${state.ok ? "text-success" : "text-warning"}`}>{state.message}</p>}
     </form>
   );
 }

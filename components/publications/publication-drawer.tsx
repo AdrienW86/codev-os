@@ -26,7 +26,7 @@ export function PublicationDrawer({load,closeHref}:{load:DrawerLoad;closeHref:st
  const close=()=>router.replace(closeHref,{scroll:false});
  const detail=load.state==='ok'?load.detail:null;
  return <dialog ref={ref} aria-labelledby="publication-drawer-title" data-drawer={detail?detail.status:load.state} onCancel={e=>{e.preventDefault();close();}}
-  className="fixed inset-0 z-50 m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/50 md:max-w-3xl">
+  className="fixed inset-0 z-50 m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-overlay md:max-w-3xl">
   <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-background px-5 py-4">
    <div className="min-w-0"><h2 id="publication-drawer-title" className="text-lg font-semibold">{detail?detail.subject:'Publication'}</h2>{detail&&<Header detail={detail}/>}</div>
    <button type="button" onClick={close} aria-label="Fermer le panneau" className="shrink-0 rounded-lg border border-border px-3 py-1.5">✕</button></div>
@@ -51,7 +51,7 @@ function DrawerBody({detail}:{detail:PublicationDetailData}){
  return <>
   {detail.readOnlyReason&&<p role="note" data-read-only="true" className="rounded-lg border border-border p-3 text-sm">{detail.readOnlyReason}</p>}
   {detail.status==='to_prepare'?<ToPrepare detail={detail}/>:<>
-   {detail.rejection&&<p className="rounded-lg border border-red-600/40 p-3 text-sm"><span className="font-medium">Motif du rejet :</span> {detail.rejection}</p>}
+   {detail.rejection&&<p className="rounded-lg border border-danger/40 p-3 text-sm"><span className="font-medium">Motif du rejet :</span> {detail.rejection}</p>}
    {detail.status==='ready'&&editable&&<p className="text-sm text-muted">Version approuvée. Toute modification crée une nouvelle version, à revalider avant publication.</p>}
    {editable?<Editor key={detail.revisionId} detail={detail}/>:<ReadOnly detail={detail}/>}
    {detail.status==='rejected'&&!detail.readOnly&&detail.projectId&&<section className={section} data-regenerate="true"><h3 className="font-semibold">Régénérer</h3>
@@ -76,7 +76,7 @@ function ToPrepare({detail}:{detail:PublicationDetailData}){
 function mediaLabel(state:MediaState){return state==='missing'?'Média requis':'Média indisponible';}
 export function MediaBox({state,preview,label}:{state:MediaState;preview:string|null;label?:string}){
  return <figure className="space-y-1">{preview?<img src={preview} alt="Aperçu du média de la publication" className="max-h-72 w-full rounded-lg object-contain"/>
-  :<div role="img" aria-label={state==='ok'?'Aperçu indisponible':mediaLabel(state)} data-media={state} className={`flex h-40 items-center justify-center rounded-lg border text-sm ${state==='missing'?'border-red-600/60 text-red-700':'border-dashed border-border text-muted'}`}>{state==='ok'?'Aperçu indisponible':mediaLabel(state)}</div>}
+  :<div role="img" aria-label={state==='ok'?'Aperçu indisponible':mediaLabel(state)} data-media={state} className={`flex h-40 items-center justify-center rounded-lg border text-sm ${state==='missing'?'border-danger/60 text-danger':'border-dashed border-border text-muted'}`}>{state==='ok'?'Aperçu indisponible':mediaLabel(state)}</div>}
   {label&&<figcaption className="text-xs font-medium">{label}</figcaption>}</figure>;
 }
 
@@ -109,7 +109,7 @@ function Editor({detail}:{detail:PublicationDetailData}){
    {media.mode==='staged'?<MediaBox state="ok" preview={media.staged.previewUrl} label="Nouvelle image — modifications non enregistrées"/>
     :media.mode==='detached'?<MediaBox state="missing" preview={null} label="Image retirée — modifications non enregistrées"/>
     :<MediaBox state={detail.media.state} preview={detail.media.preview}/>}
-   {media.mode==='current'&&detail.missingMedia.length>0&&detail.missingMedia.length<detail.variants.length&&<p className="mt-2 text-xs text-red-700">Média requis pour : {detail.missingMedia.map(p=>platformLabels[p]).join(', ')}.</p>}
+   {media.mode==='current'&&detail.missingMedia.length>0&&detail.missingMedia.length<detail.variants.length&&<p className="mt-2 text-xs text-danger">Média requis pour : {detail.missingMedia.map(p=>platformLabels[p]).join(', ')}.</p>}
    <div className="mt-3 flex flex-wrap gap-2">{media.mode!=='current'&&<button type="button" onClick={()=>setMedia({mode:'current'})} className="rounded-lg border border-border px-3 py-1.5 text-sm">Annuler le changement d’image</button>}
     {media.mode==='current'&&hasAssets&&<button type="button" onClick={()=>setMedia({mode:'detached'})} className="rounded-lg border border-border px-3 py-1.5 text-sm">Retirer l’image</button>}</div>
    <form action={stage} className="mt-4 space-y-2 text-sm" data-stage-media="true"><Ids detail={detail}/>
@@ -142,11 +142,11 @@ function Decision({detail,dirty}:{detail:PublicationDetailData;dirty:boolean}){
  const [rejectState,reject,rejecting]=useActionState<DrawerState,FormData>(rejectFromDrawerAction,{});
  const blocked=dirty?'Enregistrez vos modifications avant de valider.':detail.missingMedia.length?'Média requis : ajoutez une photo avant de valider.':null;
  return <section className={`${section} space-y-4`} data-decision="true"><h3 className="font-semibold">Validation</h3>
-  <form action={approve} className="space-y-2"><Ids detail={detail}/><button disabled={Boolean(blocked)||approving} className="rounded-lg bg-accent px-5 py-2 font-semibold text-background disabled:opacity-50">{approving?'Validation…':'À publier'}</button>
-   {blocked&&<p role="note" data-approve-blocked="true" className="text-sm text-red-700">{blocked}</p>}{approveState.message&&<p role="status" className="text-sm">{approveState.message}</p>}</form>
-  <details><summary className="cursor-pointer text-sm text-red-700">Rejeter…</summary>
+  <form action={approve} className="space-y-2"><Ids detail={detail}/><button disabled={Boolean(blocked)||approving} className="rounded-lg bg-accent-strong px-5 py-2 font-semibold text-accent-foreground disabled:opacity-50">{approving?'Validation…':'À publier'}</button>
+   {blocked&&<p role="note" data-approve-blocked="true" className="text-sm text-danger">{blocked}</p>}{approveState.message&&<p role="status" className="text-sm">{approveState.message}</p>}</form>
+  <details><summary className="cursor-pointer text-sm text-danger">Rejeter…</summary>
    <form action={reject} className="mt-2 space-y-2"><Ids detail={detail}/><label className="block text-sm">Motif du rejet<textarea className={input} name="reason" required minLength={10} maxLength={3000} rows={3} placeholder="Expliquez ce qui doit changer (10 caractères minimum)."/></label>
-    <button disabled={dirty||rejecting} className="rounded-lg border border-red-600 px-4 py-2 text-red-700 disabled:opacity-50">{rejecting?'Enregistrement…':'Confirmer le rejet'}</button>
+    <button disabled={dirty||rejecting} className="rounded-lg border border-danger/60 px-4 py-2 text-danger disabled:opacity-50">{rejecting?'Enregistrement…':'Confirmer le rejet'}</button>
     {dirty&&<p className="text-xs text-muted">Enregistrez vos modifications avant de rejeter.</p>}{rejectState.message&&<p role="status" className="text-sm">{rejectState.message}</p>}</form></details>
  </section>;
 }
@@ -164,5 +164,5 @@ function ArchiveSection({detail}:{detail:PublicationDetailData}){
    <p className="text-xs text-muted">La publication quitte le tableau actif mais reste consultable (vue « Archivées »), avec son historique. Aucune suppression.</p>
    <label className="block"><input type="checkbox" name="confirm" required/> Je confirme l’archivage définitif.</label>
    <button disabled={pending} className="rounded-lg border border-border px-3 py-1.5">{pending?'Archivage…':'Archiver'}</button>
-   {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-red-700'}>{state.message}</p>}</form></section>;
+   {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form></section>;
 }

@@ -9,7 +9,7 @@ export function AgentCard({ agent }: { agent: AgentRecord }) {
   return (
     <Panel className="flex flex-col p-6">
       <div className="mb-5 flex items-center justify-between">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-white/3 text-accent">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface-raised/60 text-accent">
           <Icon name="agents" width={24} height={24} />
         </span>
         <div className="flex gap-2"><Badge tone={agent.status === "Actif" ? "green" : "neutral"}>{agent.status}</Badge><Badge tone={agent.enabled ? "green" : "neutral"}>{agent.enabled ? "Activé" : "Désactivé"}</Badge></div>
@@ -34,7 +34,7 @@ export function AgentCard({ agent }: { agent: AgentRecord }) {
           <dd className="text-xs leading-5">{agent.max_monthly_budget_eur === null ? "Non défini" : euroFormatter.format(agent.max_monthly_budget_eur)}</dd>
         </div>
       </dl>
-      <Link href={`/agents/${agent.id}`} aria-label={`Ouvrir ${agent.name}`} className="mt-5 inline-flex justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-white/5">Ouvrir</Link>
+      <Link href={`/agents/${agent.id}`} aria-label={`Ouvrir ${agent.name}`} className="mt-5 inline-flex justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">Ouvrir</Link>
     </Panel>
   );
 }

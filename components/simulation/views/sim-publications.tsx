@@ -79,7 +79,7 @@ export function SimPublications() {
           <label className="block text-xs text-muted">Sujet<input required value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} className={inputClass} /></label>
           <label className="block text-xs text-muted">Texte<textarea rows={4} value={form.text} onChange={(event) => setForm({ ...form, text: event.target.value })} className="mt-1.5 block w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground" /></label>
           <fieldset><legend className="text-xs text-muted">Canaux</legend><div className="mt-2 flex flex-wrap gap-3">{(Object.keys(platformLabels) as SimPlatform[]).map((platform) => (
-            <label key={platform} className="inline-flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={form.channels.includes(platform)} onChange={(event) => setForm({ ...form, channels: event.target.checked ? [...form.channels, platform] : form.channels.filter((item) => item !== platform) })} className="accent-[#b8f49b]" />{platformLabels[platform]}</label>
+            <label key={platform} className="inline-flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={form.channels.includes(platform)} onChange={(event) => setForm({ ...form, channels: event.target.checked ? [...form.channels, platform] : form.channels.filter((item) => item !== platform) })} className="accent-accent" />{platformLabels[platform]}</label>
           ))}</div></fieldset>
         </form>
       </Dialog>

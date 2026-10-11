@@ -30,8 +30,8 @@ export function ProjectCard({ project }: { project: ProjectRecord }) {
       </div>
       <div className="mt-5">
         <div className="mb-2 flex justify-between text-xs"><span className="text-muted">Progression</span><span>{project.progress} %</span></div>
-        <div role="progressbar" aria-label={`Progression de ${project.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={project.progress} className="h-1.5 overflow-hidden rounded-full bg-white/5">
-          <div className="h-full rounded-full bg-accent" style={{ width: `${project.progress}%` }} />
+        <div role="progressbar" aria-label={`Progression de ${project.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={project.progress} className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
+          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${project.progress}%` }} />
         </div>
       </div>
       <dl className="mt-5 space-y-3 border-t border-border pt-4 text-xs">

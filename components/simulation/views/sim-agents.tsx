@@ -24,7 +24,7 @@ export function SimAgents() {
             <EntityCard key={agent.id} icon="agents" title={agent.name} eyebrow={`${scopeLabels[agent.scope]} · ${agent.services.map((id) => getService(id)?.name).join(", ")}`}
               status={agentStatusLabels[state.status]} onOpen={() => open({ type: "agent", id: agent.id })} description={agent.role}
               footer={<p className="text-xs text-muted">{agent.includedForAllClients ? `Tous les clients (${clients.length})` : `${clients.length} client${clients.length > 1 ? "s" : ""}`} · {working ? `${agent.capabilities.length} capacités actives` : `${agent.capabilities.length} capacités prévues`}</p>}>
-              {state.note && !working && <p className="mt-3 text-xs text-amber-200">{state.note}</p>}
+              {state.note && !working && <p className="mt-3 text-xs text-warning">{state.note}</p>}
             </EntityCard>
           );
         })}

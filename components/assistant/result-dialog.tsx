@@ -40,7 +40,7 @@ export function ResultDialog({ open, onClose, title, subtitle, busy, children, f
   return (
     <dialog ref={dialog} aria-labelledby={titleId} onClose={handleClose}
       onCancel={(event) => { event.preventDefault(); dialog.current?.close(); }}
-      className="m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden bg-background p-0 text-foreground backdrop:bg-black/70 sm:m-auto sm:h-auto sm:max-h-[90dvh] sm:w-[min(68rem,calc(100vw-2rem))] sm:rounded-2xl sm:border sm:border-border">
+      className="m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden bg-background p-0 text-foreground backdrop:bg-overlay sm:m-auto sm:h-auto sm:max-h-[90dvh] sm:w-[min(68rem,calc(100vw-2rem))] sm:rounded-2xl sm:border sm:border-border">
       <div className="flex h-dvh flex-col sm:h-auto sm:max-h-[90dvh]">
         <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
           <div className="min-w-0">

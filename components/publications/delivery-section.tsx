@@ -20,7 +20,7 @@ function DeliveryRowView({publicationId,delivery:d}:{publicationId:string;delive
    <span className="rounded-full border border-border px-2 py-0.5 text-xs">{d.statusLabel}</span></p>
   <p className="mt-1 text-xs text-muted">{d.attempts} tentative{d.attempts>1?'s':''}{d.nextRetryAt?` · prochaine tentative le ${formatDate(d.nextRetryAt)}`:''}</p>
   {d.blockedReason&&<p className="mt-1 text-xs">Motif : {d.blockedReason}</p>}
-  {d.lastError&&<p className="mt-1 text-xs text-red-400">Dernière erreur : {d.lastError}</p>}
+  {d.lastError&&<p className="mt-1 text-xs text-danger">Dernière erreur : {d.lastError}</p>}
   {d.remoteLabel&&<p className="mt-1 text-xs text-muted">{d.remoteLabel}</p>}
   {d.canRetry&&<RetryForm publicationId={publicationId} deliveryId={d.id}/>}
   {d.canReconcile&&<ReconcileForms deliveryId={d.id}/>}</li>;
@@ -29,13 +29,13 @@ function PrepareForm({publicationId}:{publicationId:string}){
  const [state,prepare,pending]=useActionState(prepareDeliveryAction,initial);
  return <form action={prepare} className="mt-3 space-y-2 text-sm"><input type="hidden" name="publication_id" value={publicationId}/>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Préparation…':'Préparer la diffusion'}</button>
-  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-red-400'}>{state.message}</p>}</form>;
+  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form>;
 }
 function RetryForm({publicationId,deliveryId}:{publicationId:string;deliveryId:string}){
  const [state,retry,pending]=useActionState(retryDeliveryAction,initial);
  return <form action={retry} className="mt-2 flex flex-wrap items-center gap-2"><input type="hidden" name="publication_id" value={publicationId}/><input type="hidden" name="delivery_id" value={deliveryId}/>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-1 text-xs">{pending?'Planification…':'Réessayer'}</button>
-  {state.message&&<span role={state.ok?'status':'alert'} className={`text-xs ${state.ok?'':'text-red-400'}`}>{state.message}</span>}</form>;
+  {state.message&&<span role={state.ok?'status':'alert'} className={`text-xs ${state.ok?'':'text-danger'}`}>{state.message}</span>}</form>;
 }
 // Uncertain: check with the provider (read only), then, if nothing was found, explicitly confirm it was not published.
 function ReconcileForms({deliveryId}:{deliveryId:string}){
@@ -44,8 +44,8 @@ function ReconcileForms({deliveryId}:{deliveryId:string}){
  return <div className="mt-2 space-y-2 text-xs" data-reconcile="true">
   <form action={check} className="flex flex-wrap items-center gap-2"><input type="hidden" name="delivery_id" value={deliveryId}/>
    <button disabled={checking} className="rounded-lg border border-border px-3 py-1">{checking?'Vérification…':'Vérifier chez le fournisseur'}</button>
-   {checked.message&&<span role={checked.ok?'status':'alert'} className={checked.ok?'':'text-red-400'}>{checked.message}</span>}</form>
+   {checked.message&&<span role={checked.ok?'status':'alert'} className={checked.ok?'':'text-danger'}>{checked.message}</span>}</form>
   <form action={confirm} className="flex flex-wrap items-center gap-2"><input type="hidden" name="delivery_id" value={deliveryId}/>
-   <button disabled={confirming} className="rounded-lg border border-red-400 px-3 py-1 text-red-400">{confirming?'Enregistrement…':'Confirmer : non publiée'}</button>
-   {confirmed.message&&<span role={confirmed.ok?'status':'alert'} className={confirmed.ok?'':'text-red-400'}>{confirmed.message}</span>}</form></div>;
+   <button disabled={confirming} className="rounded-lg border border-danger/60 px-3 py-1 text-danger">{confirming?'Enregistrement…':'Confirmer : non publiée'}</button>
+   {confirmed.message&&<span role={confirmed.ok?'status':'alert'} className={confirmed.ok?'':'text-danger'}>{confirmed.message}</span>}</form></div>;
 }

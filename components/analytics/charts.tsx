@@ -19,13 +19,13 @@ export function Sparkline({ values, color }: { values: number[]; color: string }
     <svg viewBox={`0 0 ${width} ${height}`} className="h-8 w-full max-w-[120px]" aria-hidden="true" preserveAspectRatio="none">
       <defs>
         <linearGradient id={`spark-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
+          <stop offset="0%" stopOpacity="0.35" style={{ stopColor: color }} />
+          <stop offset="100%" stopOpacity="0" style={{ stopColor: color }} />
         </linearGradient>
       </defs>
       <path d={`${line} L${last[0]} ${height} L${points[0][0]} ${height} Z`} fill={`url(#spark-${id})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      <circle cx={last[0]} cy={last[1]} r="2.2" fill={color} />
+      <path d={line} fill="none" style={{ stroke: color }} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={last[0]} cy={last[1]} r="2.2" style={{ fill: color }} />
     </svg>
   );
 }
@@ -86,39 +86,39 @@ export function TrafficChart({ points, previous, partialLast, label, metricLabel
       <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} className="block touch-pan-y" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.38" />
-            <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0" />
+            <stop offset="0%" stopOpacity="0.32" style={{ stopColor: "var(--chart-1)" }} />
+            <stop offset="100%" stopOpacity="0" style={{ stopColor: "var(--chart-1)" }} />
           </linearGradient>
         </defs>
         {ticks.map((tick) => (
           <g key={tick}>
-            <line x1={padLeft} x2={width - padRight} y1={y(tick)} y2={y(tick)} stroke="#1e293b" strokeDasharray={tick === 0 ? undefined : "2 4"} />
-            <text x={padLeft - 8} y={y(tick) + 4} textAnchor="end" className="fill-slate-500 text-[11px] tabular-nums">{nf.format(tick)}</text>
+            <line x1={padLeft} x2={width - padRight} y1={y(tick)} y2={y(tick)} className="stroke-border" strokeDasharray={tick === 0 ? undefined : "2 4"} />
+            <text x={padLeft - 8} y={y(tick) + 4} textAnchor="end" className="fill-subtle text-[11px] tabular-nums">{nf.format(tick)}</text>
           </g>
         ))}
         {area && <path d={area} fill={`url(#${gradientId})`} />}
-        {previousCoords.length > 1 && <path d={path(previousCoords)} fill="none" stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 5" strokeLinecap="round" />}
-        {solid.length > 0 && <path d={path(solid)} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" style={{ filter: "drop-shadow(0 0 6px rgba(59,130,246,.55))" }} />}
-        {dashed.length > 1 && <path d={path(dashed)} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />}
-        {coords.length <= 31 && coords.map((item) => <circle key={item.point.key} cx={item.x} cy={item.y} r="3.5" fill="#60a5fa" stroke="#0b1322" strokeWidth="2" />)}
+        {previousCoords.length > 1 && <path d={path(previousCoords)} fill="none" className="stroke-chart-muted" strokeWidth="1.5" strokeDasharray="4 5" strokeLinecap="round" />}
+        {solid.length > 0 && <path d={path(solid)} fill="none" className="stroke-chart-1" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+        {dashed.length > 1 && <path d={path(dashed)} fill="none" className="stroke-chart-1" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />}
+        {coords.length <= 31 && coords.map((item) => <circle key={item.point.key} cx={item.x} cy={item.y} r="3.5" className="fill-accent-hover stroke-surface" strokeWidth="2" />)}
         {coords.map((item, index) => index === coords.length - 1 || (index % labelEvery === 0 && coords.length - 1 - index >= labelEvery * 0.6) ? (
-          <text key={`label-${item.point.key}`} x={item.x} y={height - 8} textAnchor="middle" className="fill-slate-500 text-[11px]">{item.point.label}</text>
+          <text key={`label-${item.point.key}`} x={item.x} y={height - 8} textAnchor="middle" className="fill-subtle text-[11px]">{item.point.label}</text>
         ) : null)}
         {active && <>
-          <line x1={active.x} x2={active.x} y1={padTop} y2={padTop + plotH} stroke="#334155" />
-          <circle cx={active.x} cy={active.y} r="5" fill="#93c5fd" stroke="#1d4ed8" strokeWidth="2" />
+          <line x1={active.x} x2={active.x} y1={padTop} y2={padTop + plotH} className="stroke-border-strong" />
+          <circle cx={active.x} cy={active.y} r="5" className="fill-accent-hover stroke-accent-strong" strokeWidth="2" />
         </>}
       </svg>
       {active && hover !== null && (
-        <div className="pointer-events-none absolute top-2 rounded-lg border border-[#22324f] bg-[#0b1322]/95 px-3 py-2 text-xs shadow-xl" style={{ left: Math.min(Math.max(active.x - 70, 0), width - 150) }}>
-          <p className="text-slate-400">{active.point.label}</p>
-          <p className="mt-0.5 font-semibold text-slate-100 tabular-nums">{nf.format(active.point.value)} <span className="font-normal text-slate-400">{metricLabel}</span></p>
+        <div className="pointer-events-none absolute top-2 rounded-lg border border-border-strong bg-surface-raised/95 px-3 py-2 text-xs shadow-popover" style={{ left: Math.min(Math.max(active.x - 70, 0), width - 150) }}>
+          <p className="text-muted">{active.point.label}</p>
+          <p className="mt-0.5 font-semibold text-foreground tabular-nums">{nf.format(active.point.value)} <span className="font-normal text-muted">{metricLabel}</span></p>
           {previousCoords.length > 0 && compare[hover - (points.length - compare.length)] && (
-            <p className="mt-0.5 text-slate-500 tabular-nums">Période préc. : {nf.format(compare[hover - (points.length - compare.length)].value)}</p>
+            <p className="mt-0.5 text-subtle tabular-nums">Période préc. : {nf.format(compare[hover - (points.length - compare.length)].value)}</p>
           )}
         </div>
       )}
-      {!points.length && <div className="absolute inset-0 grid place-items-center text-sm text-slate-400">Aucune série temporelle pour cette période.</div>}
+      {!points.length && <div className="absolute inset-0 grid place-items-center text-sm text-muted">Aucune série temporelle pour cette période.</div>}
     </div>
   );
 }
@@ -135,15 +135,15 @@ export function Donut({ segments, total, caption }: { segments: { label: string;
   return (
     <div className="relative h-36 w-36 shrink-0">
       <svg viewBox="0 0 140 140" className="h-full w-full -rotate-90" role="img" aria-label={segments.map((segment) => `${segment.label} ${Math.round((segment.value / sum) * 100)} %`).join(", ")}>
-        <circle cx="70" cy="70" r={radius} fill="none" stroke="#16213a" strokeWidth={stroke} />
+        <circle cx="70" cy="70" r={radius} fill="none" className="stroke-surface-raised" strokeWidth={stroke} />
         {arcs.map((arc) => (
-          <circle key={arc.label} cx="70" cy="70" r={radius} fill="none" stroke={arc.color} strokeWidth={stroke} strokeDasharray={`${Math.max(0, arc.length - 2)} ${circumference}`} strokeDashoffset={-arc.offset} style={{ filter: `drop-shadow(0 0 4px ${arc.color}66)` }} />
+          <circle key={arc.label} cx="70" cy="70" r={radius} fill="none" strokeWidth={stroke} strokeDasharray={`${Math.max(0, arc.length - 2)} ${circumference}`} strokeDashoffset={-arc.offset} style={{ stroke: arc.color }} />
         ))}
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
-          <p className="text-2xl font-semibold tabular-nums text-slate-50">{nf.format(total)}</p>
-          <p className="text-[11px] text-slate-400">{caption}</p>
+          <p className="text-2xl font-semibold tabular-nums text-foreground">{nf.format(total)}</p>
+          <p className="text-[11px] text-muted">{caption}</p>
         </div>
       </div>
     </div>

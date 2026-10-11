@@ -36,7 +36,7 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
   const analytics = overview.vercelAnalytics?.data;
   const sourceMap = new Map(overview.sources.map((item) => [item.provider, item]));
 
-  if (unavailable) return <Panel className="p-6"><p className="text-sm text-amber-300">Le centre de données est temporairement indisponible.</p></Panel>;
+  if (unavailable) return <Panel className="p-6"><p className="text-sm text-warning">Le centre de données est temporairement indisponible.</p></Panel>;
 
   const sourceCards = ["search-console","vercel","github"].map((provider) => {
     const source = sourceMap.get(provider);
@@ -51,7 +51,7 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
   return (
     <div className="space-y-8">
       <Panel className="overflow-hidden">
-        <div className="border-b border-border bg-gradient-to-br from-white/[0.055] to-transparent p-6">
+        <div className="border-b border-border bg-surface-raised/50 p-6">
           <div className="flex flex-wrap items-start justify-between gap-5">
             <div className="max-w-2xl">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Centre de données client</p>
@@ -121,7 +121,7 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
               : "Aucun instantané Vercel Analytics. Renseignez le projet Vercel du client puis actualisez les données."}
           </p>
         </div>
-        <Link href={`/analytics?client=${clientId}`} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-background hover:opacity-90">Voir les performances →</Link>
+        <Link href={`/analytics?client=${clientId}`} className="inline-flex min-h-10 items-center rounded-lg bg-accent-strong px-4 text-sm font-medium text-accent-foreground hover:opacity-90">Voir les performances →</Link>
       </Panel>
 
       <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">

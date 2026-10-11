@@ -6,10 +6,10 @@ export type ActionVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const base = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 const variants: Record<ActionVariant, string> = {
-  primary: "bg-accent font-semibold text-background hover:bg-accent/90",
-  secondary: "border border-border text-foreground hover:border-accent/50 hover:bg-white/[0.03]",
-  ghost: "text-muted hover:bg-white/5 hover:text-foreground",
-  danger: "border border-red-400/40 text-red-300 hover:bg-red-400/10",
+  primary: "bg-accent-strong font-semibold text-accent-foreground hover:bg-accent",
+  secondary: "border border-border-strong bg-surface-raised/40 text-foreground hover:border-accent/50 hover:bg-surface-raised",
+  ghost: "text-muted hover:bg-surface-raised hover:text-foreground",
+  danger: "border border-danger/40 text-danger hover:bg-danger/10",
 };
 
 export function actionClass(variant: ActionVariant = "secondary", className = "") {

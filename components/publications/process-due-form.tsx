@@ -11,5 +11,5 @@ export function ProcessDueForm({stopped}:{stopped:boolean}){
   <div className="min-w-0 flex-1"><p className="font-semibold">Envoi des publications dues</p>
    <p className="text-xs text-muted">{stopped?'Arrêt d’urgence actif ou publication désactivée : rien ne sera envoyé.':'Envoie les diffusions préparées dont l’heure est arrivée (5 au plus par clic).'}</p></div>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Envoi…':'Envoyer les publications dues'}</button>
-  {state.message&&<p role={state.ok?'status':'alert'} className={`w-full ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>;
+  {state.message&&<p role={state.ok?'status':'alert'} className={`w-full ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }

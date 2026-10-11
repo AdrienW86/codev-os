@@ -41,7 +41,7 @@ function AssignmentEditor({ clientId, assignment }: { clientId: string; assignme
         <input type="hidden" name="agent_id" value={assignment.agent_id} />
         <input type="hidden" name="client_id" value={clientId} />
         {removeState.message && <p role="status" className="mb-2 text-sm text-muted">{removeState.message}</p>}
-        <button type="submit" disabled={removing} className="text-sm text-amber-300 underline-offset-4 hover:underline disabled:opacity-60">{removing ? "Retrait…" : "Retirer l’assignation"}</button>
+        <button type="submit" disabled={removing} className="text-sm text-warning underline-offset-4 hover:underline disabled:opacity-60">{removing ? "Retrait…" : "Retirer l’assignation"}</button>
       </form>
     </Panel>
   );
@@ -63,7 +63,7 @@ export function ClientAgentAssignments({ clientId, agents, assignments }: { clie
           <input type="hidden" name="client_id" value={clientId} />
           <div><label htmlFor="agent_id" className="text-sm font-medium">Nouvelle assignation</label><select id="agent_id" name="agent_id" required defaultValue="" disabled={pending} className={inputClass}><option value="" disabled>Sélectionner un agent</option>{availableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.enabled ? "" : " (désactivé)"}</option>)}</select></div>
           <div><label htmlFor="new-client-instructions" className="text-sm font-medium">Instructions client</label><input id="new-client-instructions" name="client_instructions" maxLength={3000} disabled={pending} className={inputClass} /></div>
-          <button type="submit" disabled={pending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{pending ? "Assignation…" : "+ Assigner"}</button>
+          <button type="submit" disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-60">{pending ? "Assignation…" : "+ Assigner"}</button>
         </form> : agents.length ? <p className="text-sm text-muted">Tous les agents existants sont déjà assignés.</p> : <p className="text-sm text-muted">Créez un agent avant de l’assigner à ce client. <Link href="/agents/new" className="text-accent hover:underline">Nouvel agent</Link></p>}
         {state.message && <p role="status" className="mt-3 text-sm text-muted">{state.message}</p>}
       </div>

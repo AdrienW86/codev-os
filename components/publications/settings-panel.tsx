@@ -6,7 +6,7 @@ export function PublicationSettingsPanel({ settings }: { settings: PublicationSe
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="font-semibold">Publications</h2><Badge>Exécution externe indisponible</Badge>
     </div>
-    {!settings ? <p role="alert" className="mt-4 text-sm text-amber-300">Réglages indisponibles. Vérifiez les migrations Publications. Aucune activation n’est possible depuis cette page.</p> : <dl className="mt-5 space-y-4 text-sm">
+    {!settings ? <p role="alert" className="mt-4 text-sm text-warning">Réglages indisponibles. Vérifiez les migrations Publications. Aucune activation n’est possible depuis cette page.</p> : <dl className="mt-5 space-y-4 text-sm">
       {[
         ["État global", settings.emergency_stop ? "À l’arrêt" : "Arrêt général levé"],
         ["Génération", settings.generation_enabled ? "Autorisée dans les réglages" : "Désactivée"],

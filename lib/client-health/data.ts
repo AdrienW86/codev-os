@@ -20,6 +20,15 @@ type SeoOpportunity = {
   suggestedAction?: string;
 };
 
+type VercelAnalyticsSummary = {
+  projectId?: string;
+  pageviews?: number;
+  visitors?: number;
+  topPages?: { label?: string; pageviews?: number; visitors?: number }[];
+  topReferrers?: { label?: string; pageviews?: number; visitors?: number }[];
+  events?: { label?: string; count?: number; visitors?: number }[];
+};
+
 type PageSpeedSummary = {
   performance?: number | null;
   lcpMs?: number | null;
@@ -34,6 +43,7 @@ export type ClientHealthOverview = {
   incidents: { id: string; title: string; severity: string; status: string; detectedAt: string; source: string }[];
   runs: { id: string; runType: string; status: string; summary: string | null; startedAt: string }[];
   opportunities: { fetchedAt: string; periodStart: string; periodEnd: string; findings: (SeoOpportunity & { recommendationId?: string })[]; counts: Record<string, number> } | null;
+  vercelAnalytics: { fetchedAt: string; periodStart: string; periodEnd: string; data: VercelAnalyticsSummary } | null;
 };
 
 const object = (value: Json | null): Record<string, unknown> =>
@@ -41,7 +51,7 @@ const object = (value: Json | null): Record<string, unknown> =>
 
 export async function getClientHealthOverview(clientId: string): Promise<ClientHealthOverview> {
   const db = getSupabaseServerClient();
-  const [search, speed, site, incidents, runs, opportunities, recommendations] = await Promise.all([
+  const [search, speed, site, incidents, runs, opportunities, recommendations, vercelAnalytics] = await Promise.all([
     db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "search-console").eq("metric_key", "summary").order("fetched_at", { ascending: false }).limit(1),
     db.from("metric_snapshots").select("fetched_at,data").eq("client_id", clientId).eq("provider", "pagespeed").eq("metric_key", "mobile").order("fetched_at", { ascending: false }).limit(1),
     db.from("site_checks").select("checked_at,ok,status_code,response_ms,error_kind,url").eq("client_id", clientId).order("checked_at", { ascending: false }).limit(1),
@@ -49,14 +59,16 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
     db.from("agent_runs").select("id,status,summary,started_at,metadata").eq("client_id", clientId).order("started_at", { ascending: false }).limit(20),
     db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "search-console").eq("metric_key", "opportunities").order("fetched_at", { ascending: false }).limit(1),
     db.from("recommendations").select("id,payload,status").eq("client_id", clientId).eq("status", "pending").order("created_at", { ascending: false }).limit(50),
+    db.from("metric_snapshots").select("period_start,period_end,fetched_at,data").eq("client_id", clientId).eq("provider", "vercel").eq("metric_key", "web_analytics").order("fetched_at", { ascending: false }).limit(1),
   ]);
 
-  if (search.error || speed.error || site.error || incidents.error || runs.error || opportunities.error || recommendations.error) throw new Error("client health read");
+  if (search.error || speed.error || site.error || incidents.error || runs.error || opportunities.error || recommendations.error || vercelAnalytics.error) throw new Error("client health read");
 
   const searchRow = search.data?.[0];
   const speedRow = speed.data?.[0];
   const siteRow = site.data?.[0];
   const opportunityRow = opportunities.data?.[0];
+  const vercelRow = vercelAnalytics.data?.[0];
   const opportunityData = opportunityRow ? object(opportunityRow.data) : {};
   const rawFindings = Array.isArray(opportunityData.findings) ? opportunityData.findings : [];
   const recommendationByFinding = new Map<string, string>();
@@ -94,6 +106,12 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
       detectedAt: item.detected_at,
       source: item.source,
     })),
+    vercelAnalytics: vercelRow ? {
+      fetchedAt: vercelRow.fetched_at,
+      periodStart: vercelRow.period_start,
+      periodEnd: vercelRow.period_end,
+      data: object(vercelRow.data) as VercelAnalyticsSummary,
+    } : null,
     opportunities: opportunityRow ? {
       fetchedAt: opportunityRow.fetched_at,
       periodStart: opportunityRow.period_start,

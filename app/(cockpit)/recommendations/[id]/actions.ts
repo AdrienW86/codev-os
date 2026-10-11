@@ -6,6 +6,7 @@ import { updateRecommendationStatus } from "@/lib/recommendations/data";
 import type { RecommendationActionState, RecommendationStatus } from "@/lib/recommendations/types";
 import { createAdminMessage } from "@/lib/agent-messages/data";
 import { createAction } from "@/lib/actions/data";
+import { prepareAction } from "@/lib/agents/outputs";
 import { getRecommendationById } from "@/lib/recommendations/data";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -55,7 +56,7 @@ const asRecord = (value: Json | null): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 export async function createSeoSiteChangeAction(_previousState: RecommendationActionState, formData: FormData): Promise<RecommendationActionState> {
-  await requireAdmin();
+  const { userId } = await requireAdmin();
   const id = singleString(formData, "id");
   if (!id) return { message: "Impossible de préparer cette action SEO." };
   const recommendation = await getRecommendationById(id);
@@ -78,7 +79,7 @@ export async function createSeoSiteChangeAction(_previousState: RecommendationAc
       : `Renforcer cette page pour mieux couvrir l’intention de la requête « ${key} » : title, structure, contenu ou maillage uniquement si l’audit le justifie. Ne créer une nouvelle page que si une intention distincte est confirmée.`;
 
   const rationale = [recommendation.reason ?? "", suggested].filter(Boolean).join(" ").slice(0, 2000);
-  const result = await createAction({ recommendation_id: id, action_type: "seo.site_change", parameters: { page, change, rationale } });
+  const result = await prepareAction({ kind: "admin", userId }, { recommendationId: id, type: "seo.site_change", parameters: { page, change, rationale } });
   if (!result.ok) return { message: result.message };
   revalidatePath(`/recommendations/${id}`);
   revalidatePath("/actions");

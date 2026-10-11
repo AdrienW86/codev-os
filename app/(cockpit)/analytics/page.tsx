@@ -36,7 +36,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
   }
 
   const period = resolvePeriod(params);
-  const fallback: AnalyticsDashboardState = { status: "unavailable", lastError: requested.lastError };
+  const fallback: AnalyticsDashboardState = { status: "unavailable", lastError: requested.lastError, latest: null };
   const state = await safeRead("analytics-dashboard", () => getAnalyticsDashboard(requested, period), fallback);
 
   return (

@@ -5,7 +5,7 @@ import "server-only";
 import { listClients } from "@/lib/clients/data";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { isProviderConfigured } from "@/lib/system/providers";
-import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
+import { syncVercelAnalytics, VERCEL_SNAPSHOT_VERSION } from "@/lib/vercel-analytics/sync";
 import type { VercelAnalyticsSummary } from "@/lib/client-health/data";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -14,10 +14,17 @@ const FRESH_MS = 2 * 60 * 60 * 1000;
 
 export type AnalyticsClientOption = { id: string; name: string; connected: boolean; projectId: string | null; lastSyncAt: string | null; lastError: string | null };
 
+/** Référence d'un instantané (sans ses données) : sert uniquement à proposer d'afficher sa propre période. */
+export type SnapshotRef = { periodStart: string; periodEnd: string; fetchedAt: string };
+
+/**
+ * `ready` porte toujours un instantané de la période demandée, jamais d'une autre période.
+ * `stale` : instantané de cette période, mais la synchronisation a échoué (`syncError`) ou n'a pas pu être tentée.
+ */
 export type AnalyticsDashboardState =
-  | { status: "ready"; data: VercelAnalyticsSummary; fetchedAt: string; periodStart: string; periodEnd: string; stale: boolean }
-  | { status: "not_connected"; reason: "project" | "token" }
-  | { status: "unavailable"; lastError: string | null };
+  | { status: "ready"; data: VercelAnalyticsSummary; fetchedAt: string; periodStart: string; periodEnd: string; stale: boolean; syncError: string | null }
+  | { status: "not_connected"; reason: "project" | "token"; latest: SnapshotRef | null }
+  | { status: "unavailable"; lastError: string | null; latest: SnapshotRef | null };
 
 const object = (value: Json | null): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -53,22 +60,29 @@ async function readSnapshot(clientId: string, period: { start: string; end: stri
   return row ? { periodStart: row.period_start, periodEnd: row.period_end, fetchedAt: row.fetched_at, data: object(row.data) as VercelAnalyticsSummary } : null;
 }
 
+const isCurrentFormat = (data: VercelAnalyticsSummary) => data.version === VERCEL_SNAPSHOT_VERSION;
+
 /**
- * Données d'un client pour une période : instantané récent de la même période, sinon synchronisation
- * Vercel (qui enregistre l'instantané), sinon dernier instantané connu signalé comme ancien.
+ * Données d'un client pour la période demandée : instantané récent de cette période (format courant),
+ * sinon synchronisation Vercel (qui enregistre l'instantané), sinon instantané plus ancien de cette même
+ * période signalé comme tel. Un instantané d'une autre période n'est jamais affiché à la place : seule sa
+ * référence est renvoyée, pour proposer de consulter sa propre période.
  */
 export async function getAnalyticsDashboard(client: AnalyticsClientOption, period: { start: string; end: string }): Promise<AnalyticsDashboardState> {
-  if (!client.connected) return { status: "not_connected", reason: "project" };
+  if (!client.connected) return { status: "not_connected", reason: "project", latest: null };
   const exact = await readSnapshot(client.id, period);
-  if (exact && Date.now() - Date.parse(exact.fetchedAt) < FRESH_MS) return { status: "ready", ...exact, stale: false };
+  if (exact && isCurrentFormat(exact.data) && Date.now() - Date.parse(exact.fetchedAt) < FRESH_MS) return { status: "ready", ...exact, stale: false, syncError: null };
+  const latest = async () => {
+    const row = await readSnapshot(client.id, null);
+    return row ? { periodStart: row.periodStart, periodEnd: row.periodEnd, fetchedAt: row.fetchedAt } : null;
+  };
   if (!isProviderConfigured("vercel")) {
-    if (exact) return { status: "ready", ...exact, stale: true };
-    return { status: "not_connected", reason: "token" };
+    if (exact) return { status: "ready", ...exact, stale: true, syncError: "Jeton Vercel absent du serveur : synchronisation impossible." };
+    return { status: "not_connected", reason: "token", latest: await latest() };
   }
   const synced = await syncVercelAnalytics(client.id, period);
-  if (synced.ok) return { status: "ready", data: synced.data as unknown as VercelAnalyticsSummary, fetchedAt: new Date().toISOString(), periodStart: period.start, periodEnd: period.end, stale: false };
-  if (synced.reason === "not_configured") return { status: "not_connected", reason: "project" };
-  const fallback = exact ?? await readSnapshot(client.id, null);
-  if (fallback) return { status: "ready", ...fallback, stale: true };
-  return { status: "unavailable", lastError: client.lastError };
+  if (synced.ok) return { status: "ready", data: synced.data as unknown as VercelAnalyticsSummary, fetchedAt: new Date().toISOString(), periodStart: period.start, periodEnd: period.end, stale: false, syncError: null };
+  if (synced.reason === "not_configured") return { status: "not_connected", reason: "project", latest: null };
+  if (exact) return { status: "ready", ...exact, stale: true, syncError: synced.error };
+  return { status: "unavailable", lastError: synced.error ?? client.lastError, latest: await latest() };
 }

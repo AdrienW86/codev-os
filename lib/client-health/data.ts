@@ -21,6 +21,8 @@ type SeoOpportunity = {
 };
 
 export type VercelAnalyticsSummary = {
+  /** Format de l'instantané (VERCEL_SNAPSHOT_VERSION) ; absent pour les instantanés antérieurs. */
+  version?: number;
   projectId?: string;
   pageviews?: number;
   visitors?: number;
@@ -42,6 +44,10 @@ export type VercelAnalyticsSummary = {
   browsers?: { label?: string; pageviews?: number; visitors?: number }[];
   events?: { label?: string; count?: number; visitors?: number }[];
   insights?: { kind?: "positive" | "warning" | "info"; title?: string; detail?: string }[];
+  /** Statut de chaque bloc complémentaire : `ok: false` porte la cause (message assaini). */
+  sections?: Partial<Record<"trend" | "eventTrend" | "topPages" | "topReferrers" | "routes" | "countries" | "devices" | "operatingSystems" | "browsers" | "events", { ok: boolean; error?: string }>>;
+  /** Cause de l'absence de comparaison quand la période précédente n'a pas pu être lue. */
+  previousError?: string;
 };
 
 type PageSpeedSummary = {

@@ -50,14 +50,72 @@ test("Vercel Web Analytics summary queries traffic, pages, referrers and custom 
   assert.equal(data.browsers[0].label, "Chrome");
   assert.equal(data.trend[0].timestamp, "2026-09-01T00:00:00.000Z");
   assert.equal(data.eventTrend[0].count, 4);
-  assert.equal(calls.length, 11);
+  // 9 requêtes simples + séries quotidiennes (visites, événements) découpées en 2 fenêtres de ≤ 25 jours.
+  assert.equal(calls.length, 13);
+  assert.deepEqual({ ...data.sections.trend }, { ok: true });
   for (const url of calls) {
     const parsed = new URL(url);
     assert.equal(parsed.searchParams.get("projectId"), "prj_ABCDEF123");
     assert.equal(parsed.searchParams.get("teamId"), "team_123");
-    assert.equal(parsed.searchParams.get("since"), "2026-09-01");
-    assert.equal(parsed.searchParams.get("until"), "2026-09-30");
+    assert.ok(Number(parsed.searchParams.get("limit") ?? 0) <= 25, "limit ≤ 25");
+    if (parsed.searchParams.get("by") === "day") continue;
+    assert.equal(parsed.searchParams.get("since"), "2026-09-01T00:00:00.000Z");
+    assert.equal(parsed.searchParams.get("until"), "2026-09-30T23:59:59.999Z");
   }
+  const windows = calls.map((url) => new URL(url)).filter((url) => url.pathname.endsWith("/visits/aggregate") && url.searchParams.get("by") === "day")
+    .map((url) => [url.searchParams.get("since"), url.searchParams.get("until")]);
+  assert.deepEqual(windows, [["2026-09-01T00:00:00.000Z", "2026-09-25T23:59:59.999Z"], ["2026-09-26T00:00:00.000Z", "2026-09-30T23:59:59.999Z"]]);
+});
+
+function loadVercel(providerJson) {
+  class ProviderError extends Error {
+    constructor(provider, kind, status = null, code = null) { super(`${provider} : ${kind}`); this.kind = kind; this.status = status; this.code = code; this.scopes = []; }
+  }
+  return { ProviderError, vercel: loadTs("lib/providers/vercel.ts", { "@/lib/providers/api": { providerJson }, "@/lib/providers/errors": { ProviderError } }, { URL, URLSearchParams }) };
+}
+
+test("Vercel analytics: a refused complementary query is isolated with its cause, never fatal or zero-filled silently", async () => {
+  let ProviderErrorRef;
+  const { ProviderError, vercel } = loadVercel(async (_provider, url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith("/visits/count")) return { data: { pageviews: 200, visitors: 84 } };
+    if (parsed.searchParams.get("by") === "day") throw new ProviderErrorRef("vercel", "rejected", 400, "invalid_query");
+    return { data: [] };
+  });
+  ProviderErrorRef = ProviderError;
+  const data = await vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-05", end: "2026-10-11" }, { env: { VERCEL_TOKEN: "secret-token" }, now: new Date("2026-10-11T12:00:00Z") });
+  assert.equal(data.visitors, 84);
+  assert.equal(data.trend.length, 0);
+  assert.equal(data.sections.trend.ok, false);
+  assert.match(data.sections.trend.error, /HTTP 400, invalid_query/);
+  assert.doesNotMatch(JSON.stringify(data), /secret-token/);
+  assert.equal(data.sections.events.ok, true);
+});
+
+test("Vercel analytics: the visit count stays mandatory and until is capped at now", async () => {
+  const urls = [];
+  const { ProviderError, vercel } = loadVercel(async (_provider, url) => {
+    urls.push(new URL(url));
+    if (url.includes("/visits/count")) throw new ProviderError("vercel", "unauthorized", 403, "forbidden");
+    return { data: [] };
+  });
+  await assert.rejects(() => vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-05", end: "2026-10-11" }, { env: { VERCEL_TOKEN: "t" }, now: new Date("2026-10-11T12:00:00Z") }));
+  assert.equal(urls.find((url) => url.pathname.endsWith("/visits/count")).searchParams.get("until"), "2026-10-11T12:00:00.000Z");
+  assert.equal(vercel.describeVercelError(new ProviderError("vercel", "unauthorized", 403, "forbidden")), "vercel : unauthorized (HTTP 403, forbidden)");
+});
+
+test("Vercel analytics: daily windows cover the period without gaps and merge rows by date", async () => {
+  const { vercel } = loadVercel(async (_provider, url) => {
+    const since = new URL(url).searchParams.get("since").slice(0, 10);
+    return { data: [{ timestamp: `${since}T00:00:00.000Z`, pageviews: 2, visitors: 1 }, { day: since, pageviews: 3, visitors: 2 }] };
+  });
+  const windows = vercel.periodWindows({ start: "2026-07-14", end: "2026-10-11" });
+  assert.equal(windows.length, 4);
+  assert.equal(windows[0].start, "2026-07-14");
+  assert.equal(windows.at(-1).end, "2026-10-11");
+  const trend = await vercel.dailyTrend("prj_ABCDEF123", { start: "2026-07-14", end: "2026-10-11" }, { env: { VERCEL_TOKEN: "t" } });
+  assert.deepEqual(trend.map((point) => point.timestamp.slice(0, 10)), windows.map((window) => window.start));
+  assert.equal(trend[0].pageviews, 3);
 });
 
 test("Vercel analytics refuses malformed projects and periods before network", async () => {
@@ -70,4 +128,46 @@ test("Vercel analytics refuses malformed projects and periods before network", a
   await assert.rejects(() => vercel.webAnalyticsSummary("../secret", { start: "2026-09-01", end: "2026-09-30" }, { env: { VERCEL_TOKEN: "token" } }));
   await assert.rejects(() => vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-01", end: "2026-09-30" }, { env: { VERCEL_TOKEN: "token" } }));
   assert.equal(calls, 0);
+});
+
+test("Vercel sync stores the snapshot with its format version, records partial failures and surfaces fatal causes", async () => {
+  const upserts = [];
+  const recorded = [];
+  const db = {
+    from: (table) => table === "client_connections"
+      ? { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { metadata: { project_id: "prj_ABCDEF123" } }, error: null }) }) }) }) }
+      : { upsert: async (row) => { upserts.push(row); return { error: null }; } },
+  };
+  class ProviderError extends Error { constructor(kind) { super(`vercel : ${kind}`); this.kind = kind; } }
+  let countFails = false;
+  const providers = {
+    analyticsSectionLabels: { trend: "série quotidienne", events: "événements personnalisés" },
+    describeVercelError: (error) => `${error.message} (HTTP 400, invalid_query)`,
+    webAnalyticsSummary: async (_project, period) => {
+      if (countFails) throw new ProviderError("rejected");
+      return { projectId: "prj_ABCDEF123", period, visitors: 84, pageviews: 200, trend: [], eventTrend: [], topPages: [], topReferrers: [], routes: [], countries: [], devices: [], operatingSystems: [], browsers: [], events: [], sections: { trend: { ok: false, error: "vercel : rejected (HTTP 400, invalid_query)" }, events: { ok: true } } };
+    },
+    webAnalyticsCount: async () => ({ visitors: 70, pageviews: 150 }),
+    dailyTrend: async () => { throw new ProviderError("rejected"); },
+    webAnalyticsEvents: async () => [],
+  };
+  const sync = loadTs("lib/vercel-analytics/sync.ts", {
+    "@/lib/supabase/server": { getSupabaseServerClient: () => db },
+    "@/lib/providers/vercel": providers,
+    "@/lib/connections/sync": { recordSync: async (...args) => { recorded.push(args); } },
+  });
+  const result = await sync.syncVercelAnalytics("client-1", { start: "2026-10-05", end: "2026-10-11" });
+  assert.equal(result.ok, true);
+  assert.equal(upserts[0].data.version, sync.VERCEL_SNAPSHOT_VERSION);
+  assert.equal(upserts[0].data.previous.visitors, 70);
+  assert.equal(upserts[0].data.previous.trend, undefined, "série précédente non récupérée : absente, pas vide");
+  assert.equal(upserts[0].data.previous.period.start, "2026-09-28");
+  assert.match(recorded[0][3].warning, /Synchronisation partielle — série quotidienne : .*HTTP 400/);
+  assert.ok(upserts[0].data.insights.some((item) => item.title === "Aucun événement personnalisé collecté"));
+
+  countFails = true;
+  const failure = await sync.syncVercelAnalytics("client-1", { start: "2026-10-05", end: "2026-10-11" });
+  assert.equal(failure.ok, false);
+  assert.match(failure.error, /comptage des visites.*HTTP 400/);
+  assert.equal(recorded.at(-1)[2].message, failure.error);
 });

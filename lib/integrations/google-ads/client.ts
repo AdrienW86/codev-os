@@ -28,6 +28,7 @@ function text(value: unknown): string | null { return typeof value === "string" 
 
 // Only these three read operations are public. OAuth credentials and raw transport stay private.
 class RestGoogleAdsReadClient implements GoogleAdsReadClient {
+  constructor(private readonly authorize: () => Promise<unknown> = requireAdmin) {}
   async #accessToken(): Promise<string> {
     const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
@@ -45,7 +46,7 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
   }
 
   async #search(customerId: string, query: string, managerId?: string): Promise<Row[]> {
-    await requireAdmin();
+    await this.authorize();
     if (normalizeCustomerId(customerId) !== customerId || managerId && normalizeCustomerId(managerId) !== managerId) throw new GoogleAdsError("configuration");
     try {
       const token = await this.#accessToken();
@@ -53,6 +54,8 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       let pageToken: string | undefined;
       const seen = new Set<string>();
       do {
+        // OAuth/pagination can outlive the lease; recheck before each actual Ads request.
+        await this.authorize();
         const response = await fetch(`https://googleads.googleapis.com/v25/customers/${customerId}/googleAds:search`, {
           method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(managerId ? { "login-customer-id": managerId } : {}) },
@@ -146,4 +149,5 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
   }
 }
 
-export function createGoogleAdsReadClient(): GoogleAdsReadClient { return new RestGoogleAdsReadClient(); }
+// Only server services may inject a job-lease guard; browser actions always use the admin default.
+export function createGoogleAdsReadClient(authorize: () => Promise<unknown> = requireAdmin): GoogleAdsReadClient { return new RestGoogleAdsReadClient(authorize); }

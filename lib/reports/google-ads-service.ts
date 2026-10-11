@@ -22,8 +22,9 @@ const missingMigration = (error: { code?: string } | null) => ["42703", "PGRST20
 export type GoogleAdsReportOutcome = { ok: true; id: string; version: number } | { ok: false; message: string };
 
 /** Instantané des campagnes du périmètre, lu en direct (lecture seule) sur le compte associé au client. */
-export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope, expectedAccountId?: string, options?: { system: boolean; mode: "ai" | "deterministic" }, expectedTimezone?: string) {
-  const loaded = await (options?.system ? loadCampaignDashboardForSystem : loadCampaignDashboard)(clientId, { ...DEFAULT_FILTERS, period: { preset: "custom", start: scope.start, end: scope.end }, status: "all", includeUntracked: true });
+export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope, expectedAccountId?: string, options?: { system: false; mode: "ai" | "deterministic" } | { system: true; mode: "ai" | "deterministic"; lease: { jobId: string; worker: string } }, expectedTimezone?: string) {
+  const filters = { ...DEFAULT_FILTERS, period: { preset: "custom" as const, start: scope.start, end: scope.end }, status: "all" as const, includeUntracked: true };
+  const loaded = await (options?.system ? loadCampaignDashboardForSystem(clientId, filters, new Date(), options.lease) : loadCampaignDashboard(clientId, filters));
   if (!loaded.ok) return { ok: false as const, message: loaded.message };
   const { data } = loaded;
   if (expectedAccountId && data.account.id !== expectedAccountId) return { ok: false as const, message: "Le compte Google Ads associé à ce client a changé : ce rapport ne peut pas être actualisé." };

@@ -28,7 +28,7 @@ export const prepareRecurringReportRun: RunHandler = async ({ job, signal }) => 
   const config = recurringConfigSchema.parse(o.config), window = o.period_window as unknown as OccurrenceWindow;
   try {
     signal?.throwIfAborted();
-    const result = await googleAdsReportSnapshot(o.client_id, { start: window.start, end: window.end, status: "all", types: config.types, campaignIds: config.campaignIds }, config.accountId, { system: true, mode: config.mode }, config.dataTimezone);
+    const result = await googleAdsReportSnapshot(o.client_id, { start: window.start, end: window.end, status: "all", types: config.types, campaignIds: config.campaignIds }, config.accountId, { system: true, mode: config.mode, lease: { jobId: job.id, worker: job.worker_id! } }, config.dataTimezone);
     signal?.throwIfAborted();
     if (!result.ok) throw new RunError(result.message);
     const cutoff = { title: "Coupure des données", lines: [`${window.cutoff}. Les journées suivantes sont exclues.`, `Fréquence : ${config.frequency === "weekly" ? "hebdomadaire" : "mensuelle"}.`] };

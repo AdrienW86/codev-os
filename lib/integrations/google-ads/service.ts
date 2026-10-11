@@ -271,18 +271,27 @@ export async function loadCampaignDashboard(clientId: string, filters: Dashboard
 }
 
 /** Internal worker repository: caller must be the authenticated scheduler, never a browser action. */
-export async function loadCampaignDashboardForSystem(clientId: string, filters: DashboardFilters, now = new Date()): Promise<DashboardResult> {
+export async function loadCampaignDashboardForSystem(clientId: string, filters: DashboardFilters, now = new Date(), lease?: { jobId: string; worker: string }): Promise<DashboardResult> {
   if (!isAgentUuid(clientId)) return { ok: false, message: "Client invalide." };
+  if (!lease || !isAgentUuid(lease.jobId) || !lease.worker) return { ok: false, message: "Bail de préparation requis pour la lecture Google Ads." };
+  // Rechecked before EVERY provider query, without requiring a Clerk/browser session.
+  const authorize = async () => {
+    const job = await getSupabaseServerClient().from("jobs").select("id").eq("id", lease.jobId).eq("client_id", clientId)
+      .eq("run_type", "ads.report.prepare").eq("worker_id", lease.worker).eq("status", "running")
+      .gt("lease_expires_at", new Date().toISOString()).maybeSingle();
+    if (job.error || !job.data) throw new Error("Bail Google Ads indisponible.");
+  };
+  try { await authorize(); } catch { return { ok: false, message: "Bail de préparation perdu : aucune lecture Google Ads autorisée." }; }
   const { data, error } = await getSupabaseServerClient().from("client_connections").select(connectionColumns).eq("client_id", clientId).eq("provider", "google_ads").eq("status", "connected").maybeSingle();
   if (error || !data || !normalizeCustomerId(data.external_account_id)) return { ok: false, message: "Connexion Google Ads indisponible." };
   const connection = { ...data, metadata: safeMetadata(data.metadata) } as GoogleAdsConnection;
-  return readDashboard(connection, filters, now);
+  return readDashboard(connection, filters, now, authorize);
 }
 
-async function readDashboard(connection: GoogleAdsConnection, filters: DashboardFilters, now: Date): Promise<DashboardResult> {
+async function readDashboard(connection: GoogleAdsConnection, filters: DashboardFilters, now: Date, authorize?: () => Promise<unknown>): Promise<DashboardResult> {
   try {
     const started = performance.now();
-    const client = createGoogleAdsReadClient();
+    const client = createGoogleAdsReadClient(authorize);
     const account = await client.getAccountSummary(connection.external_account_id!, connection.metadata.manager_customer_id);
     let period;
     try { period = resolvePeriod(filters.period, account.timezone, now); } catch (error) {

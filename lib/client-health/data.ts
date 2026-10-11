@@ -24,6 +24,7 @@ export type VercelAnalyticsSummary = {
   projectId?: string;
   pageviews?: number;
   visitors?: number;
+  trend?: { timestamp?: string; pageviews?: number; visitors?: number }[];
   previous?: { pageviews?: number; visitors?: number; period?: { start?: string; end?: string } };
   topPages?: { label?: string; pageviews?: number; visitors?: number }[];
   topReferrers?: { label?: string; pageviews?: number; visitors?: number }[];

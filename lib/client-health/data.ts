@@ -20,13 +20,20 @@ type SeoOpportunity = {
   suggestedAction?: string;
 };
 
-type VercelAnalyticsSummary = {
+export type VercelAnalyticsSummary = {
   projectId?: string;
   pageviews?: number;
   visitors?: number;
+  previous?: { pageviews?: number; visitors?: number; period?: { start?: string; end?: string } };
   topPages?: { label?: string; pageviews?: number; visitors?: number }[];
   topReferrers?: { label?: string; pageviews?: number; visitors?: number }[];
+  routes?: { label?: string; pageviews?: number; visitors?: number }[];
+  countries?: { label?: string; pageviews?: number; visitors?: number }[];
+  devices?: { label?: string; pageviews?: number; visitors?: number }[];
+  operatingSystems?: { label?: string; pageviews?: number; visitors?: number }[];
+  browsers?: { label?: string; pageviews?: number; visitors?: number }[];
   events?: { label?: string; count?: number; visitors?: number }[];
+  insights?: { kind?: "positive" | "warning" | "info"; title?: string; detail?: string }[];
 };
 
 type PageSpeedSummary = {

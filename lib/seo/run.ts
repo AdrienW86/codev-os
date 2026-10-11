@@ -58,7 +58,7 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     for (const finding of seoFindings) {
       if (finding.kind === "page_growth") continue;
       const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
-      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key } });
+      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, period: current } });
       if (created.created) findings++;
     }
     notes.push(`Search Console : ${summary.clicks} clics, ${summary.impressions} impressions`);

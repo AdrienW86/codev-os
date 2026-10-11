@@ -73,6 +73,35 @@ export function pctDelta(now: number | null | undefined, before: number | null |
 
 export const share = (value: number, total: number) => total > 0 ? Math.round((value / total) * 1000) / 10 : null;
 
+// ——— Disponibilité des blocs ———
+
+export type SectionKey = keyof NonNullable<AnalyticsData["sections"]>;
+const sectionFields: Record<SectionKey, keyof AnalyticsData> = {
+  trend: "trend", eventTrend: "eventTrend", topPages: "topPages", topReferrers: "topReferrers", routes: "routes",
+  countries: "countries", devices: "devices", operatingSystems: "operatingSystems", browsers: "browsers", events: "events",
+};
+
+/**
+ * État d'un bloc : `ok` (Vercel a répondu, éventuellement vide), `failed` (requête en échec, avec sa cause)
+ * ou `missing` (instantané d'un format antérieur qui ne contient pas ce bloc). Seul `ok` autorise un « 0 ».
+ */
+export function sectionStatus(data: AnalyticsData, key: SectionKey): { state: "ok" } | { state: "failed"; error: string } | { state: "missing" } {
+  const status = data.sections?.[key];
+  if (status) return status.ok ? { state: "ok" } : { state: "failed", error: status.error ?? "Requête refusée par Vercel." };
+  return Array.isArray(data[sectionFields[key]]) ? { state: "ok" } : { state: "missing" };
+}
+
+/** Message d'un bloc vide : absence réelle de données, requête en échec ou bloc absent de l'instantané. */
+export function sectionEmptyMessage(data: AnalyticsData, key: SectionKey, whenEmpty: string) {
+  const status = sectionStatus(data, key);
+  if (status.state === "failed") return `Données indisponibles : ${status.error}`;
+  if (status.state === "missing") return "Non inclus dans cet instantané : actualisez pour le récupérer.";
+  return whenEmpty;
+}
+
+/** La comparaison n'est possible que si la période précédente a réellement été lue. */
+export const hasComparison = (data: AnalyticsData) => typeof data.previous?.visitors === "number" && typeof data.previous?.pageviews === "number";
+
 // ——— Événements personnalisés ———
 
 export type EventKind = "form" | "cta" | "other";
@@ -265,6 +294,8 @@ export function buildKpis(data: AnalyticsData): Kpi[] {
   const events = eventTotals(data.events);
   const before = previous?.events ? eventTotals(previous.events) : null;
   const hasEvents = (data.events ?? []).length > 0;
+  const eventsStatus = sectionStatus(data, "events");
+  const noEvents = eventsStatus.state === "failed" ? "Événements indisponibles (erreur Vercel)" : eventsStatus.state === "missing" ? "Non inclus dans cet instantané" : "Aucun événement personnalisé collecté";
   const trend = (data.trend ?? []).filter((point) => point.timestamp);
   const ratio = (views?: number, people?: number) => typeof views === "number" && typeof people === "number" && people > 0 ? views / people : null;
   const pagesPerVisitor = ratio(pageviews, visitors);
@@ -276,9 +307,9 @@ export function buildKpis(data: AnalyticsData): Kpi[] {
     { key: "visitors", label: "Visiteurs uniques", value: visitors, format: "number", delta: pctDelta(visitors, previous?.visitors), deltaUnit: "%", spark: trend.map((point) => point.visitors ?? 0), hint: "Visiteurs anonymisés Vercel" },
     { key: "pageviews", label: "Vues de pages", value: pageviews, format: "number", delta: pctDelta(pageviews, previous?.pageviews), deltaUnit: "%", spark: trend.map((point) => point.pageviews ?? 0), hint: "Pages chargées sur la période" },
     { key: "pagesPerVisitor", label: "Pages par visiteur", value: pagesPerVisitor, format: "decimal", delta: pctDelta(pagesPerVisitor, previousPagesPerVisitor), deltaUnit: "%", spark: trend.map((point) => (point.visitors ?? 0) > 0 ? (point.pageviews ?? 0) / (point.visitors ?? 1) : 0), hint: "Engagement (taux de rebond non fourni)" },
-    { key: "forms", label: "Formulaires envoyés", value: hasEvents ? events.form : null, format: "number", delta: before ? pctDelta(events.form, before.form) : null, deltaUnit: "%", spark: [], hint: hasEvents ? "Événements de type formulaire" : "Événements non instrumentés" },
-    { key: "cta", label: "Clics sur CTA", value: hasEvents ? events.cta : null, format: "number", delta: before ? pctDelta(events.cta, before.cta) : null, deltaUnit: "%", spark: [], hint: hasEvents ? "Téléphone, email, boutons…" : "Événements non instrumentés" },
-    { key: "conversions", label: "Conversions", value: hasEvents ? conversions : null, format: "number", delta: before ? pctDelta(conversions, before.form + before.cta) : null, deltaUnit: "%", spark: (data.eventTrend ?? []).map((point) => point.count ?? 0), hint: hasEvents ? `Formulaires + CTA${conversionShare !== null ? ` · ${conversionShare.toLocaleString("fr-FR")} % des visites` : ""}` : "Événements non instrumentés" },
+    { key: "forms", label: "Formulaires envoyés", value: hasEvents ? events.form : null, format: "number", delta: before ? pctDelta(events.form, before.form) : null, deltaUnit: "%", spark: [], hint: hasEvents ? "Événements de type formulaire" : noEvents },
+    { key: "cta", label: "Clics sur CTA", value: hasEvents ? events.cta : null, format: "number", delta: before ? pctDelta(events.cta, before.cta) : null, deltaUnit: "%", spark: [], hint: hasEvents ? "Téléphone, email, boutons…" : noEvents },
+    { key: "conversions", label: "Conversions", value: hasEvents ? conversions : null, format: "number", delta: before ? pctDelta(conversions, before.form + before.cta) : null, deltaUnit: "%", spark: (data.eventTrend ?? []).map((point) => point.count ?? 0), hint: hasEvents ? `Formulaires + CTA${conversionShare !== null ? ` · ${conversionShare.toLocaleString("fr-FR")} % des visites` : ""}` : noEvents },
   ];
 }
 

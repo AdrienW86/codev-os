@@ -19,11 +19,11 @@ export function IconBadge({ name, tone }: { name: IconName; tone: string }) {
 
 export function WidgetHeader({ icon, title, action, children }: { icon: IconName; title: string; action?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-5 pt-5">
+    <div className="flex items-start justify-between gap-3 px-5 pt-5">
       <div className="flex min-w-0 items-center gap-3">
         <IconBadge name={icon} tone="bg-accent/10 text-accent-hover" />
         <div className="min-w-0">
-          <h2 className="truncate text-[15px] font-semibold text-foreground">{title}</h2>
+          <h2 className="text-[15px] font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">{title}</h2>
           {children}
         </div>
       </div>
@@ -48,12 +48,12 @@ export function BarTable({ head, rows, valueLabel = "Visiteurs", empty, compact 
   if (!rows.length) return <p className="px-5 pb-6 pt-4 text-sm text-muted">{empty}</p>;
   return (
     <div className="px-5 pb-5 pt-4">
-      <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_3.25rem_3.25rem] gap-3 border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-subtle">
+      <div className="grid grid-cols-[minmax(0,2fr)_minmax(2.5rem,0.6fr)_3.25rem_3.25rem] gap-3 border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-subtle">
         <span>{head}</span><span aria-hidden="true" /><span className="text-right">{valueLabel}</span><span className="text-right">%</span>
       </div>
       <ul className={compact ? "mt-1.5" : "mt-2"}>
         {rows.map((row) => (
-          <li key={row.key} className={`grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_3.25rem_3.25rem] items-center gap-3 rounded-md ${compact ? "py-1.5" : "py-2"} text-[13px] ${row.highlight ? "bg-accent/[0.07]" : ""}`}>
+          <li key={row.key} className={`grid grid-cols-[minmax(0,2fr)_minmax(2.5rem,0.6fr)_3.25rem_3.25rem] items-center gap-3 rounded-md ${compact ? "py-1.5" : "py-2"} text-[13px] ${row.highlight ? "bg-accent/[0.07]" : ""}`}>
             <span className={`flex min-w-0 items-center gap-2 truncate ${row.muted ? "text-muted" : "text-foreground"}`} title={row.title}>{row.label}</span>
             <span className="h-1.5 overflow-hidden rounded-full bg-surface-raised" aria-hidden="true">
               <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(3, (row.value / max) * 100)}%` }} />

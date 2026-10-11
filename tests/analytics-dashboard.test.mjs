@@ -83,3 +83,67 @@ test("the analytics page is guarded, keeps the client in the URL and reuses the 
   assert.match(loader, /syncVercelAnalytics/);
   assert.doesNotMatch(loader, /api\.vercel\.com/);
 });
+
+test("block availability distinguishes a real empty answer, a failed query and a legacy snapshot", () => {
+  const { sectionStatus, sectionEmptyMessage, hasComparison, buildKpis } = vm();
+  const failed = { visitors: 84, pageviews: 200, events: [], trend: [], sections: { trend: { ok: false, error: "HTTP 400" }, events: { ok: false, error: "HTTP 403" } } };
+  assert.equal(sectionStatus(failed, "trend").state, "failed");
+  assert.match(sectionEmptyMessage(failed, "trend", "vide"), /indisponibles : HTTP 400/);
+  const legacy = { visitors: 84, pageviews: 200, events: [], topPages: [] };
+  assert.equal(sectionStatus(legacy, "trend").state, "missing");
+  assert.equal(sectionStatus(legacy, "events").state, "ok");
+  assert.equal(hasComparison(legacy), false);
+  assert.equal(hasComparison(data), true);
+  const kpis = Object.fromEntries(buildKpis(failed).map((kpi) => [kpi.key, kpi]));
+  assert.equal(kpis.conversions.value, null);
+  assert.match(kpis.conversions.hint, /indisponibles/);
+  assert.match(Object.fromEntries(buildKpis(legacy).map((kpi) => [kpi.key, kpi])).conversions.hint, /Aucun événement personnalisé collecté/);
+});
+
+function loadDashboard({ snapshots, sync, configured = true }) {
+  const query = (rows) => {
+    const filters = [];
+    const builder = {
+      select: () => builder,
+      eq: (column, value) => { filters.push([column, value]); return builder; },
+      order: () => builder,
+      limit: async () => ({ data: rows.filter((row) => filters.every(([column, value]) => !(column in row) || row[column] === value)).sort((a, b) => b.fetched_at.localeCompare(a.fetched_at)), error: null }),
+    };
+    return builder;
+  };
+  const syncCalls = [];
+  const dashboard = loadTs("lib/analytics/dashboard.ts", {
+    "@/lib/clients/data": { listClients: async () => [] },
+    "@/lib/supabase/server": { getSupabaseServerClient: () => ({ from: () => query(snapshots) }) },
+    "@/lib/system/providers": { isProviderConfigured: () => configured },
+    "@/lib/vercel-analytics/sync": { VERCEL_SNAPSHOT_VERSION: 2, syncVercelAnalytics: async (...args) => { syncCalls.push(args); return sync; } },
+  });
+  return { dashboard, syncCalls };
+}
+
+const client = { id: "c1", name: "Protection Nuisibles", connected: true, projectId: "prj_x", lastSyncAt: null, lastError: "ancienne erreur" };
+const week = { start: "2026-10-05", end: "2026-10-11" };
+const monthSnapshot = { period_start: "2026-09-12", period_end: "2026-10-11", fetched_at: "2026-10-11T19:38:33Z", data: { visitors: 84, pageviews: 200 } };
+
+test("a snapshot of another period is never shown for the requested period", async () => {
+  const { dashboard } = loadDashboard({ snapshots: [monthSnapshot], sync: { ok: false, reason: "unavailable", error: "Vercel Web Analytics (comptage des visites) : refusé (HTTP 400)" } });
+  const state = await dashboard.getAnalyticsDashboard(client, week);
+  assert.equal(state.status, "unavailable");
+  assert.match(state.lastError, /HTTP 400/);
+  assert.deepEqual({ ...state.latest }, { periodStart: "2026-09-12", periodEnd: "2026-10-11", fetchedAt: "2026-10-11T19:38:33Z" });
+});
+
+test("a same-period snapshot is shown as stale with its cause when the sync fails; legacy snapshots are re-synced", async () => {
+  const exact = { ...monthSnapshot, fetched_at: new Date().toISOString() };
+  const { dashboard, syncCalls } = loadDashboard({ snapshots: [exact], sync: { ok: false, reason: "unavailable", error: "cause" } });
+  const state = await dashboard.getAnalyticsDashboard(client, { start: "2026-09-12", end: "2026-10-11" });
+  assert.equal(syncCalls.length, 1, "un instantané récent mais d'un format antérieur est resynchronisé");
+  assert.equal(state.status, "ready");
+  assert.equal(state.stale, true);
+  assert.equal(state.syncError, "cause");
+  assert.equal(state.periodStart, "2026-09-12");
+  const fresh = loadDashboard({ snapshots: [{ ...exact, data: { version: 2, visitors: 1, pageviews: 1 } }], sync: null });
+  const ready = await fresh.dashboard.getAnalyticsDashboard(client, { start: "2026-09-12", end: "2026-10-11" });
+  assert.equal(fresh.syncCalls.length, 0);
+  assert.equal(ready.stale, false);
+});

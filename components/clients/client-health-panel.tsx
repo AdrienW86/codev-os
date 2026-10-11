@@ -5,6 +5,7 @@ import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import type { ClientHealthOverview } from "@/lib/client-health/data";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { runClientMonitoringNowAction, runClientSeoNowAction } from "@/app/(cockpit)/clients/[id]/health-actions";
+import { VercelAnalyticsDashboard } from "@/components/clients/vercel-analytics-dashboard";
 
 const date = (value: string) => new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
 const pct = (value: number | undefined) => typeof value === "number" ? `${(value * 100).toFixed(1)} %` : "—";
@@ -88,42 +89,15 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
       </section>
 
       <Panel className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Audience & conversions Vercel</h2>
-            <p className="mt-1 text-sm text-muted">Web Analytics agrégé : trafic, pages, référents et événements personnalisés.</p>
-          </div>
-          {overview.vercelAnalytics && <p className="text-xs text-muted">{overview.vercelAnalytics.periodStart} → {overview.vercelAnalytics.periodEnd}</p>}
-        </div>
         {overview.vercelAnalytics && analytics ? (
-          <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-border bg-background/40 p-4">
-                <p className="text-xs uppercase tracking-wide text-muted">Pages vues</p>
-                <p className="mt-2 text-2xl font-semibold">{number(analytics.pageviews)}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-background/40 p-4">
-                <p className="text-xs uppercase tracking-wide text-muted">Visiteurs</p>
-                <p className="mt-2 text-2xl font-semibold">{number(analytics.visitors)}</p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              <div>
-                <h3 className="text-sm font-medium">Pages les plus vues</h3>
-                {analytics.topPages?.length ? <ol className="mt-2 space-y-2">{analytics.topPages.slice(0, 6).map((row, index) => <li key={`${row.label}-${index}`} className="flex items-start justify-between gap-3 text-xs"><span className="min-w-0 break-all text-muted">{row.label}</span><span className="shrink-0 font-medium">{number(row.pageviews)}</span></li>)}</ol> : <p className="mt-2 text-xs text-muted">Aucune donnée de page.</p>}
-              </div>
-              <div>
-                <h3 className="text-sm font-medium">Référents</h3>
-                {analytics.topReferrers?.length ? <ol className="mt-2 space-y-2">{analytics.topReferrers.slice(0, 6).map((row, index) => <li key={`${row.label}-${index}`} className="flex items-start justify-between gap-3 text-xs"><span className="min-w-0 break-all text-muted">{row.label}</span><span className="shrink-0 font-medium">{number(row.visitors)}</span></li>)}</ol> : <p className="mt-2 text-xs text-muted">Aucun référent disponible.</p>}
-              </div>
-              <div>
-                <h3 className="text-sm font-medium">Événements suivis</h3>
-                {analytics.events?.length ? <ol className="mt-2 space-y-2">{analytics.events.slice(0, 8).map((row, index) => <li key={`${row.label}-${index}`} className="flex items-start justify-between gap-3 text-xs"><span className="min-w-0 break-all text-muted">{row.label}</span><span className="shrink-0 font-medium">{number(row.count)}</span></li>)}</ol> : <p className="mt-2 text-xs text-muted">Aucun événement personnalisé. Les clics téléphone, formulaires ou WhatsApp doivent être instrumentés avec Vercel Analytics.</p>}
-              </div>
-            </div>
-            <p className="mt-4 text-xs text-muted">Synchronisé {date(overview.vercelAnalytics.fetchedAt)}. Données agrégées Vercel Web Analytics, sans session utilisateur individuelle.</p>
-          </>
-        ) : <p className="mt-4 text-sm text-muted">Aucun instantané Vercel Analytics. Renseignez le projet Vercel du client puis lancez un contrôle du site.</p>}
+          <VercelAnalyticsDashboard data={analytics} periodStart={overview.vercelAnalytics.periodStart} periodEnd={overview.vercelAnalytics.periodEnd} fetchedAt={overview.vercelAnalytics.fetchedAt} />
+        ) : (
+          <div>
+            <h2 className="font-semibold">Audience & conversions</h2>
+            <p className="mt-1 text-sm text-muted">Vercel Web Analytics : trafic, pages, acquisition, audience et événements personnalisés.</p>
+            <p className="mt-4 text-sm text-muted">Aucun instantané Vercel Analytics. Renseignez le projet Vercel du client puis lancez un contrôle du site.</p>
+          </div>
+        )}
       </Panel>
 
       <Panel className="p-5">

@@ -14,6 +14,8 @@ import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
 import { ANALYSIS_ENGINE_NOTE, loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
 import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction, runGoogleAdsScopeAIAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
+import { ClientHealthPanel } from "@/components/clients/client-health-panel";
+import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
 import { safeRead } from "@/lib/core/safe-read";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
@@ -42,7 +44,7 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { deleteClientAction } from "@/app/(cockpit)/clients/[id]/actions";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
-const tabIds = ["overview", "projects", "ads", "agents", "activity", "information"] as const;
+const tabIds = ["overview", "projects", "ads", "health", "agents", "activity", "information"] as const;
 type TabId = (typeof tabIds)[number];
 
 // Aucun generateStaticParams : les UUID réels sont résolus à chaque requête.
@@ -68,6 +70,11 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const search = await searchParams;
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
+  const health = tab === "health"
+    ? await safeRead("client-health", () => getClientHealthOverview(client.id), {
+        searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [],
+      })
+    : { data: { searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [] }, unavailable: false };
   // Campagnes Google Ads : filtres lus dans l'URL, données chargées côté serveur pour le premier rendu ;
   // les changements de filtres sont ensuite rechargés sur place par le composant (aucune navigation).
   const adsFilters = tab === "ads" ? parseFilters(search) : null;
@@ -99,6 +106,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
         { id: "ads", label: "Campagnes", href: href("ads") },
+        { id: "health", label: "SEO & technique", href: href("health") },
         { id: "agents", label: "Agents", href: href("agents") },
         { id: "activity", label: "Activité", href: href("activity") },
         { id: "information", label: "Informations", href: href("information") },
@@ -184,6 +192,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       )}
 
       {tab === "ads" && <RecurringReportsPanel clientId={client.id} campaigns={adsInitial?.ok ? adsInitial.data.campaigns : []} />}
+
+      {tab === "health" && <ClientHealthPanel clientId={client.id} website={client.website} overview={health.data} unavailable={health.unavailable} />}
 
       {tab === "activity" && <ActivityTab clientId={client.id} recommendations={recommendations} runs={runs} actions={actions} />}
 

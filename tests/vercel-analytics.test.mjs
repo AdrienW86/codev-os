@@ -17,6 +17,9 @@ test("Vercel Web Analytics summary queries traffic, pages, referrers and custom 
     if (path.endsWith("/visits/aggregate") && by === "referrerHostname") return { data: [
       { referrerHostname: "google.com", pageviews: 300, visitors: 250 },
     ] };
+    if (path.endsWith("/visits/aggregate") && ["route","country","deviceType","osName","clientName"].includes(by)) return { data: [
+      { [by]: by === "country" ? "FR" : by === "deviceType" ? "mobile" : by === "osName" ? "Android" : by === "clientName" ? "Chrome" : "/", pageviews: 200, visitors: 150 },
+    ] };
     if (path.endsWith("/events/aggregate") && by === "eventName") return { data: [
       { eventName: "lead_form_submit", count: 18, visitors: 17 },
       { eventName: "phone_click", count: 42, visitors: 35 },
@@ -35,7 +38,9 @@ test("Vercel Web Analytics summary queries traffic, pages, referrers and custom 
   assert.equal(data.topReferrers[0].label, "google.com");
   assert.equal(data.events[0].label, "lead_form_submit");
   assert.equal(data.events[0].count, 18);
-  assert.equal(calls.length, 4);
+  assert.equal(data.devices[0].label, "mobile");
+  assert.equal(data.countries[0].label, "FR");
+  assert.equal(calls.length, 9);
   for (const url of calls) {
     const parsed = new URL(url);
     assert.equal(parsed.searchParams.get("projectId"), "prj_ABCDEF123");

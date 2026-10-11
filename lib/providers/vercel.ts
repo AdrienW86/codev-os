@@ -13,11 +13,17 @@ export type VercelAnalyticsSummary = {
   visitors: number;
   topPages: VercelAnalyticsRow[];
   topReferrers: VercelAnalyticsRow[];
+  routes: VercelAnalyticsRow[];
+  countries: VercelAnalyticsRow[];
+  devices: VercelAnalyticsRow[];
+  operatingSystems: VercelAnalyticsRow[];
+  browsers: VercelAnalyticsRow[];
   events: VercelAnalyticsRow[];
 };
 
 const projectPattern = /^(?:prj_[A-Za-z0-9]{6,64}|[A-Za-z0-9_.-]{1,100})$/;
 const day = /^\d{4}-\d{2}-\d{2}$/;
+type VisitDimension = "requestPath" | "route" | "country" | "deviceType" | "osName" | "clientName" | "referrerHostname";
 
 function assertProject(projectId: string) {
   if (!projectPattern.test(projectId) || projectId.includes("..")) throw new ProviderError("vercel", "blocked");
@@ -54,20 +60,31 @@ export async function latestDeployment(projectId: string, options: { env?: Env; 
 
 type CountResponse = { data?: { pageviews?: unknown; visitors?: unknown; count?: unknown } };
 type AggregateResponse = { data?: unknown };
-
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+export async function webAnalyticsCount(
+  projectId: string,
+  period: { start: string; end: string },
+  options: { env?: Env; fetchImpl?: FetchLike } = {},
+): Promise<{ pageviews: number; visitors: number }> {
+  const env = options.env ?? process.env;
+  const params = commonParams(projectId, env, period);
+  const count = await providerJson<CountResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/visits/count?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
+  if (!count.data || typeof count.data !== "object") throw new ProviderError("vercel", "malformed");
+  return { pageviews: finite(count.data.pageviews), visitors: finite(count.data.visitors) };
+}
 
 async function aggregate(
   projectId: string,
   period: { start: string; end: string },
-  by: "requestPath" | "referrerHostname" | "eventName",
+  by: VisitDimension | "eventName",
   dataset: "visits" | "events",
   options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
 ): Promise<VercelAnalyticsRow[]> {
   const env = options.env ?? process.env;
   const params = commonParams(projectId, env, period);
   params.set("by", by);
-  params.set("limit", String(Math.max(1, Math.min(options.limit ?? 10, 25))));
+  params.set("limit", String(Math.max(1, Math.min(options.limit ?? 20, 50))));
   const data = await providerJson<AggregateResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/${dataset}/aggregate?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
   if (!Array.isArray(data.data)) throw new ProviderError("vercel", "malformed");
   return data.data.flatMap((raw) => {
@@ -79,27 +96,36 @@ async function aggregate(
   });
 }
 
+async function optionalAggregate(
+  projectId: string,
+  period: { start: string; end: string },
+  by: VisitDimension,
+  options: { env?: Env; fetchImpl?: FetchLike; limit?: number },
+) {
+  try { return await aggregate(projectId, period, by, "visits", options); }
+  catch (error) {
+    if (error instanceof ProviderError && ["unauthorized", "not_configured", "rate_limited", "timeout"].includes(error.kind)) throw error;
+    return [];
+  }
+}
+
 export async function webAnalyticsSummary(
   projectId: string,
   period: { start: string; end: string },
   options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
 ): Promise<VercelAnalyticsSummary> {
-  const env = options.env ?? process.env;
-  const params = commonParams(projectId, env, period);
-  const [count, topPages, topReferrers, events] = await Promise.all([
-    providerJson<CountResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/visits/count?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) }),
+  const [count, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events] = await Promise.all([
+    webAnalyticsCount(projectId, period, options),
     aggregate(projectId, period, "requestPath", "visits", options),
     aggregate(projectId, period, "referrerHostname", "visits", options),
+    optionalAggregate(projectId, period, "route", options),
+    optionalAggregate(projectId, period, "country", options),
+    optionalAggregate(projectId, period, "deviceType", options),
+    optionalAggregate(projectId, period, "osName", options),
+    optionalAggregate(projectId, period, "clientName", options),
     aggregate(projectId, period, "eventName", "events", options),
   ]);
-  if (!count.data || typeof count.data !== "object") throw new ProviderError("vercel", "malformed");
   return {
-    projectId,
-    period,
-    pageviews: finite(count.data.pageviews),
-    visitors: finite(count.data.visitors),
-    topPages,
-    topReferrers,
-    events,
+    projectId, period, ...count, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events,
   };
 }

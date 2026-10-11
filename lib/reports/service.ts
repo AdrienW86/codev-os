@@ -12,6 +12,7 @@ import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
+import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,6 +21,7 @@ const fail = (what: string): never => { throw new Error(`report ${what}`); };
 
 export async function gatherReportInput(clientId: string, period: Period): Promise<ReportInput> {
   const supabase = db();
+  await syncVercelAnalytics(clientId, period).catch(() => ({ ok: false as const, reason: "unavailable" as const }));
   const since = `${period.start}T00:00:00Z`;
   const until = new Date(`${period.end}T00:00:00Z`);
   until.setUTCDate(until.getUTCDate() + 1);

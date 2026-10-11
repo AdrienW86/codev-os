@@ -68,7 +68,7 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
           <p className="text-xs uppercase tracking-wide text-muted">PageSpeed mobile</p>
           {overview.pageSpeed && speed ? <>
             <p className="mt-3 text-2xl font-semibold">{number(speed.performance)}/100</p>
-            <div className="mt-4 space-y-1 text-sm"><p>LCP : {typeof speed.lcpMs === "number" ? `${(speed.lcpMs / 1000).toFixed(1)} s` : "—"}</p><p>INP : {typeof speed.inpMs === "number" ? `${Math.round(speed.inpMs)} ms` : "—"}</p><p>CLS : {number(speed.cls, 3)}</p></div>
+            <div className="mt-4 space-y-1 text-sm"><p>LCP : {typeof speed.lcpMs === "number" ? `${(speed.lcpMs / 1000).toFixed(1)} s` : "—"}</p><p>CLS : {number(speed.cls, 3)}</p></div>
             <p className="mt-4 text-xs text-muted">Récupéré {date(overview.pageSpeed.fetchedAt)}{!speedReady ? " · quota public PageSpeed" : ""}</p>
           </> : <p className="mt-3 text-sm text-muted">Aucun audit PageSpeed enregistré.</p>}
         </Panel>

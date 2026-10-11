@@ -26,6 +26,11 @@ function SeoRecommendationEvidence({ payload }: { payload: Json }) {
   if (!["page_drop", "emerging_query", "low_ctr"].includes(String(data.kind)) || typeof data.key !== "string") return null;
   const metrics = record(data.metrics as Json);
   const suggestion = typeof data.suggested_action === "string" ? data.suggested_action : null;
+  const repository = record(data.repository_context as Json);
+  const sourcePath = typeof repository.path === "string" ? repository.path : null;
+  const sourceTitle = typeof repository.title === "string" ? repository.title : null;
+  const sourceDescription = typeof repository.description === "string" ? repository.description : null;
+  const sourceH1 = typeof repository.h1 === "string" ? repository.h1 : null;
   const kind = data.kind === "page_drop" ? "Page en baisse" : data.kind === "emerging_query" ? "Requête à potentiel" : "CTR à améliorer";
   return (
     <div className="mt-5 border-t border-border pt-5">
@@ -40,6 +45,13 @@ function SeoRecommendationEvidence({ payload }: { payload: Json }) {
         {typeof metrics.ctr === "number" && <span>CTR : {(metrics.ctr * 100).toFixed(1)} %</span>}
       </div>
       {suggestion && <p className="mt-3 text-sm leading-6"><span className="font-medium">Piste proposée :</span> <span className="text-muted">{suggestion}</span></p>}
+      {sourcePath && <div className="mt-4 rounded-lg border border-border bg-background/40 p-3">
+        <p className="text-xs font-medium">Contexte GitHub lu par l’agent</p>
+        <p className="mt-1 break-all font-mono text-xs text-muted">{sourcePath}</p>
+        {sourceTitle && <p className="mt-2 text-xs"><span className="text-muted">Title actuel :</span> {sourceTitle}</p>}
+        {sourceDescription && <p className="mt-1 text-xs"><span className="text-muted">Description actuelle :</span> {sourceDescription}</p>}
+        {sourceH1 && <p className="mt-1 text-xs"><span className="text-muted">H1 actuel :</span> {sourceH1}</p>}
+      </div>}
       <p className="mt-2 text-xs text-muted">Cette piste n’est pas une modification automatique : elle doit être examinée avant création d’une action.</p>
     </div>
   );

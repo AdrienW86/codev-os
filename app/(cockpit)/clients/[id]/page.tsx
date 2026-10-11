@@ -72,9 +72,9 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
   const health = tab === "health"
     ? await safeRead("client-health", () => getClientHealthOverview(client.id), {
-        searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [],
+        searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null,
       })
-    : { data: { searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [] }, unavailable: false };
+    : { data: { searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null }, unavailable: false };
   // Campagnes Google Ads : filtres lus dans l'URL, données chargées côté serveur pour le premier rendu ;
   // les changements de filtres sont ensuite rechargés sur place par le composant (aucune navigation).
   const adsFilters = tab === "ads" ? parseFilters(search) : null;

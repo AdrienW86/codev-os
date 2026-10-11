@@ -79,20 +79,29 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
   const responseTimes = checks.map((item) => item.response_ms).filter((value): value is number => value !== null);
   const avgResponse = responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
 
-  const metricLines = input.metrics.map((metric) => {
+  const metricLines = input.metrics.flatMap((metric) => {
     const data = metric.data;
-    if (metric.provider === "search-console" && typeof data.clicks === "number") return `Search Console : ${data.clicks} clics, ${data.impressions ?? "?"} impressions${typeof data.position === "number" ? `, position moyenne ${data.position.toFixed(1)}` : ""}.`;
-    if (metric.provider === "google-ads" && typeof data.cost === "number") return `Google Ads : ${data.cost.toFixed(2)} € dépensés, ${data.conversions ?? 0} conversions${typeof data.cpa === "number" ? `, ${data.cpa.toFixed(2)} € par conversion` : ""}.`;
-    if (metric.provider === "pagespeed" && typeof data.performance === "number") return `Performance mobile (PageSpeed) : ${data.performance}/100.`;
+    if (metric.provider === "search-console" && typeof data.clicks === "number") return [`Search Console : ${data.clicks} clics, ${data.impressions ?? "?"} impressions${typeof data.position === "number" ? `, position moyenne ${data.position.toFixed(1)}` : ""}.`];
+    if (metric.provider === "google-ads" && typeof data.cost === "number") return [`Google Ads : ${data.cost.toFixed(2)} € dépensés, ${data.conversions ?? 0} conversions${typeof data.cpa === "number" ? `, ${data.cpa.toFixed(2)} € par conversion` : ""}.`];
+    if (metric.provider === "pagespeed" && typeof data.performance === "number") return [`Performance mobile (PageSpeed) : ${data.performance}/100.`];
     if (metric.provider === "vercel" && metric.metric_key === "web_analytics") {
       const pageviews = typeof data.pageviews === "number" ? data.pageviews : null;
       const visitors = typeof data.visitors === "number" ? data.visitors : null;
-      const events = Array.isArray(data.events) ? data.events.flatMap((value) => value && typeof value === "object" && !Array.isArray(value) ? [value as Record<string, unknown>] : []) : [];
-      const eventSummary = events.filter((event) => typeof event.label === "string" && typeof event.count === "number").slice(0, 4).map((event) => `${event.label}: ${event.count}`).join(", ");
-      if (pageviews !== null || visitors !== null) return `Vercel Analytics : ${pageviews ?? "?"} pages vues, ${visitors ?? "?"} visiteurs${eventSummary ? ` ; événements — ${eventSummary}` : ""}.`;
+      if (pageviews === null && visitors === null) return [];
+      const rows = (value: unknown) => Array.isArray(value) ? value.flatMap((item) => item && typeof item === "object" && !Array.isArray(item) ? [item as Record<string, unknown>] : []) : [];
+      const topPages = rows(data.topPages).filter((item) => typeof item.label === "string" && typeof item.pageviews === "number").slice(0, 3);
+      const referrers = rows(data.topReferrers).filter((item) => typeof item.label === "string" && typeof item.visitors === "number").slice(0, 3);
+      const events = rows(data.events).filter((item) => typeof item.label === "string" && typeof item.count === "number").slice(0, 5);
+      const devices = rows(data.devices).filter((item) => typeof item.label === "string" && typeof item.visitors === "number").slice(0, 3);
+      const result = [`Vercel Analytics : ${pageviews ?? "?"} pages vues, ${visitors ?? "?"} visiteurs.`];
+      if (topPages.length) result.push(`Pages principales : ${topPages.map((item) => `${item.label} (${item.pageviews} vues)`).join(", ")}.`);
+      if (referrers.length) result.push(`Acquisition : ${referrers.map((item) => `${item.label} (${item.visitors} visiteurs)`).join(", ")}.`);
+      if (devices.length) result.push(`Appareils : ${devices.map((item) => `${item.label} (${item.visitors})`).join(", ")}.`);
+      result.push(events.length ? `Interactions suivies : ${events.map((item) => `${item.label}: ${item.count}`).join(", ")}.` : "Interactions suivies : aucun événement personnalisé remonté sur la période.");
+      return result;
     }
-    return null;
-  }).filter((line): line is string => Boolean(line));
+    return [];
+  });
 
   const empty = !completed.length && !published.length && !newRecommendations.length && !doneActions.length && !incidents.length && !runs.length && !checks.length && !metricLines.length;
   const name = input.client?.name ?? "Tous les clients";

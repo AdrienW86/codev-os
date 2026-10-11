@@ -114,7 +114,7 @@ export const agentDefinitions: Record<AgentType, AgentDefinition> = {
   },
   seo: {
     type: "seo", name: "Agent SEO & Site", description: "Analyse Search Console et PageSpeed, détecte pertes et opportunités, propose des améliorations.",
-    scopes: ["client", "project"], services: ["seo"], capabilities: ["analyze_search_console", "audit_pagespeed", "detect_seo_opportunities", "propose_site_change", "modify_site"],
+    scopes: ["client", "project"], services: ["seo"], capabilities: ["analyze_search_console", "audit_pagespeed", "detect_seo_opportunities", "read_repository", "propose_site_change", "modify_site"],
     tools: ["run_check"], runTypes: ["seo.analyze"], defaultAutonomy: 1,
   },
   "google-ads": {

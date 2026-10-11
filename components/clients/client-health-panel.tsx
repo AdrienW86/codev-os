@@ -17,6 +17,9 @@ function runTone(status: string): StatusTone {
   return "amber";
 }
 
+const opportunityLabel = (kind: string) => kind === "page_drop" ? "Page en baisse" : kind === "emerging_query" ? "Requête à potentiel" : kind === "low_ctr" ? "CTR à améliorer" : "Progression";
+const opportunityTone = (severity: string): StatusTone => severity === "high" ? "red" : severity === "medium" ? "amber" : "blue";
+
 export function ClientHealthPanel({ clientId, website, overview, unavailable }: {
   clientId: string;
   website: string | null;
@@ -82,6 +85,39 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
           </> : <p className="mt-3 text-sm text-muted">Aucun contrôle technique enregistré.</p>}
         </Panel>
       </section>
+
+      <Panel className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Opportunités SEO</h2>
+            <p className="mt-1 text-sm text-muted">Constats Search Console issus de la dernière comparaison de périodes. Aucun contenu n’est modifié automatiquement.</p>
+          </div>
+          {overview.opportunities && <p className="text-xs text-muted">{overview.opportunities.periodStart} → {overview.opportunities.periodEnd}</p>}
+        </div>
+        {overview.opportunities?.findings.length ? (
+          <ul className="mt-4 grid gap-3 xl:grid-cols-2">
+            {overview.opportunities.findings.filter((item) => item.kind !== "page_growth").slice(0, 10).map((item) => (
+              <li key={`${item.kind}:${item.key}`} className="rounded-lg border border-border bg-background/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <StatusBadge label={opportunityLabel(item.kind)} tone={opportunityTone(item.severity)} />
+                  {item.recommendationId && <Link href={`/recommendations/${item.recommendationId}`} className="text-xs text-accent hover:underline">Ouvrir la recommandation</Link>}
+                </div>
+                <p className="mt-3 break-words text-sm font-medium">{item.key}</p>
+                <p className="mt-2 text-sm text-muted">{item.detail}</p>
+                {item.metrics && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                  {typeof item.metrics.clicks === "number" && <span>Clics : {number(item.metrics.clicks)}</span>}
+                  {typeof item.metrics.priorClicks === "number" && <span>Avant : {number(item.metrics.priorClicks)}</span>}
+                  {typeof item.metrics.impressions === "number" && <span>Impressions : {number(item.metrics.impressions)}</span>}
+                  {typeof item.metrics.position === "number" && <span>Position : {number(item.metrics.position, 1)}</span>}
+                  {typeof item.metrics.ctr === "number" && <span>CTR : {pct(item.metrics.ctr)}</span>}
+                </div>}
+                {item.suggestedAction && <p className="mt-3 border-t border-border pt-3 text-xs leading-5"><span className="font-medium">Piste :</span> <span className="text-muted">{item.suggestedAction}</span></p>}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-4 text-sm text-muted">Aucune opportunité Search Console enregistrée. Lancez une analyse SEO après avoir connecté la propriété du client.</p>}
+        {overview.opportunities && <p className="mt-4 text-xs text-muted">Dernière analyse : {date(overview.opportunities.fetchedAt)} · baisses {overview.opportunities.counts.page_drop ?? 0} · requêtes à potentiel {overview.opportunities.counts.emerging_query ?? 0} · CTR faible {overview.opportunities.counts.low_ctr ?? 0}.</p>}
+      </Panel>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Panel className="p-5">

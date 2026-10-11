@@ -6,11 +6,13 @@ import { ProviderError } from "@/lib/providers/errors";
 type Env = Record<string, string | undefined>;
 export type Deployment = { id: string; state: string; createdAt: number; url: string | null; target: string | null };
 export type VercelAnalyticsRow = { label: string; pageviews?: number; visitors?: number; count?: number };
+export type VercelAnalyticsTrendPoint = { timestamp: string; pageviews: number; visitors: number };
 export type VercelAnalyticsSummary = {
   projectId: string;
   period: { start: string; end: string };
   pageviews: number;
   visitors: number;
+  trend: VercelAnalyticsTrendPoint[];
   topPages: VercelAnalyticsRow[];
   topReferrers: VercelAnalyticsRow[];
   routes: VercelAnalyticsRow[];
@@ -23,7 +25,7 @@ export type VercelAnalyticsSummary = {
 
 const projectPattern = /^(?:prj_[A-Za-z0-9]{6,64}|[A-Za-z0-9_.-]{1,100})$/;
 const day = /^\d{4}-\d{2}-\d{2}$/;
-type VisitDimension = "requestPath" | "route" | "country" | "deviceType" | "osName" | "clientName" | "referrerHostname";
+type VisitDimension = "requestPath" | "route" | "country" | "deviceType" | "osName" | "browserName" | "referrerHostname";
 
 function assertProject(projectId: string) {
   if (!projectPattern.test(projectId) || projectId.includes("..")) throw new ProviderError("vercel", "blocked");
@@ -96,6 +98,25 @@ async function aggregate(
   });
 }
 
+async function dailyTrend(
+  projectId: string,
+  period: { start: string; end: string },
+  options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
+): Promise<VercelAnalyticsTrendPoint[]> {
+  const env = options.env ?? process.env;
+  const params = commonParams(projectId, env, period);
+  params.set("by", "day");
+  params.set("limit", "366");
+  const data = await providerJson<AggregateResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/visits/aggregate?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
+  if (!Array.isArray(data.data)) throw new ProviderError("vercel", "malformed");
+  return data.data.flatMap((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const row = raw as Record<string, unknown>;
+    if (typeof row.timestamp !== "string") return [];
+    return [{ timestamp: row.timestamp, pageviews: finite(row.pageviews), visitors: finite(row.visitors) }];
+  });
+}
+
 async function optionalAggregate(
   projectId: string,
   period: { start: string; end: string },
@@ -114,18 +135,19 @@ export async function webAnalyticsSummary(
   period: { start: string; end: string },
   options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
 ): Promise<VercelAnalyticsSummary> {
-  const [count, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events] = await Promise.all([
+  const [count, trend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events] = await Promise.all([
     webAnalyticsCount(projectId, period, options),
+    dailyTrend(projectId, period, options),
     aggregate(projectId, period, "requestPath", "visits", options),
     aggregate(projectId, period, "referrerHostname", "visits", options),
     optionalAggregate(projectId, period, "route", options),
     optionalAggregate(projectId, period, "country", options),
     optionalAggregate(projectId, period, "deviceType", options),
     optionalAggregate(projectId, period, "osName", options),
-    optionalAggregate(projectId, period, "clientName", options),
+    optionalAggregate(projectId, period, "browserName", options),
     aggregate(projectId, period, "eventName", "events", options),
   ]);
   return {
-    projectId, period, ...count, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events,
+    projectId, period, ...count, trend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events,
   };
 }

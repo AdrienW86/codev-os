@@ -135,8 +135,8 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
       return {
         provider: row.provider,
         status: row.status,
-        lastSyncAt: row.last_sync_at,
-        lastError: row.last_error,
+        lastSyncAt: row.last_sync_at ?? null,
+        lastError: row.last_error ?? null,
         identifier: typeof identifier === "string" ? identifier : null,
       };
     }),

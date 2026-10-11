@@ -4,7 +4,7 @@ import { Panel } from "@/components/ui/primitives";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import type { ClientHealthOverview } from "@/lib/client-health/data";
 import { isProviderConfigured } from "@/lib/system/providers";
-import { runClientMonitoringNowAction, runClientSeoNowAction } from "@/app/(cockpit)/clients/[id]/health-actions";
+import { loadClientVercelAnalyticsRangeAction, runClientMonitoringNowAction, runClientSeoNowAction } from "@/app/(cockpit)/clients/[id]/health-actions";
 import { VercelAnalyticsDashboard } from "@/components/clients/vercel-analytics-dashboard";
 
 const date = (value: string) => new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
@@ -115,7 +115,7 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
 
       <Panel className="p-5">
         {overview.vercelAnalytics && analytics ? (
-          <VercelAnalyticsDashboard data={analytics} periodStart={overview.vercelAnalytics.periodStart} periodEnd={overview.vercelAnalytics.periodEnd} fetchedAt={overview.vercelAnalytics.fetchedAt} />
+          <VercelAnalyticsDashboard clientId={clientId} data={analytics} periodStart={overview.vercelAnalytics.periodStart} periodEnd={overview.vercelAnalytics.periodEnd} fetchedAt={overview.vercelAnalytics.fetchedAt} loadRange={loadClientVercelAnalyticsRangeAction} />
         ) : (
           <div>
             <h2 className="font-semibold">Audience, acquisition & conversions</h2>

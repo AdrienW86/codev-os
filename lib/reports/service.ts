@@ -12,6 +12,7 @@ import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
+import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,6 +21,7 @@ const fail = (what: string): never => { throw new Error(`report ${what}`); };
 
 export async function gatherReportInput(clientId: string, period: Period): Promise<ReportInput> {
   const supabase = db();
+  await syncVercelAnalytics(clientId, period).catch(() => ({ ok: false as const, reason: "unavailable" as const }));
   const since = `${period.start}T00:00:00Z`;
   const until = new Date(`${period.end}T00:00:00Z`);
   until.setUTCDate(until.getUTCDate() + 1);
@@ -34,7 +36,7 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
     supabase.from("incidents").select("title,status,severity,detected_at,resolved_at").eq("client_id", clientId).order("detected_at", { ascending: false }).limit(200),
     supabase.from("agent_runs").select("status,started_at,agent:agents(name)").eq("client_id", clientId).gte("started_at", since).lt("started_at", end).limit(500),
     supabase.from("site_checks").select("ok,response_ms,checked_at").eq("client_id", clientId).gte("checked_at", since).lt("checked_at", end).limit(5000),
-    supabase.from("metric_snapshots").select("provider,metric_key,data").eq("client_id", clientId).lte("period_start", period.end).gte("period_end", period.start).limit(50),
+    supabase.from("metric_snapshots").select("provider,metric_key,period_start,period_end,data").eq("client_id", clientId).lte("period_start", period.end).gte("period_end", period.start).limit(100),
   ]);
   for (const result of [client, projects, tasks, publications, recommendations, actions, incidents, runs, checks, metrics]) if (result.error) fail("read");
   if (!client.data) fail("client");
@@ -46,7 +48,10 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
     incidents: incidents.data ?? [],
     runs: (runs.data ?? []).map((item) => ({ agent: (item.agent as { name?: string } | null)?.name ?? "Agent", status: item.status, started_at: item.started_at })),
     siteChecks: checks.data ?? [],
-    metrics: (metrics.data ?? []).map((item) => ({ provider: item.provider, metric_key: item.metric_key, data: (item.data ?? {}) as Record<string, unknown> })),
+    metrics: (metrics.data ?? []).flatMap((item) => {
+      if (item.provider === "vercel" && item.metric_key === "web_analytics" && (item.period_start !== period.start || item.period_end !== period.end)) return [];
+      return [{ provider: item.provider, metric_key: item.metric_key, period_start: item.period_start, period_end: item.period_end, data: (item.data ?? {}) as Record<string, unknown> }];
+    }),
   };
 }
 

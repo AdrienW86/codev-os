@@ -7,6 +7,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { safeGet } from "@/lib/providers/safe-http";
 import { ProviderError } from "@/lib/providers/errors";
 import { latestDeployment } from "@/lib/providers/vercel";
+import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
 import { recentCommits } from "@/lib/providers/github";
 import { evaluateCheck, siteUrl } from "@/lib/monitoring/evaluate";
 import { openIncident, prepareAction, recordRecommendation, resolveIncident } from "@/lib/agents/outputs";
@@ -31,7 +32,7 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
   if (error) throw new RunError("Clients illisibles.");
   const { data: connections } = await supabase.from("client_connections").select("client_id,provider,metadata").in("client_id", clientIds.slice(0, MAX_SITES)).in("provider", ["vercel", "github"]);
 
-  const counts = { up: 0, slow: 0, down: 0, skipped: 0, partial: 0 };
+  const counts = { up: 0, slow: 0, down: 0, skipped: 0, partial: 0, analytics: 0 };
   for (const client of clients ?? []) {
     const url = siteUrl(client.website);
     if (!url) { counts.skipped++; continue; }
@@ -62,6 +63,12 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
           const deployment = await latestDeployment(metadata.project_id);
           await recordSync(client.id, "vercel", null);
           if (deployment?.state === "ERROR") await openIncident(actor, { clientId: client.id, agentId: agent.id, source: "monitoring", severity: "medium", title: "Dernier déploiement Vercel en échec", fingerprint: `vercel-error:${client.id}:${deployment.id}`, details: { deployment: deployment.id } });
+          const end = now.toISOString().slice(0, 10);
+          const startDate = new Date(now);
+          startDate.setUTCDate(startDate.getUTCDate() - 29);
+          const analytics = await syncVercelAnalytics(client.id, { start: startDate.toISOString().slice(0, 10), end });
+          if (analytics.ok) counts.analytics++;
+          else if (analytics.reason === "unavailable") counts.partial++;
         }
         if (connection.provider === "github" && metadata.repository) {
           const commits = await recentCommits(metadata.repository);
@@ -72,6 +79,6 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
       } catch (failure) { counts.partial++; await recordSync(client.id, connection.provider, failure); }
     }
   }
-  const parts = [`${counts.up} en ligne`, counts.slow ? `${counts.slow} lent(s)` : null, counts.down ? `${counts.down} indisponible(s)` : null, counts.skipped ? `${counts.skipped} sans adresse contrôlable` : null, counts.partial ? `${counts.partial} source(s) complémentaire(s) indisponible(s)` : null].filter(Boolean);
+  const parts = [`${counts.up} en ligne`, counts.slow ? `${counts.slow} lent(s)` : null, counts.down ? `${counts.down} indisponible(s)` : null, counts.skipped ? `${counts.skipped} sans adresse contrôlable` : null, counts.analytics ? `${counts.analytics} analytics Vercel synchronisée(s)` : null, counts.partial ? `${counts.partial} source(s) complémentaire(s) indisponible(s)` : null].filter(Boolean);
   return { status: "succeeded", summary: `Contrôle de ${(clients ?? []).length} site(s) : ${parts.join(", ")}.`, data: counts };
 };

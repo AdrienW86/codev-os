@@ -37,7 +37,7 @@ export type ReportInput = {
   incidents: { title: string; status: string; severity: string; detected_at: string; resolved_at: string | null }[];
   runs: { agent: string; status: string; started_at: string }[];
   siteChecks: { ok: boolean; response_ms: number | null; checked_at: string }[];
-  metrics: { provider: string; metric_key: string; data: Record<string, unknown> }[];
+  metrics: { provider: string; metric_key: string; period_start?: string; period_end?: string; data: Record<string, unknown> }[];
 };
 
 export type ReportSection = { title: string; lines: string[] };

@@ -29,13 +29,14 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
   if (searchConsoleConfigured() && property) {
     // Les données Search Console ont ~3 jours de retard.
     const current = { startDate: day(now, -30), endDate: day(now, -3) }, previous = { startDate: day(now, -58), endDate: day(now, -31) };
-    const [pagesNow, pagesBefore, queriesNow, queriesBefore] = await Promise.all([
+    const [pagesNow, pagesBefore, queriesNow, queriesBefore, queryPagesNow] = await Promise.all([
       searchAnalytics(property, { ...current, dimensions: ["page"] }), searchAnalytics(property, { ...previous, dimensions: ["page"] }),
       searchAnalytics(property, { ...current, dimensions: ["query"] }), searchAnalytics(property, { ...previous, dimensions: ["query"] }),
+      searchAnalytics(property, { ...current, dimensions: ["query", "page"], rowLimit: 1000 }),
     ]).catch(async (failure) => { await recordSync(client.id, "search-console", failure); return wrap(failure); });
     await recordSync(client.id, "search-console", null);
     const summary = totals(pagesNow);
-    const seoFindings = analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore);
+    const seoFindings = analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore, queryPagesNow);
     await Promise.all([
       supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "search-console", metric_key: "summary", period_start: current.startDate, period_end: current.endDate, data: { ...summary, previous_clicks: totals(pagesBefore).clicks } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" }),
       supabase.from("metric_snapshots").upsert({
@@ -58,7 +59,7 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     for (const finding of seoFindings) {
       if (finding.kind === "page_growth") continue;
       const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
-      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, period: current } });
+      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, target_page: finding.targetPage ?? null, period: current } });
       if (created.created) findings++;
     }
     notes.push(`Search Console : ${summary.clicks} clics, ${summary.impressions} impressions`);

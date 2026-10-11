@@ -72,9 +72,9 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
   const health = tab === "health"
     ? await safeRead("client-health", () => getClientHealthOverview(client.id), {
-        searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null, vercelAnalytics: null,
+        searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null, vercelAnalytics: null, github: null, sources: [],
       })
-    : { data: { searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null, vercelAnalytics: null }, unavailable: false };
+    : { data: { searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null, vercelAnalytics: null, github: null, sources: [] }, unavailable: false };
   // Campagnes Google Ads : filtres lus dans l'URL, données chargées côté serveur pour le premier rendu ;
   // les changements de filtres sont ensuite rechargés sur place par le composant (aucune navigation).
   const adsFilters = tab === "ads" ? parseFilters(search) : null;
@@ -106,7 +106,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
         { id: "ads", label: "Campagnes", href: href("ads") },
-        { id: "health", label: "SEO & technique", href: href("health") },
+        { id: "health", label: "Données & performance", href: href("health") },
         { id: "agents", label: "Agents", href: href("agents") },
         { id: "activity", label: "Activité", href: href("activity") },
         { id: "information", label: "Informations", href: href("information") },

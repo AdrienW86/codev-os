@@ -26,6 +26,8 @@ export function createFakeSupabase(initial = {}, options = {}) {
       select(columns) { if (state.op === "select") state.columns = columns; else state.returning = true; return api; },
       eq(column, value) { state.filters.push((row) => row[column] === value); return api; },
       neq(column, value) { state.filters.push((row) => row[column] !== value); return api; },
+      ilike(column, value) { const wanted = value.replace(/^%|%$/g, "").replace(/\\([%_\\])/g,"$1").toLowerCase(); state.filters.push(row => String(row[column] ?? "").toLowerCase().includes(wanted)); return api; },
+      contains(column, value) { state.filters.push(row => Object.entries(value).every(([key, item]) => JSON.stringify(row[column]?.[key]) === JSON.stringify(item))); return api; },
       in(column, values) { state.filters.push((row) => values.includes(row[column])); return api; },
       is(column, value) { state.filters.push((row) => (row[column] ?? null) === value); return api; },
       lt(column, value) { state.filters.push((row) => row[column] !== null && row[column] < value); return api; },

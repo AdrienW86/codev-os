@@ -13,7 +13,7 @@ export function loadTs(path, mocks = {}, globals = {}) {
   const container = { exports };
   vm.runInNewContext(code, {
     exports, module: container, console, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, AbortSignal, setTimeout, clearTimeout, Promise, structuredClone, Intl, Date, Math, JSON,
-    crypto: globalThis.crypto, Buffer, process: { env: {} },
+    crypto: globalThis.crypto, performance, Buffer, process: { env: {} },
     ...globals,
     require: (name) => {
       if (name === "server-only") return {};

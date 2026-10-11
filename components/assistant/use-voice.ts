@@ -25,6 +25,7 @@ const errors: Record<string, string> = {
 export function useVoice(onTranscript: (text: string, signal: AbortSignal) => Promise<boolean>) {
   const [state, setState] = useState<VoiceState>("idle");
   const [message, setMessage] = useState("");
+  const [transcriptionMs, setTranscriptionMs] = useState<number | null>(null);
   const [continuous, setContinuous] = useState(false);
   const callback = useRef(onTranscript);
   useEffect(() => { callback.current = onTranscript; }, [onTranscript]);
@@ -95,12 +96,14 @@ export function useVoice(onTranscript: (text: string, signal: AbortSignal) => Pr
           });
           if (!active()) return;
           setState("transcribing"); setMessage("Transcription…");
+          const transcriptionStart = performance.now();
           const response = await postTranscription(blob, AbortSignal.any([signal, AbortSignal.timeout(35_000)]));
           const data = await response.json() as { text?: string; error?: string };
           if (!response.ok || !data.text?.trim()) {
             if (data.error === "stt_not_configured" && recognitionCtor()) preferBrowser.current = true;
             throw new Error(data.error === "no_speech" ? "empty" : data.error === "stt_not_configured" ? "unsupported" : "failed");
           }
+          setTranscriptionMs(Math.round(performance.now() - transcriptionStart));
           text = data.text.trim().slice(0, 2000);
         }
         if (!active()) return;
@@ -122,7 +125,7 @@ export function useVoice(onTranscript: (text: string, signal: AbortSignal) => Pr
     document.addEventListener("visibilitychange", hide); window.addEventListener("pagehide", cancel);
     return () => { document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", cancel); current.current?.abort(); stopSpeaking(); };
   }, [cancel]);
-  return { state, message, setMessage, continuous, toggle, toggleContinuous, cancel };
+  return { state, message, setMessage, transcriptionMs, continuous, toggle, toggleContinuous, cancel };
 }
 
 /** Resolve after playback ends so the recording loop cannot hear the synthesized reply. */

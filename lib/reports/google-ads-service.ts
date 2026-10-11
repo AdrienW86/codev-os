@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import type { Json } from "@/lib/supabase/database.types";
-import { loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
+import { loadCampaignDashboard, loadCampaignDashboardForSystem } from "@/lib/integrations/google-ads/service";
 import { DEFAULT_FILTERS } from "@/lib/integrations/google-ads/dashboard";
 import { isStoredScope, storeScope, type AdsScope, type StoredAdsScope } from "@/lib/integrations/google-ads/scope";
 import { buildGoogleAdsReport } from "./google-ads";
@@ -22,11 +22,13 @@ const missingMigration = (error: { code?: string } | null) => ["42703", "PGRST20
 export type GoogleAdsReportOutcome = { ok: true; id: string; version: number } | { ok: false; message: string };
 
 /** Instantané des campagnes du périmètre, lu en direct (lecture seule) sur le compte associé au client. */
-async function snapshot(clientId: string, scope: AdsScope, expectedAccountId?: string) {
-  const loaded = await loadCampaignDashboard(clientId, { ...DEFAULT_FILTERS, period: { preset: "custom", start: scope.start, end: scope.end }, status: "all", includeUntracked: true });
+export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope, expectedAccountId?: string, options?: { system: false; mode: "ai" | "deterministic" } | { system: true; mode: "ai" | "deterministic"; lease: { jobId: string; worker: string } }, expectedTimezone?: string) {
+  const filters = { ...DEFAULT_FILTERS, period: { preset: "custom" as const, start: scope.start, end: scope.end }, status: "all" as const, includeUntracked: true };
+  const loaded = await (options?.system ? loadCampaignDashboardForSystem(clientId, filters, new Date(), options.lease) : loadCampaignDashboard(clientId, filters));
   if (!loaded.ok) return { ok: false as const, message: loaded.message };
   const { data } = loaded;
   if (expectedAccountId && data.account.id !== expectedAccountId) return { ok: false as const, message: "Le compte Google Ads associé à ce client a changé : ce rapport ne peut pas être actualisé." };
+  if (expectedTimezone && data.account.timezone !== expectedTimezone) return { ok: false as const, message: "Le fuseau du compte Google Ads a changé : reconfigurez la récurrence avant de préparer une nouvelle période." };
   const stored = storeScope(scope, data.campaigns, { days: data.period.days, timezone: data.account.timezone, currency: data.account.currency, accountId: data.account.id });
   if (!stored) return { ok: false as const, message: "Une campagne du périmètre est introuvable dans le compte Google Ads de ce client." };
   const { data: client, error } = await db().from("clients").select("name").eq("id", clientId).maybeSingle();
@@ -36,6 +38,16 @@ async function snapshot(clientId: string, scope: AdsScope, expectedAccountId?: s
     clientName: client.name, accountName: data.account.name ?? "Compte sans nom", scope: stored,
     rows: data.campaigns.filter((row) => stored.campaignIds.includes(row.id)), leads: data.leads, includesToday: data.period.includesToday,
   });
+  if (options) {
+    const { analyzeClientReport } = await import("./recurring/analysis");
+    const analyzed = await analyzeClientReport(clientId, data.campaigns.filter(row => stored.campaignIds.includes(row.id)), stored, options.mode);
+    if (!analyzed.ok) return analyzed;
+    for (const section of built.internal.sections) section.lines = section.lines.map(line => line === "Rapport déterministe (sans IA), lu en lecture seule : aucune modification Google Ads." ? "Tableaux calculés depuis Google Ads ; moteur des recommandations identifié séparément. Aucune modification Google Ads." : line);
+    const section = { title: analyzed.engine === "ai" ? "Recommandations personnalisées (IA)" : analyzed.engine === "deterministic_fallback" ? "Repli déterministe (IA indisponible)" : "Constats déterministes (sans IA)", lines: analyzed.text.split("\n").filter(Boolean) };
+    built.internal.sections.push(section); built.client.sections.push(section);
+    built.internal.sections.push({ title: "Fraîcheur", lines: [`Données récupérées le ${data.fetchedAt}.`, `Moteur : ${analyzed.engine}.`] });
+    built.client.sections.push({ title: "Fraîcheur", lines: [`Données récupérées le ${data.fetchedAt}.`] });
+  }
   return { ok: true as const, stored, built };
 }
 
@@ -47,7 +59,7 @@ const contentOf = (built: ReturnType<typeof buildGoogleAdsReport>) => ({
 export async function prepareGoogleAdsReport(actor: Actor, clientId: string, scope: AdsScope): Promise<GoogleAdsReportOutcome> {
   if (!uuid.test(clientId)) return { ok: false, message: "Client invalide." };
   try { await requireReportVersionStorage(); } catch { return { ok: false, message: "La migration 20261019000000 des versions transactionnelles est requise pour préparer un rapport." }; }
-  const result = await snapshot(clientId, scope);
+  const result = await googleAdsReportSnapshot(clientId, scope);
   if (!result.ok) return result;
   const content = contentOf(result.built);
   const stored = result.stored as unknown as Json;
@@ -72,7 +84,9 @@ export async function regenerateGoogleAdsReport(actor: Actor, reportId: string):
   if (["sent", "archived"].includes(report.status)) return { ok: false, message: "Ce rapport a été envoyé ou archivé : son contenu est figé." };
   if (!isStoredScope(report.scope)) return { ok: false, message: "Périmètre enregistré illisible : préparez un nouveau rapport depuis l’onglet Campagnes." };
   const saved: StoredAdsScope = report.scope;
-  const result = await snapshot(report.client_id, { start: saved.start, end: saved.end, status: saved.status, types: saved.types, campaignIds: saved.campaignIds }, saved.accountId);
+  const occurrence = await db().from("ads_report_occurrences").select("config").eq("report_id", reportId).maybeSingle();
+  const recurring = occurrence.error ? null : occurrence.data?.config as Record<string, unknown> | undefined;
+  const result = await googleAdsReportSnapshot(report.client_id, { start: saved.start, end: saved.end, status: saved.status, types: saved.types, campaignIds: saved.campaignIds }, saved.accountId, recurring ? { system: false, mode: recurring.mode === "ai" ? "ai" : "deterministic" } : undefined, saved.timezone);
   if (!result.ok) return result;
   const content = contentOf(result.built);
   const version = report.version + 1;

@@ -1,5 +1,7 @@
 # Livraison : campagnes, voix, rapports et notifications
 
+Complément du lot suivant : [recommandations directes et rapports récurrents par client](ads-recurring-delivery.md), avec audit distant actualisé, nouvelle migration et procédure d’envoi.
+
 Branche `feature/ads-workspace-voice-notifications`, depuis `ed8f39e`. Les six phases utilisent les services existants. Aucune migration distante, modification Google Ads, activation d’agent/cron, modification de secrets Vercel, ni envoi réel d’e-mail ou de push pendant ce lot. L’association Protection Nuisibles / `9206382986` reste intacte.
 
 ## Fonctionnement

@@ -116,7 +116,7 @@ export async function runJob(actor: Actor, worker: string, job: JobRow, now = ne
   if (!agent || !isAgentType(agent.agent_type) || agent.agent_type !== definition.agent) {
     return (await complete(job, worker, { status: "failed", last_error: "Agent introuvable ou incompatible.", finished_at: now.toISOString() })) ? "failed" : "lost";
   }
-  const decision = authorize({ agent: { type: agent.agent_type, enabled: agent.enabled, status: agent.status, autonomy: agent.autonomy_level }, capability: definition.capability, isProviderConfigured });
+  const decision = authorize({ agent: { type: agent.agent_type, enabled: agent.enabled, status: agent.status, autonomy: agent.autonomy_level }, capability: definition.capability, isProviderConfigured: definition.deferProviderCheck ? undefined : isProviderConfigured });
   if (decision.outcome === "deny") {
     // Configuration manquante ou agent en pause : exécution ignorée (pas un échec), raison conservée.
     const ok = await complete(job, worker, { status: "skipped", last_error: decision.message.slice(0, 2000), finished_at: now.toISOString(), result: { reason: decision.reason } });
@@ -178,7 +178,9 @@ export async function processJobs(actor: Actor, worker: string, limit = 5, timeo
 export async function runTick(worker: string, now = new Date(), options: { jobLimit?: number; ensureGlobal?: (actor: Actor) => Promise<unknown> } = {}): Promise<TickSummary> {
   const actor: Actor = { kind: "system", worker };
   if (options.ensureGlobal) { try { await options.ensureGlobal(actor); } catch { console.error("[scheduler] Rattachement des agents globaux différé."); } }
+  const { enqueueDueAdsReports } = await import("@/lib/reports/recurring/service");
+  const recurring = await enqueueDueAdsReports(actor, now);
   const { enqueued, invalid } = await enqueueDueAutomations(actor, now);
   const processed = await processJobs(actor, worker, options.jobLimit ?? 5);
-  return { enqueued, invalid, ...processed };
+  return { enqueued: enqueued + recurring, invalid, ...processed };
 }

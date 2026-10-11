@@ -14,7 +14,7 @@ const evidenceIds = z.array(z.string().max(100)).min(1).max(6);
 const outputSchema = z.strictObject({
   factIds: z.array(z.string().max(100)).min(1).max(10),
   hypotheses: z.array(z.strictObject({ kind: z.enum(hypotheses), campaignIds: ids, explanation: narrative })).max(4),
-  recommendations: z.array(z.strictObject({ action: z.enum(actions), campaignIds: ids, evidenceIds, rationale: narrative })).max(5),
+  recommendations: z.array(z.strictObject({ action: z.enum(actions), priority: z.enum(["high", "medium", "low"]).optional(), campaignIds: ids, evidenceIds, rationale: narrative })).max(5),
 });
 export type AdsAIOutput = z.infer<typeof outputSchema>;
 export type Evidence = { id: string; campaignId: string | null; type: string | null; metric: string; value: number | null; text: string };
@@ -62,7 +62,7 @@ export function validateAdsAIOutput(input: unknown, rows: CampaignRow[], evidenc
 const actionLabels: Record<(typeof actions)[number], string> = { verify_tracking: "Vérifier le suivi des conversions", review_geography: "Revoir les zones", review_services: "Revoir les services ciblés", review_schedule: "Revoir les horaires", review_budget: "Examiner le budget publicitaire", review_landing_page: "Examiner la page de destination", review_capacity: "Vérifier la capacité commerciale" };
 export function formatAdsAIOutput(output: AdsAIOutput, evidence: Evidence[]) {
   const ledger = new Map(evidence.map((item) => [item.id, item.text]));
-  return ["Faits observés", ...output.factIds.map((id) => `• ${ledger.get(id)}`), "", "Hypothèses à vérifier", ...output.hypotheses.map((item) => `• ${item.explanation}`), "", "Recommandations (validation humaine)", ...output.recommendations.map((item) => `• ${actionLabels[item.action]} : ${item.rationale}\n  Chiffres et contexte : ${item.evidenceIds.map((id) => ledger.get(id)).join(" ")}`), "", "Données manquantes et limites", ...ANALYSIS_LIMITATIONS.map((line) => `• ${line}`)].join("\n");
+  return ["Faits observés", ...output.factIds.map((id) => `• ${ledger.get(id)}`), "", "Hypothèses à vérifier", ...output.hypotheses.map((item) => `• ${item.explanation}`), "", "Recommandations (validation humaine)", ...([...output.recommendations].sort((a,b) => ({ high:0, medium:1, low:2 })[a.priority ?? "medium"] - ({ high:0, medium:1, low:2 })[b.priority ?? "medium"])).map((item) => `• Priorité ${({ high:"haute", medium:"moyenne", low:"basse" })[item.priority ?? "medium"]} · ${actionLabels[item.action]} : ${item.rationale}\n  Chiffres et contexte : ${item.evidenceIds.map((id) => ledger.get(id)).join(" ")}`), "", "Données manquantes et limites", ...ANALYSIS_LIMITATIONS.map((line) => `• ${line}`)].join("\n");
 }
 
 export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[], scope: StoredAdsScope, instructions: AdsInstructionSnapshot) {
@@ -76,7 +76,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
   const parameters = item({
     factIds: stringArray(proofIds),
     hypotheses: { type: "array", items: item({ kind: { type: "string", enum: hypotheses }, campaignIds: stringArray(campaignIds), explanation: { type: "string" } }) },
-    recommendations: { type: "array", items: item({ action: { type: "string", enum: actions }, campaignIds: stringArray(campaignIds), evidenceIds: stringArray(proofIds), rationale: { type: "string" } }) },
+    recommendations: { type: "array", items: item({ action: { type: "string", enum: actions }, priority: { type: "string", enum: ["high", "medium", "low"] }, campaignIds: stringArray(campaignIds), evidenceIds: stringArray(proofIds), rationale: { type: "string" } }) },
   });
   // Un appel, aucun outil métier exécutable, délai global. Le fournisseur est celui de l'assistant serveur.
   const response = await provider.complete({

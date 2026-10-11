@@ -36,7 +36,7 @@ test("tool registry: strict inputs, unknown tools refused, JSON schemas closed",
     assert.equal(spec.parameters.$schema, undefined);
   }
   const writes = Object.entries(tools.toolDefinitions).filter(([, item]) => item.kind === "write").map(([name]) => name).sort();
-  assert.deepEqual(writes, ["ads_prepare_report", "ads_run_analysis", "create_task", "generate_report", "run_check", "schedule_check"]);
+  assert.deepEqual(writes, ["ads_prepare_report", "create_task", "generate_report", "run_check", "schedule_check"]);
   assert.equal(tools.parseToolInput("schedule_check", { check: "seo.analyze", date: "2026-10-13", time: "25:00" }).ok, false);
   assert.match(tools.describeProposal("create_task", { client: "Jrenov", title: "Relancer", priority: "Haute" }), /Créer la tâche « Relancer » pour Jrenov, priorité haute/);
 });

@@ -31,6 +31,10 @@ export const toolDefinitions = {
       compare: z.boolean().optional(), status: adsStatus.optional(), types: z.array(adsType).max(20).optional(), campaigns: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
     }).strict(), capability: null,
   },
+  ads_recommendations: {
+    kind: "read", description: "Recommandations Google Ads internes à la demande, sans confirmation ni modification externe. Utilise le contexte client, les campagnes suivies et la période courante ; affiche les preuves. refresh=true pour relire et réanalyser. IA par défaut, repli déterministe visible.",
+    input: z.object({ client: clientName.optional(), period: z.enum(PERIOD_PRESETS).optional(), date: date.optional(), start: date.optional(), end: date.optional(), status: adsStatus.optional(), types: z.array(adsType).max(20).optional(), campaigns: z.array(z.string().trim().min(1).max(120)).max(20).optional(), refresh: z.boolean().optional(), mode: z.enum(["ai", "deterministic"]).optional() }).strict(), capability: null,
+  },
   get_priorities: {
     kind: "read", description: "Résumé des urgences : actions à valider, incidents ouverts, tâches en retard ou du jour, rapports à relire.",
     input: z.object({}).strict(), capability: null,
@@ -76,7 +80,7 @@ export const toolDefinitions = {
     input: adsScopeInput, capability: null,
   },
   ads_run_analysis: {
-    kind: "write", description: "Lance l’analyse de l’Agent Ads sur un périmètre exact : règles déterministes par défaut, IA personnalisée facultative avec mode=ai. Lecture seule Google Ads, confirmation par bouton obligatoire.",
+    kind: "read", description: "Lance l’analyse de l’Agent Ads sur un périmètre exact : règles déterministes par défaut, IA personnalisée facultative avec mode=ai. Lecture seule Google Ads : analyse interne directe sans confirmation supplémentaire.",
     input: adsScopeInput.extend({ mode: z.enum(["deterministic", "ai"]).optional() }), capability: null,
   },
   create_task: {

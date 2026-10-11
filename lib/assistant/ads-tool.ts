@@ -7,11 +7,10 @@ import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveClient } from "@/lib/assistant/clients";
 import { normalize } from "@/lib/assistant/text";
-import { loadCampaignDashboard, isGoogleAdsAgent, runGoogleAdsAnalysis } from "@/lib/integrations/google-ads/service";
+import { loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
 import { DEFAULT_FILTERS, describeScope, filterCampaigns, parseFilters, sumCampaigns, writeFilters, type DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import { describeDates, type PeriodPreset } from "@/lib/integrations/google-ads/periods";
 import { parseScope } from "@/lib/integrations/google-ads/scope";
-import { listAgentsForClient } from "@/lib/agents/data";
 import { prepareGoogleAdsReport } from "@/lib/reports/google-ads-service";
 import type { Actor } from "@/lib/core/actor";
 import type { PrepareResult, ToolOutcome } from "@/lib/assistant/orchestrator";
@@ -79,13 +78,16 @@ export function resolveCampaigns(terms: string[], rows: { id: string; name: stri
 }
 
 export async function adsCampaignsTool(input: Record<string, unknown>, context: AssistantContext): Promise<ToolOutcome> {
+  const targetStarted = performance.now();
   const target = await targetClient(input, context);
+  const clientResolutionMs = Math.round(performance.now() - targetStarted);
   if (!target.ok) return { ok: false, text: target.text };
   const { client } = target;
   const filters = mergeAdsFilters(input, context, client.id);
   const loaded = await loadCampaignDashboard(client.id, filters);
   if (!loaded.ok) return { ok: false, text: `${client.name} : ${loaded.message}`, context: { clientId: client.id, clientName: client.name } };
   const { data } = loaded;
+  data.clientResolutionMs = clientResolutionMs;
   if (Array.isArray(input.campaigns)) {
     const resolved = resolveCampaigns(input.campaigns as string[], data.campaigns);
     if (!resolved.ok) return { ok: false, text: resolved.text };
@@ -119,7 +121,7 @@ export async function prepareAdsWrite(input: Record<string, unknown>): Promise<P
   return { ok: true, input: { ...input, ...scope, client_name: name } };
 }
 
-/** Exécution APRÈS confirmation explicite : mêmes services que l'onglet Campagnes. */
+/** Shared exact-scope dispatch: report preparation requires confirmation; internal analysis executes directly. */
 export async function runAdsWrite(actor: Actor, tool: "ads_prepare_report" | "ads_run_analysis", input: Record<string, unknown>): Promise<ToolOutcome> {
   const scope = parseScope({ start: input.start, end: input.end, status: input.status, types: input.types, campaignIds: input.campaignIds });
   const clientId = String(input.client_id);
@@ -128,8 +130,25 @@ export async function runAdsWrite(actor: Actor, tool: "ads_prepare_report" | "ad
     const outcome = await prepareGoogleAdsReport(actor, clientId, scope);
     return outcome.ok ? { ok: true, text: "Rapport Google Ads enregistré pour ce périmètre : il attend votre relecture avant tout envoi.", links: [{ label: "Relire le rapport", href: `/reports/${outcome.id}` }] } : { ok: false, text: outcome.message };
   }
-  const assignment = (await listAgentsForClient(clientId)).find((item) => item.enabled && isGoogleAdsAgent(item.agent));
-  if (!assignment) return { ok: false, text: "Aucun agent Google Ads (type google-ads) actif et assigné à ce client." };
-  const result = await runGoogleAdsAnalysis(assignment.agent_id, clientId, { scope, ...(input.mode === "ai" ? { mode: "ai" as const } : {}) });
-  return { ok: Boolean(result.ok), text: result.message ?? "Analyse terminée.", links: result.recommendationId ? [{ label: "Voir la recommandation", href: `/recommendations/${result.recommendationId}` }] : [{ label: "Agent Ads", href: `/agents/${assignment.agent_id}` }] };
+  const { getAdsRecommendation } = await import("@/lib/integrations/google-ads/recommendations-service");
+  const result = await getAdsRecommendation(clientId, scope, input.mode === "ai" ? "ai" : "deterministic");
+  if (!result.ok) return { ok: false, text: result.message };
+  const href = `/advertising/analyses/${result.runId}`;
+  return { ok: true, text: "Les recommandations et leurs preuves sont affichées. Aucune modification Google Ads.", links: [{ label: "Analyse complète", href }], view: { type: "ads_recommendations", title: "Recommandations Google Ads", clientId, scope: `${scope.start} → ${scope.end} · ${scope.campaignIds.length} campagnes`, result, link: { label: "Analyse complète", href } } };
+}
+
+/** Internal analysis is read-only externally: directly executed, never an email or approval. */
+export async function adsRecommendationsTool(input: Record<string, unknown>, context: AssistantContext): Promise<ToolOutcome> {
+  const started = performance.now();
+  const view = await adsCampaignsTool(input, context);
+  const resolveAndReadMs = Math.round(performance.now() - started);
+  if (!view.ok || view.view?.type !== "ads_campaigns") return view;
+  const { data, filters, clientId, clientName } = view.view;
+  const rows = filterCampaigns(data.campaigns, filters, data.tracking?.ids ?? null);
+  if (!rows.length) return { ok: false, text: "Aucune campagne dans ce périmètre. Précisez les filtres." };
+  const { getAdsRecommendation } = await import("@/lib/integrations/google-ads/recommendations-service");
+  const result = await getAdsRecommendation(clientId, { start: data.period.start, end: data.period.end, status: filters.status, types: filters.types, campaignIds: rows.map(row => row.id) }, input.mode === "deterministic" ? "deterministic" : "ai", input.refresh === true, data);
+  if (!result.ok) return { ok: false, text: result.message, context: view.context };
+  const href = `/advertising/analyses/${result.runId}`;
+  return { ok: true, text: `${clientName} : ${result.engine === "ai" ? "analyse personnalisée disponible" : result.engine === "deterministic_fallback" ? "IA indisponible, constats déterministes disponibles" : "constats déterministes disponibles"}. Le détail et les preuves sont affichés.`, context: view.context, links: [{ label: "Analyse complète", href }], view: { type: "ads_recommendations", title: `Recommandations — ${clientName}`, clientId, scope: `${data.period.start} → ${data.period.end} · ${data.account.timezone} · ${rows.map(row => row.name).join(", ")}${data.period.includesToday ? " · journée en cours, partielle" : ""}`, result: { ...result, resolveAndReadMs, googleReadMs: data.googleReadMs, resolutionMs: data.clientResolutionMs }, link: { label: "Analyse complète", href } } };
 }

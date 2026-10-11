@@ -1,3 +1,4 @@
+import { RecurringReportsPanel } from "@/components/reports/recurring-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/require-admin";
@@ -53,6 +54,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
       : connectionError ? <p role="alert">Connexion indisponible. Rechargez la page pour réessayer.</p>
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
       : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
+    {client && <RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} />}
     {client && business && <div className="mt-6"><AdsBusinessContextEditor key={client.id} clientId={client.id} initial={business} /></div>}
     {client && <Panel className="mt-6 p-4"><h2 className="font-medium">Dernières analyses du client</h2>
       {analyses === null ? <p role="alert" className="mt-3 text-sm">Historique indisponible. Rechargez la page.</p> : !analyses.length ? <p className="mt-3 text-sm text-muted">Aucune analyse enregistrée.</p> : <ul className="mt-3 space-y-3">{analyses.map((run) => <li key={run.id} className="text-sm"><Link href={`/advertising/analyses/${run.id}`} className="block min-h-11 py-2 text-accent">{new Date(run.started_at).toLocaleString("fr-FR")} · {run.status === "completed" ? "Terminée" : run.status === "failed" ? "Échouée" : "En cours"}<span className="mt-1 block text-muted">{run.summary ?? "Consulter le périmètre et les instructions enregistrés"}</span></Link></li>)}</ul>}

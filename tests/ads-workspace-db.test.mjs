@@ -15,7 +15,13 @@ test("ads workspace additive migrations enforce permissions, isolation, revision
   const psql = (target, sql) => executeLocalSql(process.env.CODEV_CORE_TEST_PSQL ?? "psql", target, sql);
   const created = psql({ ...env, PGDATABASE: "postgres" }, "drop database if exists codev_core_test_workspace; create database codev_core_test_workspace;");
   assert.equal(created.status, 0, created.stderr);
-  const bootstrap = `create schema if not exists storage; create table if not exists storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);\n`;
+  const bootstrap = `do $$ begin
+ perform pg_advisory_xact_lock(761616);
+ if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+ if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+ if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
+ end $$;
+ create schema if not exists storage; create table if not exists storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);\n`;
   const migrations = readdirSync(new URL("../supabase/migrations/", import.meta.url)).filter((file) => file.endsWith(".sql")).sort();
   const applied = psql(env, bootstrap + read("supabase/local/remote-schema.sql") + migrations.map((file) => read(`supabase/migrations/${file}`)).join("\n"));
   assert.equal(applied.status, 0, applied.stderr);

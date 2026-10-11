@@ -21,7 +21,7 @@ import { addDays, expandOccurrences } from "@/lib/agenda/occurrences";
 import { zonedToUtc } from "@/lib/scheduler/recurrence";
 import type { PrepareResult, ToolOutcome } from "@/lib/assistant/orchestrator";
 import { resolveClient } from "@/lib/assistant/clients";
-import { adsCampaignsTool, prepareAdsWrite, runAdsWrite } from "@/lib/assistant/ads-tool";
+import { adsCampaignsTool, adsRecommendationsTool, prepareAdsWrite, runAdsWrite } from "@/lib/assistant/ads-tool";
 import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
 
 export { resolveClient };
@@ -46,6 +46,7 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
   const today = todayInParis();
   switch (name) {
     case "ads_campaigns": return adsCampaignsTool(input, context);
+    case "ads_recommendations": return adsRecommendationsTool(input, context);
     case "ads_prepare_report": case "ads_run_analysis": return runAdsWrite(actor, name, input);
     case "get_priorities": {
       const [actions, incidents, overdue, dueToday, reports] = await Promise.all([

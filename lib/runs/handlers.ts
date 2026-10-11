@@ -4,6 +4,9 @@ import type { RunType } from "@/lib/agents/registry";
 import type { RunHandler } from "@/lib/runs/types";
 
 export const runHandlers: Record<RunType, () => Promise<RunHandler>> = {
+  "ads.report.prepare": async () => (await import("@/lib/reports/recurring/run")).prepareRecurringReportRun,
+  "ads.report.send": async () => (await import("@/lib/reports/recurring/run")).sendRecurringReportRun,
+
   "report.generate": async () => (await import("@/lib/reports/run")).generateReportsRun,
   "monitoring.check_sites": async () => (await import("@/lib/monitoring/run")).checkSitesRun,
   "seo.analyze": async () => (await import("@/lib/seo/run")).analyzeSeoRun,

@@ -7,9 +7,9 @@ import type { AdsMetrics } from "@/lib/integrations/google-ads/types";
 import { CampaignTrackingEditor, type SaveTracking } from "./campaign-tracking";
 
 export type DashboardResult = { ok: true; data: DashboardData } | { ok: false; message: string };
-export type ScopeActionState = { ok?: boolean; message?: string; href?: string };
+export type ScopeActionState = { ok?: boolean; message?: string; href?: string; detail?: string; reused?: boolean };
 export type DashboardScope = { start: string; end: string; status: StatusFilter; types: string[]; campaignIds: string[] };
-type ScopeAction = (clientId: string, scope: DashboardScope) => Promise<ScopeActionState>;
+type ScopeAction = (clientId: string, scope: DashboardScope, refresh?: boolean) => Promise<ScopeActionState>;
 
 type View = { status: "ready" | "loading" | "error"; data: DashboardData | null; message?: string };
 
@@ -221,8 +221,8 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
       {(prepareReport || runAnalysis || runAIAnalysis) && (
         <div className="grid gap-4 md:grid-cols-2">
           {prepareReport && <ScopeButton title="Rapport Google Ads" description={`Enregistre un rapport pour ce périmètre exact (${selected.length} campagne${selected.length > 1 ? "s" : ""}, ${describeDates(data.period)}). Il n’évoluera plus avec les filtres.`} label={actionLabels?.report ?? "Préparer le rapport"} disabled={!selected.length} run={() => prepareReport(clientId, scopeForServer)} />}
-          {runAnalysis && <ScopeButton title="Analyse par règles" description="Données Google Ads réelles, règles déterministes (sans IA). Les instructions ne sont pas utilisées par ces règles." label={actionLabels?.analysis ?? "Lancer l’analyse sur ce périmètre"} disabled={!selected.length} run={() => runAnalysis(clientId, scopeForServer)} />}
-          {runAIAnalysis && <ScopeButton title="Analyse IA personnalisée" description={analysisNote ?? "Utilise les instructions et le contexte commercial du client. Recommandations uniquement ; un échec IA est signalé avec un repli déterministe."} label={actionLabels?.aiAnalysis ?? "Lancer l’analyse IA"} disabled={!selected.length} run={() => runAIAnalysis(clientId, scopeForServer)} />}
+          {runAnalysis && <ScopeButton title="Analyse par règles" description="Données Google Ads réelles, règles déterministes (sans IA). Les instructions ne sont pas utilisées par ces règles." label={actionLabels?.analysis ?? "Lancer l’analyse sur ce périmètre"} disabled={!selected.length} run={(refresh) => runAnalysis(clientId, scopeForServer, refresh)} />}
+          {runAIAnalysis && <ScopeButton title="Analyse IA personnalisée" description={analysisNote ?? "Utilise les instructions et le contexte commercial du client. Recommandations uniquement ; un échec IA est signalé avec un repli déterministe."} label={actionLabels?.aiAnalysis ?? "Lancer l’analyse IA"} disabled={!selected.length} run={(refresh) => runAIAnalysis(clientId, scopeForServer, refresh)} />}
         </div>
       )}
     </>
@@ -295,13 +295,15 @@ function LocalServicesNote({ leads }: { leads: DashboardData["leads"] }) {
   );
 }
 
-function ScopeButton({ title, description, label, run, disabled }: { title: string; description: string; label: string; run: () => Promise<ScopeActionState>; disabled: boolean }) {
+function ScopeButton({ title, description, label, run, disabled }: { title: string; description: string; label: string; run: (refresh?: boolean) => Promise<ScopeActionState>; disabled: boolean }) {
   const [state, setState] = useState<ScopeActionState & { pending?: boolean }>({});
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
       <p className="font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted">{description}</p>
       <button type="button" disabled={disabled || state.pending} onClick={async () => { setState({ pending: true }); try { setState(await run()); } catch { setState({ ok: false, message: "Opération impossible. Réessayez." }); } }} className="mt-3 min-h-10 rounded-lg border border-border px-4 text-sm disabled:opacity-50">{state.pending ? "En cours…" : label}</button>
+      {state.reused && <button type="button" disabled={state.pending} className="mt-3 min-h-11 rounded-lg border border-border px-3 text-sm" onClick={async () => { setState({ pending: true }); try { setState(await run(true)); } catch { setState({ ok: false, message: "Actualisation impossible." }); } }}>Actualiser la recommandation</button>}
+      {state.detail && <div className="mt-3 max-h-[36rem] overflow-y-auto whitespace-pre-wrap text-sm" aria-label="Recommandations détaillées">{state.detail}</div>}
       {state.message && <p role="status" className={`mt-2 text-sm ${state.ok ? "text-accent" : "text-amber-200"}`}>{state.message}{state.href && <> · <a href={state.href} className="underline">Ouvrir</a></>}</p>}
     </div>
   );

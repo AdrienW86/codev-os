@@ -171,6 +171,11 @@ function adsTool({ connected = [clientA], clients = [clientA, clientB], load = n
     },
     "@/lib/integrations/google-ads/dashboard": dashboard, "@/lib/integrations/google-ads/periods": periods, "@/lib/integrations/google-ads/scope": scopes,
     "@/lib/agents/data": { listAgentsForClient: async () => assignments },
+    "@/lib/integrations/google-ads/recommendations-service": { getAdsRecommendation: async (clientId, scope, mode) => {
+      if (!assignments.length) return { ok: false, message: "Aucun agent Google Ads actif." };
+      writes.push(["analysis", "agent-1", clientId, plain({ scope, mode })]);
+      return { ok: true, runId: "run-1", text: "Preuves vérifiées", engine: "deterministic", summary: "Analyse terminée", fetchedAt: "2026-10-10T00:00:00Z", reused: false, elapsedMs: 1, aiMs: 0 };
+    } },
     "@/lib/reports/google-ads-service": { prepareGoogleAdsReport: async (...args) => { writes.push(["report", ...plain(args)]); return { ok: true, id: "rep-1", version: 1 }; } },
   });
   return { module: adsModule, loads, writes };

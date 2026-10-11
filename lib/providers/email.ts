@@ -5,14 +5,14 @@ import { providerJson } from "@/lib/providers/api";
 import { ProviderError } from "@/lib/providers/errors";
 
 type Env = Record<string, string | undefined>;
+const address = /^[^\s@<>()",;:]{1,64}@[^\s@<>()",;:]{1,253}\.[a-z]{2,}$/i;
 
 export function emailSendingStatus(env: Env = process.env): { enabled: true } | { enabled: false; reason: string } {
   if (!env.RESEND_API_KEY || !env.EMAIL_FROM) return { enabled: false, reason: "Envoi e-mail non configuré (RESEND_API_KEY, EMAIL_FROM). Consignez un envoi manuel." };
+  if (/[\r\n\x00]/.test(env.EMAIL_FROM) || !address.test(env.EMAIL_FROM.replace(/^.*<|>$/g, ""))) return { enabled: false, reason: "Adresse d’expédition EMAIL_FROM invalide. Aucun envoi autorisé." };
   if (env.EMAIL_SENDING_ENABLED !== "true") return { enabled: false, reason: "Envoi e-mail désactivé (EMAIL_SENDING_ENABLED ≠ true). Consignez un envoi manuel." };
   return { enabled: true };
 }
-
-const address = /^[^\s@<>()",;:]{1,64}@[^\s@<>()",;:]{1,253}\.[a-z]{2,}$/i;
 
 export async function sendEmail(message: { to: string; subject: string; text: string; idempotencyKey: string }, env: Env = process.env, fetchImpl?: typeof fetch) {
   const status = emailSendingStatus(env);

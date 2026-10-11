@@ -7,6 +7,9 @@ export const DEFAULT_TIMEZONE = "Europe/Paris";
 
 /** Paramètres acceptés par type d'exécution : rien d'autre n'est transmis au handler. */
 export const runConfigSchemas: Record<RunType, z.ZodType<Record<string, unknown>>> = {
+  "ads.report.prepare": z.object({ occurrenceId: z.uuid() }).strict(),
+  "ads.report.send": z.object({ occurrenceId: z.uuid() }).strict(),
+
   "report.generate": z.object({ kind: z.enum(["weekly", "monthly"]).default("weekly") }).strict(),
   "monitoring.check_sites": z.object({}).strict(),
   "seo.analyze": z.object({}).strict(),

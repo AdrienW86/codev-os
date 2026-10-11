@@ -8,7 +8,7 @@ export type SourceDefinition = { provider: SourceProvider; label: string; field:
 export const sourceDefinitions: SourceDefinition[] = [
   { provider: "search-console", label: "Search Console", field: "property", placeholder: "sc-domain:exemple.fr", help: "Propriété telle qu’affichée dans Search Console (domaine ou préfixe d’URL https).", pattern: /^(sc-domain:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+|https:\/\/[a-z0-9.-]+\.[a-z]{2,}\/)$/i, agent: "Agent SEO & Site" },
   { provider: "vercel", label: "Vercel", field: "project_id", placeholder: "prj_… ou nom-du-projet", help: "Identifiant ou nom du projet Vercel du site.", pattern: /^[a-z0-9_.-]{1,100}$/i, agent: "Agent Monitoring Technique" },
-  { provider: "github", label: "GitHub", field: "repository", placeholder: "organisation/depot", help: "Dépôt du site, lu en lecture seule (derniers changements).", pattern: /^[a-z0-9](?:[a-z0-9-]{0,38})\/[a-z0-9._-]{1,100}$/i, agent: "Agent Monitoring Technique" },
+  { provider: "github", label: "GitHub", field: "repository", placeholder: "organisation/depot", help: "Dépôt du site, lu en lecture seule pour le monitoring et le contexte SEO des pages.", pattern: /^[a-z0-9](?:[a-z0-9-]{0,38})\/[a-z0-9._-]{1,100}$/i, agent: "Agents Monitoring Technique et SEO & Site" },
 ];
 
 export function getSourceDefinition(provider: string) {

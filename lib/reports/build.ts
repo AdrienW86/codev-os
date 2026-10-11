@@ -38,6 +38,8 @@ export type ReportInput = {
   runs: { agent: string; status: string; started_at: string }[];
   siteChecks: { ok: boolean; response_ms: number | null; checked_at: string }[];
   metrics: { provider: string; metric_key: string; period_start?: string; period_end?: string; data: Record<string, unknown> }[];
+  /** Historique quotidien Google Search Console de la propriété du client (période + période précédente de même durée). */
+  searchConsole?: { property: string; days: { date: string; clicks: number; impressions: number; position: number | null }[] } | null;
 };
 
 export type ReportSection = { title: string; lines: string[] };
@@ -46,6 +48,40 @@ export type ReportContent = { summary: string; highlights: string[]; sections: R
 const inPeriod = (value: string | null | undefined, period: Period) => Boolean(value) && value!.slice(0, 10) >= period.start && value!.slice(0, 10) <= period.end;
 const plural = (count: number, singular: string, pluralForm: string) => `${count} ${count > 1 ? pluralForm : singular}`;
 const frDate = (value: string) => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
+
+const dayMs = 86_400_000;
+const shiftDay = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * dayMs).toISOString().slice(0, 10);
+const nf = (value: number, digits = 0) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value).replace(/\u202f|\u00a0/g, " ");
+
+/**
+ * Lignes Search Console d'un rapport, calculées sur l'historique quotidien : CTR = clics ÷ impressions, position moyenne
+ * pondérée par les impressions. La comparaison n'est affichée que si la période précédente est entièrement synchronisée ;
+ * une période partiellement disponible (retard Google ~3 jours) est signalée, jamais extrapolée.
+ */
+export function searchConsoleReportLines(input: NonNullable<ReportInput["searchConsole"]>, period: Period): string[] {
+  const length = Math.round((Date.parse(`${period.end}T00:00:00Z`) - Date.parse(`${period.start}T00:00:00Z`)) / dayMs) + 1;
+  const previous = { start: shiftDay(period.start, -length), end: shiftDay(period.start, -1) };
+  const totals = (from: string, to: string) => {
+    const rows = input.days.filter((row) => row.date >= from && row.date <= to);
+    let clicks = 0, impressions = 0, weighted = 0, weight = 0;
+    for (const row of rows) {
+      clicks += row.clicks; impressions += row.impressions;
+      if (row.position !== null && row.impressions > 0) { weighted += row.position * row.impressions; weight += row.impressions; }
+    }
+    return { days: new Set(rows.map((row) => row.date)).size, last: rows.reduce((max, row) => row.date > max ? row.date : max, ""), clicks, impressions, ctr: impressions ? clicks / impressions : null, position: weight ? weighted / weight : null };
+  };
+  const now = totals(period.start, period.end);
+  if (!now.days) return [];
+  const before = totals(previous.start, previous.end);
+  const comparable = before.days === length && now.days === length;
+  const pct = (a: number, b: number) => b > 0 ? ` (${a >= b ? "+" : "−"}${nf(Math.abs((a - b) / b) * 100)} %)` : "";
+  const ctr = now.ctr === null ? "CTR —" : `CTR ${nf(now.ctr * 100, 1)} %${comparable && before.ctr !== null ? ` (${now.ctr >= before.ctr ? "+" : "−"}${nf(Math.abs(now.ctr - before.ctr) * 100, 1)} pt)` : ""}`;
+  const position = now.position === null ? null : `position moyenne ${nf(now.position, 1)}${comparable && before.position !== null ? ` (${now.position <= before.position ? "gain" : "perte"} de ${nf(Math.abs(now.position - before.position), 1)} place${Math.abs(now.position - before.position) >= 2 ? "s" : ""})` : ""}`;
+  const lines = [`Google Search Console (clics organiques depuis Google) : ${nf(now.clicks)} clics${comparable ? pct(now.clicks, before.clicks) : ""}, ${nf(now.impressions)} impressions${comparable ? pct(now.impressions, before.impressions) : ""}, ${[ctr, position].filter(Boolean).join(", ")}.`];
+  if (now.days < length) lines.push(`Search Console : données disponibles sur ${now.days} jour${now.days > 1 ? "s" : ""} sur ${length} (jusqu’au ${frDate(now.last)}), Google publiant ses données avec quelques jours de retard ; comparaison non calculée.`);
+  else if (!comparable) lines.push("Search Console : période précédente non synchronisée, comparaison non calculée.");
+  return lines;
+}
 
 export function periodLabel(kind: ReportKind, period: Period) {
   if (kind === "google_ads") return period.start === period.end ? `le ${frDate(period.start)} ${period.start.slice(0, 4)}` : `du ${frDate(period.start)} ${period.start.slice(0, 4)} au ${frDate(period.end)} ${period.end.slice(0, 4)}`;
@@ -79,8 +115,11 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
   const responseTimes = checks.map((item) => item.response_ms).filter((value): value is number => value !== null);
   const avgResponse = responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
 
-  const metricLines = input.metrics.flatMap((metric) => {
+  const searchConsoleLines = input.searchConsole ? searchConsoleReportLines(input.searchConsole, p) : [];
+  const metricLines = [...searchConsoleLines, ...input.metrics.flatMap((metric) => {
     const data = metric.data;
+    // L'historique quotidien remplace l'ancien résumé de l'Agent SEO (période différente de celle du rapport).
+    if (metric.provider === "search-console" && searchConsoleLines.length) return [];
     if (metric.provider === "search-console" && typeof data.clicks === "number") return [`Search Console : ${data.clicks} clics, ${data.impressions ?? "?"} impressions${typeof data.position === "number" ? `, position moyenne ${data.position.toFixed(1)}` : ""}.`];
     if (metric.provider === "google-ads" && typeof data.cost === "number") return [`Google Ads : ${data.cost.toFixed(2)} € dépensés, ${data.conversions ?? 0} conversions${typeof data.cpa === "number" ? `, ${data.cpa.toFixed(2)} € par conversion` : ""}.`];
     if (metric.provider === "pagespeed" && typeof data.performance === "number") return [`Performance mobile (PageSpeed) : ${data.performance}/100.`];
@@ -101,7 +140,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
       return result;
     }
     return [];
-  });
+  })];
 
   const empty = !completed.length && !published.length && !newRecommendations.length && !doneActions.length && !incidents.length && !runs.length && !checks.length && !metricLines.length;
   const name = input.client?.name ?? "Tous les clients";

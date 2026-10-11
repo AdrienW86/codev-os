@@ -3,7 +3,9 @@ import { recordSync } from "@/lib/connections/sync";
 // Handler « seo.analyze » : Search Console (28 j vs 28 j précédents) + PageSpeed mobile.
 // Constats → recommandations ; aucune modification du site sans action validée.
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { searchAnalytics, searchConsoleConfigured } from "@/lib/providers/search-console";
+import { searchAnalytics } from "@/lib/providers/search-console";
+import { searchConsoleAccess } from "@/lib/integrations/search-console/connection";
+import { normalizeProperty } from "@/lib/integrations/search-console/model";
 import { pageSpeed } from "@/lib/providers/pagespeed";
 import { readSeoPageContexts } from "@/lib/providers/github";
 import { ProviderError } from "@/lib/providers/errors";
@@ -27,15 +29,18 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
   if (error || !client) throw new RunError("Client introuvable.", false);
   const notes: string[] = [];
   let findings = 0;
-  const property = (searchConnection?.metadata as { property?: string } | null)?.property;
+  // Propriété associée à CE client uniquement ; accès via la connexion OAuth de l'agence (ou l'ancien jeton serveur).
+  const property = normalizeProperty((searchConnection?.metadata as { property?: unknown } | null)?.property);
   const repository = (githubConnection?.metadata as { repository?: string } | null)?.repository;
-  if (searchConsoleConfigured() && property) {
+  const access = property ? await searchConsoleAccess() : null;
+  if (access && property) {
+    const options = { accessToken: access.accessToken };
     // Les données Search Console ont ~3 jours de retard.
     const current = { startDate: day(now, -30), endDate: day(now, -3) }, previous = { startDate: day(now, -58), endDate: day(now, -31) };
     const [pagesNow, pagesBefore, queriesNow, queriesBefore, queryPagesNow] = await Promise.all([
-      searchAnalytics(property, { ...current, dimensions: ["page"] }), searchAnalytics(property, { ...previous, dimensions: ["page"] }),
-      searchAnalytics(property, { ...current, dimensions: ["query"] }), searchAnalytics(property, { ...previous, dimensions: ["query"] }),
-      searchAnalytics(property, { ...current, dimensions: ["query", "page"], rowLimit: 1000 }),
+      searchAnalytics(property, { ...current, dimensions: ["page"] }, options), searchAnalytics(property, { ...previous, dimensions: ["page"] }, options),
+      searchAnalytics(property, { ...current, dimensions: ["query"] }, options), searchAnalytics(property, { ...previous, dimensions: ["query"] }, options),
+      searchAnalytics(property, { ...current, dimensions: ["query", "page"], rowLimit: 1000 }, options),
     ]).catch(async (failure) => { await recordSync(client.id, "search-console", failure); return wrap(failure); });
     await recordSync(client.id, "search-console", null);
     const summary = totals(pagesNow);
@@ -79,7 +84,7 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     }
     notes.push(`Search Console : ${summary.clicks} clics, ${summary.impressions} impressions`);
     if (repository) notes.push(githubContexts.length ? `GitHub : ${githubContexts.length} page(s) rapprochée(s) du code` : "GitHub : dépôt renseigné, aucune page source rapprochée");
-  } else notes.push(searchConsoleConfigured() ? "Propriété Search Console non renseignée" : "Search Console non connectée");
+  } else notes.push(property ? "Search Console non connectée" : "Propriété Search Console non renseignée");
 
   const url = siteUrl(client.website);
   if (url) {

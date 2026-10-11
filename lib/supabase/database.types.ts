@@ -3,6 +3,7 @@ import type { PublicationTables, PublicationFunctions } from "@/lib/publications
 import type { WhatsAppFunctions, WhatsAppTables } from "@/lib/whatsapp/types";
 import type { CoreFunctions, CoreTables } from "@/lib/supabase/core.types";
 import type { AdsWorkspaceTables, AdsWorkspaceFunctions } from "@/lib/supabase/ads-workspace.types";
+import type { SearchConsoleTables } from "@/lib/supabase/search-console.types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -302,7 +303,7 @@ export type ClientServiceInsert = {
 
 export type Database = {
   public: {
-    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & {
+    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & SearchConsoleTables & {
       agent_project_assignments: {
         Row: {agent_id:string;client_id:string;project_id:string;enabled:boolean;created_at:string;updated_at:string};
         Insert: {agent_id:string;client_id:string;project_id:string;enabled?:boolean;created_at?:string;updated_at?:string};
@@ -313,10 +314,11 @@ export type Database = {
         ];
       };
       client_connections: {
-        // credential_reference / connected_at / expires_at: Lot 4.3 P9, written only through the publication connection RPCs.
+        // credential_reference / connected_at / expires_at: Lot 4.3 P9, written only through the publication connection RPCs
+        // for the publication providers; the global Search Console connection writes them directly (opaque reference only).
         Row: { id: string; client_id: string; provider: string; status: string; external_account_id: string | null; metadata: Json; last_checked_at: string | null; created_at: string; updated_at: string; credential_reference: string | null; connected_at: string | null; expires_at: string | null; scope?: "client" | "global"; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
-        Insert: { client_id: string | null; provider: string; status: string; external_account_id?: string | null; metadata: Json; last_checked_at?: string | null; scope?: "client" | "global"; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
-        Update: { status?: string; external_account_id?: string | null; metadata?: Json; last_checked_at?: string | null; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null };
+        Insert: { client_id: string | null; provider: string; status: string; external_account_id?: string | null; metadata: Json; last_checked_at?: string | null; scope?: "client" | "global"; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null; credential_reference?: string | null; connected_at?: string | null };
+        Update: { status?: string; external_account_id?: string | null; metadata?: Json; last_checked_at?: string | null; scopes?: string[]; last_sync_at?: string | null; last_error?: string | null; credential_reference?: string | null; connected_at?: string | null };
         Relationships: [];
       };
       clients: {

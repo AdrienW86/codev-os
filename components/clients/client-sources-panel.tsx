@@ -5,11 +5,14 @@ import { sourceDefinitions } from "@/lib/connections/sources";
 import type { ClientSource } from "@/lib/connections/service";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { saveClientSourceAction } from "@/app/(cockpit)/clients/[id]/source-actions";
+import { propertyLabel, type DiscoveredProperty } from "@/lib/integrations/search-console/model";
 
 const field = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
 
 /** Identifiants des sources de données du client (aucun secret saisi ni affiché). */
-export function ClientSourcesPanel({ clientId, sources, unavailable }: { clientId: string; sources: ClientSource[]; unavailable: boolean }) {
+export function ClientSourcesPanel({ clientId, sources, unavailable, searchConsoleProperties = null }: { clientId: string; sources: ClientSource[]; unavailable: boolean;
+  /** Propriétés du compte Google connecté (null : Search Console non connecté → saisie libre). */
+  searchConsoleProperties?: DiscoveredProperty[] | null }) {
   return (
     <Panel className="p-6">
       <h2 className="font-semibold">Sources de données</h2>
@@ -18,7 +21,8 @@ export function ClientSourcesPanel({ clientId, sources, unavailable }: { clientI
         <ul className="mt-4 grid gap-5 md:grid-cols-3">
           {sourceDefinitions.map((definition) => {
             const source = sources.find((item) => item.provider === definition.provider);
-            const ready = isProviderConfigured(definition.provider);
+            const ready = definition.provider === "search-console" ? searchConsoleProperties !== null || isProviderConfigured(definition.provider) : isProviderConfigured(definition.provider);
+            const choices = definition.provider === "search-console" && searchConsoleProperties?.length ? searchConsoleProperties : null;
             return (
               <li key={definition.provider} className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -28,7 +32,13 @@ export function ClientSourcesPanel({ clientId, sources, unavailable }: { clientI
                 <p className="mt-1 text-xs text-muted">{definition.help} Utilisé par {definition.agent}.</p>
                 <MutationForm action={saveClientSourceAction} fields={{ client_id: clientId, provider: definition.provider }} label="Enregistrer" className="mt-2 space-y-2">
                   <label className="block text-xs text-muted">{definition.label}
-                    <input name="value" defaultValue={source?.value ?? ""} placeholder={definition.placeholder} maxLength={200} autoComplete="off" spellCheck={false} className={field} />
+                    {choices ? (
+                      <select name="value" defaultValue={source?.value ?? ""} className={field}>
+                        <option value="">— Aucune propriété —</option>
+                        {source?.value && !choices.some((item) => item.property === source.value) && <option value={source.value}>{propertyLabel(source.value)} (inaccessible avec le compte connecté)</option>}
+                        {choices.map((item) => <option key={item.property} value={item.property}>{propertyLabel(item.property)}</option>)}
+                      </select>
+                    ) : <input name="value" defaultValue={source?.value ?? ""} placeholder={definition.placeholder} maxLength={300} autoComplete="off" spellCheck={false} className={field} />}
                   </label>
                 </MutationForm>
                 {source?.lastError && <p className="mt-1 text-xs text-warning">{source.lastError}</p>}

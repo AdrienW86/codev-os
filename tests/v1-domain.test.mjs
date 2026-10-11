@@ -161,12 +161,14 @@ test("agenda shows planned automation runs and validates input server-side", () 
 });
 
 test("client data sources: identifiers only, strict formats, no traversal or injection", () => {
-  const sources = loadTs("lib/connections/sources.ts");
+  const sources = loadTs("lib/connections/sources.ts", { "@/lib/integrations/search-console/model": loadTs("lib/integrations/search-console/model.ts") });
   const ok = (provider, value) => sources.normalizeSourceValue(provider, value).ok;
   assert.equal(sources.normalizeSourceValue("search-console", "SC-DOMAIN:Exemple.fr").value, "sc-domain:exemple.fr");
   assert.equal(sources.normalizeSourceValue("search-console", "sc-domain:Exemple.FR").value, "sc-domain:exemple.fr");
   assert.ok(ok("search-console", "https://www.exemple.fr/"));
-  for (const bad of ["http://exemple.fr/", "https://exemple.fr/../admin", "sc-domain:localhost", "javascript:alert(1)", "https://user@exemple.fr/"]) assert.equal(ok("search-console", bad), false, bad);
+  // Les propriétés « préfixe d'URL » historiques en http:// existent dans Search Console et restent associables.
+  assert.equal(sources.normalizeSourceValue("search-console", "http://Exemple.fr/blog/").value, "http://exemple.fr/blog/");
+  for (const bad of ["https://exemple.fr", "https://exemple.fr/../admin", "https://exemple.fr/?q=1", "sc-domain:localhost", "javascript:alert(1)", "https://user@exemple.fr/"]) assert.equal(ok("search-console", bad), false, bad);
   assert.ok(ok("github", "code-v/site-jrenov"));
   for (const bad of ["../etc/passwd", "owner/../repo", "owner/repo/extra", "https://github.com/a/b", "owner"]) assert.equal(ok("github", bad), false, bad);
   assert.ok(ok("vercel", "prj_AbC123"));

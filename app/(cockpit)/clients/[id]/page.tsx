@@ -17,6 +17,7 @@ import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
 import { ClientHealthPanel } from "@/components/clients/client-health-panel";
 import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
+import { readSearchConsoleConnection } from "@/lib/integrations/search-console/connection";
 import { safeRead } from "@/lib/core/safe-read";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
@@ -70,6 +71,11 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const search = await searchParams;
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
+  // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
+  const searchConsoleProperties = tab === "agents" ? (await safeRead("search-console-properties", async () => {
+    const connection = await readSearchConsoleConnection();
+    return connection?.status === "active" ? connection.properties : null;
+  }, null)).data : null;
   const health = tab === "health"
     ? await safeRead("client-health", () => getClientHealthOverview(client.id), {
         searchConsole: null, pageSpeed: null, siteCheck: null, incidents: [], runs: [], opportunities: null, vercelAnalytics: null, github: null, sources: [],
@@ -181,7 +187,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
           <>
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />
-            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} /></div>
+            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} /></div>
           </>
         );
       })()}

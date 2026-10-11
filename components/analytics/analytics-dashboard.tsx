@@ -75,7 +75,7 @@ function KpiCard({ kpi, compare, comparable, days }: { kpi: Kpi; compare: boolea
   );
 }
 
-function Select({ icon, label, value, onChange, children, disabled }: { icon: IconName; label: string; value: string; onChange: (value: string) => void; children: ReactNode; disabled?: boolean }) {
+export function Select({ icon, label, value, onChange, children, disabled }: { icon: IconName; label: string; value: string; onChange: (value: string) => void; children: ReactNode; disabled?: boolean }) {
   return (
     <label className="relative flex min-h-10 w-full min-w-0 items-center">
       <span className="sr-only">{label}</span>
@@ -88,7 +88,7 @@ function Select({ icon, label, value, onChange, children, disabled }: { icon: Ic
   );
 }
 
-function download(name: string, content: string, type: string) {
+export function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -100,7 +100,7 @@ function download(name: string, content: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function StatePanel({ icon, title, tone, children, action }: { icon: IconName; title: string; tone: string; children: ReactNode; action?: ReactNode }) {
+export function StatePanel({ icon, title, tone, children, action }: { icon: IconName; title: string; tone: string; children: ReactNode; action?: ReactNode }) {
   return (
     <Card className="px-6 py-14 text-center">
       <span className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl ${tone}`}><Icon name={icon} width={22} height={22} /></span>
@@ -261,7 +261,7 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground sm:text-[30px]">Analytics — {client.name}</h1>
-            <p className="mt-1.5 text-sm text-muted">Centre de collecte d’informations sur les performances de votre site web.</p>
+            <p className="mt-1.5 text-sm text-muted">Audience mesurée par Vercel Web Analytics : visiteurs et pages vues du site, toutes sources confondues.</p>
           </div>
           <details className="relative shrink-0">
             <summary className={`flex min-h-10 cursor-pointer list-none items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent-strong px-4 text-[13px] font-semibold text-accent-foreground transition-colors hover:bg-accent ${data ? "" : "pointer-events-none opacity-50"}`}>

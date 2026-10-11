@@ -38,13 +38,28 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 - **Diagnostiquer un 502 de `/api/assistant/transcribe`** : Paramètres → Connexions → « Tester la connexion IA » vérifie aussi le modèle de transcription (`ASSISTANT_STT_MODEL`, défaut `whisper-1`), sans audio ni coût. Logs Vercel : `[voice] Transcription en échec` avec `model`, `mime`, `container`, `size`, `kind`, `status`, `code` (jamais la clé, l’audio ni la transcription). L’interface affiche la raison (quota, clé, modèle, format…).
 
 <a id="search-console"></a>
-## Google Search Console — Agent SEO
+## Google Search Console — Données et performances, Agent SEO, rapports
 
-- **Variables** : `GOOGLE_SEARCH_CONSOLE_CLIENT_ID`, `GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET`, `GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN`.
-- **Scope** : `https://www.googleapis.com/auth/webmasters.readonly` (lecture seule).
-- **Callback** : aucun dans l’application. Le jeton de rafraîchissement s’obtient une fois (OAuth Playground ou script local) avec un compte ayant accès aux propriétés des clients.
-- **Par client** : fiche client → Agents → Sources de données → propriété (`sc-domain:exemple.fr` ou `https://www.exemple.fr/`).
-- **Vérifier** : Automatisation « Analyse SEO » sur un client → Exécuter maintenant → résumé « Search Console : N clics » ; Observabilité sans erreur de synchronisation.
+Un compte Google (celui de l’agence) est autorisé **une fois** en OAuth 2.0 ; chaque client est ensuite associé à **une** propriété de ce compte. Une propriété ne peut être associée qu’à un seul client.
+
+- **Scope** : `https://www.googleapis.com/auth/webmasters.readonly` uniquement (lecture seule). La demande utilise `include_granted_scopes=false` : le jeton Search Console ne cumule jamais les scopes Business Profile ou Drive, et ceux-ci ne sont pas modifiés.
+- **URI de redirection à ajouter** dans Google Cloud Console → API et services → Identifiants → client OAuth Web « CODE-V OS » → *URI de redirection autorisés* (ne pas supposer qu’elles existent déjà) :
+  - production : `https://os.code-v.fr/api/integrations/search-console/callback`
+  - développement local (facultatif) : `http://localhost:3000/api/integrations/search-console/callback` (avec `PUBLICATIONS_OAUTH_BASE_URL=http://localhost:3000` en local)
+  - L’URI exacte attendue est aussi affichée dans Paramètres → Connexions → Google Search Console.
+- **Variables** (Vercel → Settings → Environment Variables, environnement Production) :
+  - `PUBLICATIONS_OAUTH_BASE_URL=https://os.code-v.fr` (déjà utilisée par les connexions Publications) ;
+  - `PUBLICATION_CREDENTIALS_KEY` / `PUBLICATION_CREDENTIALS_KEY_ID` (clé AES-256-GCM existante ; domaine de chiffrement distinct pour Search Console) ;
+  - `GOOGLE_SEARCH_CONSOLE_CLIENT_ID` / `GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET` : **facultatives**. Absentes, le client OAuth Web déjà configuré pour Google Business Profile (`GOOGLE_BUSINESS_PROFILE_CLIENT_ID/SECRET`, même projet Google Cloud) est réutilisé. Une seule des deux définie : connexion désactivée (jamais complétée par l’autre client).
+  - `GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN` : ancien mode (jeton serveur), utilisé seulement tant qu’aucune connexion OAuth n’est établie.
+  - `CRON_SECRET` + tâche planifiée vers `/api/internal/scheduler/tick` (voir automation.md) pour la synchronisation quotidienne.
+- **Migration** : `supabase/migrations/20261022000000_search_console_integration.sql` (additive) à appliquer sur Supabase avant usage.
+- **Connexion** : Paramètres → Connexions → « Connecter Google Search Console » → consentement Google → retour avec la liste des propriétés validées (propriétaire, accès complet ou restreint). État OAuth à usage unique (empreinte seule en base, 10 min, même administrateur), PKCE S256, jeton de rafraîchissement chiffré (`integration_credential_secrets`, rôle serveur uniquement), jetons d’accès jamais stockés.
+- **Par client** : fiche client → Agents → Sources de données → propriété choisie parmi celles découvertes (`sc-domain:exemple.fr` ou `https://www.exemple.fr/`).
+- **Synchronisation** : quotidienne (7, 30 et 90 jours, au plus une fois par client et par jour, 3 essais max) ; à la demande depuis « Données et performances » (« Synchroniser maintenant ») ; automatique à l’ouverture si l’instantané a plus de 6 h. Données `final` uniquement (≈ 2-3 jours de retard) : la période affichée est alignée sur le dernier jour consolidé, comparée à la période précédente de même durée. Historique quotidien dans `search_console_daily_metrics` (au-delà des 16 mois conservés par Google).
+- **Agrégation** : CTR = clics ÷ impressions ; position moyenne pondérée par les impressions. Les requêtes anonymisées par Google ne figurent pas dans le tableau des requêtes (les totaux les incluent).
+- **Révocation** : « Déconnecter » supprime le jeton de CODE-V OS sans appeler Google, car le client OAuth peut être partagé avec Google Business Profile et une révocation Google retirerait aussi cet accès pour ce compte. Révocation complète, en connaissance de cause : https://myaccount.google.com/permissions. Un accès révoqué côté Google est détecté (`invalid_grant`) et affiché « Accès révoqué » ; il suffit de reconnecter.
+- **Vérifier** : Paramètres → Connexions → statut « Connecté » et propriétés listées ; Données et performances → onglet « Référencement · Google Search Console » ; Automatisation « Analyse SEO » → résumé « Search Console : N clics ».
 
 <a id="pagespeed"></a>
 ## PageSpeed Insights

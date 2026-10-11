@@ -30,7 +30,7 @@ Légende : **DONE** fonctionnel et testé · **PARTIAL** fonctionnel avec limite
 | Sources de données par client | DONE | Search Console, Vercel, GitHub (identifiants seulement) ; Google Ads via le panneau existant. |
 | Veille tech & IA | DONE · MANUAL (réseau) | Pipeline complet, 3 actualités max sur l’accueil, exemples en repli. Dépend de l’accès sortant aux flux publics en production. |
 | Agent Monitoring | DONE | Contrôles HTTP (SSRF bloqué), incidents dédupliqués, recommandation + action « Correctif technique » à valider. Vercel / GitHub : BLOCKED sans `VERCEL_TOKEN` / `GITHUB_TOKEN`. |
-| Agent SEO | PARTIAL · BLOCKED | Analyse testée sur données simulées ; Search Console BLOCKED sans OAuth (`GOOGLE_SEARCH_CONSOLE_*`). PageSpeed fonctionne sans clé. |
+| Agent SEO | PARTIAL · MANUAL | Analyse testée sur données simulées ; Search Console via la connexion OAuth de Paramètres → Connexions (URI de redirection et migration à appliquer). PageSpeed fonctionne sans clé. |
 | Agent Google Ads | PARTIAL · BLOCKED | Lecture seule, anomalies testées ; BLOCKED sans jeton développeur approuvé + OAuth. Aucune modification de campagne. |
 | Agent Publications | DONE (existant) | Moteur Publications inchangé (kill switches, validation humaine). Intégration au planificateur : NEXT (aucun type d’exécution `publications.*` dans ce lot, volontairement). |
 | Agent Automatisation | NEXT | Déclaré au registre, en pause, sans type d’exécution. |
@@ -44,7 +44,7 @@ Légende : **DONE** fonctionnel et testé · **PARTIAL** fonctionnel avec limite
 | Planificateur | oui | oui (E2E tick 401/200) | `CRON_SECRET` | `vercel.json` (exemple dans automation.md) | Observabilité → « Dernier job planifié » |
 | OpenAI | oui | simulé | `OPENAI_API_KEY` (+ modèles facultatifs) | — | réponse assistant sans « mode simplifié » |
 | Anthropic | oui | simulé | `ANTHROPIC_API_KEY`, `AI_PROVIDER` | — | idem |
-| Search Console | oui | simulé | `GOOGLE_SEARCH_CONSOLE_CLIENT_ID/SECRET/REFRESH_TOKEN` | OAuth `webmasters.readonly`, propriété par client | analyse SEO « N clics » |
+| Search Console | oui (OAuth, synchro, tableau de bord, rapports) | simulé + SQL local | `PUBLICATIONS_OAUTH_BASE_URL`, `PUBLICATION_CREDENTIALS_KEY/_KEY_ID`, client OAuth GBP ou `GOOGLE_SEARCH_CONSOLE_CLIENT_ID/SECRET` | URI `https://os.code-v.fr/api/integrations/search-console/callback`, migration `20261022000000`, propriété par client | Données et performances → Référencement |
 | PageSpeed | oui | simulé | `PAGESPEED_API_KEY` (facultatif) | — | « PageSpeed mobile : N/100 » |
 | Google Ads | oui (lecture) | simulé | `GOOGLE_ADS_CLIENT_ID/SECRET/REFRESH_TOKEN/DEVELOPER_TOKEN`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | jeton développeur approuvé, scope `adwords`, identifiant client | veille Ads → métriques hebdomadaires |
 | Vercel | oui (lecture) | simulé | `VERCEL_TOKEN`, `VERCEL_TEAM_ID` | projet par client | incident sur déploiement en échec |
@@ -52,7 +52,7 @@ Légende : **DONE** fonctionnel et testé · **PARTIAL** fonctionnel avec limite
 | E-mail (Resend) | oui | simulé | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_SENDING_ENABLED` | domaine vérifié | bouton « Envoyer par e-mail » |
 | Meta / GBP / Drive | existant | existant | voir docs Publications | OAuth par projet | voir docs Publications |
 
-Aucun callback OAuth nouveau n’est introduit : Search Console et Google Ads utilisent un jeton de rafraîchissement serveur ; les callbacks Publications existants (`/api/publications/oauth/*/callback`) sont inchangés.
+Search Console a son propre callback OAuth (`/api/integrations/search-console/callback`, voir integrations.md#search-console) ; Google Ads utilise un jeton de rafraîchissement serveur ; les callbacks Publications existants (`/api/publications/oauth/*/callback`) sont inchangés.
 
 ## Tests
 

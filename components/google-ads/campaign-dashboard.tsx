@@ -83,13 +83,13 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
     <section aria-labelledby={titleId} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id={titleId} className="text-lg font-semibold">Campagnes Google Ads</h2>
-        <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-muted">Lecture seule · aucune modification Google Ads</span>
+        <span className="rounded-md bg-surface-raised px-2 py-1 text-xs text-muted">Lecture seule · aucune modification Google Ads</span>
       </div>
       {data?.tracking && saveTracking && <CampaignTrackingEditor key={data.tracking.revision} clientId={clientId} rows={data.campaigns} tracking={data.tracking} save={saveTracking} refresh={() => void fetchPeriod(filters)} />}
       <PeriodControls filters={filters} onChange={commit} busy={view.status === "loading"} />
       {view.status === "loading" && <p role="status" aria-live="polite" className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">Chargement de la période sélectionnée… les chiffres précédents sont masqués.</p>}
       {view.status === "error" && (
-        <div role="alert" className="rounded-xl border border-amber-300/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+        <div role="alert" className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
           <p>{view.message}</p>
           <button type="button" onClick={() => void fetchPeriod(filters)} className="mt-3 min-h-10 rounded-lg border border-border px-3 text-sm text-foreground">Réessayer</button>
         </div>
@@ -201,7 +201,7 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
         <summary className="cursor-pointer text-sm font-medium">Total du compte (toutes campagnes, y compris supprimées)</summary>
         <div className="mt-3"><MetricGrid metrics={data.accountTotals} previous={data.accountPrevious} fmt={fmt} incomplete={[]} /></div>
         {gaps.length ? (
-          <p className="mt-3 text-xs text-amber-200">Écart entre le total du compte et la somme des campagnes renvoyées : {gaps.map((gap) => `${metricLabels[gap.metric]} ${gap.metric === "cost" ? money.format(gap.difference) : fmt.number(gap.difference)}`).join(" · ")}. Les deux mesures ne sont pas interchangeables (campagnes Local Services, supprimées ou métriques non attribuées).</p>
+          <p className="mt-3 text-xs text-warning">Écart entre le total du compte et la somme des campagnes renvoyées : {gaps.map((gap) => `${metricLabels[gap.metric]} ${gap.metric === "cost" ? money.format(gap.difference) : fmt.number(gap.difference)}`).join(" · ")}. Les deux mesures ne sont pas interchangeables (campagnes Local Services, supprimées ou métriques non attribuées).</p>
         ) : <p className="mt-3 text-xs text-muted">Le total du compte correspond à la somme des campagnes renvoyées pour les métriques comparables.</p>}
       </details>
 
@@ -251,7 +251,7 @@ function MetricGrid({ metrics, previous, fmt, incomplete }: { metrics: AdsMetric
         return (
           <div key={metric} className="rounded-lg border border-border p-3">
             <dt className="text-xs text-muted">{metricLabels[metric]}</dt>
-            <dd className="mt-1 font-semibold">{fmt.value(metric, metrics[metric])}{incomplete.includes(metric) && <span className="ml-1 text-xs font-normal text-amber-200" title="Certaines campagnes ne renvoient pas cette métrique">partiel</span>}</dd>
+            <dd className="mt-1 font-semibold">{fmt.value(metric, metrics[metric])}{incomplete.includes(metric) && <span className="ml-1 text-xs font-normal text-warning" title="Certaines campagnes ne renvoient pas cette métrique">partiel</span>}</dd>
             {previous && <dd className="mt-1 text-xs text-muted">{delta === null ? "Comparaison indisponible" : `${delta >= 0 ? "+" : ""}${fmt.number(delta * 100)} % vs ${fmt.value(metric, previous[metric])}`}</dd>}
           </div>
         );
@@ -269,7 +269,7 @@ function CampaignItem({ row, fmt, compare }: { row: CampaignRow; fmt: ReturnType
           <p className="font-medium break-words">{row.name}</p>
           <p className="text-xs text-muted">ID {row.id} · {typeLabel(row.type)}{row.subType && row.subType !== "UNSPECIFIED" ? ` (${row.subType.toLowerCase().replaceAll("_", " ")})` : ""} · {budget}{row.budget.shared ? " · budget partagé" : ""}</p>
         </div>
-        <span className="rounded-md bg-white/5 px-2 py-1 text-xs">{statusLabels[row.status] ?? row.status}</span>
+        <span className="rounded-md bg-surface-raised px-2 py-1 text-xs">{statusLabels[row.status] ?? row.status}</span>
       </div>
       {!row.hasActivity && <p className="mt-2 text-xs text-muted">{row.localServices ? "Métriques de campagne non renvoyées par l’API pour cette période." : "Aucune activité sur la période."}</p>}
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
@@ -285,7 +285,7 @@ const leadTypeLabels: Record<string, string> = { PHONE_CALL: "Appels", MESSAGE: 
 
 function LocalServicesNote({ leads }: { leads: DashboardData["leads"] }) {
   return (
-    <div className="mb-3 rounded-xl border border-border bg-white/[0.02] p-3 text-sm">
+    <div className="mb-3 rounded-xl border border-border bg-surface-raised/60 p-3 text-sm">
       <p className="font-medium">Leads Local Services</p>
       {!leads ? <p className="text-muted">Indisponible.</p>
         : !leads.available ? <p className="text-muted">Indisponible : {leads.reason}</p>
@@ -304,7 +304,7 @@ function ScopeButton({ title, description, label, run, disabled }: { title: stri
       <button type="button" disabled={disabled || state.pending} onClick={async () => { setState({ pending: true }); try { setState(await run()); } catch { setState({ ok: false, message: "Opération impossible. Réessayez." }); } }} className="mt-3 min-h-10 rounded-lg border border-border px-4 text-sm disabled:opacity-50">{state.pending ? "En cours…" : label}</button>
       {state.reused && <button type="button" disabled={state.pending} className="mt-3 min-h-11 rounded-lg border border-border px-3 text-sm" onClick={async () => { setState({ pending: true }); try { setState(await run(true)); } catch { setState({ ok: false, message: "Actualisation impossible." }); } }}>Actualiser la recommandation</button>}
       {state.detail && <div className="mt-3 max-h-[36rem] overflow-y-auto whitespace-pre-wrap text-sm" aria-label="Recommandations détaillées">{state.detail}</div>}
-      {state.message && <p role="status" className={`mt-2 text-sm ${state.ok ? "text-accent" : "text-amber-200"}`}>{state.message}{state.href && <> · <a href={state.href} className="underline">Ouvrir</a></>}</p>}
+      {state.message && <p role="status" className={`mt-2 text-sm ${state.ok ? "text-success" : "text-warning"}`}>{state.message}{state.href && <> · <a href={state.href} className="underline">Ouvrir</a></>}</p>}
     </div>
   );
 }

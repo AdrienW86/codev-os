@@ -23,7 +23,7 @@ export default async function ClientsPage() {
   const watched = watchClients({ clients, projects, tasks, recommendations, actions }, 3);
   return (
     <>
-      <PageHeading eyebrow="Portefeuille" title="Clients" description="Votre portefeuille CODE-V. Les informations clients sont enregistrées dans Supabase." action={<Link href="/clients/new" className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background">+ Nouveau client</Link>} />
+      <PageHeading eyebrow="Portefeuille" title="Clients" description="Votre portefeuille CODE-V. Les informations clients sont enregistrées dans Supabase." action={<Link href="/clients/new" className="rounded-lg bg-accent-strong px-4 py-3 text-sm font-semibold text-accent-foreground">+ Nouveau client</Link>} />
       {watched.length > 0 && (
         <section aria-labelledby="watch-title" className="mb-8">
           <h2 id="watch-title" className="mb-4 font-semibold">À surveiller</h2>

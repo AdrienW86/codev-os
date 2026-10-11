@@ -13,7 +13,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
   const scenario = await getActiveScenario();
   return (
     <SimulationProvider scenarioId={scenario?.id ?? null}>
-      <a href="#main-content" className="sr-only fixed top-4 left-4 z-50 rounded-lg bg-accent p-3 text-background focus:not-sr-only">Aller au contenu</a>
+      <a href="#main-content" className="sr-only fixed top-4 left-4 z-50 rounded-lg bg-accent-strong p-3 text-accent-foreground focus:not-sr-only">Aller au contenu</a>
       <Sidebar />
       <div className="min-h-screen lg:pl-60">
         <MobileNavigation />

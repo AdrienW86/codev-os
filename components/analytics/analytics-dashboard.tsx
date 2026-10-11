@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { loadClientVercelAnalyticsRangeAction } from "@/app/(cockpit)/clients/[id]/health-actions";
 import { Donut, Sparkline, TrafficChart } from "@/components/analytics/charts";
 import { BarTable, Card, GhostButton, IconBadge, WidgetHeader, fmtShare, type BarRow } from "@/components/analytics/widgets";
+import { actionClass } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import type { AnalyticsDashboardState } from "@/lib/analytics/dashboard";
 import {
@@ -21,15 +22,15 @@ const shortDay = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateS
 type ClientOption = { id: string; name: string; connected: boolean };
 
 const kpiStyle: Record<Kpi["key"], { icon: IconName; tone: string; color: string }> = {
-  visitors: { icon: "users", tone: "bg-blue-500/15 text-blue-300", color: "#3b82f6" },
-  pageviews: { icon: "file", tone: "bg-violet-500/15 text-violet-300", color: "#8b5cf6" },
-  pagesPerVisitor: { icon: "activity", tone: "bg-rose-500/15 text-rose-300", color: "#f43f5e" },
-  forms: { icon: "mail", tone: "bg-emerald-500/15 text-emerald-300", color: "#10b981" },
-  cta: { icon: "pointer", tone: "bg-amber-500/15 text-amber-300", color: "#f59e0b" },
-  conversions: { icon: "target", tone: "bg-fuchsia-500/15 text-fuchsia-300", color: "#d946ef" },
+  visitors: { icon: "users", tone: "bg-chart-1/15 text-chart-7", color: "var(--chart-1)" },
+  pageviews: { icon: "file", tone: "bg-chart-2/15 text-chart-2", color: "var(--chart-2)" },
+  pagesPerVisitor: { icon: "activity", tone: "bg-chart-3/15 text-chart-3", color: "var(--chart-3)" },
+  forms: { icon: "mail", tone: "bg-chart-4/15 text-success", color: "var(--chart-4)" },
+  cta: { icon: "pointer", tone: "bg-chart-5/15 text-chart-5", color: "var(--chart-5)" },
+  conversions: { icon: "target", tone: "bg-chart-6/15 text-chart-6", color: "var(--chart-6)" },
 };
 
-const deviceColors = ["#3b82f6", "#8b5cf6", "#93c5fd", "#64748b"];
+const deviceColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-7)", "var(--chart-muted)"];
 const metricLabels: Record<TrendMetric, string> = { visitors: "Visiteurs uniques", pageviews: "Vues de pages", conversions: "Conversions" };
 // Le graphique « Conversions » trace la série quotidienne de tous les événements suivis.
 const metricUnits: Record<TrendMetric, string> = { visitors: "visiteurs", pageviews: "vues", conversions: "événements" };
@@ -43,10 +44,10 @@ function formatKpi(kpi: Kpi) {
 }
 
 function Delta({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-[11px] text-slate-500">—</span>;
+  if (value === null) return <span className="text-[11px] text-subtle">—</span>;
   const up = value >= 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums ${up ? "text-emerald-400" : "text-rose-400"}`}>
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums ${up ? "text-success" : "text-danger"}`}>
       <span aria-hidden="true">{up ? "↑" : "↓"}</span>
       <span className="sr-only">{up ? "en hausse de" : "en baisse de"}</span>
       {up ? "+" : ""}{value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
@@ -60,15 +61,15 @@ function KpiCard({ kpi, compare, comparable, days }: { kpi: Kpi; compare: boolea
     <Card className="flex flex-col gap-2 p-4">
       <div className="flex items-center gap-3">
         <IconBadge name={style.icon} tone={style.tone} />
-        <p className="text-[13.5px] font-medium leading-snug text-slate-200">{kpi.label}</p>
+        <p className="text-[13.5px] font-medium leading-snug text-foreground">{kpi.label}</p>
       </div>
       <div className="flex items-end justify-between gap-2">
-        <p className="text-[28px] font-semibold leading-none tracking-tight tabular-nums text-slate-50">{formatKpi(kpi)}</p>
+        <p className="text-[28px] font-semibold leading-none tracking-tight tabular-nums text-foreground">{formatKpi(kpi)}</p>
         {compare && comparable && kpi.value !== null && <Delta value={kpi.delta} />}
       </div>
       <div className="flex items-end justify-between gap-2">
         <Sparkline values={kpi.spark} color={style.color} />
-        <p className="text-right text-[11px] leading-tight text-slate-400">{kpi.value === null || !compare ? kpi.hint : comparable ? `vs ${days} jours précédents` : "Comparaison indisponible"}</p>
+        <p className="text-right text-[11px] leading-tight text-muted">{kpi.value === null || !compare ? kpi.hint : comparable ? `vs ${days} jours précédents` : "Comparaison indisponible"}</p>
       </div>
     </Card>
   );
@@ -78,11 +79,11 @@ function Select({ icon, label, value, onChange, children, disabled }: { icon: Ic
   return (
     <label className="relative flex min-h-10 w-full min-w-0 items-center">
       <span className="sr-only">{label}</span>
-      <Icon name={icon} width={15} height={15} className="pointer-events-none absolute left-3 text-slate-400" />
-      <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="min-h-10 w-full min-w-0 appearance-none truncate rounded-lg border border-[#22324f] bg-[#0b1322] py-2 pl-9 pr-8 text-[13px] text-slate-100 outline-none transition-colors hover:border-[#2f4670] focus-visible:border-blue-500 disabled:opacity-60">
+      <Icon name={icon} width={15} height={15} className="pointer-events-none absolute left-3 text-muted" />
+      <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="min-h-10 w-full min-w-0 appearance-none truncate rounded-lg border border-border-strong bg-surface-sunken py-2 pl-9 pr-8 text-[13px] text-foreground outline-none transition-colors hover:border-accent/40 focus-visible:border-accent disabled:opacity-60">
         {children}
       </select>
-      <Icon name="chevron" width={14} height={14} className="pointer-events-none absolute right-2.5 text-slate-400" />
+      <Icon name="chevron" width={14} height={14} className="pointer-events-none absolute right-2.5 text-muted" />
     </label>
   );
 }
@@ -103,8 +104,8 @@ function StatePanel({ icon, title, tone, children, action }: { icon: IconName; t
   return (
     <Card className="px-6 py-14 text-center">
       <span className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl ${tone}`}><Icon name={icon} width={22} height={22} /></span>
-      <h2 className="mt-4 text-lg font-semibold text-slate-50">{title}</h2>
-      <div className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">{children}</div>
+      <h2 className="mt-4 text-lg font-semibold text-foreground">{title}</h2>
+      <div className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">{children}</div>
       {action && <div className="mt-6 flex flex-wrap justify-center gap-3">{action}</div>}
     </Card>
   );
@@ -122,14 +123,14 @@ function LatestSnapshot({ latest }: { latest: { periodStart: string; periodEnd: 
   params.set("start", latest.periodStart);
   params.set("end", latest.periodEnd);
   return (
-    <p className="mt-3 text-xs text-slate-400">
+    <p className="mt-3 text-xs text-muted">
       Dernier instantané enregistré : du {shortDay(latest.periodStart)} au {shortDay(latest.periodEnd)}, récupéré le {dateTime(latest.fetchedAt)}.{" "}
-      <Link href={`/analytics?${params.toString()}`} className="text-blue-300 hover:text-blue-200">Consulter cette période</Link>
+      <Link href={`/analytics?${params.toString()}`} className="text-accent hover:text-accent-hover">Consulter cette période</Link>
     </p>
   );
 }
 
-const linkButton = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#22324f] bg-[#0b1322] px-4 text-sm text-slate-100 hover:border-[#2f4670]";
+const linkButton = actionClass("secondary", "min-h-10");
 
 export function AnalyticsDashboard({ clients, client, period, initialCompare, initialChannel, today, state }: {
   clients: ClientOption[];
@@ -222,11 +223,11 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
 
   const sourceRows: BarRow[] = isExpanded("sources")
     ? (data?.topReferrers ?? []).filter((row) => row.label && (channel === "all" || channel === channelOf(row.label))).map((row) => ({
-      key: row.label ?? "", label: <><Icon name={channelIcons[channelOf(row.label ?? "")]} width={14} height={14} className="shrink-0 text-slate-400" /><span className="truncate">{row.label}</span></>, title: `${row.label} · ${channelLabels[channelOf(row.label ?? "")]}`, value: row.visitors ?? 0, share: share(row.visitors ?? 0, visitors),
+      key: row.label ?? "", label: <><Icon name={channelIcons[channelOf(row.label ?? "")]} width={14} height={14} className="shrink-0 text-muted" /><span className="truncate">{row.label}</span></>, title: `${row.label} · ${channelLabels[channelOf(row.label ?? "")]}`, value: row.visitors ?? 0, share: share(row.visitors ?? 0, visitors),
     }))
     : channels.map((row) => ({
       key: row.key,
-      label: <><Icon name={channelIcons[row.key]} width={14} height={14} className="shrink-0 text-slate-400" /><span className="truncate">{row.label}{row.estimated && <span className="ml-1 text-slate-500">(estim.)</span>}</span></>,
+      label: <><Icon name={channelIcons[row.key]} width={14} height={14} className="shrink-0 text-muted" /><span className="truncate">{row.label}{row.estimated && <span className="ml-1 text-subtle">(est.)</span>}</span></>,
       title: row.estimated ? "Visiteurs sans référent identifié par Vercel (total − référents)" : undefined,
       value: row.visitors, share: row.share, highlight: channel === row.key, muted: channel !== "all" && channel !== row.key,
     }));
@@ -247,29 +248,28 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
   return (
     <div className="relative">
       {/* Ambiance bleu nuit propre à cette page. */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 bg-[#060b16] bg-[radial-gradient(ellipse_at_top_right,rgba(37,99,235,0.14),transparent_55%),radial-gradient(ellipse_at_bottom_left,rgba(79,70,229,0.08),transparent_50%)] lg:left-60" />
 
-      <nav aria-label="Fil d’Ariane" className="mb-3 flex flex-wrap items-center gap-1.5 text-[13px] text-slate-400">
-        <Link href="/clients" className="hover:text-slate-200">Clients</Link>
+      <nav aria-label="Fil d’Ariane" className="mb-3 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
+        <Link href="/clients" className="hover:text-foreground">Clients</Link>
         <span aria-hidden="true">›</span>
-        <Link href={`/clients/${client.id}`} className="hover:text-slate-200">{client.name}</Link>
+        <Link href={`/clients/${client.id}`} className="hover:text-foreground">{client.name}</Link>
         <span aria-hidden="true">›</span>
-        <span className="font-medium text-slate-100" aria-current="page">Analytics</span>
+        <span className="font-medium text-foreground" aria-current="page">Analytics</span>
       </nav>
 
       <header className="mb-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-slate-50 sm:text-[30px]">Analytics — {client.name}</h1>
-            <p className="mt-1.5 text-sm text-slate-400">Centre de collecte d’informations sur les performances de votre site web.</p>
+            <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground sm:text-[30px]">Analytics — {client.name}</h1>
+            <p className="mt-1.5 text-sm text-muted">Centre de collecte d’informations sur les performances de votre site web.</p>
           </div>
           <details className="relative shrink-0">
-            <summary className={`flex min-h-10 cursor-pointer list-none items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-gradient-to-b from-blue-500 to-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_6px_20px_-6px_rgba(59,130,246,0.8)] hover:from-blue-400 ${data ? "" : "pointer-events-none opacity-50"}`}>
+            <summary className={`flex min-h-10 cursor-pointer list-none items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent-strong px-4 text-[13px] font-semibold text-accent-foreground transition-colors hover:bg-accent ${data ? "" : "pointer-events-none opacity-50"}`}>
               <Icon name="download" width={15} height={15} /> Exporter
             </summary>
-            <div className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-[#22324f] bg-[#0b1322] p-1 shadow-2xl">
-              <button type="button" onClick={(event) => { exportData("csv"); event.currentTarget.closest("details")?.removeAttribute("open"); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-[#14213a]">CSV (Excel)</button>
-              <button type="button" onClick={(event) => { exportData("json"); event.currentTarget.closest("details")?.removeAttribute("open"); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-[#14213a]">JSON (données brutes)</button>
+            <div className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-border-strong bg-surface-raised p-1 shadow-popover">
+              <button type="button" onClick={(event) => { exportData("csv"); event.currentTarget.closest("details")?.removeAttribute("open"); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-accent/10">CSV (Excel)</button>
+              <button type="button" onClick={(event) => { exportData("json"); event.currentTarget.closest("details")?.removeAttribute("open"); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-accent/10">JSON (données brutes)</button>
             </div>
           </details>
         </div>
@@ -288,7 +288,7 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
               <option value="custom">Personnalisée…</option>
             </Select>
           </div>
-          <div className="order-last col-span-2 md:order-none md:col-span-1 md:w-64">
+          <div className="order-last col-span-2 md:order-none md:col-span-1 md:w-72">
             <Select icon="compare" label="Comparaison" value={compare} onChange={(value) => { const next = value === "none" ? "none" : "previous"; setCompare(next); reflect("compare", next === "none" ? "none" : null); }}>
               <option value="previous">Comparer : période précédente</option>
               <option value="none">Sans comparaison</option>
@@ -303,16 +303,16 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
       </header>
 
       {customOpen && (
-        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-[#1b2942] bg-[#0a1222] p-3">
-          <label className="text-xs text-slate-400">Du
-            <input type="date" value={customStart} max={customEnd || today} onChange={(event) => setCustomStart(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-[#22324f] bg-[#0b1322] px-3 text-sm text-slate-100 [color-scheme:dark]" />
+        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-3">
+          <label className="text-xs text-muted">Du
+            <input type="date" value={customStart} max={customEnd || today} onChange={(event) => setCustomStart(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-border-strong bg-surface-sunken px-3 text-sm text-foreground [color-scheme:dark]" />
           </label>
-          <label className="text-xs text-slate-400">Au
-            <input type="date" value={customEnd} min={customStart} max={today} onChange={(event) => setCustomEnd(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-[#22324f] bg-[#0b1322] px-3 text-sm text-slate-100 [color-scheme:dark]" />
+          <label className="text-xs text-muted">Au
+            <input type="date" value={customEnd} min={customStart} max={today} onChange={(event) => setCustomEnd(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-border-strong bg-surface-sunken px-3 text-sm text-foreground [color-scheme:dark]" />
           </label>
-          <button type="button" onClick={applyCustom} disabled={!customStart || !customEnd || customStart > customEnd || isPending} className="min-h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">Appliquer</button>
-          <button type="button" onClick={() => setCustomOpen(false)} className="min-h-10 rounded-lg px-3 text-sm text-slate-400 hover:text-slate-200">Annuler</button>
-          <p className="w-full text-[11px] text-slate-500">366 jours maximum.</p>
+          <button type="button" onClick={applyCustom} disabled={!customStart || !customEnd || customStart > customEnd || isPending} className={actionClass("primary", "min-h-10")}>Appliquer</button>
+          <button type="button" onClick={() => setCustomOpen(false)} className="min-h-10 rounded-lg px-3 text-sm text-muted hover:text-foreground">Annuler</button>
+          <p className="w-full text-[11px] text-subtle">366 jours maximum.</p>
         </div>
       )}
 
@@ -320,7 +320,7 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
         {isPending && <p role="status" className="sr-only">Chargement des données…</p>}
 
         {state.status === "not_connected" && (
-          <StatePanel icon="link" title="Source non connectée" tone="bg-amber-400/10 text-amber-300" action={state.reason === "project"
+          <StatePanel icon="link" title="Source non connectée" tone="bg-warning/10 text-warning" action={state.reason === "project"
             ? <Link href={`/clients/${client.id}?tab=agents`} className={linkButton}>Connecter le projet Vercel</Link>
             : <Link href="/settings" className={linkButton}>Voir les intégrations</Link>}>
             {state.reason === "project"
@@ -331,29 +331,29 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
         )}
 
         {state.status === "unavailable" && (
-          <StatePanel icon="alert" title="Données indisponibles pour cette période" tone="bg-rose-500/10 text-rose-300" action={<button type="button" onClick={refresh} className={linkButton}><Icon name="refresh" width={15} height={15} /> Réessayer</button>}>
+          <StatePanel icon="alert" title="Données indisponibles pour cette période" tone="bg-danger/10 text-danger" action={<button type="button" onClick={refresh} className={linkButton}><Icon name="refresh" width={15} height={15} /> Réessayer</button>}>
             <p>La synchronisation Vercel a échoué pour la période du {shortDay(period.start)} au {shortDay(period.end)} et aucun instantané n’est enregistré pour cette période. Aucune donnée d’une autre période n’est affichée à la place.</p>
-            {state.lastError && <p className="mt-2 break-words text-xs text-slate-400">Cause : {state.lastError}</p>}
+            {state.lastError && <p className="mt-2 break-words text-xs text-muted">Cause : {state.lastError}</p>}
             {state.latest && <LatestSnapshot latest={state.latest} />}
-            {refreshError && <p className="mt-2 text-rose-300">{refreshError}</p>}
+            {refreshError && <p className="mt-2 text-danger">{refreshError}</p>}
           </StatePanel>
         )}
 
         {state.status === "ready" && data && <div className="space-y-5">
           {(state.stale || refreshError) && (
-            <div role="note" className="rounded-xl border border-amber-300/20 bg-amber-400/[0.07] px-4 py-3 text-sm text-amber-200">
+            <div role="note" className="rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-sm text-warning">
               {refreshError ?? `Données anciennes : instantané de cette période récupéré le ${dateTime(state.fetchedAt)}. La synchronisation Vercel a échoué, les chiffres ne sont pas à jour.`}
-              {!refreshError && state.syncError && <p className="mt-1 break-words text-xs text-amber-200/80">Cause : {state.syncError}</p>}
+              {!refreshError && state.syncError && <p className="mt-1 break-words text-xs text-warning/80">Cause : {state.syncError}</p>}
             </div>
           )}
           {failedSections.length > 0 && (
-            <div role="note" className="rounded-xl border border-[#22324f] bg-[#0b1322] px-4 py-3 text-xs leading-5 text-slate-300">
-              <p className="font-medium text-slate-200">Certaines données n’ont pas pu être récupérées auprès de Vercel :</p>
+            <div role="note" className="rounded-xl border border-border-strong bg-surface-sunken px-4 py-3 text-xs leading-5 text-muted">
+              <p className="font-medium text-foreground">Certaines données n’ont pas pu être récupérées auprès de Vercel :</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">{failedSections.map((line) => <li key={line} className="break-words">{line}</li>)}</ul>
             </div>
           )}
           {legacySnapshot && (
-            <p role="note" className="rounded-xl border border-[#22324f] bg-[#0b1322] px-4 py-3 text-xs text-slate-300">Cet instantané a été enregistré dans un format antérieur : série quotidienne, comparaison et plusieurs répartitions n’y figurent pas. Elles apparaîtront après une synchronisation réussie.</p>
+            <p role="note" className="rounded-xl border border-border-strong bg-surface-sunken px-4 py-3 text-xs text-muted">Cet instantané a été enregistré dans un format antérieur : série quotidienne, comparaison et plusieurs répartitions n’y figurent pas. Elles apparaîtront après une synchronisation réussie.</p>
           )}
 
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 2xl:grid-cols-6">
@@ -363,17 +363,17 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
           <Card>
             <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
               <div className="flex min-w-0 items-center gap-3">
-                <IconBadge name="analytics" tone="bg-[#14213a] text-slate-300" />
+                <IconBadge name="analytics" tone="bg-accent/10 text-accent-hover" />
                 <div>
-                  <h2 className="text-[15px] font-semibold text-slate-50">Évolution du trafic</h2>
-                  <p className="text-xs text-slate-400">{metricLabels[metric]} {granularityLabels[activeGranularity].toLowerCase()} sur {period.preset === "custom" ? "la période" : `les ${periodLabel(period)}`}{compare === "previous" && metric !== "conversions" && previousSeries.length > 0 ? " · pointillés : période précédente" : ""}</p>
+                  <h2 className="text-[15px] font-semibold text-foreground">Évolution du trafic</h2>
+                  <p className="text-xs text-muted">{metricLabels[metric]} {granularityLabels[activeGranularity].toLowerCase()} sur {period.preset === "custom" ? "la période" : `les ${periodLabel(period)}`}{compare === "previous" && metric !== "conversions" && previousSeries.length > 0 ? " · pointillés : période précédente" : ""}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div role="group" aria-label="Métrique du graphique" className="flex rounded-xl border border-[#22324f] bg-[#0b1322] p-1">
+                <div role="group" aria-label="Métrique du graphique" className="flex rounded-xl border border-border-strong bg-surface-sunken p-1">
                   {(["visitors", "pageviews", "conversions"] as TrendMetric[]).map((key) => {
                     const disabled = key === "conversions" && !conversionsAvailable;
-                    return <button key={key} type="button" disabled={disabled} aria-pressed={metric === key} onClick={() => setMetric(key)} title={disabled ? "Aucune série quotidienne d’événements fournie par Vercel pour cette période" : undefined} className={`rounded-lg px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${metric === key ? "bg-[#1d2d4d] font-medium text-white shadow-inner" : "text-slate-400 hover:text-slate-200"}`}>{metricLabels[key]}</button>;
+                    return <button key={key} type="button" disabled={disabled} aria-pressed={metric === key} onClick={() => setMetric(key)} title={disabled ? "Aucune série quotidienne d’événements fournie par Vercel pour cette période" : undefined} className={`rounded-lg px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${metric === key ? "bg-accent-strong font-medium text-accent-foreground" : "text-muted hover:text-foreground"}`}>{metricLabels[key]}</button>;
                   })}
                 </div>
                 <div className="w-36">
@@ -385,13 +385,13 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
             </div>
             <div className="px-3 pb-3 pt-4 sm:px-4">
               {trendMessage
-                ? <p className="flex min-h-48 items-center justify-center px-6 text-center text-sm leading-6 text-slate-400">{trendMessage}</p>
+                ? <p className="flex min-h-48 items-center justify-center px-6 text-center text-sm leading-6 text-muted">{trendMessage}</p>
                 : <TrafficChart points={series} previous={compare === "previous" ? previousSeries : undefined} partialLast={activeGranularity === "day" && period.end === today} label={`${metricLabels[metric]} — ${periodLabel(period)}`} metricLabel={metricUnits[metric]} />}
             </div>
           </Card>
 
           {channel !== "all" && (
-            <p role="note" className="text-xs text-slate-400">
+            <p role="note" className="text-xs text-muted">
               Filtre « {channelLabels[channel]} » : {nf.format(channels.find((row) => row.key === channel)?.visitors ?? 0)} visiteurs ({fmtShare(channels.find((row) => row.key === channel)?.share ?? null)}). Vercel ne segmente pas les autres widgets par canal ; le filtre s’applique aux sources de trafic.
             </p>
           )}
@@ -418,13 +418,13 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
                   <ul className="min-w-0 flex-1 space-y-3">
                     {devices.map((row, index) => (
                       <li key={row.label} className="flex items-center justify-between gap-3 text-[13px]">
-                        <span className="flex items-center gap-2.5 text-slate-200"><span className="h-3 w-3 rounded-[4px]" style={{ background: deviceColors[index % deviceColors.length] }} aria-hidden="true" />{deviceLabel(row.label ?? "")}</span>
-                        <span className="font-semibold tabular-nums text-slate-100">{fmtShare(share(row.visitors ?? 0, deviceTotal))}</span>
+                        <span className="flex items-center gap-2.5 text-foreground"><span className="h-3 w-3 rounded-[4px]" style={{ background: deviceColors[index % deviceColors.length] }} aria-hidden="true" />{deviceLabel(row.label ?? "")}</span>
+                        <span className="font-semibold tabular-nums text-foreground">{fmtShare(share(row.visitors ?? 0, deviceTotal))}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-              ) : <p className="px-5 pb-6 pt-4 text-sm text-slate-400">{sectionEmptyMessage(data, "devices", "Aucun appareil enregistré sur la période.")}</p>}
+              ) : <p className="px-5 pb-6 pt-4 text-sm text-muted">{sectionEmptyMessage(data, "devices", "Aucun appareil enregistré sur la période.")}</p>}
             </Card>
             <Card>
               <WidgetHeader icon="monitor" title="Systèmes d’exploitation" />
@@ -434,26 +434,26 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
               <WidgetHeader icon="activity" title="Événements personnalisés" action={events.length > 5 ? <GhostButton onClick={() => toggle("events")} pressed={isExpanded("events")}>{isExpanded("events") ? "Réduire" : "Tous les événements"} <Icon name="arrow" width={13} height={13} /></GhostButton> : undefined} />
               {events.length ? (
                 <div className="px-5 pb-5 pt-4">
-                  <div className="grid grid-cols-[minmax(0,1fr)_4rem_3.5rem] gap-3 border-b border-[#16233b] pb-2 text-[10px] font-medium uppercase tracking-wider text-slate-500"><span>Événement</span><span className="text-right">Visiteurs</span><span className="text-right">Total</span></div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_4rem_3.5rem] gap-3 border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-subtle"><span>Événement</span><span className="text-right">Visiteurs</span><span className="text-right">Total</span></div>
                   <ul className="mt-1.5">
                     {shownEvents.map((row) => {
                       const kind = classifyEvent(row.label ?? "");
                       return (
                         <li key={row.label} className="grid grid-cols-[minmax(0,1fr)_4rem_3.5rem] items-center gap-3 py-1.5 text-[13px]">
-                          <span className="flex min-w-0 items-center gap-2.5 text-slate-200" title={row.label}>
-                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${kind === "form" ? "bg-blue-500/15 text-blue-300" : kind === "cta" ? "bg-emerald-500/15 text-emerald-300" : "bg-fuchsia-500/15 text-fuchsia-300"}`}><Icon name={kind === "form" ? "mail" : kind === "cta" ? "pointer" : "activity"} width={12} height={12} /></span>
+                          <span className="flex min-w-0 items-center gap-2.5 text-foreground" title={row.label}>
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${kind === "form" ? "bg-chart-1/15 text-chart-7" : kind === "cta" ? "bg-chart-4/15 text-success" : "bg-chart-6/15 text-chart-6"}`}><Icon name={kind === "form" ? "mail" : kind === "cta" ? "pointer" : "activity"} width={12} height={12} /></span>
                             <span className="truncate">{eventLabel(row.label ?? "")}</span>
                           </span>
-                          <span className="text-right tabular-nums text-slate-300">{nf.format(row.visitors ?? 0)}</span>
-                          <span className="text-right font-semibold tabular-nums text-slate-100">{nf.format(row.count ?? 0)}</span>
+                          <span className="text-right tabular-nums text-muted">{nf.format(row.visitors ?? 0)}</span>
+                          <span className="text-right font-semibold tabular-nums text-foreground">{nf.format(row.count ?? 0)}</span>
                         </li>
                       );
                     })}
                   </ul>
                 </div>
               ) : sectionStatus(data, "events").state === "ok"
-                ? <p className="px-5 pb-6 pt-4 text-sm leading-6 text-slate-400">Vercel n’a collecté aucun événement personnalisé sur la période. Les clics (téléphone, email, CTA) et formulaires doivent être envoyés avec <code className="text-slate-300">track()</code> de Vercel Analytics pour être comptés.</p>
-                : <p className="break-words px-5 pb-6 pt-4 text-sm leading-6 text-slate-400">{sectionEmptyMessage(data, "events", "")}</p>}
+                ? <p className="px-5 pb-6 pt-4 text-sm leading-6 text-muted">Vercel n’a collecté aucun événement personnalisé sur la période. Les clics (téléphone, email, CTA) et formulaires doivent être envoyés avec <code className="text-muted">track()</code> de Vercel Analytics pour être comptés.</p>
+                : <p className="break-words px-5 pb-6 pt-4 text-sm leading-6 text-muted">{sectionEmptyMessage(data, "events", "")}</p>}
             </Card>
           </div>
 
@@ -467,20 +467,20 @@ export function AnalyticsDashboard({ clients, client, period, initialCompare, in
                 <WidgetHeader icon="recommendations" title="Lecture automatique" />
                 <ul className="space-y-2.5 px-5 pb-5 pt-4">
                   {(data.insights ?? []).map((item, index) => (
-                    <li key={index} className="rounded-xl border border-[#16233b] bg-[#0b1322]/70 p-3">
-                      <p className={`text-sm font-medium ${item.kind === "positive" ? "text-emerald-300" : item.kind === "warning" ? "text-amber-300" : "text-slate-100"}`}>{item.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-400">{item.detail}</p>
+                    <li key={index} className="rounded-xl border border-border bg-surface-raised/60 p-3">
+                      <p className={`text-sm font-medium ${item.kind === "positive" ? "text-success" : item.kind === "warning" ? "text-warning" : "text-foreground"}`}>{item.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>
                     </li>
                   ))}
-                  {!data.insights?.length && <li className="text-sm text-slate-400">Aucun signal notable sur cette période.</li>}
+                  {!data.insights?.length && <li className="text-sm text-muted">Aucun signal notable sur cette période.</li>}
                 </ul>
               </Card>
             </div>
           )}
 
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-subtle">
             <span>Source : Vercel Web Analytics · {shortDay(state.periodStart)} → {shortDay(state.periodEnd)} · synchronisé le {dateTime(state.fetchedAt)}.</span>
-            <button type="button" onClick={refresh} disabled={isPending} className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 disabled:opacity-50"><Icon name="refresh" width={12} height={12} />{isPending ? "Actualisation…" : "Actualiser"}</button>
+            <button type="button" onClick={refresh} disabled={isPending} className="inline-flex items-center gap-1 text-accent-hover hover:text-foreground disabled:opacity-50"><Icon name="refresh" width={12} height={12} />{isPending ? "Actualisation…" : "Actualiser"}</button>
           </p>
         </div>}
       </div>

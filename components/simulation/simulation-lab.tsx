@@ -30,7 +30,7 @@ export function SimulationLab({ scenarios }: { scenarios: ScenarioSummary[] }) {
           <div className="grid gap-2 sm:grid-cols-2">
             {scenarios.map((item) => (
               <label key={item.id} className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors ${selected === item.id ? "border-accent/60 bg-accent/5" : "border-border hover:border-accent/30"}`}>
-                <input type="radio" name="scenario" value={item.id} checked={selected === item.id} onChange={() => setSelected(item.id)} className="mt-1 accent-[#b8f49b]" />
+                <input type="radio" name="scenario" value={item.id} checked={selected === item.id} onChange={() => setSelected(item.id)} className="mt-1 accent-accent" />
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2 font-medium">{item.name}{scenario?.id === item.id && <StatusBadge label="Actif" tone="blue" />}</span>
                   <span className="mt-1 block text-sm text-muted">{item.description}</span>

@@ -26,7 +26,7 @@ function Control({ id, action, label, pendingLabel, className, confirm }: { id: 
   );
 }
 
-const primary = "min-h-10 rounded-lg bg-accent px-3 text-xs font-semibold text-background disabled:opacity-60";
+const primary = "min-h-10 rounded-lg bg-accent-strong px-3 text-xs font-semibold text-accent-foreground disabled:opacity-60";
 const secondary = "min-h-10 rounded-lg border border-border px-3 text-xs font-medium disabled:opacity-60";
 const accent = "min-h-10 rounded-lg border border-accent/40 px-3 text-xs font-medium text-accent disabled:opacity-60";
 

@@ -98,7 +98,7 @@ export function SimAgenda() {
                 <ul className="mt-2 space-y-1.5">
                   {entries.map((entry) => (
                     <li key={entry.key}>
-                      <button type="button" onClick={() => openEntry(entry)} className={`w-full rounded-md border-l-2 bg-white/[0.03] px-2 py-1.5 text-left text-xs hover:bg-white/[0.07] ${kindTone[entry.kind]}`}>
+                      <button type="button" onClick={() => openEntry(entry)} className={`w-full rounded-md border-l-2 bg-surface-raised/60 px-2 py-1.5 text-left text-xs hover:bg-surface-raised ${kindTone[entry.kind]}`}>
                         <span className="block text-muted">{entry.time}</span><span className="block break-words">{entry.title}</span>
                       </button>
                     </li>
@@ -110,8 +110,8 @@ export function SimAgenda() {
         })}
       </ol>
       <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-        <span><span aria-hidden="true" className="text-accent">▍</span>Tâche</span><span><span aria-hidden="true" className="text-sky-400">▍</span>Rendez-vous</span>
-        <span><span aria-hidden="true" className="text-amber-300">▍</span>Contrôle / échéance</span><span><span aria-hidden="true" className="text-violet-400">▍</span>Analyse d’agent planifiée</span>
+        <span><span aria-hidden="true" className="text-accent">▍</span>Tâche</span><span><span aria-hidden="true" className="text-info">▍</span>Rendez-vous</span>
+        <span><span aria-hidden="true" className="text-warning">▍</span>Contrôle / échéance</span><span><span aria-hidden="true" className="text-chart-2">▍</span>Analyse d’agent planifiée</span>
       </p>
 
       <Dialog open={creating} onClose={() => setCreating(false)} title="Ajouter à l’agenda" description="Simulation : rien n’est enregistré en base."

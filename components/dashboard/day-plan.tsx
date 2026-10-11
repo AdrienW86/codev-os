@@ -6,7 +6,7 @@ import type { TaskRecord } from "@/lib/tasks/types";
 function TaskList({ title, tasks, empty, tone = "neutral" }: { title: string; tasks: TaskRecord[]; empty: string; tone?: "neutral" | "amber" }) {
   return (
     <div className="min-w-0">
-      <h3 className={`flex items-center justify-between text-xs font-medium tracking-[0.14em] uppercase ${tone === "amber" ? "text-amber-300" : "text-muted"}`}>
+      <h3 className={`flex items-center justify-between text-xs font-medium tracking-[0.14em] uppercase ${tone === "amber" ? "text-warning" : "text-muted"}`}>
         <span>{title}</span><span aria-hidden="true">{tasks.length}</span>
       </h3>
       {tasks.length ? (

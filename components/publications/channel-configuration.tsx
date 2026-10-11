@@ -22,7 +22,7 @@ export function ChannelConfiguration({projectId,view,connections=null,oauthBanne
   <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2>
    <p className="mt-2 text-sm text-muted">Canaux de diffusion du projet et planning hebdomadaire de chacun. Le nombre de publications par semaine découle des créneaux actifs. Aucune publication n’est diffusée depuis cette page.</p>
    {view.legacy&&<LegacyBanner projectId={projectId}/>}
-   {view.suspended&&<p role="status" data-channel-state="suspended" className="mt-4 rounded-lg border border-amber-500 p-3 text-sm">{view.suspended}</p>}
+   {view.suspended&&<p role="status" data-channel-state="suspended" className="mt-4 rounded-lg border border-warning/60 p-3 text-sm">{view.suspended}</p>}
    {!view.legacy&&<p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${projectId}/calendar`}>Préparer les prochaines semaines depuis le calendrier →</Link></p>}
    {view.calendarNotice&&<p role="status" data-channel-transition="calendar" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.calendarNotice}</p>}
    {view.agentNotice&&<p role="status" data-channel-transition="agent" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.agentNotice}</p>}
@@ -34,9 +34,9 @@ export function ChannelConfiguration({projectId,view,connections=null,oauthBanne
 
 function LegacyBanner({projectId}:{projectId:string}){
  const [state,confirm,pending]=useActionState(confirmChannelsAction,initial);
- return <form action={confirm} data-legacy-banner="true" className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500 p-3 text-sm"><input type="hidden" name="project_id" value={projectId}/>
+ return <form action={confirm} data-legacy-banner="true" className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/60 p-3 text-sm"><input type="hidden" name="project_id" value={projectId}/>
   <Badge tone="amber">Configuration héritée</Badge><span className="flex-1">Ces canaux sont déduits du type du projet. Confirmez-les pour les activer, les désactiver et planifier chacun d’eux.</span>
-  <button disabled={pending} className="rounded-lg bg-accent px-4 py-2 font-semibold text-background">{pending?'Confirmation…':'Confirmer / personnaliser les canaux'}</button>
+  <button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 font-semibold text-accent-foreground">{pending?'Confirmation…':'Confirmer / personnaliser les canaux'}</button>
   {state.message&&<p role="status" className="w-full">{state.message}</p>}</form>;
 }
 
@@ -57,7 +57,7 @@ function ChannelToggle({projectId,card}:{projectId:string;card:ChannelCard}){
  return <form action={toggle} className="mt-4 flex flex-wrap items-center gap-3"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="platform" value={card.platform}/>
   <input type="hidden" name="enabled" value={active?'false':'true'}/>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm">{pending?'Enregistrement…':active?'Désactiver le canal':'Activer le canal'}</button>
-  {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>;
+  {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }
 
 type Row=ConfigurationSlot&{key:number};
@@ -76,7 +76,7 @@ function ScheduleEditor({projectId,card}:{projectId:string;card:ChannelCard}){
   <input type="hidden" name="timezone" value={timezone}/><input type="hidden" name="slots" value={JSON.stringify(scheduleSlotsPayload(rows))}/>
   <div className="flex flex-wrap items-center justify-between gap-2"><label className="text-sm"><input type="checkbox" name="enabled" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Planning actif</label>
    {!enabled&&<Badge>Planning désactivé</Badge>}</div>
-  {card.state==='inactive'&&<p className="text-xs text-amber-300">Canal inactif : ce planning est conservé mais n’est pas utilisé.</p>}
+  {card.state==='inactive'&&<p className="text-xs text-warning">Canal inactif : ce planning est conservé mais n’est pas utilisé.</p>}
   <p className="text-xs text-muted">Fuseau horaire <span className="text-foreground">{timezone}</span></p>
   {sorted.length?<ul className="space-y-2">{sorted.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2" data-slot-row="true">
    <select aria-label="Jour" className={input} value={r.weekday} onChange={e=>update(r.key,{weekday:Number(e.target.value)})}>{WEEKDAY_LABELS.map((d,i)=><option key={d} value={i+1}>{d}</option>)}</select>
@@ -87,7 +87,7 @@ function ScheduleEditor({projectId,card}:{projectId:string;card:ChannelCard}){
   {restorable.length>0&&<div className="text-xs text-muted"><p>Anciens créneaux désactivés</p><ul className="mt-1 flex flex-wrap gap-2">{restorable.map(s=><li key={`${s.weekday}-${s.localTime}`}>
    <button type="button" onClick={()=>add(s)} className="rounded-full border border-border px-2 py-0.5">Réactiver {weekdayLabel(s.weekday)} {s.localTime}</button></li>)}</ul></div>}
   <p className="text-sm font-medium" data-posts-per-week="true">{postsPerWeekLabel(rows.length)}</p>
-  {error&&<p role="alert" className="text-sm text-red-400">{error}</p>}
-  <button disabled={pending||Boolean(error)} className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background">{pending?'Enregistrement…':`Enregistrer ${card.label}`}</button>
-  {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>;
+  {error&&<p role="alert" className="text-sm text-danger">{error}</p>}
+  <button disabled={pending||Boolean(error)} className="w-full rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground">{pending?'Enregistrement…':`Enregistrer ${card.label}`}</button>
+  {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }

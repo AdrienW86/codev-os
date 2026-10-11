@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { actionClass } from "@/components/ui/button";
 
 /**
  * Socle commun des modales et panneaux : `<dialog>` natif (focus piégé, Escape),
@@ -34,12 +35,12 @@ function BaseDialog({ open, onClose, title, description, children, footer, varia
       // Ignore la fermeture d’une modale imbriquée (React propage l’événement au parent).
       onClose={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onClick={(event) => { if (event.target === ref.current) ref.current?.close(); }}
-      className={`${placement} flex-col overflow-hidden border border-border bg-surface p-0 text-foreground backdrop:bg-black/70 open:flex`}
+      className={`${placement} flex-col overflow-hidden border border-border-strong bg-surface p-0 text-foreground shadow-popover backdrop:bg-overlay open:flex`}
     >
       <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="flex min-w-0 items-start gap-2">
           {onBack && (
-            <button type="button" onClick={onBack} aria-label="Retour" className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground">
+            <button type="button" onClick={onBack} aria-label="Retour" className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground">
               <span aria-hidden="true" className="text-lg">←</span>
             </button>
           )}
@@ -48,7 +49,7 @@ function BaseDialog({ open, onClose, title, description, children, footer, varia
             {description && <div className="mt-1 text-sm text-muted">{description}</div>}
           </div>
         </div>
-        <button type="button" onClick={() => ref.current?.close()} aria-label="Fermer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground">
+        <button type="button" onClick={() => ref.current?.close()} aria-label="Fermer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground">
           <span aria-hidden="true" className="text-xl leading-none">×</span>
         </button>
       </div>
@@ -81,8 +82,8 @@ export function ConfirmationDialog({ open, title, message, confirmLabel = "Confi
       variant="modal"
       size="sm"
       footer={<>
-        <button type="button" onClick={onCancel} className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium hover:border-accent/50">{cancelLabel}</button>
-        <button type="button" onClick={onConfirm} className={`min-h-11 rounded-lg px-4 text-sm font-semibold ${tone === "danger" ? "border border-red-400/40 text-red-300 hover:bg-red-400/10" : "bg-accent text-background hover:bg-accent/90"}`}>{confirmLabel}</button>
+        <button type="button" onClick={onCancel} className={actionClass("secondary")}>{cancelLabel}</button>
+        <button type="button" onClick={onConfirm} className={actionClass(tone === "danger" ? "danger" : "primary")}>{confirmLabel}</button>
       </>}
     >
       <div className="text-sm leading-6 text-muted">{message}</div>

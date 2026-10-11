@@ -11,7 +11,7 @@ export function ProjectForm({ clients, project }: { clients: Client[]; project?:
   const selectedAction = project ? updateProjectAction : createProjectAction;
   const [state, action, pending] = useActionState<ProjectFormState, FormData>(selectedAction, {});
   const inputClass = "mt-2 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm disabled:opacity-60";
-  const error = (field: ProjectField) => state.errors?.[field] && <p id={`${field}-error`} className="mt-2 text-xs text-amber-300">{state.errors[field]}</p>;
+  const error = (field: ProjectField) => state.errors?.[field] && <p id={`${field}-error`} className="mt-2 text-xs text-warning">{state.errors[field]}</p>;
 
   return (
     <form action={action} className="space-y-6">
@@ -68,8 +68,8 @@ export function ProjectForm({ clients, project }: { clients: Client[]; project?:
           {error("responsible")}
         </div>
       </div>
-      {state.message && <p role="alert" className="text-sm text-amber-300">{state.message}</p>}
-      <button type="submit" disabled={pending || clients.length === 0} className="rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-background disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement…" : project ? "Enregistrer les modifications" : "Créer le projet"}</button>
+      {state.message && <p role="alert" className="text-sm text-warning">{state.message}</p>}
+      <button type="submit" disabled={pending || clients.length === 0} className="rounded-lg bg-accent-strong px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement…" : project ? "Enregistrer les modifications" : "Créer le projet"}</button>
     </form>
   );
 }

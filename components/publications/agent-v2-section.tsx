@@ -25,7 +25,7 @@ export function AgentV2Section({projectId,status,config,upcoming,openCount,runs=
     <ul className="mt-2 space-y-3 text-sm" data-agent-v2-runs="true">{runs.map(r=><li key={r.id} className="space-y-1 rounded-lg border border-border p-3">
      <p><span className="capitalize">{formatDay(r.createdAt.slice(0,10))}</span> · {r.drafts} brouillon{r.drafts>1?'s':''}</p>
      <AgentV2MediaSummary media={r.media}/>
-     {r.media.state==='failed'&&<p className="text-red-400">Les brouillons ont été créés mais le média n’a pas pu être attaché.</p>}
+     {r.media.state==='failed'&&<p className="text-danger">Les brouillons ont été créés mais le média n’a pas pu être attaché.</p>}
      {r.retryable&&<AgentV2MediaRetryForm runId={r.id}/>}</li>)}</ul></>}</Panel>
   <details open={status==='unconfigured'} className="mt-6 rounded-lg border border-border p-6"><summary className="cursor-pointer font-semibold">Configuration de l’agent</summary>
    <AgentConfigurationForm key={config?.updated_at??'new'} projectId={projectId} config={config}/></details></>;

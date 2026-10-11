@@ -44,7 +44,7 @@ export function SystemStatus({ errors }: { errors: SystemHealth["connectionError
                     <summary className="cursor-pointer text-muted hover:text-foreground">Comment configurer</summary>
                     <div className="mt-2 space-y-1 text-muted">
                       <p>{status.requirement.setup}</p>
-                      {status.missing.length > 0 && <p>Variables serveur manquantes : {status.missing.map((name) => <code key={name} className="mr-1 rounded bg-white/5 px-1">{name}</code>)}</p>}
+                      {status.missing.length > 0 && <p>Variables serveur manquantes : {status.missing.map((name) => <code key={name} className="mr-1 rounded bg-surface-raised px-1">{name}</code>)}</p>}
                       {lastError && <p>Dernière erreur : {lastError}</p>}
                       <p>Documentation : <code>{status.requirement.docs}</code></p>
                     </div>
@@ -77,10 +77,10 @@ export function Observability({ health, unavailable }: { health: SystemHealth | 
         <SectionHeader title="Jobs des 7 derniers jours" description={`Dernier job planifié : ${health.lastScheduledJobAt ? formatDateTime(health.lastScheduledJobAt) : "aucun"}`} />
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {Object.entries(jobLabels).map(([key, label]) => (
-            <Panel key={key} className="p-4"><dt className="text-xs text-muted">{label}</dt><dd className={`mt-1 text-2xl font-semibold ${key === "failed" && health.jobCounts.failed ? "text-red-300" : ""}`}>{health.jobCounts[key as keyof typeof jobLabels]}</dd></Panel>
+            <Panel key={key} className="p-4"><dt className="text-xs text-muted">{label}</dt><dd className={`mt-1 text-2xl font-semibold ${key === "failed" && health.jobCounts.failed ? "text-danger" : ""}`}>{health.jobCounts[key as keyof typeof jobLabels]}</dd></Panel>
           ))}
         </dl>
-        {health.schedulerStale && <p className="mt-3 text-sm text-amber-200">Aucun job planifié depuis plus de 36 h : vérifiez que le cron appelle /api/internal/scheduler/tick et qu’au moins une automatisation est active.</p>}
+        {health.schedulerStale && <p className="mt-3 text-sm text-warning">Aucun job planifié depuis plus de 36 h : vérifiez que le cron appelle /api/internal/scheduler/tick et qu’au moins une automatisation est active.</p>}
       </section>
       <section>
         <SectionHeader title="Incidents ouverts" count={health.openIncidents.length} />

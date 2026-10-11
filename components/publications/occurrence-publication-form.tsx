@@ -21,6 +21,6 @@ export function OccurrencePublicationForm({projectId,occurrenceId,date,platformL
    {mode==='existing'&&<select className={input} name="group_id" required defaultValue="">{[<option key="" value="" disabled>Choisir un groupe</option>,...available.map(g=><option key={g.id} value={g.id}>{g.subject}</option>)]}</select>}
    {groups.length>available.length&&<p className="text-xs text-muted">Les groupes ayant déjà une publication {platformLabel} ne sont pas proposés.</p>}
   </fieldset>
-  <button disabled={pending} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background">{pending?'Enregistrement…':'Enregistrer en brouillon'}</button>
-  {state.message&&<p role="alert" className="text-sm text-red-400">{state.message}</p>}</form>;
+  <button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground">{pending?'Enregistrement…':'Enregistrer en brouillon'}</button>
+  {state.message&&<p role="alert" className="text-sm text-danger">{state.message}</p>}</form>;
 }

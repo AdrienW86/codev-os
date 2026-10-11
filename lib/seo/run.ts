@@ -35,11 +35,30 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     ]).catch(async (failure) => { await recordSync(client.id, "search-console", failure); return wrap(failure); });
     await recordSync(client.id, "search-console", null);
     const summary = totals(pagesNow);
-    await supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "search-console", metric_key: "summary", period_start: current.startDate, period_end: current.endDate, data: { ...summary, previous_clicks: totals(pagesBefore).clicks } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" });
-    for (const finding of analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore)) {
+    const seoFindings = analyzeSeo(pagesNow, pagesBefore, queriesNow, queriesBefore);
+    await Promise.all([
+      supabase.from("metric_snapshots").upsert({ client_id: client.id, provider: "search-console", metric_key: "summary", period_start: current.startDate, period_end: current.endDate, data: { ...summary, previous_clicks: totals(pagesBefore).clicks } as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" }),
+      supabase.from("metric_snapshots").upsert({
+        client_id: client.id,
+        provider: "search-console",
+        metric_key: "opportunities",
+        period_start: current.startDate,
+        period_end: current.endDate,
+        data: {
+          findings: seoFindings,
+          counts: {
+            page_drop: seoFindings.filter((item) => item.kind === "page_drop").length,
+            emerging_query: seoFindings.filter((item) => item.kind === "emerging_query").length,
+            low_ctr: seoFindings.filter((item) => item.kind === "low_ctr").length,
+            page_growth: seoFindings.filter((item) => item.kind === "page_growth").length,
+          },
+        } as unknown as Json,
+      }, { onConflict: "client_id,provider,metric_key,period_start,period_end" }),
+    ]);
+    for (const finding of seoFindings) {
       if (finding.kind === "page_growth") continue;
       const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
-      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key } });
+      const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, period: current } });
       if (created.created) findings++;
     }
     notes.push(`Search Console : ${summary.clicks} clics, ${summary.impressions} impressions`);

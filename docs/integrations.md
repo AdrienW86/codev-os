@@ -60,11 +60,15 @@ Pour chaque intégration : variables, callback, scopes, vérification.
 - **Vérifier** : automatisation « Contrôle des sites » → Exécuter maintenant → « N en ligne » ; un site en panne ouvre un incident et une action « Correctif technique » à valider.
 
 <a id="vercel"></a>
-## Vercel — déploiements (lecture)
+## Vercel — déploiements + Web Analytics (lecture)
 
 - **Variables** : `VERCEL_TOKEN` (jeton en lecture), facultatif `VERCEL_TEAM_ID`.
-- **Par client** : sources de données → projet Vercel (`prj_…` ou nom).
-- **Vérifier** : un dernier déploiement en échec ouvre l’incident « Dernier déploiement Vercel en échec ».
+- **Par client** : fiche client → Agents → Sources de données → projet Vercel (`prj_…` ou nom).
+- **Web Analytics** : CODE-V OS récupère les pages vues, visiteurs, pages principales, référents et événements personnalisés via l’API publique Vercel. Les données sont agrégées et stockées par période dans `metric_snapshots`.
+- **Rapports** : lors de la génération d’un rapport hebdomadaire ou mensuel, CODE-V OS tente de récupérer une photographie Vercel correspondant exactement à la période du rapport. Une panne Vercel n’empêche pas la génération du reste du rapport.
+- **Événements métier** : les formulaires, clics téléphone, WhatsApp, CTA, etc. apparaissent uniquement si le site envoie déjà des événements personnalisés avec `@vercel/analytics` (par exemple `lead_form_submit`, `phone_click`, `whatsapp_click`).
+- **Vérifier** : lancer « Contrôler le site maintenant » sur la fiche client ; le bloc **Audience & conversions Vercel** doit afficher le dernier instantané.
+- **Speed Insights** : les données temps réel Vercel restent consultables dans Vercel. CODE-V OS conserve actuellement PageSpeed Insights pour les mesures de performance automatisées côté serveur ; l’ingestion Speed Insights réelle nécessite un flux Vercel Metrics/Drain séparé et n’est pas assimilée à PageSpeed.
 
 <a id="github"></a>
 ## GitHub — derniers changements (lecture)

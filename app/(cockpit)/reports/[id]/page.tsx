@@ -111,7 +111,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
                 {email.enabled && preview.data && !delivery
                   ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer le texte prévisualisé au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
-                      <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={recipient} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
+                      <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={recipient} readOnly={Boolean(recurring)} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
                       <label className="flex gap-2 text-sm"><input type="checkbox" name="recipient_confirmed" value="yes" required />Je confirme cette adresse et la version client prévisualisée.</label>
                     </MutationForm>
                   : <InlineNotice title="Envoi e-mail indisponible.">{!email.enabled ? email.reason : "Cette version ne peut pas faire l’objet d’une nouvelle tentative."}</InlineNotice>}

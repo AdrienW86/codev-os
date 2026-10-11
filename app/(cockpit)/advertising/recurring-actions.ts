@@ -30,7 +30,7 @@ export async function prepareAdsRecurringAction(clientId: string): Promise<{ ok?
   if (new Date(window.prepareAt) > new Date()) {
     const end = localClosedDate(new Date(), config.dataTimezone ?? config.timezone);
     if (end < window.start) return { ok: false, message: "Cette période n’a pas encore commencé." };
-    const snapshot = await googleAdsReportSnapshot(clientId, { start: window.start, end, status: "all", types: config.types, campaignIds: config.campaignIds }, config.accountId);
+    const snapshot = await googleAdsReportSnapshot(clientId, { start: window.start, end, status: "all", types: config.types, campaignIds: config.campaignIds }, config.accountId, undefined, config.dataTimezone);
     if (!snapshot.ok) return snapshot;
     const { getAdsRecommendation } = await import("@/lib/integrations/google-ads/recommendations-service");
     const recommendation = await getAdsRecommendation(clientId, { start: window.start, end, status: "all", types: config.types, campaignIds: config.campaignIds }, config.mode);

@@ -12,7 +12,13 @@ test('native PostgreSQL: full recurring assertions and four independent reservat
  const sql=(target,source)=>executeLocalSql(process.env.CODEV_CORE_TEST_PSQL??'psql',target,source);
  let result=sql({...env,PGDATABASE:'postgres'},'drop database if exists codev_core_test_recurring;create database codev_core_test_recurring;');assert.equal(result.status,0,result.stderr);
  const migrations=readdirSync(new URL('../supabase/migrations/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort();
- result=sql(env,`create schema if not exists storage;create table if not exists storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);${read('supabase/local/remote-schema.sql')}${migrations.map(f=>read(`supabase/migrations/${f}`)).join('\n')}${read('e2e/harness/seed.sql')}${read('supabase/tests/ads-recurring-reports.sql')}`);assert.equal(result.status,0,result.stderr);
+ result=sql(env,`do $$ begin
+ perform pg_advisory_xact_lock(761616);
+ if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+ if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+ if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
+ end $$;
+ create schema if not exists storage;create table if not exists storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);${read('supabase/local/remote-schema.sql')}${migrations.map(f=>read(`supabase/migrations/${f}`)).join('\n')}${read('e2e/harness/seed.sql')}${read('supabase/tests/ads-recurring-reports.sql')}${read('supabase/tests/ads-recurring-hardening.sql')}`);assert.equal(result.status,0,result.stderr);
  const fixture=read('supabase/tests/ads-recurring-reports.sql');
  // Reuse the valid fixture through publication/approval, before the sequential reservation checks.
  const start=fixture.slice(fixture.indexOf('create temporary table fixture'),fixture.indexOf("select pg_temp.check_true(not public.codev_claim_recurring_delivery(o.id,j.id,'worker-A',r.id,1,gen_random_uuid(),'changed"));
@@ -24,5 +30,5 @@ test('native PostgreSQL: full recurring assertions and four independent reservat
  });
  const attempts=await Promise.all([race(),race(),race(),race()]);attempts.forEach(a=>assert.equal(a.status,0,a.stderr));
  assert.deepEqual(attempts.map(a=>a.stdout.trim()).sort(),['f','f','f','t']);
- result=sql(env,'select count(*) from public.report_deliveries;');assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'1');
+ result=sql(env,"do $$ begin if (select count(*) from public.report_deliveries)<>1 then raise exception 'Expected exactly one reservation'; end if; end $$;");assert.equal(result.status,0,result.stderr);
 });

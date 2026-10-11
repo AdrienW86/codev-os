@@ -9,9 +9,9 @@ const clientId='11111111-1111-4111-8111-111111111111',occurrenceId='66666666-666
 function setup({approved=true,active=true,alreadySent=false,accepted=true,uncertain=false,publish=true}={}){
  const config={...domain.DEFAULT_RECURRING_CONFIG,enabled:true,recipient:'reports@example.invalid',campaignIds:['123'],transport:'approved_auto'};
  const due='2026-10-16T16:00:00Z';
- const row={id:occurrenceId,client_id:clientId,report_id:'report',revision:1,config,period_window:{start:'2026-10-09',end:'2026-10-15',cutoff:'2026-10-16 00:00 Europe/Paris, exclusive'},due_at:due,preparation:'queued',transport:'pending'};
+ const row={id:occurrenceId,client_id:clientId,report_id:'report',revision:1,config,period_window:{start:'2026-10-09',end:'2026-10-15',cutoff:'2026-10-16 00:00 Europe/Paris, exclusive'},due_at:due,preparation:'queued',transport:active?'pending':'paused'};
  let sends=0,reads=0,published=0;
- const fake=createFakeSupabase({ads_report_occurrences:[row],client_ads_report_settings:[{client_id:clientId,revision:active?1:2,config}],report_deliveries:uncertain?[{report_id:'report',version:1,state:'uncertain'}]:[]},{rpc:{codev_store_ads_report:()=>{published++;return publish;}}});
+ const fake=createFakeSupabase({ads_report_occurrences:[row],client_ads_report_settings:[{client_id:clientId,revision:active?1:2,config}],report_deliveries:uncertain?[{report_id:'report',version:1,state:'uncertain'}]:[]},{rpc:{codev_store_ads_report:()=>{published++;return publish;},codev_record_ads_report_outcome:(p,t)=>{if(p.p_worker!=='worker-A'||!active)return false;const row=t.ads_report_occurrences[0];if(p.p_phase==='send')row.transport=p.p_state;else row.preparation=p.p_state;return true;}}});
  const report={id:'report',version:1,status:alreadySent?'sent':approved?'approved':'ready_for_review',approved_version:approved?1:null};
  const handlers=loadTs('lib/reports/recurring/run.ts',{'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.client},'@/lib/runs/types':runTypes,'./domain':domain,
   '@/lib/reports/google-ads-service':{googleAdsReportSnapshot:async()=>{reads++;return{ok:true,stored:{},built:{title:'Fixture',client:{summary:'Safe',sections:[]},internal:{sections:[]}}};}},

@@ -19,6 +19,7 @@ export type AdsWorkspaceTables = {
   admin_push_deliveries: Table<PushDelivery, { notification_id: string; subscription_id: string; state?: string; token?: string | null; updated_at?: string }>;
 };
 export type AdsWorkspaceFunctions = {
+  codev_record_ads_report_outcome: { Args: { p_occurrence: string; p_job: string; p_worker: string; p_phase: string; p_state: string; p_reason: string | null }; Returns: boolean };
   codev_save_ads_report_settings: { Args: { p_client_id: string; p_revision: number; p_config: Json; p_due: string; p_prepare: string }; Returns: number };
   codev_enqueue_ads_report: { Args: { p_client_id: string; p_revision: number; p_due: string; p_window: Json; p_next_due: string; p_next_prepare: string; p_manual?: boolean }; Returns: string | null };
   codev_store_ads_report: { Args: { p_occurrence: string; p_job: string; p_worker: string; p_report: Json }; Returns: boolean };

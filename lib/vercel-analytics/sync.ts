@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { webAnalyticsCount, webAnalyticsSummary } from "@/lib/providers/vercel";
+import { dailyTrend, webAnalyticsCount, webAnalyticsEvents, webAnalyticsSummary, type VercelAnalyticsRow, type VercelAnalyticsTrendPoint } from "@/lib/providers/vercel";
 import { recordSync } from "@/lib/connections/sync";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -25,8 +25,11 @@ function pctChange(now: number, before: number) {
   return Math.round(((now - before) / before) * 1000) / 10;
 }
 
+// Période précédente : volumes, série quotidienne et événements, pour les comparaisons du tableau de bord.
+type PreviousPeriod = { pageviews: number; visitors: number; period: { start: string; end: string }; trend?: VercelAnalyticsTrendPoint[]; events?: VercelAnalyticsRow[] };
+
 function buildInsights(data: Awaited<ReturnType<typeof webAnalyticsSummary>> & {
-  previous?: { pageviews: number; visitors: number; period: { start: string; end: string } };
+  previous?: PreviousPeriod;
 }) {
   const insights: { kind: "positive" | "warning" | "info"; title: string; detail: string }[] = [];
   const previous = data.previous;
@@ -61,7 +64,7 @@ function buildInsights(data: Awaited<ReturnType<typeof webAnalyticsSummary>> & {
 export async function syncVercelAnalytics(
   clientId: string,
   period: { start: string; end: string },
-): Promise<{ ok: true; data: Awaited<ReturnType<typeof webAnalyticsSummary>> & { previous?: { pageviews: number; visitors: number; period: { start: string; end: string } }; insights: ReturnType<typeof buildInsights> } } | { ok: false; reason: "not_configured" | "unavailable" }> {
+): Promise<{ ok: true; data: Awaited<ReturnType<typeof webAnalyticsSummary>> & { previous?: PreviousPeriod; insights: ReturnType<typeof buildInsights> } } | { ok: false; reason: "not_configured" | "unavailable" }> {
   if (!day.test(period.start) || !day.test(period.end) || period.start > period.end) return { ok: false, reason: "unavailable" };
   const db = getSupabaseServerClient();
   const { data: connection, error } = await db.from("client_connections").select("metadata").eq("client_id", clientId).eq("provider", "vercel").maybeSingle();
@@ -71,10 +74,14 @@ export async function syncVercelAnalytics(
   try {
     const analytics = await webAnalyticsSummary(projectId, period, { limit: 30 });
     const priorPeriod = previousPeriod(period);
-    let previous: { pageviews: number; visitors: number; period: { start: string; end: string } } | undefined;
+    let previous: PreviousPeriod | undefined;
     try {
-      const count = await webAnalyticsCount(projectId, priorPeriod);
-      previous = { ...count, period: priorPeriod };
+      const [count, trend, events] = await Promise.all([
+        webAnalyticsCount(projectId, priorPeriod),
+        dailyTrend(projectId, priorPeriod).catch(() => undefined),
+        webAnalyticsEvents(projectId, priorPeriod, { limit: 30 }).catch(() => undefined),
+      ]);
+      previous = { ...count, period: priorPeriod, trend, events };
     } catch {
       previous = undefined;
     }

@@ -25,7 +25,14 @@ export type VercelAnalyticsSummary = {
   pageviews?: number;
   visitors?: number;
   trend?: { timestamp?: string; pageviews?: number; visitors?: number }[];
-  previous?: { pageviews?: number; visitors?: number; period?: { start?: string; end?: string } };
+  eventTrend?: { timestamp?: string; count?: number; visitors?: number }[];
+  previous?: {
+    pageviews?: number;
+    visitors?: number;
+    period?: { start?: string; end?: string };
+    trend?: { timestamp?: string; pageviews?: number; visitors?: number }[];
+    events?: { label?: string; count?: number; visitors?: number }[];
+  };
   topPages?: { label?: string; pageviews?: number; visitors?: number }[];
   topReferrers?: { label?: string; pageviews?: number; visitors?: number }[];
   routes?: { label?: string; pageviews?: number; visitors?: number }[];

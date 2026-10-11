@@ -108,7 +108,7 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
         const finding = item as unknown as SeoOpportunity;
         return [{ ...finding, recommendationId: recommendationByFinding.get(`${finding.kind}:${finding.key}`) }];
       }),
-      counts: object(opportunityData.counts) as Record<string, number>,
+      counts: object(opportunityData.counts as Json) as Record<string, number>,
     } : null,
     runs: (runs.data ?? []).flatMap((item) => {
       const metadata = object(item.metadata);

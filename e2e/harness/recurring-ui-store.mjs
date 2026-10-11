@@ -7,8 +7,14 @@ export function resetUiFixture(){
  const db=createFakeSupabase({clients:[client],agents:[agent],agent_client_assignments:[{client_id:clientId,agent_id:agent.id,enabled:true,agent,client,client_instructions:'Contexte client de test.',created_at:'2026-01-01T00:00:00Z'}],client_connections:[{id:'44444444-4444-4444-8444-444444444444',client_id:clientId,client,provider:'google_ads',status:'connected',external_account_id:'1234567890',metadata:{timezone:'Europe/Paris',account_name:'Compte E2E',currency_code:'EUR'},created_at:'2026-01-01T00:00:00Z',updated_at:'2026-01-01T00:00:00Z'}],client_ads_report_settings:[],ads_report_occurrences:[],reports:[],report_versions:[],report_deliveries:[],agent_runs:[],client_ads_context:[],admin_notifications:[]},{rpc:{
   codev_unread_notifications:()=>0,
   codev_claim_ads_analysis:()=>true,
-  codev_save_ads_report_settings:(p,t)=>{let row=t.client_ads_report_settings.find(s=>s.client_id===p.p_client_id);if((row?.revision??0)!==p.p_revision)throw Error('stale');const next={client_id:p.p_client_id,revision:p.p_revision+1,config:p.p_config,next_due_at:p.p_due,next_prepare_at:p.p_prepare,updated_at:new Date().toISOString()};if(row)Object.assign(row,next);else t.client_ads_report_settings.push(next);return next.revision;},
-  codev_claim_report_delivery:(p,t)=>{if(t.report_deliveries.some(r=>r.report_id===p.p_report_id&&r.version===p.p_version))return false;t.report_deliveries.push({report_id:p.p_report_id,version:p.p_version,token:p.p_token,state:'sending'});return true;},
+  codev_save_ads_report_settings:(p,t)=>{let row=t.client_ads_report_settings.find(s=>s.client_id===p.p_client_id);if((row?.revision??0)!==p.p_revision)throw Error('stale');const next={client_id:p.p_client_id,revision:p.p_revision+1,config:p.p_config,next_due_at:p.p_due,next_prepare_at:p.p_prepare,updated_at:new Date().toISOString()};if(row)Object.assign(row,next);else t.client_ads_report_settings.push(next);
+    for(const o of t.ads_report_occurrences.filter(o=>o.client_id===p.p_client_id)){
+      if(o.transport==='pending')o.transport='paused';
+      const r=t.reports.find(r=>r.id===o.report_id);
+      if(r?.status==='approved'&&!t.report_deliveries.some(d=>d.report_id===r.id&&['sending','uncertain'].includes(d.state))){r.version++;r.status='ready_for_review';r.approved_version=null;r.approved_at=null;r.approved_by=null;}
+    }
+    return next.revision;},
+  codev_claim_report_delivery:(p,t)=>{if(t.ads_report_occurrences.some(o=>o.report_id===p.p_report_id&&o.config.recipient!==p.p_recipient))return false;if(t.report_deliveries.some(r=>r.report_id===p.p_report_id&&r.version===p.p_version))return false;t.report_deliveries.push({report_id:p.p_report_id,version:p.p_version,token:p.p_token,state:'sending'});return true;},
   codev_finish_report_delivery:(p,t)=>{const d=t.report_deliveries.find(d=>d.report_id===p.p_report_id&&d.token===p.p_token);if(!d)return false;d.state=p.p_state;if(p.p_state==='accepted'){const r=t.reports.find(r=>r.id===p.p_report_id);r.status='sent';r.sent_at=new Date().toISOString();}return true;}
  }});globalThis.__recurringUiFixture=db;return db;
 }

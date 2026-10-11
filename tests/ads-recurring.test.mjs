@@ -112,3 +112,14 @@ test("ambiguous client remains a clarification, never an email or approval",asyn
  assert.equal(domain.continueOccurrenceWindow(window,"2026-08-31").start,"2026-09-01");
  assert.equal(domain.continueOccurrenceWindow(window,window.end),null);
  });
+
+test('spring DST and leap-year short month retain contiguous closed account days',()=>{
+ const before=domain.nextOccurrence(config(),new Date('2027-03-20T00:00:00Z'));
+ const after=domain.nextOccurrence(config(),new Date(before.dueAt));
+ assert.equal(before.dueAt,'2027-03-26T17:00:00.000Z');assert.equal(after.dueAt,'2027-04-02T16:00:00.000Z');
+ assert.equal(after.start,tomorrow(before.end));
+ const c=config({frequency:'monthly',monthDay:31});
+ const jan=domain.nextOccurrence(c,new Date('2028-01-01T00:00:00Z'));
+ const feb=domain.nextOccurrence(c,new Date(jan.dueAt));
+ assert.equal(feb.dueAt,'2028-02-29T17:00:00.000Z');assert.equal(feb.start,tomorrow(jan.end));
+});

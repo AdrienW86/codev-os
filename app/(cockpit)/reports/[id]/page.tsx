@@ -105,7 +105,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
           <Panel className="space-y-4 p-5">
             <h2 id="send-report" className="font-semibold">Étapes</h2>
             {recurring && <p className="text-sm">Destinataire prévu : {recipient} · échéance {formatDate(recurring.due_at)}. Configuration figée à la préparation.</p>}
-            {item.status === "ready_for_review" && <MutationForm action={approveReportAction} fields={{ id, version: String(item.version) }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
+            {item.status === "ready_for_review" && <MutationForm key={`approve:${item.version}`} action={approveReportAction} fields={{ id, version: String(item.version) }} label={`Approuver la version ${item.version}`} variant="primary" disableOnSuccess flashOnSuccess />}
             {item.status === "approved" && (
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>

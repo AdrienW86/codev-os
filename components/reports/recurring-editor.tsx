@@ -9,11 +9,15 @@ export function RecurringEditor({ clientId, initial, revision, campaigns }: { cl
   const [message, setMessage] = useState("");
   const [preview, setPreview] = useState<ReportContent | null>(null);
   const [pending, startTransition] = useTransition();
-  const change = <K extends keyof RecurringConfig>(key: K, value: RecurringConfig[K]) => setConfig(old => ({ ...old, [key]: value }));
+  const change = <K extends keyof RecurringConfig>(key: K, value: RecurringConfig[K]) => {
+    setConfig(old => ({ ...old, [key]: value }));
+    setConfirmed(false);
+    setPreview(null);
+  };
   const field = "mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3";
   const button = "min-h-11 rounded-lg border border-border px-4 text-sm disabled:opacity-50";
   return <div className="space-y-4">
-    <form onSubmit={event => { event.preventDefault(); if (!confirmed) return; startTransition(async () => { const result = await saveAdsRecurringAction(clientId, { ...config, recipientConfirmed: true }, revision); setMessage(result.message ?? ""); }); }}>
+    <form onSubmit={event => { event.preventDefault(); if (!confirmed || pending) return; startTransition(async () => { try { const result = await saveAdsRecurringAction(clientId, { ...config, recipientConfirmed: true }, revision); setMessage(result.message ?? ""); } catch { setMessage("Enregistrement indisponible. Rechargez avant de réessayer."); } }); }}>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm">État<select className={field} value={config.enabled ? "enabled" : "paused"} onChange={e => change("enabled", e.target.value === "enabled")}><option value="paused">En pause</option><option value="enabled">Activé</option></select></label>
         <label className="text-sm">Fréquence<select className={field} value={config.frequency} onChange={e => change("frequency", e.target.value as RecurringConfig["frequency"])}><option value="weekly">Hebdomadaire</option><option value="monthly">Mensuelle</option></select></label>
@@ -31,7 +35,7 @@ export function RecurringEditor({ clientId, initial, revision, campaigns }: { cl
       <label className="my-4 flex items-start gap-2 text-sm"><input type="checkbox" required checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Je vérifie que cette adresse appartient au destinataire souhaité et confirme le périmètre et la règle de retard. L’envoi automatique exige toujours une approbation distincte du contenu.</label>
       <button disabled={pending || !confirmed || !config.campaignIds.length} className={button}>{pending ? "Enregistrement…" : "Enregistrer la configuration"}</button>
     </form>
-    {initial && <div className="flex flex-wrap gap-3"><button className={button} disabled={pending} onClick={() => startTransition(async () => { setPreview(null); setMessage("Préparation ou lecture de l’aperçu en cours…"); try { const result = await prepareAdsRecurringAction(clientId); setMessage(result.message ?? ""); setPreview(result.preview ?? null); } catch { setMessage("Préparation indisponible. Réessayez."); } })}>Préparer maintenant / voir l’aperçu</button><button className={button} disabled={pending || !initial.enabled} onClick={() => startTransition(async () => { const result = await pauseAdsRecurringAction(clientId); setMessage(result.message ?? ""); })}>Mettre en pause</button></div>}
+    {initial && <div className="flex flex-wrap gap-3"><button className={button} disabled={pending} onClick={() => startTransition(async () => { setPreview(null); setMessage("Préparation ou lecture de l’aperçu en cours…"); try { const result = await prepareAdsRecurringAction(clientId); setMessage(result.message ?? ""); setPreview(result.preview ?? null); } catch { setMessage("Préparation indisponible. Réessayez."); } })}>Préparer maintenant / voir l’aperçu</button><button className={button} disabled={pending || !initial.enabled} onClick={() => startTransition(async () => { try { const result = await pauseAdsRecurringAction(clientId); setPreview(null); setMessage(result.message ?? ""); } catch { setMessage("Pause non confirmée. Rechargez pour vérifier l’état."); } })}>Mettre en pause</button></div>}
     {message && <p role="status" className="text-sm">{message}</p>}
     {preview && <section className="rounded-lg border border-border p-4"><h3 className="font-semibold">Aperçu provisoire — non approuvable, non envoyable</h3><p className="mt-2 text-sm">{preview.summary}</p>{preview.sections.map(section => <div key={section.title} className="mt-4"><h4 className="font-medium">{section.title}</h4><ul className="text-sm">{section.lines.map((line,i) => <li key={i}>{line}</li>)}</ul></div>)}</section>}
   </div>;

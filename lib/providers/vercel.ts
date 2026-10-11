@@ -7,12 +7,14 @@ type Env = Record<string, string | undefined>;
 export type Deployment = { id: string; state: string; createdAt: number; url: string | null; target: string | null };
 export type VercelAnalyticsRow = { label: string; pageviews?: number; visitors?: number; count?: number };
 export type VercelAnalyticsTrendPoint = { timestamp: string; pageviews: number; visitors: number };
+export type VercelAnalyticsEventTrendPoint = { timestamp: string; count: number; visitors: number };
 export type VercelAnalyticsSummary = {
   projectId: string;
   period: { start: string; end: string };
   pageviews: number;
   visitors: number;
   trend: VercelAnalyticsTrendPoint[];
+  eventTrend: VercelAnalyticsEventTrendPoint[];
   topPages: VercelAnalyticsRow[];
   topReferrers: VercelAnalyticsRow[];
   routes: VercelAnalyticsRow[];
@@ -98,7 +100,7 @@ async function aggregate(
   });
 }
 
-async function dailyTrend(
+export async function dailyTrend(
   projectId: string,
   period: { start: string; end: string },
   options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
@@ -115,6 +117,39 @@ async function dailyTrend(
     if (typeof row.timestamp !== "string") return [];
     return [{ timestamp: row.timestamp, pageviews: finite(row.pageviews), visitors: finite(row.visitors) }];
   });
+}
+
+// Série quotidienne des événements personnalisés : optionnelle, une absence ne bloque pas le tableau de bord.
+async function dailyEventTrend(
+  projectId: string,
+  period: { start: string; end: string },
+  options: { env?: Env; fetchImpl?: FetchLike } = {},
+): Promise<VercelAnalyticsEventTrendPoint[]> {
+  const env = options.env ?? process.env;
+  const params = commonParams(projectId, env, period);
+  params.set("by", "day");
+  params.set("limit", "366");
+  try {
+    const data = await providerJson<AggregateResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/events/aggregate?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
+    if (!Array.isArray(data.data)) return [];
+    return data.data.flatMap((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+      const row = raw as Record<string, unknown>;
+      if (typeof row.timestamp !== "string") return [];
+      return [{ timestamp: row.timestamp, count: finite(row.count), visitors: finite(row.visitors) }];
+    });
+  } catch (error) {
+    if (error instanceof ProviderError && ["unauthorized", "not_configured", "rate_limited", "timeout"].includes(error.kind)) throw error;
+    return [];
+  }
+}
+
+export function webAnalyticsEvents(
+  projectId: string,
+  period: { start: string; end: string },
+  options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
+) {
+  return aggregate(projectId, period, "eventName", "events", options);
 }
 
 async function optionalAggregate(
@@ -135,9 +170,10 @@ export async function webAnalyticsSummary(
   period: { start: string; end: string },
   options: { env?: Env; fetchImpl?: FetchLike; limit?: number } = {},
 ): Promise<VercelAnalyticsSummary> {
-  const [count, trend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events] = await Promise.all([
+  const [count, trend, eventTrend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events] = await Promise.all([
     webAnalyticsCount(projectId, period, options),
     dailyTrend(projectId, period, options),
+    dailyEventTrend(projectId, period, options),
     aggregate(projectId, period, "requestPath", "visits", options),
     aggregate(projectId, period, "referrerHostname", "visits", options),
     optionalAggregate(projectId, period, "route", options),
@@ -148,6 +184,6 @@ export async function webAnalyticsSummary(
     aggregate(projectId, period, "eventName", "events", options),
   ]);
   return {
-    projectId, period, ...count, trend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events,
+    projectId, period, ...count, trend, eventTrend, topPages, topReferrers, routes, countries, devices, operatingSystems, browsers, events,
   };
 }

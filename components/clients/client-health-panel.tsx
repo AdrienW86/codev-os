@@ -4,8 +4,7 @@ import { Panel } from "@/components/ui/primitives";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import type { ClientHealthOverview } from "@/lib/client-health/data";
 import { isProviderConfigured } from "@/lib/system/providers";
-import { loadClientVercelAnalyticsRangeAction, runClientMonitoringNowAction, runClientSeoNowAction } from "@/app/(cockpit)/clients/[id]/health-actions";
-import { VercelAnalyticsDashboard } from "@/components/clients/vercel-analytics-dashboard";
+import { runClientMonitoringNowAction, runClientSeoNowAction } from "@/app/(cockpit)/clients/[id]/health-actions";
 
 const date = (value: string) => new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
 const pct = (value: number | undefined) => typeof value === "number" ? `${(value * 100).toFixed(1)} %` : "—";
@@ -113,16 +112,16 @@ export function ClientHealthPanel({ clientId, website, overview, unavailable }: 
         </Panel>
       </section>
 
-      <Panel className="p-5">
-        {overview.vercelAnalytics && analytics ? (
-          <VercelAnalyticsDashboard clientId={clientId} data={analytics} periodStart={overview.vercelAnalytics.periodStart} periodEnd={overview.vercelAnalytics.periodEnd} fetchedAt={overview.vercelAnalytics.fetchedAt} loadRange={loadClientVercelAnalyticsRangeAction} />
-        ) : (
-          <div>
-            <h2 className="font-semibold">Audience, acquisition & conversions</h2>
-            <p className="mt-1 text-sm text-muted">Vercel Web Analytics : trafic, pages, acquisition, audience et événements personnalisés.</p>
-            <p className="mt-4 text-sm text-muted">Aucun instantané Vercel Analytics. Renseignez le projet Vercel du client puis actualisez les données.</p>
-          </div>
-        )}
+      <Panel className="flex flex-wrap items-center justify-between gap-4 p-5">
+        <div className="min-w-0">
+          <h2 className="font-semibold">Audience, acquisition & conversions</h2>
+          <p className="mt-1 text-sm text-muted">
+            {overview.vercelAnalytics && analytics
+              ? `Dernier instantané Vercel : ${number(analytics.visitors)} visiteurs, ${number(analytics.pageviews)} pages vues (${overview.vercelAnalytics.periodStart} → ${overview.vercelAnalytics.periodEnd}).`
+              : "Aucun instantané Vercel Analytics. Renseignez le projet Vercel du client puis actualisez les données."}
+          </p>
+        </div>
+        <Link href={`/analytics?client=${clientId}`} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-background hover:opacity-90">Voir les performances →</Link>
       </Panel>
 
       <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">

@@ -25,6 +25,23 @@ const paths = {
   voice: "M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4",
   plus: "M12 5v14 M5 12h14",
   bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4",
+  analytics: "M3 3v18h18 M7 16v-4 M11 16V8 M15 16v-6 M19 16V5",
+  users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h8",
+  activity: "M22 12h-4l-3 9L9 3l-3 9H2",
+  mail: "M3 5h18v14H3z M3 7l9 6 9-6",
+  pointer: "M4 3l7 17 2-7 7-2z M13 13l6 6",
+  target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10 M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
+  download: "M12 3v12 M7 10l5 5 5-5 M4 21h16",
+  filter: "M3 4h18l-7 8v6l-4 2v-8z",
+  globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M3 12h18 M12 3a14 14 0 0 1 0 18 M12 3a14 14 0 0 0 0 18",
+  link: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1",
+  monitor: "M3 4h18v12H3z M8 20h8 M12 16v4",
+  tablet: "M6 2h12v20H6z M11 18h2",
+  chevron: "M6 9l6 6 6-6",
+  refresh: "M21 12a9 9 0 1 1-3-6.7L21 8 M21 3v5h-5",
+  compare: "M8 3v18 M16 3v18 M3 8h5 M16 16h5",
+  share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M8.6 13.5l6.8 4 M15.4 6.5l-6.8 4",
 } as const;
 
 export type IconName = keyof typeof paths;

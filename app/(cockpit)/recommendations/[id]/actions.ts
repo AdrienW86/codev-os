@@ -67,18 +67,29 @@ export async function createSeoSiteChangeAction(_previousState: RecommendationAc
   const key = typeof payload.key === "string" ? payload.key.trim() : "";
   const targetPage = typeof payload.target_page === "string" ? payload.target_page.trim() : "";
   const suggested = typeof payload.suggested_action === "string" ? payload.suggested_action.trim() : "";
+  const repositoryContext = asRecord(payload.repository_context as Json);
+  const sourcePath = typeof repositoryContext.path === "string" ? repositoryContext.path.trim() : "";
+  const currentTitle = typeof repositoryContext.title === "string" ? repositoryContext.title.trim() : "";
+  const currentDescription = typeof repositoryContext.description === "string" ? repositoryContext.description.trim() : "";
+  const currentH1 = typeof repositoryContext.h1 === "string" ? repositoryContext.h1.trim() : "";
   if (!["page_drop", "emerging_query", "low_ctr"].includes(kind) || !key) return { message: "Cette recommandation n’est pas une opportunité SEO transformable en modification de site." };
 
   const page = kind === "page_drop" ? key : targetPage;
   if (!page) return { message: "La page cible n’est pas identifiée dans Search Console. Relancez l’analyse SEO avant de préparer l’action." };
 
+  const sourcePrefix = sourcePath ? `Dans le fichier « ${sourcePath} », ` : "";
+  const currentSignals = [
+    currentTitle ? `title actuel « ${currentTitle} »` : "",
+    currentDescription ? `description actuelle « ${currentDescription} »` : "",
+    currentH1 ? `H1 actuel « ${currentH1} »` : "",
+  ].filter(Boolean).join(" ; ");
   const change = kind === "page_drop"
-    ? "Auditer cette page puis préparer uniquement les corrections confirmées : indexation, redirections, canonical, contenu et maillage interne."
+    ? `${sourcePrefix}auditer la page en baisse et ne modifier que les éléments dont la cause est confirmée : indexation, redirections, canonical, contenu ou maillage interne.${currentSignals ? ` Contexte du code : ${currentSignals}.` : ""}`
     : kind === "low_ctr"
-      ? `Proposer une amélioration du title et de la meta description pour mieux répondre à l’intention de la requête « ${key} », sans promettre de gain ni modifier le fond sans justification.`
-      : `Renforcer cette page pour mieux couvrir l’intention de la requête « ${key} » : title, structure, contenu ou maillage uniquement si l’audit le justifie. Ne créer une nouvelle page que si une intention distincte est confirmée.`;
+      ? `${sourcePrefix}retravailler le title et la meta description pour mieux répondre à l’intention de la requête « ${key} », sans promettre de gain et sans modifier le fond sans justification.${currentSignals ? ` Contexte du code : ${currentSignals}.` : ""}`
+      : `${sourcePrefix}renforcer la page pour mieux couvrir l’intention de la requête « ${key} » : title, structure, contenu ou maillage uniquement si l’audit le justifie. Ne créer une nouvelle page que si une intention distincte est confirmée.${currentSignals ? ` Contexte du code : ${currentSignals}.` : ""}`;
 
-  const rationale = [recommendation.reason ?? "", suggested].filter(Boolean).join(" ").slice(0, 2000);
+  const rationale = [recommendation.reason ?? "", suggested, sourcePath ? `Fichier source lu en GitHub : ${sourcePath}.` : ""].filter(Boolean).join(" ").slice(0, 2000);
   const result = await prepareAction({ kind: "admin", userId }, { recommendationId: id, type: "seo.site_change", parameters: { page, change, rationale } });
   if (!result.ok) return { message: result.message };
   revalidatePath(`/recommendations/${id}`);

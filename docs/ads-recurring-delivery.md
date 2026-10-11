@@ -43,9 +43,9 @@ L’évaluation des échéances peut enregistrer un blocage d’approbation sans
 
 Les erreurs/reprises de préparation apparaissent dans l’historique et les jobs de Paramètres → Observabilité. Les notifications réutilisent les préférences existantes ; les notifications verrouillées ne contiennent ni nom de client, chiffres ni texte du rapport.
 
-## État distant vérifié et ordre des migrations
+## État distant historique et ordre des migrations
 
-Audit en lecture seule le 10 octobre 2026, projet `lehlbcnpufkllcykvtlg` : 26 migrations appliquées ; dernière `20261010055802`, nom `20261015000000_codev_os_core`. Les sept fichiers suivants ne sont **pas** appliqués :
+Audit historique documenté en lecture seule le 10 octobre 2026 (non revalidé pendant le durcissement du 11 octobre ; voir [audit PR #16](pr16-reliability-audit.md)), projet `lehlbcnpufkllcykvtlg` : 26 migrations appliquées ; dernière `20261010055802`, nom `20261015000000_codev_os_core`. Les sept fichiers suivants ne sont **pas** appliqués :
 
 1. `20261016000000_google_ads_reports.sql`
 2. `20261016000001_whatsapp_drive_ingestion.sql`
@@ -73,7 +73,9 @@ VAPID/Web Push : configuration et autorisation par appareil identiques au guide 
 
 Références vérifiées : [limites Cron Vercel](https://vercel.com/docs/cron-jobs/usage-and-pricing), [domaines Resend](https://resend.com/docs/add-a-domain).
 
-## Validation de ce lot
+## Validation initiale de ce lot
+
+La validation finale et les corrections supplémentaires sont décrites dans [l’audit de fiabilité PR #16](pr16-reliability-audit.md). Elles ajoutent la migration 20261021000000 après les sept fichiers ci-dessous et des tests PostgreSQL natifs.
 
 - `NODE_USE_ENV_PROXY=0 npm test` : **650 réussis, zéro échec, 28 ignorés** (intégrations facultatives sans base/configuration locale). La variable désactive le proxy global injecté par cet environnement Node 24 pour permettre le test de rebinding DNS avec son propre `lookup` ; aucun contrôle SSRF applicatif n’est désactivé.
 - `npm run lint`, `npm run typecheck` et `npm run build -- --webpack` : réussis. Webpack est utilisé parce que le lien vers les dépendances de ce workspace sort de la racine que Turbopack accepte ; le build de production compile toutes les routes.

@@ -84,6 +84,13 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     if (metric.provider === "search-console" && typeof data.clicks === "number") return `Search Console : ${data.clicks} clics, ${data.impressions ?? "?"} impressions${typeof data.position === "number" ? `, position moyenne ${data.position.toFixed(1)}` : ""}.`;
     if (metric.provider === "google-ads" && typeof data.cost === "number") return `Google Ads : ${data.cost.toFixed(2)} € dépensés, ${data.conversions ?? 0} conversions${typeof data.cpa === "number" ? `, ${data.cpa.toFixed(2)} € par conversion` : ""}.`;
     if (metric.provider === "pagespeed" && typeof data.performance === "number") return `Performance mobile (PageSpeed) : ${data.performance}/100.`;
+    if (metric.provider === "vercel" && metric.metric_key === "web_analytics") {
+      const pageviews = typeof data.pageviews === "number" ? data.pageviews : null;
+      const visitors = typeof data.visitors === "number" ? data.visitors : null;
+      const events = Array.isArray(data.events) ? data.events.flatMap((value) => value && typeof value === "object" && !Array.isArray(value) ? [value as Record<string, unknown>] : []) : [];
+      const eventSummary = events.filter((event) => typeof event.label === "string" && typeof event.count === "number").slice(0, 4).map((event) => `${event.label}: ${event.count}`).join(", ");
+      if (pageviews !== null || visitors !== null) return `Vercel Analytics : ${pageviews ?? "?"} pages vues, ${visitors ?? "?"} visiteurs${eventSummary ? ` ; événements — ${eventSummary}` : ""}.`;
+    }
     return null;
   }).filter((line): line is string => Boolean(line));
 

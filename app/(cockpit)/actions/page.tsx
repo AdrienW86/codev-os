@@ -7,6 +7,7 @@ import { actionStatuses } from "@/lib/actions/validation";
 import { listActions } from "@/lib/actions/data";
 import { requireAdmin } from "@/lib/require-admin";
 import { formatDate } from "@/lib/format-date";
+import { describeAction } from "@/lib/actions/registry";
 
 export const metadata: Metadata = { title: "Actions" };
 
@@ -16,7 +17,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
   const status = typeof params.status === "string" && actionStatuses.includes(params.status as (typeof actionStatuses)[number]) ? params.status : undefined;
   const actions = await listActions({ status });
   return <>
-    <PageHeading eyebrow="Validation" title="Actions" description="Actions proposées par les agents : rien ne s’exécute sans votre validation. Les exécutions disponibles sont internes." />
+    <PageHeading eyebrow="Validation" title="Actions" description="Actions proposées par les agents : rien ne s’exécute sans votre validation. Les actions externes restent manuelles en V1." />
     <form method="get" className="mb-6 flex flex-wrap items-end gap-4 border-b border-border pb-5">
       <label className="text-xs text-muted">Statut<select name="status" defaultValue={status ?? ""} className="mt-2 block min-w-48 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground"><option value="">Tous</option>{actionStatuses.map((value) => <option key={value} value={value}>{actionStatusLabel(value).label}</option>)}</select></label>
       <button type="submit" className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium">Filtrer</button>
@@ -25,6 +26,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
       <div>
         <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">{actionTypeLabel(action.action_type)}</h2><Badge tone={actionStatusLabel(action.status).tone}>{actionStatusLabel(action.status).label}</Badge>{action.requires_approval && <span className="text-xs text-muted">Approbation requise</span>}</div>
         <p className="mt-2 text-sm text-muted"><Link href={`/clients/${action.client_id}`} className="text-accent hover:underline">{action.client?.name ?? "Client indisponible"}</Link> · <Link href={`/agents/${action.agent_id}`} className="text-accent hover:underline">{action.agent?.name ?? "Agent indisponible"}</Link>{action.recommendation && <> · <Link href={`/recommendations/${action.recommendation.id}`} className="text-accent hover:underline">{action.recommendation.title}</Link></>}</p>
+        <p className="mt-2 text-sm">{describeAction(action.action_type, action.parameters)}</p>
         <time dateTime={action.created_at} className="mt-2 block text-xs text-muted">{formatDate(action.created_at)}</time>
         {action.result && <p className="mt-2 text-xs text-muted">Résultat interne enregistré.</p>}
         {action.error_message && <p className="mt-2 text-xs text-amber-300">Exécution échouée. Consultez l’état et réessayez après vérification.</p>}

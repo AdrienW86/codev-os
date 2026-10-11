@@ -8,6 +8,7 @@ export type SeoFinding = {
   severity: "low" | "medium" | "high";
   metrics: { clicks?: number; priorClicks?: number; impressions?: number; priorImpressions?: number; ctr?: number; position?: number };
   suggestedAction: string;
+  targetPage?: string;
 };
 
 export function totals(rows: QueryRow[]) {
@@ -17,7 +18,14 @@ export function totals(rows: QueryRow[]) {
   return { clicks, impressions, ctr: impressions ? clicks / impressions : 0, position };
 }
 
-export function analyzeSeo(pagesNow: QueryRow[], pagesBefore: QueryRow[], queriesNow: QueryRow[], queriesBefore: QueryRow[]): SeoFinding[] {
+export function analyzeSeo(pagesNow: QueryRow[], pagesBefore: QueryRow[], queriesNow: QueryRow[], queriesBefore: QueryRow[], queryPagesNow: QueryRow[] = []): SeoFinding[] {
+  const pageByQuery = new Map<string, QueryRow>();
+  for (const row of queryPagesNow) {
+    const query = row.keys[0], page = row.keys[1];
+    if (!query || !page) continue;
+    const current = pageByQuery.get(query);
+    if (!current || row.clicks > current.clicks || (row.clicks === current.clicks && row.impressions > current.impressions)) pageByQuery.set(query, row);
+  }
   const findings: SeoFinding[] = [];
   const before = new Map(pagesBefore.map((row) => [row.keys[0], row]));
   for (const row of pagesNow) {
@@ -31,8 +39,8 @@ export function analyzeSeo(pagesNow: QueryRow[], pagesBefore: QueryRow[], querie
   const queriesPrior = new Map(queriesBefore.map((row) => [row.keys[0], row]));
   for (const row of queriesNow) {
     const prior = queriesPrior.get(row.keys[0]);
-    if (row.impressions >= 100 && row.position >= 8 && row.position <= 20 && (!prior || row.impressions >= prior.impressions * 1.5)) findings.push({ kind: "emerging_query", key: row.keys[0], severity: "medium", detail: `${row.impressions} impressions, position ${row.position.toFixed(1)} : potentiel de première page.`, metrics: { clicks: row.clicks, impressions: row.impressions, priorImpressions: prior?.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Identifier la page qui répond déjà à l’intention, puis renforcer titre, contenu et maillage ; créer une page dédiée seulement si l’intention est distincte." });
-    else if (row.impressions >= 500 && row.position <= 5 && row.ctr < 0.02) findings.push({ kind: "low_ctr", key: row.keys[0], severity: "low", detail: `Bien positionnée (${row.position.toFixed(1)}) mais CTR de ${(row.ctr * 100).toFixed(1)} %.`, metrics: { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Revoir le title et la meta description en restant aligné avec l’intention réelle et le contenu de la page." });
+    if (row.impressions >= 100 && row.position >= 8 && row.position <= 20 && (!prior || row.impressions >= prior.impressions * 1.5)) findings.push({ kind: "emerging_query", key: row.keys[0], severity: "medium", detail: `${row.impressions} impressions, position ${row.position.toFixed(1)} : potentiel de première page.`, metrics: { clicks: row.clicks, impressions: row.impressions, priorImpressions: prior?.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Identifier la page qui répond déjà à l’intention, puis renforcer titre, contenu et maillage ; créer une page dédiée seulement si l’intention est distincte.", targetPage: pageByQuery.get(row.keys[0])?.keys[1] });
+    else if (row.impressions >= 500 && row.position <= 5 && row.ctr < 0.02) findings.push({ kind: "low_ctr", key: row.keys[0], severity: "low", detail: `Bien positionnée (${row.position.toFixed(1)}) mais CTR de ${(row.ctr * 100).toFixed(1)} %.`, metrics: { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Revoir le title et la meta description en restant aligné avec l’intention réelle et le contenu de la page.", targetPage: pageByQuery.get(row.keys[0])?.keys[1] });
   }
   return findings.slice(0, 20);
 }

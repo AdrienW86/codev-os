@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { createInternalTestActionAction, createRecommendationMessageAction, updateRecommendationAction } from "@/app/(cockpit)/recommendations/[id]/actions";
+import { createInternalTestActionAction, createRecommendationMessageAction, createSeoSiteChangeAction, updateRecommendationAction } from "@/app/(cockpit)/recommendations/[id]/actions";
 import type { RecommendationActionState, RecommendationStatus } from "@/lib/recommendations/types";
 
 function StatusButton({ id, status, label }: { id: string; status: RecommendationStatus; label: string }) {
@@ -13,13 +13,20 @@ function StatusButton({ id, status, label }: { id: string; status: Recommendatio
   </form>;
 }
 
-export function RecommendationControls({ id, status }: { id: string; status: string }) {
+export function RecommendationControls({ id, status, seoActionAvailable = false }: { id: string; status: string; seoActionAvailable?: boolean }) {
   const [messageState, messageAction, messagePending] = useActionState<RecommendationActionState, FormData>(createRecommendationMessageAction, {});
   const [actionState, createAction, actionPending] = useActionState<RecommendationActionState, FormData>(createInternalTestActionAction, {});
+  const [seoState, createSeoAction, seoPending] = useActionState<RecommendationActionState, FormData>(createSeoSiteChangeAction, {});
   const nextStatuses: RecommendationStatus[] = status === "pending" ? ["accepted", "rejected", "archived"] : status === "accepted" || status === "rejected" ? ["archived"] : [];
   const labels: Record<RecommendationStatus, string> = { pending: "En attente", accepted: "Accepter", rejected: "Rejeter", archived: "Archiver" };
   return <div className="space-y-6">
     <div className="flex flex-wrap gap-2">{nextStatuses.map((nextStatus) => <StatusButton key={nextStatus} id={id} status={nextStatus} label={labels[nextStatus]} />)}</div>
+    {seoActionAvailable && status === "accepted" && <form action={createSeoAction} className="border-t border-border pt-5">
+      <input type="hidden" name="id" value={id} />
+      <button type="submit" disabled={seoPending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{seoPending ? "Préparation…" : "Préparer l’action SEO"}</button>
+      <p className="mt-2 text-xs text-muted">Crée une action structurée à approuver. CODE-V OS ne modifie pas le site automatiquement.</p>
+      {seoState.message && <p role="status" className="mt-2 text-sm text-muted">{seoState.message}</p>}
+    </form>}
     <form action={createAction} className="border-t border-border pt-5">
       <input type="hidden" name="id" value={id} />
       <button type="submit" disabled={actionPending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{actionPending ? "Création…" : "Proposer une action de test"}</button>

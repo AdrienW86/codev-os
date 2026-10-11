@@ -51,6 +51,8 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
   const recommendation = await getRecommendationById(id);
   if (!recommendation) notFound();
   const [messages, actions] = await Promise.all([listMessagesByRecommendation(id), listActionsByRecommendation(id)]);
+  const recommendationPayload = record(recommendation.payload);
+  const seoActionAvailable = ["page_drop", "emerging_query", "low_ctr"].includes(String(recommendationPayload.kind));
   return (
     <>
       <Link href="/recommendations" className="mb-6 inline-block text-xs text-accent hover:underline">← Toutes les recommandations</Link>
@@ -79,7 +81,7 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
             {actions.length ? <ul className="mt-4 divide-y divide-border">{actions.map((action) => <li key={action.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium">{actionTypeLabel(action.action_type)}</p><p className="mt-1 text-xs text-muted">{action.requires_approval ? "Approbation requise" : "Approbation non requise"}</p></div><Badge tone={actionStatusLabel(action.status).tone}>{actionStatusLabel(action.status).label}</Badge></li>)}</ul> : <p className="mt-4 text-sm text-muted">Aucune action liée.</p>}
           </Panel>
         </div>
-        <Panel className="p-6"><h2 className="mb-5 font-semibold">Actions administratives</h2><RecommendationControls id={id} status={recommendation.status} /></Panel>
+        <Panel className="p-6"><h2 className="mb-5 font-semibold">Actions administratives</h2><RecommendationControls id={id} status={recommendation.status} seoActionAvailable={seoActionAvailable} /></Panel>
       </div>
     </>
   );

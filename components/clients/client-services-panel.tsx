@@ -40,7 +40,7 @@ export function ClientServicesPanel({ clientId, services }: { clientId: string; 
         <label className="text-xs text-muted">Statut<input name="status" required maxLength={80} defaultValue="Actif" disabled={pending} className={inputClass} /></label>
         <label className="text-xs text-muted">Tarif mensuel (€)<input name="monthly_fee_eur" type="number" min={0} max={1000000} step="0.01" disabled={pending} className={inputClass} /></label>
         <label className="text-xs text-muted sm:col-span-2">Notes<textarea name="notes" rows={2} maxLength={3000} disabled={pending} className={inputClass} /></label>
-        <div className="sm:col-span-2"><button type="submit" disabled={pending} className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-60">{pending ? "Ajout…" : "+ Ajouter un service"}</button>{state.message && <p role="status" className="mt-2 text-sm text-muted">{state.message}</p>}</div>
+        <div className="sm:col-span-2"><button type="submit" disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-60">{pending ? "Ajout…" : "+ Ajouter un service"}</button>{state.message && <p role="status" className="mt-2 text-sm text-muted">{state.message}</p>}</div>
       </form>
     </Panel>
   </section>;

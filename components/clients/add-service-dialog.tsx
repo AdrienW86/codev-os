@@ -41,18 +41,18 @@ export function AddServiceDialog({ clientId, view, services, onNavigate, onClose
       aria-labelledby={titleId}
       onClose={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onClick={(event) => { if (event.target === ref.current) ref.current?.close(); }}
-      className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface p-0 text-foreground backdrop:bg-black/70"
+      className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface p-0 text-foreground backdrop:bg-overlay"
     >
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-5 py-4">
         <div className="flex min-w-0 items-center gap-2">
           {view?.mode === "detail" && view.fromCatalog && (
-            <button type="button" onClick={() => onNavigate({ mode: "catalog" })} aria-label="Retour au catalogue" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground">
+            <button type="button" onClick={() => onNavigate({ mode: "catalog" })} aria-label="Retour au catalogue" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground">
               <Icon name="arrow" className="rotate-180" />
             </button>
           )}
           <h2 id={titleId} className="truncate font-semibold">{service ? service.name : "Ajouter un service"}</h2>
         </div>
-        <button type="button" onClick={() => ref.current?.close()} aria-label="Fermer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-foreground">
+        <button type="button" onClick={() => ref.current?.close()} aria-label="Fermer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground">
           <span aria-hidden="true" className="text-xl leading-none">×</span>
         </button>
       </div>
@@ -64,7 +64,7 @@ export function AddServiceDialog({ clientId, view, services, onNavigate, onClose
               {available.map((item) => (
                 <li key={item.id}>
                   <button type="button" onClick={() => onNavigate({ mode: "detail", serviceId: item.id, fromCatalog: true })} className="flex w-full items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:border-accent/40">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-accent"><Icon name={item.icon} width={18} height={18} /></span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-accent"><Icon name={item.icon} width={18} height={18} /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium">{item.name}</span>
                       <span className="mt-0.5 block text-sm text-muted">{item.description}</span>
@@ -130,5 +130,5 @@ export function AddServiceDialog({ clientId, view, services, onNavigate, onClose
 }
 
 function Notice({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "amber" }) {
-  return <p className={`rounded-lg px-4 py-3 text-sm leading-6 ${tone === "amber" ? "bg-amber-400/10 text-amber-200" : "bg-white/5 text-muted"}`}>{children}</p>;
+  return <p className={`rounded-lg px-4 py-3 text-sm leading-6 ${tone === "amber" ? "bg-warning/10 text-warning" : "bg-surface-raised text-muted"}`}>{children}</p>;
 }

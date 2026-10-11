@@ -16,7 +16,7 @@ function Autonomy({ level, planned }: { level: number; planned: boolean }) {
   return (
     <span className="inline-flex items-center gap-2">
       <span aria-hidden="true" className="flex gap-1">
-        {[1, 2, 3].map((step) => <span key={step} className={`h-1.5 w-4 rounded-full ${step <= value ? (planned ? "bg-white/30" : "bg-accent") : "bg-white/10"}`} />)}
+        {[1, 2, 3].map((step) => <span key={step} className={`h-1.5 w-4 rounded-full ${step <= value ? (planned ? "bg-subtle" : "bg-accent-strong") : "bg-border-strong"}`} />)}
       </span>
       <span className="text-xs text-muted">{value} / 3{planned && " · prévue"}</span>
     </span>
@@ -37,7 +37,7 @@ export function AgentRegistryCard({ blueprint, state, serviceNames, clients, cli
   return (
     <Panel className="flex flex-col p-6">
       <div className="flex items-start justify-between gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-accent"><Icon name="agents" /></span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-raised text-accent"><Icon name="agents" /></span>
         <AgentStateBadge state={state} />
       </div>
       <h3 className="mt-4 text-lg font-semibold">{blueprint.name}</h3>

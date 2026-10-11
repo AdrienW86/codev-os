@@ -1,21 +1,111 @@
 @import "tailwindcss";
 
+/*
+ * Design system CODE-V OS : bleu nuit profond, accents bleus lumineux.
+ * Toutes les couleurs de l'interface passent par ces jetons ; les composants
+ * utilisent les utilitaires Tailwind générés (bg-surface, text-muted, border-border…)
+ * et jamais de valeur hexadécimale codée en dur.
+ * Les rares valeurs à fournir hors CSS (manifeste, Clerk) sont dans lib/theme.ts.
+ */
 :root {
   color-scheme: dark;
-  --background: #101213;
-  --foreground: #edf0ef;
+
+  /* Fonds */
+  --background: #070d16;
+  --surface: #0d1726;
+  --surface-raised: #111e31;
+  --surface-sunken: #0a121f;
+  --overlay: rgb(3 7 13 / 0.72);
+
+  /* Bordures */
+  --border: #19283b;
+  --border-strong: #24374f;
+
+  /* Texte */
+  --foreground: #e9effb;
+  --muted: #9bafc8;
+  --subtle: #7489a4;
+
+  /* Accent principal */
+  --accent: #237cff;
+  --accent-hover: #4a93ff;
+  /* Fond des boutons pleins : un ton plus profond pour garder un texte blanc lisible (AA). */
+  --accent-strong: #1f6fe5;
+  --accent-foreground: #ffffff;
+
+  /* États */
+  --success: #34d399;
+  --warning: #fb923c;
+  --danger: #f87171;
+  --info: #60a5fa;
+
+  /* Séries de graphiques */
+  --chart-1: #237cff;
+  --chart-2: #8b5cf6;
+  --chart-3: #f43f5e;
+  --chart-4: #10b981;
+  --chart-5: #f59e0b;
+  --chart-6: #d946ef;
+  --chart-7: #7cb2ff;
+  --chart-muted: #5b6f8a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-surface: #181b1c;
-  --color-border: #2a2f30;
-  --color-muted: #a0aaa6;
-  --color-accent: #b8f49b;
-  --font-sans: Arial, Helvetica, sans-serif;
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-overlay: var(--overlay);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-muted: var(--chart-muted);
+  --shadow-card: inset 0 1px 0 0 rgb(255 255 255 / 0.025), 0 16px 36px -28px rgb(0 0 0 / 0.9);
+  --shadow-popover: 0 18px 40px -16px rgb(0 0 0 / 0.75);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-body { background: var(--background); color: var(--foreground); }
-::selection { background: #b8f49b; color: #101213; }
-:focus-visible { outline: 2px solid #b8f49b; outline-offset: 4px; }
+@layer base {
+  /* Bordure par défaut discrète (Tailwind 4 utilise currentColor sinon). */
+  *, ::before, ::after, ::backdrop { border-color: var(--border); }
+
+  body { background: var(--background); color: var(--foreground); }
+  ::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--foreground); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* Champs natifs : même fond, bordure et focus partout (formulaires serveur compris). */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"]), select, textarea {
+    background-color: var(--surface-sunken);
+    border-color: var(--border-strong);
+    color: var(--foreground);
+  }
+  input::placeholder, textarea::placeholder { color: var(--subtle); }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--accent); outline-offset: 0; }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+  select option { background-color: var(--surface); color: var(--foreground); }
+  ::-webkit-calendar-picker-indicator { filter: invert(0.75); }
+
+  /* Tableaux : en-têtes discrets, lignes séparées par la bordure du thème. */
+  :where(table) { border-color: var(--border); }
+  :where(th) { color: var(--muted); font-weight: 500; }
+
+  /* Barres de défilement fines et sombres. */
+  * { scrollbar-color: var(--border-strong) transparent; }
+}

@@ -15,7 +15,7 @@ export function ConnectionsPanel({projectId,connections,oauthMessage,oauthReady,
  oauthReady:Record<ConnectionSummary['provider'],boolean>;banner?:{ok:boolean;message:string}|null}){
  return <Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2>
   <p className="mt-2 text-sm text-muted">Comptes du client utilisables par les canaux de ce projet. Aucune publication n’est diffusée depuis cette page.</p>
-  {banner&&<p role={banner.ok?'status':'alert'} data-oauth-result={banner.ok?'success':'failure'} className={`mt-3 rounded-lg border p-3 text-sm ${banner.ok?'border-green-500':'border-red-400 text-red-400'}`}>{banner.message}</p>}
+  {banner&&<p role={banner.ok?'status':'alert'} data-oauth-result={banner.ok?'success':'failure'} className={`mt-3 rounded-lg border p-3 text-sm ${banner.ok?'border-success/60':'border-danger/60 text-danger'}`}>{banner.message}</p>}
   <div className="mt-4 grid gap-4 md:grid-cols-2">{connections.map(c=><ConnectionCard key={c.provider} projectId={projectId} connection={c} oauthMessage={oauthMessage} ready={oauthReady[c.provider]}/>)}</div></Panel>;
 }
 function ConnectionCard({projectId,connection:c,oauthMessage,ready}:{projectId:string;connection:ConnectionSummary;oauthMessage:string;ready:boolean}){
@@ -35,21 +35,21 @@ function ConnectionCard({projectId,connection:c,oauthMessage,ready}:{projectId:s
 function ConnectForm({projectId,provider,label}:{projectId:string;provider:ConnectionSummary['provider'];label:string}){
  const [state,start,pending]=useActionState(startOAuthAction,initial);
  return <form action={start}><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
-  <button disabled={pending} className="rounded-lg bg-accent px-3 py-2 font-semibold text-background disabled:opacity-60">{pending?'Redirection…':label}</button>
-  {state.message&&<p role="alert" className="mt-1 text-red-400">{state.message}</p>}</form>;
+  <button disabled={pending} className="rounded-lg bg-accent-strong px-3 py-2 font-semibold text-accent-foreground disabled:opacity-60">{pending?'Redirection…':label}</button>
+  {state.message&&<p role="alert" className="mt-1 text-danger">{state.message}</p>}</form>;
 }
 function VerifyForm({projectId,provider}:{projectId:string;provider:ConnectionSummary['provider']}){
  const [state,verify,pending]=useActionState(verifyConnectionAction,initial);
  return <form action={verify}><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Vérification…':'Vérifier la connexion'}</button>
-  {state.message&&<p role={state.ok?'status':'alert'} className={`mt-1 ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>;
+  {state.message&&<p role={state.ok?'status':'alert'} className={`mt-1 ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }
 function DisconnectForm({projectId,provider,label}:{projectId:string;provider:ConnectionSummary['provider'];label:string}){
  const [state,disconnect,pending]=useActionState(disconnectPublicationConnectionAction,initial);
  return <form action={disconnect} className="mt-3 space-y-2 border-t border-border pt-3"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
   <label className="block text-xs"><input type="checkbox" name="confirm" required/> Je confirme : les comptes {label} ne pourront plus être utilisés pour publier.</label>
-  <button disabled={pending} className="rounded-lg border border-red-400 px-3 py-2 text-red-400">{pending?'Déconnexion…':'Déconnecter'}</button>
-  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-red-400'}>{state.message}</p>}</form>;
+  <button disabled={pending} className="rounded-lg border border-danger/60 px-3 py-2 text-danger">{pending?'Déconnexion…':'Déconnecter'}</button>
+  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form>;
 }
 
 // "Compte de publication" of one channel card: accounts of the right platform only; non-assignable ones are shown
@@ -67,6 +67,6 @@ export function ChannelAccountSelector({projectId,view}:{projectId:string;view:C
      {view.options.map(o=><option key={o.id} value={o.id} disabled={!o.assignable&&o.id!==view.currentAccountId}>{accountOptionLabel(o)}</option>)}
     </select>
     <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Enregistrement…':'Enregistrer le compte'}</button>
-    {state.message&&<p role={state.ok?'status':'alert'} className={`w-full ${state.ok?'':'text-red-400'}`}>{state.message}</p>}</form>}
-  <p data-publishability={view.publishability} className={`text-xs ${publishable?'text-green-400':'text-muted'}`}>Publication : {view.publishabilityLabel}</p></div>;
+    {state.message&&<p role={state.ok?'status':'alert'} className={`w-full ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>}
+  <p data-publishability={view.publishability} className={`text-xs ${publishable?'text-success':'text-muted'}`}>Publication : {view.publishabilityLabel}</p></div>;
 }

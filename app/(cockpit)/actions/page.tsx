@@ -29,7 +29,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
         <p className="mt-2 text-sm">{describeAction(action.action_type, action.parameters)}</p>
         <time dateTime={action.created_at} className="mt-2 block text-xs text-muted">{formatDate(action.created_at)}</time>
         {action.result && <p className="mt-2 text-xs text-muted">Résultat interne enregistré.</p>}
-        {action.error_message && <p className="mt-2 text-xs text-amber-300">Exécution échouée. Consultez l’état et réessayez après vérification.</p>}
+        {action.error_message && <p className="mt-2 text-xs text-warning">Exécution échouée. Consultez l’état et réessayez après vérification.</p>}
       </div>
       <ActionControls action={action} />
     </li>)}</ul> : <p className="border-t border-border py-8 text-sm text-muted">Aucune action enregistrée.</p>}

@@ -18,10 +18,10 @@ function Thumbnail({row,size='h-12 w-12'}:{row:BoardRow;size?:string}){
  if(row.image)return <img src={row.image} alt="" loading="lazy" decoding="async" className={`${size} shrink-0 rounded object-cover`}/>;
  if(row.status==='to_prepare')return <span role="img" aria-label="Créneau à préparer" data-media="slot" className={`${size} flex shrink-0 items-center justify-center rounded border border-dashed border-border text-center text-[10px] leading-tight text-muted`}>À préparer</span>;
  const missing=!row.hasMedia;
- return <span role="img" aria-label={missing?'Sans média':'Média indisponible'} data-media={missing?'missing':'unavailable'} className={`${size} flex shrink-0 items-center justify-center rounded border text-center text-[10px] leading-tight ${missing?'border-red-600/60 text-red-700':'border-dashed border-border text-muted'}`}>{missing?'Sans média':'Média indisponible'}</span>;
+ return <span role="img" aria-label={missing?'Sans média':'Média indisponible'} data-media={missing?'missing':'unavailable'} className={`${size} flex shrink-0 items-center justify-center rounded border text-center text-[10px] leading-tight ${missing?'border-danger/60 text-danger':'border-dashed border-border text-muted'}`}>{missing?'Sans média':'Média indisponible'}</span>;
 }
 function StatusPill({row}:{row:BoardRow}){return <span className="inline-flex flex-col items-start gap-1"><span data-board-status={row.status} className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs ${boardStatusClasses[row.status]}`}>{boardStatusLabels[row.status]}</span>
- {needsMedia(row)&&<span data-media-required="true" className="whitespace-nowrap text-[11px] text-red-700">Média requis</span>}{row.hidden&&<span className="whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">Retirée du tableau</span>}</span>;}
+ {needsMedia(row)&&<span data-media-required="true" className="whitespace-nowrap text-[11px] text-danger">Média requis</span>}{row.hidden&&<span className="whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">Retirée du tableau</span>}</span>;}
 function DateLabel({row}:{row:BoardRow}){return <>{row.dateIsWeek?`Semaine du ${formatDate(row.date)}`:formatDate(row.date)}</>;}
 function Platforms({row}:{row:BoardRow}){return <>{row.platforms.length?row.platforms.map(p=>platformLabels[p]).join(' · '):'—'}</>;}
 function Origin({row}:{row:BoardRow}){return <>{boardOriginLabels[row.origin]}{row.edited&&<span className="text-muted"> · modifiée</span>}</>;}
@@ -41,12 +41,12 @@ export function RowMenu({row,query}:{row:BoardRow;query:BoardQuery}){
 export function BoardViews({query,counts}:{query:BoardQuery;counts:BoardResult['counts']}){
  const views:[BoardQuery['status'],string,number][]=[['','Toutes',counts.all],...boardStatuses.map(s=>[s,boardViewLabels[s],counts[s]] as [BoardQuery['status'],string,number])];
  return <nav aria-label="Vues rapides" className="flex flex-wrap gap-2">{views.map(([status,label,count])=>{const active=query.status===status;
-  return <Link key={label} href={boardHref(query,{status})} aria-current={active?'page':undefined} className={`rounded-full border px-3 py-1 text-sm ${active?'border-accent bg-accent text-background':'border-border hover:border-accent'}`}>{label} <span className={active?'':'text-muted'}>{count}</span></Link>;})}</nav>;
+  return <Link key={label} href={boardHref(query,{status})} aria-current={active?'page':undefined} className={`rounded-full border px-3 py-1 text-sm ${active?'border-accent bg-accent-strong text-accent-foreground':'border-border hover:border-accent'}`}>{label} <span className={active?'':'text-muted'}>{count}</span></Link>;})}</nav>;
 }
 
 // Shared switch between the two views of the same publications.
 export function PublicationsNav({current}:{current:'board'|'calendar'}){
- const item=(key:'board'|'calendar',label:string,href:string)=><Link href={href} aria-current={current===key?'page':undefined} className={`rounded-md px-3 py-1.5 ${current===key?'bg-accent text-background':'hover:bg-border/40'}`}>{label}</Link>;
+ const item=(key:'board'|'calendar',label:string,href:string)=><Link href={href} aria-current={current===key?'page':undefined} className={`rounded-md px-3 py-1.5 ${current===key?'bg-accent-strong text-accent-foreground':'hover:bg-border/40'}`}>{label}</Link>;
  return <nav aria-label="Vues Publications" className="inline-flex rounded-lg border border-border p-0.5 text-sm">{item('board','Tableau','/publications')}{item('calendar','Calendrier','/publications/calendar')}</nav>;
 }
 

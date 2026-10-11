@@ -11,10 +11,10 @@ export function AttentionCard({ title, count, icon, href, linkLabel, items, empt
 }) {
   const highlight = urgent && count > 0;
   return (
-    <article className={`flex min-w-0 flex-col rounded-xl border bg-surface p-5 ${highlight ? "border-amber-300/30" : "border-border"}`}>
+    <article className={`flex min-w-0 flex-col rounded-xl border bg-surface p-5 ${highlight ? "border-warning/30" : "border-border"}`}>
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${highlight ? "bg-amber-400/10 text-amber-300" : "bg-accent/10 text-accent"}`}>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${highlight ? "bg-warning/10 text-warning" : "bg-accent/10 text-accent"}`}>
           <Icon name={icon} width={18} height={18} />
         </span>
       </div>
@@ -22,7 +22,7 @@ export function AttentionCard({ title, count, icon, href, linkLabel, items, empt
         <ul className="mt-4 space-y-1">
           {items.map((item) => {
             const body = <><span className="block truncate text-sm">{item.title}</span><span className="block truncate text-xs text-muted">{item.detail}</span></>;
-            const className = "block w-full min-w-0 rounded-lg px-2 py-1.5 -mx-2 text-left hover:bg-white/[0.04]";
+            const className = "block w-full min-w-0 rounded-lg px-2 py-1.5 -mx-2 text-left hover:bg-surface-raised";
             return (
               <li key={item.id} className="min-w-0">
                 {item.href ? <Link href={item.href} className={className}>{body}</Link>

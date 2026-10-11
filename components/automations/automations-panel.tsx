@@ -25,7 +25,7 @@ export function AutomationsPanel({ automations, unavailable, clients, schedulerC
     <div className="space-y-8">
       {unavailable && <ModuleUnavailable module="Automatisations" />}
       {!schedulerConfigured && (
-        <p className="rounded-xl border border-amber-300/25 bg-amber-400/10 p-4 text-sm text-amber-200">
+        <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
           Planificateur non configuré (CRON_SECRET absent) : les automatisations ne partiront pas seules. « Exécuter maintenant » reste disponible. Voir docs/automation.md.
         </p>
       )}

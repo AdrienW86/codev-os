@@ -71,7 +71,7 @@ export function SimWork({ initialView, initialClient }: { initialView?: string; 
                         <span className="flex flex-wrap items-center gap-2 sm:justify-end">
                           <StatusBadge {...workStatusLabels[item.status]} />
                           {item.priority === "high" && <StatusBadge {...priorityLabels.high} />}
-                          {item.due && <span className={`text-xs ${item.due < world.today && item.status !== "done" ? "text-amber-300" : "text-muted"}`}>Échéance {formatSimDateTime(item.due)}</span>}
+                          {item.due && <span className={`text-xs ${item.due < world.today && item.status !== "done" ? "text-warning" : "text-muted"}`}>Échéance {formatSimDateTime(item.due)}</span>}
                         </span>
                       </button>
                     </li>

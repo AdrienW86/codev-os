@@ -201,7 +201,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         <>
           <Panel className="p-6"><h2 className="mb-5 font-semibold">Informations entreprise</h2><ClientInformation client={client} includeNotes /></Panel>
           <ClientServicesPanel clientId={client.id} services={services} />
-          <section aria-labelledby="client-danger" className="mt-10 rounded-xl border border-red-400/20 p-5">
+          <section aria-labelledby="client-danger" className="mt-10 rounded-xl border border-danger/20 p-5">
             <h2 id="client-danger" className="font-semibold">Supprimer le client</h2>
             <p className="mt-1 mb-4 text-sm text-muted">Action définitive. Les projets, tâches ou assignations liés peuvent aussi être supprimés.</p>
             <ConfirmDeleteForm action={deleteClientAction} fields={{ id: client.id }} confirmationMessage="Supprimer définitivement ce client ? Les projets, tâches ou assignations liées peuvent aussi être supprimés selon les clés étrangères configurées dans Supabase." />

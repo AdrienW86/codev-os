@@ -35,9 +35,9 @@ export function TechNews({ items, demo = false }: { items: readonly NewsItem[]; 
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 id="tech-news-title" className="flex flex-wrap items-center gap-2 font-semibold">
           Actualités tech & IA
-          {demo && <span className="rounded-md bg-white/5 px-2 py-0.5 text-xs font-normal text-muted">Exemples · veille bientôt disponible</span>}
+          {demo && <span className="rounded-md bg-surface-raised px-2 py-0.5 text-xs font-normal text-muted">Exemples · veille bientôt disponible</span>}
         </h2>
-        <button type="button" onClick={dismiss} className="min-h-10 shrink-0 rounded-lg px-3 text-xs text-muted hover:bg-white/5 hover:text-foreground">Masquer</button>
+        <button type="button" onClick={dismiss} className="min-h-10 shrink-0 rounded-lg px-3 text-xs text-muted hover:bg-surface-raised hover:text-foreground">Masquer</button>
       </div>
       <ul className="grid gap-4 md:grid-cols-3">
         {items.slice(0, 3).map((item) => (

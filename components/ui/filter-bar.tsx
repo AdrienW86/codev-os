@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { actionClass } from "@/components/ui/button";
 
 export type FilterField = { name: string; label: string; value: string; options: { value: string; label: string }[] };
 export type DateFilterField = { name: string; label: string; value: string };
 
-const selectClass = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
+const selectClass = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border-strong bg-surface-sunken px-3 text-sm text-foreground hover:border-accent/40";
 
 /** Barre de filtres GET : fonctionne sans JavaScript, état dans l’URL. */
 export function FilterBar({ fields, dates = [], hidden = {}, resetHref, label = "Filtres" }: { fields: FilterField[]; dates?: DateFilterField[]; hidden?: Record<string, string>; resetHref: string; label?: string }) {
@@ -27,7 +28,7 @@ export function FilterBar({ fields, dates = [], hidden = {}, resetHref, label = 
         </label>
       ))}
       <div className="col-span-2 flex gap-2">
-        <button type="submit" className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium hover:border-accent/50">Filtrer</button>
+        <button type="submit" className={actionClass("secondary")}>Filtrer</button>
         {active && <Link href={resetHref} className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm text-muted hover:text-foreground">Réinitialiser</Link>}
       </div>
     </form>

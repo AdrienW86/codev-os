@@ -11,5 +11,5 @@ export function OccurrenceSkipForm({projectId,occurrenceId}:{projectId:string;oc
    <input name="reason" required maxLength={SKIP_REASON_MAX} placeholder="Motif (obligatoire)" className="w-full rounded-lg border border-border bg-background p-2"/>
    <label className="block"><input type="checkbox" name="confirm" required/> Je confirme : ce créneau ne pourra pas être rétabli.</label>
    <button disabled={pending} className="rounded-lg border border-border px-3 py-1">{pending?'Enregistrement…':'Ignorer ce créneau'}</button>
-   {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-red-400'}>{state.message}</p>}</form></details>;
+   {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form></details>;
 }

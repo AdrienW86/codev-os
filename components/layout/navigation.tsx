@@ -34,9 +34,9 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={href}
             onClick={onNavigate}
             aria-current={pathname === href ? "page" : active ? "location" : undefined}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${active ? "bg-accent/10 font-medium text-accent" : "text-muted hover:bg-white/5 hover:text-foreground"}`}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${active ? "bg-accent/12 font-medium text-foreground ring-1 ring-accent/25 ring-inset" : "text-muted hover:bg-surface-raised hover:text-foreground"}`}
           >
-            <Icon name={icon} width={18} height={18} />
+            <Icon name={icon} width={18} height={18} className={active ? "text-accent-hover" : undefined} />
             {label}
           </Link>
         );
@@ -48,7 +48,7 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
 function Brand() {
   return (
     <Link href="/dashboard" aria-label="CODE-V OS — accueil" className="flex items-center gap-3">
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-lg font-bold text-background">V</span>
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-strong text-lg font-bold text-accent-foreground shadow-[0_6px_18px_-8px] shadow-accent/60">V</span>
       <span className="font-semibold tracking-tight">CODE-V <span className="font-normal text-muted">OS</span></span>
     </Link>
   );
@@ -56,7 +56,7 @@ function Brand() {
 
 export function Sidebar() {
   return (
-    <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col overflow-y-auto border-r border-border bg-[#141718] p-5 lg:flex">
+    <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col overflow-y-auto border-r border-border bg-surface p-5 lg:flex">
       <Brand />
       <div className="mt-10">
         <NavigationLinks />
@@ -70,7 +70,7 @@ export function MobileNavigation() {
   return (
     <details
       ref={ref}
-      className="border-b border-border bg-[#141718] lg:hidden"
+      className="border-b border-border bg-surface lg:hidden"
       onKeyDown={(event) => {
         if (event.key === "Escape" && ref.current) {
           ref.current.open = false;
@@ -80,7 +80,7 @@ export function MobileNavigation() {
     >
       <summary className="flex cursor-pointer list-none items-center justify-between p-4">
         <span className="font-semibold">CODE-V <span className="text-muted">OS</span></span>
-        <span className="rounded-md border border-border px-3 py-2 text-xs">Menu</span>
+        <span className="rounded-lg border border-border-strong bg-surface-raised/40 px-3 py-2 text-xs">Menu</span>
       </summary>
       <div className="px-4 pb-4">
         <NavigationLinks onNavigate={() => { if (ref.current) ref.current.open = false; }} />

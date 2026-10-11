@@ -60,7 +60,7 @@ export function SimServices({ client }: { client: SimClient }) {
           <article key={definition.id} className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-accent"><Icon name={definition.icon} width={18} height={18} /></span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-accent"><Icon name={definition.icon} width={18} height={18} /></span>
                 <h3 className="font-semibold">{definition.name}</h3>
               </div>
               {statusBadge(statusOf(definition))}
@@ -68,7 +68,7 @@ export function SimServices({ client }: { client: SimClient }) {
             <ul className="mt-4 space-y-2">
               {agentsOf(definition).map((agent) => (
                 <li key={agent.id}>
-                  <button type="button" onClick={() => open({ type: "agent", id: agent.id })} className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-3 py-2 text-left text-sm hover:bg-white/[0.06]">
+                  <button type="button" onClick={() => open({ type: "agent", id: agent.id })} className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-raised/60 px-3 py-2 text-left text-sm hover:bg-surface-raised">
                     <span className="flex min-w-0 items-center gap-2"><Icon name="agents" width={16} height={16} className="shrink-0 text-muted" /><span className="truncate">{agent.name}</span></span>
                     <StatusBadge {...agentStatusLabels[world.agents[agent.id].status]} />
                   </button>
@@ -95,7 +95,7 @@ export function SimServices({ client }: { client: SimClient }) {
             {available.map((item) => (
               <li key={item.id}>
                 <button type="button" onClick={() => setStep({ mode: "detail", serviceId: item.id, fromCatalog: true })} className="flex w-full items-center gap-3 rounded-xl border border-border p-4 text-left hover:border-accent/40">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-accent"><Icon name={item.icon} width={18} height={18} /></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-accent"><Icon name={item.icon} width={18} height={18} /></span>
                   <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="mt-0.5 block text-sm text-muted">{item.description}</span></span>
                   <Icon name="arrow" width={16} height={16} className="shrink-0 text-muted" />
                 </button>
@@ -114,7 +114,7 @@ export function SimServices({ client }: { client: SimClient }) {
                 <div key={agent.id} className="rounded-xl border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{agent.name}</h3><StatusBadge {...agentStatusLabels[status]} /></div>
                   <p className="mt-1 text-sm text-muted">{agent.role}</p>
-                  <ul className="mt-3 space-y-1.5 text-sm">{agent.capabilities.map((capability) => <li key={capability.label} className={`flex gap-2 ${working ? "" : "text-muted"}`}><span aria-hidden="true" className={`w-4 text-center ${working ? "text-accent" : ""}`}>{working ? "✓" : "○"}</span>{capability.label}</li>)}</ul>
+                  <ul className="mt-3 space-y-1.5 text-sm">{agent.capabilities.map((capability) => <li key={capability.label} className={`flex gap-2 ${working ? "" : "text-muted"}`}><span aria-hidden="true" className={`w-4 text-center ${working ? "text-success" : ""}`}>{working ? "✓" : "○"}</span>{capability.label}</li>)}</ul>
                   <button type="button" onClick={() => { setStep(null); open({ type: "agent", id: agent.id }); }} className="mt-3 inline-flex min-h-10 items-center text-sm text-accent hover:underline">{working ? "Voir l’agent" : "Configurer l’agent"}</button>
                 </div>
               );

@@ -17,7 +17,7 @@ export function SafeLink({ link, className = "text-sm text-accent hover:underlin
 }
 
 function Metrics({ view }: { view: MetricsView }) {
-  const tones = { neutral: "", amber: "border-amber-300/40", green: "border-accent/40" };
+  const tones = { neutral: "", amber: "border-warning/40", green: "border-accent/40" };
   return (
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {view.items.map((item) => (
@@ -37,7 +37,7 @@ function Table({ view }: { view: TableView }) {
     // Défilement horizontal limité au tableau : la page elle-même ne défile jamais horizontalement.
     <div className="max-w-full overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[32rem] text-left text-sm">
-        <thead className="bg-white/[0.03] text-xs text-muted"><tr>{view.columns.map((column) => <th key={column} scope="col" className="px-3 py-2 font-medium">{column}</th>)}<th scope="col" className="px-3 py-2"><span className="sr-only">Lien</span></th></tr></thead>
+        <thead className="bg-surface-raised/60 text-xs text-muted"><tr>{view.columns.map((column) => <th key={column} scope="col" className="px-3 py-2 font-medium">{column}</th>)}<th scope="col" className="px-3 py-2"><span className="sr-only">Lien</span></th></tr></thead>
         <tbody className="divide-y divide-border">
           {view.rows.map((row, index) => (
             <tr key={index}>
@@ -83,7 +83,7 @@ export function ProposalCard({ proposal, pending, onConfirm, onCancel }: { propo
       {proposal.heard && <p className="mt-1 text-xs text-muted">Compris à l’oral : « {proposal.heard} » — vérifiez avant de confirmer.</p>}
       <p className="mt-1 text-sm">{proposal.summary}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={onConfirm} disabled={pending} className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-background disabled:opacity-60">Confirmer</button>
+        <button type="button" onClick={onConfirm} disabled={pending} className="min-h-11 rounded-lg bg-accent-strong px-4 text-sm font-semibold text-accent-foreground disabled:opacity-60">Confirmer</button>
         <button type="button" onClick={onCancel} disabled={pending} className="min-h-11 rounded-lg border border-border px-4 text-sm">Annuler</button>
       </div>
     </div>

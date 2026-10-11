@@ -85,8 +85,8 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                 <ul className="mt-2 space-y-1.5">
                   {entries.map((entry) => {
                     const body = <><span className="block text-muted">{entry.time ? `${entry.time} · ` : ""}{kindLabels[entry.kind]}</span><span className="block break-words">{entry.title}</span>{entry.detail && <span className="block text-muted">{entry.detail}</span>}</>;
-                    const className = `block rounded-md border-l-2 ${kindStyles[entry.kind] ?? "border-l-border"} bg-white/[0.03] px-2 py-1.5 text-xs`;
-                    return <li key={entry.key}>{entry.href ? <Link href={entry.href} className={`${className} hover:bg-white/[0.07]`}>{body}</Link> : <span className={className}>{body}</span>}</li>;
+                    const className = `block rounded-md border-l-2 ${kindStyles[entry.kind] ?? "border-l-border"} bg-surface-raised/60 px-2 py-1.5 text-xs`;
+                    return <li key={entry.key}>{entry.href ? <Link href={entry.href} className={`${className} hover:bg-surface-raised`}>{body}</Link> : <span className={className}>{body}</span>}</li>;
                   })}
                 </ul>
               </li>

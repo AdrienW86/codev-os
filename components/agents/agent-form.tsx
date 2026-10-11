@@ -10,7 +10,7 @@ export function AgentForm({ agent }: { agent?: AgentRecord }) {
   const selectedAction = agent ? updateAgentAction : createAgentAction;
   const [state, action, pending] = useActionState<AgentFormState, FormData>(selectedAction, {});
   const inputClass = "mt-2 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm disabled:opacity-60";
-  const error = (field: AgentField) => state.errors?.[field] && <p id={`${field}-error`} className="mt-2 text-xs text-amber-300">{state.errors[field]}</p>;
+  const error = (field: AgentField) => state.errors?.[field] && <p id={`${field}-error`} className="mt-2 text-xs text-warning">{state.errors[field]}</p>;
 
   return (
     <form action={action} className="space-y-6">
@@ -68,9 +68,9 @@ export function AgentForm({ agent }: { agent?: AgentRecord }) {
         </label>
         {error("enabled")}
       </div>
-      {state.errors?.id && <p role="alert" className="text-sm text-amber-300">{state.errors.id}</p>}
-      {state.message && <p role="alert" className="text-sm text-amber-300">{state.message}</p>}
-      <button type="submit" disabled={pending} className="rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-background disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement…" : agent ? "Enregistrer les modifications" : "Créer l’agent"}</button>
+      {state.errors?.id && <p role="alert" className="text-sm text-warning">{state.errors.id}</p>}
+      {state.message && <p role="alert" className="text-sm text-warning">{state.message}</p>}
+      <button type="submit" disabled={pending} className="rounded-lg bg-accent-strong px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-wait disabled:opacity-60">{pending ? "Enregistrement…" : agent ? "Enregistrer les modifications" : "Créer l’agent"}</button>
     </form>
   );
 }

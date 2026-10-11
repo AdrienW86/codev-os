@@ -10,7 +10,7 @@ export function AgentV2MediaSummary({media}:{media:AgentV2MediaView}){
  const warning=media.state==='failed'||media.state==='pending';
  return <div className="flex flex-wrap items-center gap-3" data-agent-v2-media={media.state}>
   {media.preview&&<img src={media.preview} alt="Aperçu du média attaché aux brouillons" className="h-16 w-16 rounded object-cover"/>}
-  <span className={warning?'text-red-400':''}>{MEDIA_STATE_LABELS[media.state]}</span>
+  <span className={warning?'text-danger':''}>{MEDIA_STATE_LABELS[media.state]}</span>
   {media.category&&<span className="text-muted">Catégorie : {media.category}</span>}
   {media.state!=='attached'&&<span className="text-muted">Média requis avant validation.</span>}</div>;
 }
@@ -20,8 +20,8 @@ export function AgentV2Form({projectId,disabled}:{projectId:string;disabled:bool
  const warning=state.ok&&(state.media?.state==='failed'||state.media?.state==='pending');
  return <form action={prepare} className="mt-4 space-y-3 text-sm"><input type="hidden" name="project_id" value={projectId}/>
   <label className="block"><input type="checkbox" name="authorize_ai" required disabled={disabled}/> J’autorise un appel IA réel pour préparer ces brouillons (aucune publication n’est diffusée).</label>
-  <button disabled={disabled||pending} className="rounded-lg bg-accent px-4 py-2 font-semibold text-background disabled:opacity-50">{pending?'Préparation…':'Préparer les prochaines publications'}</button>
-  {state.message&&<p role={state.ok&&!warning?'status':'alert'} className={state.ok&&!warning?'':'text-red-400'}>{state.message}</p>}
+  <button disabled={disabled||pending} className="rounded-lg bg-accent-strong px-4 py-2 font-semibold text-accent-foreground disabled:opacity-50">{pending?'Préparation…':'Préparer les prochaines publications'}</button>
+  {state.message&&<p role={state.ok&&!warning?'status':'alert'} className={state.ok&&!warning?'':'text-danger'}>{state.message}</p>}
   {state.ok&&state.media&&<AgentV2MediaSummary media={state.media}/>}
   {state.ok&&state.publications&&state.publications.length>0&&<ul className="space-y-1" data-agent-v2-created="true">{state.publications.map(p=><li key={p.id}><Link className="text-accent" href={`/publications?publication=${p.id}`}>{p.label} · brouillon à relire</Link></li>)}</ul>}</form>;
 }
@@ -30,5 +30,5 @@ export function AgentV2MediaRetryForm({runId}:{runId:string}){
  const [state,retry,pending]=useActionState(retryAgentV2MediaAction,{} as AgentV2MediaRetryState);
  return <form action={retry} className="flex flex-wrap items-center gap-2"><input type="hidden" name="run_id" value={runId}/>
   <button disabled={pending} className="rounded-lg border border-border px-3 py-1 disabled:opacity-50">{pending?'Attachement…':'Réessayer l’attachement du média'}</button>
-  {state.message&&<span role={state.ok?'status':'alert'} className={state.ok?'':'text-red-400'}>{state.message}</span>}</form>;
+  {state.message&&<span role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</span>}</form>;
 }

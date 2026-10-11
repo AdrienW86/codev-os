@@ -56,7 +56,7 @@ export function EntityCard({ title, eyebrow, description, status, footer, href, 
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          {icon && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-accent"><Icon name={icon} width={18} height={18} /></span>}
+          {icon && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent-hover"><Icon name={icon} width={18} height={18} /></span>}
           <div className="min-w-0">
             {eyebrow && <p className="truncate text-xs text-muted">{eyebrow}</p>}
             <h3 className="font-semibold group-hover:text-accent">{title}</h3>
@@ -69,7 +69,7 @@ export function EntityCard({ title, eyebrow, description, status, footer, href, 
   );
   const interactive = "group block w-full text-left";
   return (
-    <article className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-accent/40">
+    <article className="flex min-w-0 flex-col rounded-2xl border border-border bg-surface p-5 shadow-card transition-colors hover:border-accent/40">
       {href ? <Link href={href} className={interactive}>{header}</Link> : onOpen ? <button type="button" onClick={onOpen} className={interactive}>{header}</button> : header}
       {children}
       {footer && <div className="mt-auto pt-4">{footer}</div>}

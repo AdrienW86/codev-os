@@ -81,7 +81,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
             const state = reportStatusLabels[report.status];
             return (
               <li key={report.id}>
-                <Link href={`/reports/${report.id}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-white/[0.02]">
+                <Link href={`/reports/${report.id}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-surface-raised/60">
                   <div className="min-w-0">
                     <p className="font-medium">{report.client?.name ?? "Tous les clients"} · {reportKindLabels[report.kind]}</p>
                     <p className="text-sm text-muted">Période couverte : {periodLabel(report.kind, { start: report.period_start, end: report.period_end })} · v{report.version}</p>

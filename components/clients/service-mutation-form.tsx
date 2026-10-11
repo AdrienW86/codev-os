@@ -21,7 +21,7 @@ export function ServiceMutationForm({ clientId, serviceKey, mode }: { clientId: 
       <button type="submit" disabled={pending || state.ok === true} className={actionClass(mode === "activate" ? "primary" : "danger")}>
         {pending ? "Enregistrement…" : mode === "activate" ? "Activer ce service" : "Désactiver ce service"}
       </button>
-      {state.message && <p role="status" className={`text-sm ${state.ok ? "text-accent" : "text-amber-300"}`}>{state.message}</p>}
+      {state.message && <p role="status" className={`text-sm ${state.ok ? "text-success" : "text-warning"}`}>{state.message}</p>}
     </form>
   );
 }

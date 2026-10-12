@@ -117,7 +117,7 @@ export type PublicationChannelOccurrenceRow = Updated & {
 // Agent v2 run (Lot 4.3 P7) and its media step (P8). Written only through the publication_agent_v2_* RPCs.
 export type PublicationAgentV2RunRow = {
   id: string; agent_run_id: string; agent_id: string; client_id: string; project_id: string; status: "processing" | "completed" | "failed";
-  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; editorial_group_id: string | null; publication_ids: string[];
+  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; selected_library_asset_id: string | null; editorial_group_id: string | null; publication_ids: string[];
   reserved_cost_eur: number; estimated_cost_eur: number; input_tokens: number; output_tokens: number; model: string; error_code: string | null;
   created_at: string; completed_at: string | null; lease_until: string;
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;

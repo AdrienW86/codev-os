@@ -8,7 +8,7 @@ import {visionPreview} from '@/lib/publications/media/transform';
 import type {Usage} from '@/lib/publications/ai/provider';
 import type {Json} from '@/lib/supabase/database.types';
 import type {AssetOrigin} from '@/lib/whatsapp/types';
-import {assetOriginal} from '@/lib/whatsapp/library';
+import {assetOriginal} from '@/lib/whatsapp/originals';
 import {importDriveToken,trashDrive} from '@/lib/whatsapp/providers';
 import {storeThumbnail,THUMBNAIL_BUCKET} from '@/lib/whatsapp/service';
 import {classificationContext,classificationInstructions,classificationSchema,mediaProfileFromRow,mediaProfilePayload,normalizeAssessment,type MediaProfile} from './model';

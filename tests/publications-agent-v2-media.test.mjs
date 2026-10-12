@@ -192,7 +192,7 @@ test('service: drafts + media attached → "3 brouillons créés avec média", s
  const order=s.log.filter(x=>Array.isArray(x)&&String(x[0]).startsWith('publication_agent_v2')).map(x=>x[0]);
  assert.deepEqual(order,['publication_agent_v2_begin','publication_agent_v2_finish','publication_agent_v2_media_claim','publication_agent_v2_media_attach'],'drafts created before any media I/O');
  const none=serviceWith();const n=await none.m.prepareNextPublications(P,{allowRealAI:false,generator:none.generator(null),now});
- assert.equal(n.message,'3 brouillons créés sans média. Média requis avant validation : ajoutez une photo à chaque brouillon.');assert.deepEqual(json(n.media),{state:'none',category:null,preview:null});
+ assert.equal(n.message,'3 brouillons créés sans média. Média requis avant validation : ajoutez une photo à chaque brouillon. Photo manquante signalée : ajoutez des photos à la photothèque du client.');assert.deepEqual(json(n.media),{state:'none',category:null,preview:null});
  assert.ok(!none.log.some(x=>Array.isArray(x)&&/media_(claim|attach|fail)/.test(x[0])),'no media step without a selected media');});
 
 test('service: media failure keeps the drafts and is never a full success; retry = media step only, no second generation, no duplicate',async()=>{

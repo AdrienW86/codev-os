@@ -19,6 +19,10 @@ async function handle(request: Request) {
   const auth = checkCronAuthorization(request.headers.get("authorization"), process.env.CRON_SECRET);
   const headers = { "Cache-Control": "no-store" };
   if (!auth.ok) return NextResponse.json({ error: auth.status === 503 ? "scheduler_not_configured" : "unauthorized" }, { status: auth.status, headers });
+  // Imports d'export WhatsApp, en tout premier et isolé : la conservation de 24 h des archives temporaires tient même si
+  // une autre étape du passage échoue. Les photos importées restent.
+  let whatsappExports;
+  try { whatsappExports = await purgeExportImports(); } catch { console.error("[scheduler] Purge des exports WhatsApp différée."); whatsappExports = { unavailable: true }; }
   try {
     const summary = await runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor) });
     // Publications (socle lot 6), en premier pour tenir l'heure prévue : diffusions des publications approuvées par un
@@ -42,9 +46,6 @@ async function handle(request: Request) {
     // Photothèque intelligente : classement borné des clients qui l'ont activé et purge des rejets expirés. Jamais de publication.
     let mediaIntelligence;
     try { mediaIntelligence = await runMediaIntelligenceTick(); } catch { console.error("[scheduler] Classement de la photothèque différé."); mediaIntelligence = { unavailable: true }; }
-    // Imports d'export WhatsApp : archives temporaires expirées (24 h) ou terminées supprimées. Les photos importées restent.
-    let whatsappExports;
-    try { whatsappExports = await purgeExportImports(); } catch { console.error("[scheduler] Purge des exports WhatsApp différée."); whatsappExports = { unavailable: true }; }
     // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
     let publicationPreparation;
     try { publicationPreparation = await runScheduledPreparation(); } catch { console.error("[scheduler] Préparation des publications différée."); publicationPreparation = { unavailable: true }; }

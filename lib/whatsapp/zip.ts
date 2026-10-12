@@ -3,9 +3,10 @@ import { inflateRawSync } from "node:zlib";
 // Socle lot 3 : lecture minimale d'une archive ZIP d'export WhatsApp par plages d'octets. Seuls le répertoire central
 // puis les entrées choisies sont lus : l'archive n'est jamais chargée entière en mémoire et chaque lot relit
 // uniquement ses fichiers. Refus explicites : ZIP64, multi-volumes, entrées chiffrées, méthodes autres que
-// « stockée » et « deflate », tailles incohérentes, CRC invalide, expansion au-delà de la taille annoncée.
+// « stockée » et « deflate », tailles incohérentes, CRC invalide, expansion au-delà de la taille annoncée, entrées qui se
+// chevauchent (plusieurs entrées du répertoire central pointant vers les mêmes données : marquées « overlap », jamais lues).
 export type RangeReader = { size: number; read(start: number, end: number): Promise<Uint8Array> };
-export type ZipEntry = { name: string; method: number; compressedSize: number; size: number; crc32: number; offset: number; encrypted: boolean };
+export type ZipEntry = { name: string; method: number; compressedSize: number; size: number; crc32: number; offset: number; encrypted: boolean; overlap?: boolean };
 export class ZipFailure extends Error { constructor(public readonly code: string) { super(code); } }
 
 export const MAX_ZIP_ENTRIES = 20000;
@@ -48,11 +49,20 @@ export async function readCentralDirectory(reader: RangeReader, maxEntries = MAX
     if (!name.endsWith("/")) entries.push({ name, method, compressedSize, size, crc32: crc, offset, encrypted: (flags & 1) === 1 });
     p += 46 + nameLength + extraLength + commentLength;
   }
+  // Contrôle peu coûteux, sans lire les en-têtes locaux : chaque entrée occupe au moins 30 + taille compressée octets à partir de
+  // son offset, avant le répertoire central. Une entrée qui empiète sur la précédente (ou sur le répertoire central) est marquée.
+  let end = 0;
+  for (const entry of [...entries].sort((a, b) => a.offset - b.offset)) {
+    const extent = entry.offset + 30 + entry.compressedSize;
+    if (entry.offset < end || extent > cdOffset) entry.overlap = true;
+    else end = extent;
+  }
   return entries;
 }
 
 // Contenu d'une entrée, vérifié (taille annoncée, CRC). maxSize borne la décompression (pas de bombe ZIP).
 export async function extractEntry(reader: RangeReader, entry: ZipEntry, maxSize: number): Promise<Uint8Array> {
+  if (entry.overlap) throw new ZipFailure("zip_overlap");
   if (entry.encrypted) throw new ZipFailure("zip_encrypted");
   if (entry.method !== 0 && entry.method !== 8) throw new ZipFailure("zip_method");
   if (entry.size > maxSize || entry.compressedSize > maxSize + 1024 * 1024) throw new ZipFailure("entry_too_large");

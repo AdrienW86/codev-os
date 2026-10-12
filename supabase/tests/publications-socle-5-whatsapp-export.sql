@@ -47,3 +47,16 @@ do $$begin
  update public.whatsapp_export_items set caption=null where import_id='e7000000-0000-4000-8000-000000000001';
  perform pg_temp.replay_assert((select count(*)=0 from public.whatsapp_export_items where caption is not null),'captions erasable at purge');
 end $$;
+
+-- 4. One active import per client (partial unique index), terminal ones never block; item claim status for import batches.
+do $$begin
+ perform pg_temp.replay_assert(pg_temp.wx_error($q$insert into public.whatsapp_export_imports(id,client_id,drive_folder_id,storage_path,rights_confirmed,created_by)
+  values('e7000000-0000-4000-8000-000000000005','c7000000-0000-4000-8000-000000000001','folder_abcdef123','c7000000-0000-4000-8000-000000000001/e7000000-0000-4000-8000-000000000005.zip',true,'user_local')$q$)='23505','second active import refused');
+ update public.whatsapp_export_imports set status='cancelled',purged_at=now() where id='e7000000-0000-4000-8000-000000000001';
+ insert into public.whatsapp_export_imports(id,client_id,drive_folder_id,storage_path,rights_confirmed,created_by)
+ values('e7000000-0000-4000-8000-000000000005','c7000000-0000-4000-8000-000000000001','folder_abcdef123','c7000000-0000-4000-8000-000000000001/e7000000-0000-4000-8000-000000000005.zip',true,'user_local');
+ insert into public.whatsapp_export_imports(id,client_id,drive_folder_id,storage_path,rights_confirmed,created_by)
+ values('e7000000-0000-4000-8000-000000000006','c7000000-0000-4000-8000-000000000002','folder_abcdef123','c7000000-0000-4000-8000-000000000002/e7000000-0000-4000-8000-000000000006.zip',true,'user_local');
+ perform pg_temp.replay_assert((select count(*)=2 from public.whatsapp_export_imports where status='uploading'),'one active import per client, clients independent');
+ perform pg_temp.replay_assert(pg_temp.wx_error($q$update public.whatsapp_export_items set status='importing' where import_id='e7000000-0000-4000-8000-000000000001'$q$) is null,'importing claim status allowed');
+end $$;

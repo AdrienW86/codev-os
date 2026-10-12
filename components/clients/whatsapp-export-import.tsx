@@ -42,7 +42,7 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
     setPreview(r);
   }, [clientId]);
   const analyze = useCallback(async (id: string) => {
-    setPhase("analyzing"); setBusy(true);
+    setPhase("analyzing"); setBusy(true); setMessage(null);
     for (let i = 0; i < 1000; i++) {
       const r = await analyzeExportBatchAction(clientId, id);
       if (!r.ok) return fail(r.message);
@@ -59,6 +59,8 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
       if (!r.ok) return fail(r.message);
       total += r.imported ?? 0; setImported(total); setProgress(r.remaining ?? 0);
       if (r.done) break;
+      // Photos réservées par un autre onglet : on attend un peu au lieu d'enchaîner les appels à vide.
+      if (!r.imported) await new Promise(resolve => setTimeout(resolve, 3000));
     }
     setBusy(false); setPhase("done"); setImportId(null);
     setMessage({ ok: true, text: `${total} photo${total > 1 ? "s" : ""} importée${total > 1 ? "s" : ""} dans la photothèque. Archive temporaire supprimée.` });
@@ -107,12 +109,12 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
 
   const totals = preview?.totals ?? {};
   const counts = (preview?.counts ?? {}) as Record<string, number>;
-  return <section className="rounded-xl border border-border p-4" data-export-import="true" aria-labelledby="wa-export-title">
+  return <section className="min-w-0 rounded-xl border border-border p-4" data-export-import="true" aria-labelledby="wa-export-title">
     <h3 id="wa-export-title" className="font-semibold">Importer un export WhatsApp</h3>
     <p className="mt-1 text-sm text-muted">Dans WhatsApp : discussion avec le client › Plus › Exporter la discussion › Joindre les médias. Seules les photos, leur date et leur légende sont conservées ; le reste de la conversation n’est jamais enregistré et l’archive est supprimée après l’import (24 h au plus).</p>
     {!folderReady && <p className="mt-3 text-sm text-warning">Associez d’abord un dossier Drive WhatsApp à ce client (Réglages › WhatsApp), avec les droits confirmés.</p>}
     {phase === "idle" && folderReady && <form action={start} className="mt-3 space-y-2 text-sm">
-      <input type="file" name="archive" accept=".zip,application/zip" required className="block text-sm" />
+      <input type="file" name="archive" accept=".zip,application/zip" required className="block w-full max-w-full text-sm" />
       <label className="block"><input type="checkbox" name="rights" required /> Le client m’autorise à utiliser les photos de cette discussion pour ses publications.</label>
       <button disabled={busy} className={primary}>{busy ? "Préparation…" : "Analyser l’archive"}</button>
     </form>}
@@ -120,7 +122,9 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
       <button className={primary} disabled={busy} onClick={() => void resume()}>Reprendre l’import</button>
       <button className={button} disabled={busy} onClick={() => void cancel()}>Annuler et supprimer l’archive</button></div>}
     {phase === "uploading" && <p className="mt-3 text-sm" role="status">Envoi de l’archive : {progress} %</p>}
-    {phase === "analyzing" && <p className="mt-3 text-sm" role="status">Analyse des photos… {progress ? `${progress} restante${progress > 1 ? "s" : ""}` : ""}</p>}
+    {phase === "analyzing" && <div className="mt-3 text-sm"><p role="status">{busy ? "Analyse des photos…" : "Analyse interrompue."} {progress ? `${progress} restante${progress > 1 ? "s" : ""}` : ""}</p>
+      {!busy && importId && <div className="mt-2 flex flex-wrap gap-2"><button className={primary} onClick={() => void analyze(importId)}>Reprendre l’analyse</button>
+        <button className={button} onClick={() => void cancel()}>Annuler et supprimer l’archive</button></div>}</div>}
     {phase === "ready" && preview && <div className="mt-3 space-y-3 text-sm">
       <p>{totals.ready ?? 0} photo{(totals.ready ?? 0) > 1 ? "s" : ""} prête{(totals.ready ?? 0) > 1 ? "s" : ""} · {totals.duplicate ?? 0} déjà dans la photothèque · {(totals.invalid ?? 0) + (totals.too_large ?? 0)} écartée{(totals.invalid ?? 0) + (totals.too_large ?? 0) > 1 ? "s" : ""} · {counts.other_files ?? 0} autre{(counts.other_files ?? 0) > 1 ? "s" : ""} fichier{(counts.other_files ?? 0) > 1 ? "s" : ""} ignoré{(counts.other_files ?? 0) > 1 ? "s" : ""} (vidéos, documents, audio)</p>
       {preview.incomplete && <p className="text-warning" data-incomplete="true">Export incomplet{counts.missing ? ` : ${counts.missing} photo${counts.missing > 1 ? "s" : ""} mentionnée${counts.missing > 1 ? "s" : ""} absente${counts.missing > 1 ? "s" : ""} de l’archive` : ""}{counts.omitted ? ` · ${counts.omitted} média${counts.omitted > 1 ? "s" : ""} omis à l’export` : ""}. Les photos présentes peuvent être importées ; pour le reste, refaites l’export « avec médias ».</p>}
@@ -134,7 +138,7 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
         <div className="aspect-square bg-surface-raised">{item.preview ? <img src={item.preview} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}</div>
         <div className="space-y-1 p-2 text-xs">
           <p className="text-muted">{dateLabel(item.capturedAt)}</p>
-          {item.caption && <p className="line-clamp-3 whitespace-pre-line">{item.caption}</p>}
+          {item.caption && <p className="line-clamp-3 whitespace-pre-line break-words">{item.caption}</p>}
           {item.status === "ready" ? <label className="block"><input type="checkbox" checked={item.selected} onChange={e => void toggle(item.id, e.target.checked)} /> Importer</label>
             : <p className="text-muted">{ITEM_STATUS_LABELS[item.status] ?? item.status}</p>}
         </div></li>)}</ul>
@@ -148,7 +152,8 @@ export function WhatsAppExportImport({ clientId, current, folderReady }: { clien
       </div>
     </div>}
     {phase === "importing" && <div className="mt-3 text-sm" role="status"><p>Import dans Drive et la photothèque… {imported} importée{imported > 1 ? "s" : ""}{progress ? `, ${progress} restante${progress > 1 ? "s" : ""}` : ""}</p>
-      {!busy && importId && <button className={`${primary} mt-2`} onClick={() => void runImport(importId)}>Reprendre l’import</button>}</div>}
+      {!busy && importId && <div className="mt-2 flex flex-wrap gap-2"><button className={primary} onClick={() => void runImport(importId)}>Reprendre l’import</button>
+        <button className={button} onClick={() => void cancel()}>Annuler et supprimer l’archive</button></div>}</div>}
     {phase === "done" && <button className={`${button} mt-3`} onClick={() => { setPhase("idle"); setMessage(null); setPreview(null); }}>Importer un autre export</button>}
     {message && <p role={message.ok ? "status" : "alert"} className={`mt-3 text-sm ${message.ok ? "text-success" : "text-danger"}`}>{message.text}</p>}
   </section>;

@@ -38,6 +38,22 @@ Un export sans fichier de discussion, avec des pièces jointes « omises » ou d
 - Tables `whatsapp_export_imports` / `whatsapp_export_items` : RLS active sans politique, accès serveur uniquement.
 - Aucune publication n'est déclenchée par l'import.
 
+## Robustesse (revue d'audit)
+
+- **Import interrompu** : la ligne de photothèque est créée avant l'envoi Drive. Une ligne restée sans `imported_at` (envoi
+  échoué, processus arrêté) n'est jamais comptée comme doublon ; l'import suivant la reprend (même identifiant Drive, envoi idempotent).
+- **Conservation 24 h** : la purge des exports s'exécute en premier dans `/api/internal/scheduler/tick`, isolée des autres étapes.
+  Elle ne touche que les imports expirés ou terminés, ligne par ligne (une erreur n'arrête pas la boucle), et ne pose `purged_at`
+  qu'après suppression de l'archive, des aperçus et des légendes. Un balayage borné du bucket supprime ensuite les fichiers de plus
+  de 24 h dont l'import est purgé, expiré ou absent (envoi terminé après une annulation, ligne perdue).
+- **Aperçu** : plus aucun aperçu ni légende n'est renvoyé une fois l'import expiré, terminé ou annulé.
+- **Concurrence** : index unique partiel `whatsapp_export_imports_one_active` (un import actif par client ; un import actif mais expiré
+  est clos au démarrage suivant) ; analyse idempotente (lignes en upsert, passage `uploading → analyzing` en compare-and-set) ;
+  noms d'entrée en double conservés une fois, les suivants deviennent des lignes « invalid » (`duplicate_entry`) ; chaque photo est
+  réservée (`status = 'importing'`, reprise après 10 min) avant l'import, deux onglets ne la traitent jamais tous les deux.
+- **ZIP** : entrées du répertoire central qui se chevauchent (mêmes données référencées plusieurs fois) marquées `zip_overlap`, jamais lues.
+- **Interface** : une analyse interrompue affiche « Reprendre l'analyse » et l'annulation, comme l'import.
+
 ## Configuration
 
 Aucune nouvelle variable d'environnement. L'envoi vers Drive réutilise l'accès d'import existant `GOOGLE_DRIVE_IMPORT_*`
@@ -57,5 +73,7 @@ cette taille (Storage → Settings → « Upload file size limit ») ; sinon l'e
 ## Tests
 
 - `node --test tests/whatsapp-export-import.test.mjs` : parseur (Android/iOS, FR/EN, heure d'été), lecteur ZIP par plages
-  et refus de sécurité, service complet (analyse, doublons, aperçu, import, purge, annulation, expiration, câblage sans injection HTML).
+  et refus de sécurité, service complet (analyse, doublons, aperçu, import, purge, annulation, expiration, câblage sans injection HTML), scénario F
+  (photos, PDF, vCard, doublons, messages privés et consigne glissée dans la discussion), archives corrompues ou trop grandes,
+  import interrompu, concurrence (deux démarrages, double analyse, deux onglets), purge par le planificateur même si les autres étapes échouent.
 - `supabase/tests/publications-socle-5-whatsapp-export.sql` (via `tests/publications-socle-db.test.mjs`, PostgreSQL local).

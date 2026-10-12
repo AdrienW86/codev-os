@@ -75,3 +75,30 @@ export async function signedPreviews(paths: string[]): Promise<Map<string, strin
   if (error || !data) return new Map();
   return new Map(data.flatMap(d => d.path && d.signedUrl ? [[d.path, d.signedUrl] as [string, string]] : []));
 }
+// Inventaire borné du bucket pour le balayage des orphelins (envoi terminé après une annulation, ligne d'import perdue) :
+// <client>/<import>.zip et <client>/<import>/<élément>.webp, avec leur date de création. Au plus `maxLists` listages.
+export type StoredExportObject = { path: string; createdAt: string | null };
+export async function listExportObjects(maxLists = 40): Promise<StoredExportObject[]> {
+  const storage = getSupabaseServerClient().storage.from(EXPORT_BUCKET);
+  let budget = maxLists;
+  const list = async (prefix: string, limit: number) => {
+    if (budget-- <= 0) return [];
+    const { data, error } = await storage.list(prefix, { limit, offset: 0, sortBy: { column: "name", order: "asc" } });
+    if (error) throw new ExportStorageFailure("storage_unavailable");
+    return data ?? [];
+  };
+  const uuid = /^[0-9a-f-]{36}$/, objects: StoredExportObject[] = [];
+  for (const client of await list("", 100)) {
+    if (client.id || !uuid.test(client.name)) continue;
+    for (const entry of await list(client.name, 1000)) {
+      if (entry.id) { objects.push({ path: `${client.name}/${entry.name}`, createdAt: entry.created_at ?? null }); continue; }
+      if (!uuid.test(entry.name)) continue;
+      for (const file of await list(`${client.name}/${entry.name}`, 1000)) if (file.id) objects.push({ path: `${client.name}/${entry.name}/${file.name}`, createdAt: file.created_at ?? null });
+    }
+  }
+  return objects;
+}
+export async function removeExportObjects(paths: string[]) {
+  const storage = getSupabaseServerClient().storage.from(EXPORT_BUCKET);
+  for (let i = 0; i < paths.length; i += 500) { const { error } = await storage.remove(paths.slice(i, i + 500)); if (error) throw new ExportStorageFailure("storage_unavailable"); }
+}

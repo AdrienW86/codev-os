@@ -29,6 +29,8 @@ create table public.whatsapp_export_imports (
 );
 create index whatsapp_export_imports_client on public.whatsapp_export_imports (client_id, created_at desc);
 create index whatsapp_export_imports_purge on public.whatsapp_export_imports (expires_at) where purged_at is null;
+-- Un seul import actif par client, même avec deux démarrages simultanés (le second reçoit une violation d'unicité).
+create unique index whatsapp_export_imports_one_active on public.whatsapp_export_imports (client_id) where status in ('uploading','analyzing','ready','importing');
 
 create table public.whatsapp_export_items (
   id uuid primary key default gen_random_uuid(),
@@ -43,7 +45,8 @@ create table public.whatsapp_export_items (
   captured_at timestamptz,
   -- Légende du message de la photo uniquement ; effacée quand l'import est terminé, annulé ou expiré.
   caption text check (caption is null or length(caption) <= 3000),
-  status text not null default 'pending' check (status in ('pending','ready','duplicate','invalid','too_large','imported','failed')),
+  -- « importing » : photo réservée par un lot d'import (compare-and-set), deux onglets ne la traitent jamais en même temps.
+  status text not null default 'pending' check (status in ('pending','ready','importing','duplicate','invalid','too_large','imported','failed')),
   selected boolean not null default true,
   sha256 text check (sha256 is null or sha256 ~ '^[0-9a-f]{64}$'),
   md5 text check (md5 is null or md5 ~ '^[0-9a-f]{32}$'),
@@ -59,7 +62,7 @@ create table public.whatsapp_export_items (
   foreign key (asset_id, client_id) references public.whatsapp_assets(id, client_id) on delete restrict,
   unique (import_id, entry_name)
 );
-create index whatsapp_export_items_work on public.whatsapp_export_items (import_id, status) where status in ('pending','ready');
+create index whatsapp_export_items_work on public.whatsapp_export_items (import_id, status) where status in ('pending','ready','importing');
 
 create trigger whatsapp_export_imports_updated before update on public.whatsapp_export_imports for each row execute function publications_private.touch_updated_at();
 create trigger whatsapp_export_items_updated before update on public.whatsapp_export_items for each row execute function publications_private.touch_updated_at();

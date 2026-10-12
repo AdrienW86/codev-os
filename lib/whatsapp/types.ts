@@ -21,7 +21,7 @@ export type MediaAiUsage = { id: string; client_id: string; asset_id: string | n
 export type AssetUse = { id: string; asset_id: string; client_id: string; publication_id: string; platform: "facebook" | "instagram" | "google_business_profile"; publication_asset_id: string | null; used_by: string; used_at: string };
 // Socle lot 3 : import d'export WhatsApp (archive temporaire, une ligne par photo de l'archive).
 export type ExportImportRow = { id: string; client_id: string; drive_folder_id: string; status: "uploading" | "analyzing" | "ready" | "importing" | "completed" | "cancelled" | "expired" | "failed"; storage_path: string; archive_size: number | null; counts: Json; incomplete: boolean; error_code: string | null; rights_confirmed: boolean; created_by: string; created_at: string; updated_at: string; expires_at: string; purged_at: string | null };
-export type ExportItemRow = { id: string; import_id: string; client_id: string; entry_name: string; entry_offset: number; compressed_size: number; size: number; method: number; crc32: number; captured_at: string | null; caption: string | null; status: "pending" | "ready" | "duplicate" | "invalid" | "too_large" | "imported" | "failed"; selected: boolean; sha256: string | null; md5: string | null; mime_type: string | null; width: number | null; height: number | null; preview_path: string | null; asset_id: string | null; error_code: string | null; created_at: string; updated_at: string };
+export type ExportItemRow = { id: string; import_id: string; client_id: string; entry_name: string; entry_offset: number; compressed_size: number; size: number; method: number; crc32: number; captured_at: string | null; caption: string | null; status: "pending" | "ready" | "importing" | "duplicate" | "invalid" | "too_large" | "imported" | "failed"; selected: boolean; sha256: string | null; md5: string | null; mime_type: string | null; width: number | null; height: number | null; preview_path: string | null; asset_id: string | null; error_code: string | null; created_at: string; updated_at: string };
 type Table<R, I> = { Row: R; Insert: I; Update: Partial<R>; Relationships: [] };
 export type WhatsAppTables = {
   whatsapp_senders: Table<Mapping, Omit<Mapping, "updated_at">>;
@@ -32,7 +32,7 @@ export type WhatsAppTables = {
   whatsapp_asset_assessments: Table<AssetAssessment, Omit<AssetAssessment, "analyzed_at" | "manual_verdict" | "reviewed_by" | "reviewed_at">>;
   client_media_ai_usage: Table<MediaAiUsage, Omit<MediaAiUsage, "id" | "created_at">>;
   whatsapp_export_imports: Table<ExportImportRow, Pick<ExportImportRow, "id" | "client_id" | "drive_folder_id" | "storage_path" | "rights_confirmed" | "created_by"> & Partial<Pick<ExportImportRow, "expires_at" | "status">>>;
-  whatsapp_export_items: Table<ExportItemRow, Pick<ExportItemRow, "import_id" | "client_id" | "entry_name" | "entry_offset" | "compressed_size" | "size" | "method" | "crc32"> & Partial<Pick<ExportItemRow, "captured_at" | "caption" | "status" | "selected">>>;
+  whatsapp_export_items: Table<ExportItemRow, Pick<ExportItemRow, "import_id" | "client_id" | "entry_name" | "entry_offset" | "compressed_size" | "size" | "method" | "crc32"> & Partial<Pick<ExportItemRow, "captured_at" | "caption" | "status" | "selected" | "error_code">>>;
 };
 export type WhatsAppFunctions = {
   whatsapp_claim: { Args: { p_lease: string }; Returns: Inbox[] };

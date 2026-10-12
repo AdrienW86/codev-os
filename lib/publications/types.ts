@@ -179,6 +179,7 @@ export type PublicationFunctions = {
   publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
   publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
+  publication_reschedule:{Args:{p_publication_id:string;p_expected_revision_id:string;p_occurrence_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};
   publication_job_dispatch:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:boolean};

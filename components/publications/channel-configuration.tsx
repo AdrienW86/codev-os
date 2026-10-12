@@ -3,6 +3,9 @@ import Link from 'next/link';
 import {useActionState,useState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {confirmChannelsAction,saveChannelScheduleAction,setChannelEnabledAction,type ConfigurationState} from '@/app/(cockpit)/publications/configuration-actions';
+import {saveChannelRulesAction} from '@/app/(cockpit)/clients/[id]/publications-actions';
+import {timezoneOptions} from '@/lib/publications/client-setup-model';
+import type {AccountOption} from '@/lib/publications/connections/model';
 import {ChannelAccountSelector,ConnectionsPanel} from './connections-panel';
 import type {ChannelAccountView,ConnectionSummary} from '@/lib/publications/connections/model';
 import {DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS,WEEKDAY_LABELS,postsPerWeekLabel,scheduleSlotsPayload,slotRowsError,sortConfigurationSlots,weekdayLabel,
@@ -16,7 +19,9 @@ const initial:ConfigurationState={};
 
 // Lot 4.3 P9: connections of the client and the publication account of each channel (status only, no secret).
 export type ChannelConnectionsView={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string;oauthReady:Record<ConnectionSummary['provider'],boolean>};
-export function ChannelConfiguration({projectId,view,connections=null,oauthBanner=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null;oauthBanner?:{ok:boolean;message:string}|null}){
+// Socle lot 1: also rendered in the client « Publications » tab (returnView 'client', discovered account names shown).
+export function ChannelConfiguration({projectId,view,connections=null,oauthBanner=null,returnView='project',accounts=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null;oauthBanner?:{ok:boolean;message:string}|null;
+ returnView?:'project'|'client';accounts?:AccountOption[]|null}){
  if(!view)return <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2><p role="alert" className="mt-3 text-sm">Configuration des canaux indisponible pour le moment. Rechargez la page.</p></Panel>;
  return <>
   <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2>
@@ -27,7 +32,7 @@ export function ChannelConfiguration({projectId,view,connections=null,oauthBanne
    {view.calendarNotice&&<p role="status" data-channel-transition="calendar" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.calendarNotice}</p>}
    {view.agentNotice&&<p role="status" data-channel-transition="agent" className="mt-4 rounded-lg border border-border p-3 text-sm">{view.agentNotice}</p>}
   </Panel>
-  {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage} oauthReady={connections.oauthReady} banner={oauthBanner}/>
+  {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage} oauthReady={connections.oauthReady} banner={oauthBanner} returnView={returnView} accounts={accounts}/>
    :<Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2><p role="alert" className="mt-3 text-sm">Connexions indisponibles pour le moment. Rechargez la page.</p></Panel>}
   <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card} account={connections?.channels.find(c=>c.platform===card.platform)??null}/>)}</div></>;
 }
@@ -44,8 +49,9 @@ function ChannelCardView({projectId,card,account}:{projectId:string;card:Channel
  return <Panel className="p-5" ><article data-channel={card.platform} data-state={card.state}>
   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{card.label}</h3>{stateBadges[card.state]}</div>
   {account&&card.configured?<ChannelAccountSelector projectId={projectId} view={account}/>:<p className="mt-2 text-xs text-muted">{card.accountConnected?'Compte connecté':'Aucun compte connecté'}</p>}
-  {card.rules&&<div className="mt-3 text-sm"><p className="text-xs text-muted">Règles éditoriales</p><p className="whitespace-pre-wrap">{card.rules}</p></div>}
   {card.state!=='legacy'&&<ChannelToggle projectId={projectId} card={card}/>}
+  {card.configured?<RulesEditor key={card.rules??''} projectId={projectId} card={card}/>
+   :card.rules&&<div className="mt-3 text-sm"><p className="text-xs text-muted">Règles éditoriales</p><p className="whitespace-pre-wrap">{card.rules}</p></div>}
   {card.state==='legacy'?<p className="mt-4 text-sm text-muted">Confirmez les canaux pour configurer le planning.</p>
    :!card.configured?<p className="mt-4 text-sm text-muted">Activez ce canal pour configurer son planning.</p>
    :<ScheduleEditor key={JSON.stringify(card.schedule)} projectId={projectId} card={card}/>}
@@ -56,7 +62,8 @@ function ChannelToggle({projectId,card}:{projectId:string;card:ChannelCard}){
  const [state,toggle,pending]=useActionState(setChannelEnabledAction,initial);const active=card.state==='active';
  return <form action={toggle} className="mt-4 flex flex-wrap items-center gap-3"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="platform" value={card.platform}/>
   <input type="hidden" name="enabled" value={active?'false':'true'}/>
-  <button disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm">{pending?'Enregistrement…':active?'Désactiver le canal':'Activer le canal'}</button>
+  <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={active} disabled={pending} onChange={e=>e.currentTarget.form?.requestSubmit()} aria-label={`Publier sur ${card.label}`}/> Publier sur {card.label}</label>
+  {pending&&<span className="text-xs text-muted">Enregistrement…</span>}
   {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }
 
@@ -73,11 +80,11 @@ function ScheduleEditor({projectId,card}:{projectId:string;card:ChannelCard}){
   const free=slot??{weekday:[1,2,3,4,5,6,7].find(d=>!rows.some(r=>r.weekday===d&&r.localTime==='12:00'))??1,localTime:'12:00'};setRows([...rows,{...free,key:next}]);setNext(next+1);};
  const update=(key:number,patch:Partial<ConfigurationSlot>)=>setRows(rows.map(r=>r.key===key?{...r,...patch}:r));
  return <form action={save} className="mt-5 space-y-3 border-t border-border pt-4"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="platform" value={card.platform}/>
-  <input type="hidden" name="timezone" value={timezone}/><input type="hidden" name="slots" value={JSON.stringify(scheduleSlotsPayload(rows))}/>
+<input type="hidden" name="slots" value={JSON.stringify(scheduleSlotsPayload(rows))}/>
   <div className="flex flex-wrap items-center justify-between gap-2"><label className="text-sm"><input type="checkbox" name="enabled" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Planning actif</label>
    {!enabled&&<Badge>Planning désactivé</Badge>}</div>
   {card.state==='inactive'&&<p className="text-xs text-warning">Canal inactif : ce planning est conservé mais n’est pas utilisé.</p>}
-  <p className="text-xs text-muted">Fuseau horaire <span className="text-foreground">{timezone}</span></p>
+  <label className="block text-xs text-muted">Fuseau horaire <select name="timezone" defaultValue={timezone} className={`${input} mt-1 block w-full text-foreground`}>{timezoneOptions(timezone).map(t=><option key={t} value={t}>{t}</option>)}</select></label>
   {sorted.length?<ul className="space-y-2">{sorted.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2" data-slot-row="true">
    <select aria-label="Jour" className={input} value={r.weekday} onChange={e=>update(r.key,{weekday:Number(e.target.value)})}>{WEEKDAY_LABELS.map((d,i)=><option key={d} value={i+1}>{d}</option>)}</select>
    <input aria-label="Heure" type="time" required className={input} value={r.localTime} onChange={e=>update(r.key,{localTime:e.target.value.slice(0,5)})}/>
@@ -90,4 +97,13 @@ function ScheduleEditor({projectId,card}:{projectId:string;card:ChannelCard}){
   {error&&<p role="alert" className="text-sm text-danger">{error}</p>}
   <button disabled={pending||Boolean(error)} className="w-full rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground">{pending?'Enregistrement…':`Enregistrer ${card.label}`}</button>
   {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
+}
+
+// Per-channel editorial rules (tone, mentions, hashtags allowed…), saved on the channel; account and activation kept.
+function RulesEditor({projectId,card}:{projectId:string;card:ChannelCard}){
+ const [state,save,pending]=useActionState(saveChannelRulesAction,initial);
+ return <form action={save} className="mt-4 space-y-2"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="platform" value={card.platform}/>
+  <label className="block text-xs text-muted">Règles éditoriales {card.label}<textarea name="rules" maxLength={4000} rows={3} defaultValue={card.rules??''} className={`${input} mt-1 block w-full text-foreground`} placeholder="Ton, longueur, mentions obligatoires, hashtags autorisés…"/></label>
+  <button disabled={pending} className="rounded-lg border border-border px-3 py-1.5 text-xs">{pending?'Enregistrement…':'Enregistrer les règles'}</button>
+  {state.message&&<p role="status" className={`text-xs ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }

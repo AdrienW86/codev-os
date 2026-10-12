@@ -44,7 +44,8 @@ export async function getCalendar(filter:{from:string;to:string;client?:string;p
    else make({...s,local_time:s.publication_id?null:s.local_time});
   }
  }
- for(const p of publications){if(covered.has(p.id))continue;const project=projects.find(pr=>pr.id===p.project_id);make({key:p.id,local_date:p.target_date??p.editorial_week,local_time:null,timezone:"Europe/Paris",client_id:p.client_id,project_id:p.project_id,platforms:variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform).length?variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform):platformsOf(project?.id),publication_id:p.id});}
+ // Brouillon non planifié sans date cible (photothèque WhatsApp) : il n’occupe aucune case du calendrier.
+ for(const p of publications){if(covered.has(p.id)||(p.slot==null&&!p.occurrence_id&&!p.target_date))continue;const project=projects.find(pr=>pr.id===p.project_id);make({key:p.id,local_date:p.target_date??p.editorial_week,local_time:null,timezone:"Europe/Paris",client_id:p.client_id,project_id:p.project_id,platforms:variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform).length?variants.filter(v=>v.revision_id===p.current_revision_id).map(v=>v.platform):platformsOf(project?.id),publication_id:p.id});}
  return filterCalendar(entries,filter);
 }
 export async function projectPlanningJobs(projectId:string):Promise<PlanningJob[]>{await requireAdmin();if(!isPublicationUuid(projectId))throw Error("Projet invalide.");const db=getSupabaseServerClient();return planningRows<PlanningJob>(()=>db.from("publication_planning_jobs").select("*").eq("project_id",projectId).order("created_at").order("id"));}

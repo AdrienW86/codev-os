@@ -14,7 +14,7 @@ export async function enqueueMedia(media: IncomingMedia[]) {
 }
 
 // Une miniature manquante n'empêche pas l'import : la photothèque affiche alors un aperçu générique.
-async function storeThumbnail(db: ReturnType<typeof getSupabaseServerClient>, asset: { id: string; client_id: string; thumbnail_path?: string | null }, bytes: Uint8Array) {
+export async function storeThumbnail(db: ReturnType<typeof getSupabaseServerClient>, asset: { id: string; client_id: string; thumbnail_path?: string | null }, bytes: Uint8Array) {
   if (asset.thumbnail_path) return;
   try {
     const small = await thumbnail(bytes);

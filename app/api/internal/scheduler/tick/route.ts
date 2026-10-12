@@ -6,6 +6,7 @@ import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
 import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
+import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -27,7 +28,10 @@ async function handle(request: Request) {
     try {
       whatsapp = ingestionEnabled() ? { ...await processMediaBatch({ kind: "system", worker: "whatsapp-scheduler" }, 20, 60000), retention: await purgeExpiredPersonalData() } : { disabled: true };
     } catch { console.error("[scheduler] Import WhatsApp différé."); whatsapp = { unavailable: true }; }
-    return NextResponse.json({ ok: true, ...summary, push, searchConsole, whatsapp }, { headers });
+    // Photothèque intelligente : classement borné des clients qui l'ont activé et purge des rejets expirés. Jamais de publication.
+    let mediaIntelligence;
+    try { mediaIntelligence = await runMediaIntelligenceTick(); } catch { console.error("[scheduler] Classement de la photothèque différé."); mediaIntelligence = { unavailable: true }; }
+    return NextResponse.json({ ok: true, ...summary, push, searchConsole, whatsapp, mediaIntelligence }, { headers });
   } catch {
     console.error("[scheduler] Tick interrompu.");
     return NextResponse.json({ error: "tick_failed" }, { status: 500, headers });

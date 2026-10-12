@@ -115,6 +115,7 @@ test("photothèque actions authenticate first and never write in simulation", as
     "@/lib/publications/types": { publicationPlatforms: ["google_business_profile", "facebook", "instagram"] },
     "@/lib/whatsapp/library-model": model,
     "@/lib/whatsapp/library": { preparePublication: async () => { calls++; return { id: uuid(9), message: "ok" }; }, setLibraryStatus: async () => { calls++; return 1; } },
+    "@/lib/media-intelligence/service": { classifyClientMedia: async () => { calls++; return { analyzed: 1, quarantined: 0, failed: 0, stopped: null }; }, saveMediaProfile: async () => { calls++; return { ok: true, message: "ok" }; }, syncDriveLibrary: async () => { calls++; return { added: 0, skipped: 0, folders: 0 }; } },
   });
   const form = new FormData(); form.set("client_id", CLIENT); form.append("asset_id", uuid(1)); form.set("intent", "status:validated");
   await assert.rejects(() => load(true, false).mediaLibraryAction({}, form), /denied/);
@@ -181,6 +182,8 @@ function prepareHarness({ failRegister = false, failDrive = false, failRevise = 
       currentRevision: async () => ({ revision_id: state.drafts.length ? REV2 : REV1, status: "draft" }),
     },
     "./library-model": model,
+    "@/lib/integrations/publications-drive": { driveReadProvider: () => ({ download: async () => { throw Error("publications drive must not be used for WhatsApp media"); } }) },
+    "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"),
     "./providers": { importDriveToken: async () => "dummy-token", downloadDrive: async (_t, id, folder) => { if (failDrive) throw Error("drive down"); assert.equal(folder, "folder_client_a"); return new Uint8Array([id.length]); }, maxImageBytes: 8388608, maxVideoBytes: 16777216 },
     "./service": { THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   }, { FormData });

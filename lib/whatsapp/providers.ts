@@ -160,6 +160,19 @@ export async function downloadDrive(token: string, id: string, folder: string, m
   if (createHash("md5").update(bytes).digest("hex") !== md5) throw new ImportFailure("drive_file_conflict");
   return bytes;
 }
+/**
+ * Met à la corbeille (récupérable 30 jours dans Drive) un fichier créé par l'application (portée drive.file).
+ * Utilisé uniquement pour un média rejeté par un humain, selon la politique de suppression du client.
+ */
+export async function trashDrive(token: string, id: string, folder: string, md5: string) {
+  driveFileId.parse(id); folderSchema.parse(folder);
+  if (!await driveFileMatches(token, id, folder, md5)) return "missing" as const;
+  const response = await request(`https://www.googleapis.com/drive/v3/files/${id}?supportsAllDrives=true`, {
+    method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }),
+  });
+  if (!response.ok) await googleJson(response, "drive");
+  return "trashed" as const;
+}
 export async function createImportFolder(token: string, name: string) {
   const id = await generateDriveId(token);
   const data = parseGoogle(z.object({ id: driveFileId }), await googleJson(await request("https://www.googleapis.com/drive/v3/files?fields=id", {

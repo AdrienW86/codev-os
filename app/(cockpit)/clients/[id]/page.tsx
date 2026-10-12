@@ -44,6 +44,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { deleteClientAction } from "@/app/(cockpit)/clients/[id]/actions";
 import { MediaLibraryPanel } from "@/components/clients/media-library-panel";
+import { getMediaProfile } from "@/lib/media-intelligence/service";
 import { clientFolders, listClientLibrary } from "@/lib/whatsapp/library";
 import { libraryStatuses, type LibraryStatus } from "@/lib/whatsapp/types";
 import { publicationProjectOptions } from "@/lib/publications/project-channels";
@@ -226,12 +227,13 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 }
 
 async function MediaTab({ clientId, projects, status }: { clientId: string; projects: { id: string; client_id: string; name: string; type: string | null }[]; status: LibraryStatus | null }) {
-  const [library, folders, options] = await Promise.all([
+  const [library, folders, options, profile] = await Promise.all([
     safeRead("media-library", () => listClientLibrary(clientId, status), []),
     safeRead("media-library-folders", () => clientFolders(clientId), []),
     safeRead("media-library-projects", () => publicationProjectOptions(projects), []),
+    safeRead("media-library-profile", () => getMediaProfile(clientId), null),
   ]);
-  return <MediaLibraryPanel clientId={clientId} items={library.data} folders={folders.data} projects={options.data} status={status} unavailable={library.unavailable} />;
+  return <MediaLibraryPanel clientId={clientId} items={library.data} folders={folders.data} projects={options.data} status={status} unavailable={library.unavailable} profile={profile.data} />;
 }
 
 async function ActivityTab({ clientId, recommendations, runs, actions }: { clientId: string } & Pick<Parameters<typeof ClientAgenticActivity>[0], "recommendations" | "runs" | "actions">) {

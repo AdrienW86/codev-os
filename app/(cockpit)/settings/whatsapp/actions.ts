@@ -7,7 +7,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import { phoneSchema, folderSchema } from "@/lib/whatsapp/payload";
 import { checkFolder, importDriveToken, createImportFolder } from "@/lib/whatsapp/providers";
-import { processOneImage } from "@/lib/whatsapp/service";
+import { processOneMedia } from "@/lib/whatsapp/service";
 export type ImportState = { message?: string; ok?: boolean };
 const mapping = z.object({ sender: phoneSchema, client_id: z.uuid(), drive_folder_id: folderSchema, rights_confirmed: z.boolean(), enabled: z.boolean() }).refine(value => !value.enabled || value.rights_confirmed);
 
@@ -32,9 +32,9 @@ export async function runImport(): Promise<ImportState> {
   const { userId } = await requireAdmin();
   if (await getActiveScenario()) return { message: "Import indisponible en simulation." };
   try {
-    const status = await processOneImage({ kind: "admin", userId });
+    const status = await processOneMedia({ kind: "admin", userId });
     revalidatePath("/settings/whatsapp");
-    const messages: Record<string, string> = { disabled: "Activez la réception côté serveur avant d’importer.", idle: "Aucune photo prête : associez les expéditeurs, confirmez les droits ou attendez la reprise.", imported: "Une photo importée dans Drive.", duplicate: "Photo déjà présente : aucun fichier supplémentaire créé.", retry: "Import interrompu. Une reprise est prévue ; consultez le code dans la file." };
+    const messages: Record<string, string> = { disabled: "Activez la réception côté serveur avant d’importer.", idle: "Aucun média prêt : associez les expéditeurs, confirmez les droits ou attendez la reprise.", imported: "Un média importé dans Drive.", duplicate: "Média déjà présent : aucun fichier supplémentaire créé.", retry: "Import interrompu. Une reprise est prévue ; consultez le code dans la file." };
     return { message: messages[status] ?? "Import indisponible.", ok: status === "imported" || status === "duplicate" };
   } catch { return { message: "File indisponible. Vérifiez la migration et la configuration serveur." }; }
 }
@@ -65,4 +65,49 @@ export async function createFolder(_state: ImportState, form: FormData): Promise
     await writeAudit({ kind: "admin", userId }, { action: "whatsapp.folder.created", resource_type: "client", resource_id: client.id, metadata: { drive_folder_id: folder } });
     return { message: `Dossier créé. Copiez cet ID dans l’association ci-dessous : ${folder}`, ok: true };
   } catch { return { message: "Création indisponible. Vérifiez les credentials Drive d’import et la permission drive.file." }; }
+}
+
+// Affectation explicite d'un média d'un numéro inconnu : jamais automatique, droits confirmés par l'administrateur.
+const assignment = z.object({ id: z.uuid(), target: z.string().regex(/^[0-9a-f-]{36}:[a-zA-Z0-9_-]{10,200}$/), rights: z.literal(true) });
+export async function assignMedia(_state: ImportState, form: FormData): Promise<ImportState> {
+  const { userId } = await requireAdmin();
+  if (await getActiveScenario()) return { message: "Indisponible en simulation." };
+  const parsed = assignment.safeParse({ id: form.get("id"), target: form.get("target"), rights: form.get("rights_confirmed") === "on" });
+  if (!parsed.success) return { message: "Choisissez le client et confirmez l’autorisation d’utilisation." };
+  const [clientId, folder] = [parsed.data.target.slice(0, 36), parsed.data.target.slice(37)];
+  if (!z.uuid().safeParse(clientId).success) return { message: "Client invalide." };
+  try {
+    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.assign.request", resource_type: "whatsapp_inbox", resource_id: parsed.data.id, metadata: { client_id: clientId, drive_folder_id: folder } });
+    const { error } = await getSupabaseServerClient().rpc("whatsapp_assign", { p_inbox_id: parsed.data.id, p_client_id: clientId, p_folder: folder, p_actor_id: userId });
+    if (error) return { message: "Affectation refusée : le média n’est plus en attente ou ce dossier n’est pas associé à ce client." };
+    revalidatePath("/settings/whatsapp");
+    return { message: "Média affecté. Il sera importé dans le dossier du client au prochain traitement.", ok: true };
+  } catch { return { message: "Affectation indisponible." }; }
+}
+export async function dismissMedia(_state: ImportState, form: FormData): Promise<ImportState> {
+  const { userId } = await requireAdmin();
+  if (await getActiveScenario()) return { message: "Indisponible en simulation." };
+  const id = z.uuid().safeParse(form.get("id"));
+  if (!id.success) return { message: "Média invalide." };
+  try {
+    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.dismiss.request", resource_type: "whatsapp_inbox", resource_id: id.data });
+    const { data, error } = await getSupabaseServerClient().from("whatsapp_inbox").update({ status: "dismissed", caption: null }).eq("id", id.data).eq("status", "pending").is("client_id", null).select("id");
+    if (error || !data?.length) return { message: "Seul un média en attente d’affectation peut être écarté." };
+    revalidatePath("/settings/whatsapp");
+    return { message: "Média écarté : il ne sera pas importé.", ok: true };
+  } catch { return { message: "Opération indisponible." }; }
+}
+// Droit à l'effacement : supprime l'association, écarte les médias non importés, efface numéro et messages.
+export async function forgetSender(_state: ImportState, form: FormData): Promise<ImportState> {
+  const { userId } = await requireAdmin();
+  if (await getActiveScenario()) return { message: "Indisponible en simulation." };
+  const sender = phoneSchema.safeParse(String(form.get("sender") ?? "").replace(/[\s+()-]/g, ""));
+  if (!sender.success || form.get("confirm") !== "on") return { message: "Indiquez le numéro international et confirmez l’effacement." };
+  try {
+    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.sender.forget.request", resource_type: "whatsapp_sender", resource_id: null });
+    const { error } = await getSupabaseServerClient().rpc("whatsapp_forget_sender", { p_sender: sender.data, p_actor_id: userId });
+    if (error) return { message: "Effacement non confirmé. Vérifiez la migration de la photothèque." };
+    revalidatePath("/settings/whatsapp");
+    return { message: "Numéro et messages effacés. Les fichiers déjà présents dans Drive restent à supprimer manuellement si nécessaire.", ok: true };
+  } catch { return { message: "Effacement indisponible." }; }
 }

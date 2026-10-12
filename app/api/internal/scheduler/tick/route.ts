@@ -5,6 +5,7 @@ import { runTick } from "@/lib/scheduler/engine";
 import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
+import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -21,7 +22,12 @@ async function handle(request: Request) {
     // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
     let searchConsole;
     try { searchConsole = await syncDueSearchConsole(new Date()); } catch { console.error("[scheduler] Synchro Search Console différée."); searchConsole = { unavailable: true }; }
-    return NextResponse.json({ ok: true, ...summary, push, searchConsole }, { headers });
+    // Reprises WhatsApp → Drive : vide la file (médias disponibles 7 jours chez Meta) et applique la conservation.
+    let whatsapp;
+    try {
+      whatsapp = ingestionEnabled() ? { ...await processMediaBatch({ kind: "system", worker: "whatsapp-scheduler" }, 20, 60000), retention: await purgeExpiredPersonalData() } : { disabled: true };
+    } catch { console.error("[scheduler] Import WhatsApp différé."); whatsapp = { unavailable: true }; }
+    return NextResponse.json({ ok: true, ...summary, push, searchConsole, whatsapp }, { headers });
   } catch {
     console.error("[scheduler] Tick interrompu.");
     return NextResponse.json({ error: "tick_failed" }, { status: 500, headers });

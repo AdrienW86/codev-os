@@ -43,9 +43,13 @@ import { actionStatusLabel, actionTypeLabel, recommendationStatusLabel, runStatu
 import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { deleteClientAction } from "@/app/(cockpit)/clients/[id]/actions";
+import { MediaLibraryPanel } from "@/components/clients/media-library-panel";
+import { clientFolders, listClientLibrary } from "@/lib/whatsapp/library";
+import { libraryStatuses, type LibraryStatus } from "@/lib/whatsapp/types";
+import { publicationProjectOptions } from "@/lib/publications/project-channels";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
-const tabIds = ["overview", "projects", "ads", "health", "agents", "activity", "information"] as const;
+const tabIds = ["overview", "projects", "media", "ads", "health", "agents", "activity", "information"] as const;
 type TabId = (typeof tabIds)[number];
 
 // Aucun generateStaticParams : les UUID réels sont résolus à chaque requête.
@@ -111,6 +115,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       <Tabs label="Sections du dossier client" current={tab} items={[
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
+        { id: "media", label: "Photothèque", href: href("media") },
         { id: "ads", label: "Campagnes", href: href("ads") },
         { id: "health", label: "Données & performance", href: href("health") },
         { id: "agents", label: "Agents", href: href("agents") },
@@ -192,6 +197,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         );
       })()}
 
+      {tab === "media" && <MediaTab clientId={client.id} projects={projects} status={libraryStatuses.includes(search.status as LibraryStatus) ? search.status as LibraryStatus : null} />}
+
       {tab === "ads" && adsFilters && adsInitial && (
         <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
           prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} />
@@ -216,6 +223,15 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       )}
     </>
   );
+}
+
+async function MediaTab({ clientId, projects, status }: { clientId: string; projects: { id: string; client_id: string; name: string; type: string | null }[]; status: LibraryStatus | null }) {
+  const [library, folders, options] = await Promise.all([
+    safeRead("media-library", () => listClientLibrary(clientId, status), []),
+    safeRead("media-library-folders", () => clientFolders(clientId), []),
+    safeRead("media-library-projects", () => publicationProjectOptions(projects), []),
+  ]);
+  return <MediaLibraryPanel clientId={clientId} items={library.data} folders={folders.data} projects={options.data} status={status} unavailable={library.unavailable} />;
 }
 
 async function ActivityTab({ clientId, recommendations, runs, actions }: { clientId: string } & Pick<Parameters<typeof ClientAgenticActivity>[0], "recommendations" | "runs" | "actions">) {

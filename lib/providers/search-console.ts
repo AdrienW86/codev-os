@@ -9,6 +9,8 @@ import { normalizeProperty, normalizeSites, type DiscoveredProperty } from "@/li
 type Env = Record<string, string | undefined>;
 export type QueryRow = { keys: string[]; clicks: number; impressions: number; ctr: number; position: number };
 export type SearchDimension = "query" | "page" | "date" | "country" | "device";
+/** Filtre exact sur une dimension (ex. une requête et sa page), combinés en ET. */
+export type SearchFilter = { dimension: "query" | "page"; expression: string };
 type Options = { env?: Env; fetchImpl?: FetchLike; accessToken?: () => Promise<string> };
 
 const API = "https://searchconsole.googleapis.com/webmasters/v3";
@@ -46,12 +48,15 @@ const day = /^\d{4}-\d{2}-\d{2}$/;
  * Search Analytics (type « web »). `dataState: "final"` (défaut) ne renvoie que des jours consolidés.
  * Les lignes sont triées par clics décroissants par Google ; `rowLimit` ≤ 25 000 (limite de l'API).
  */
-export async function searchAnalytics(property: string, query: { startDate: string; endDate: string; dimensions: SearchDimension[]; rowLimit?: number; dataState?: "final" | "all" }, options: Options = {}): Promise<QueryRow[]> {
+export async function searchAnalytics(property: string, query: { startDate: string; endDate: string; dimensions: SearchDimension[]; rowLimit?: number; dataState?: "final" | "all"; filters?: SearchFilter[] }, options: Options = {}): Promise<QueryRow[]> {
   if (!isValidProperty(property) || !day.test(query.startDate) || !day.test(query.endDate) || query.startDate > query.endDate) throw new ProviderError("search-console", "blocked");
+  const filters = query.filters ?? [];
+  if (filters.length > 3 || filters.some((filter) => !["query", "page"].includes(filter.dimension) || typeof filter.expression !== "string" || !filter.expression || filter.expression.length > 1000)) throw new ProviderError("search-console", "blocked");
   const token = await bearer(options);
   const data = await providerJson<{ rows?: unknown }>("search-console", `${API}/sites/${encodeURIComponent(property)}/searchAnalytics/query`, {
     method: "POST", fetchImpl: options.fetchImpl, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ startDate: query.startDate, endDate: query.endDate, dimensions: query.dimensions, type: "web", dataState: query.dataState ?? "final", rowLimit: Math.max(1, Math.min(query.rowLimit ?? 250, 25_000)) }),
+    body: JSON.stringify({ startDate: query.startDate, endDate: query.endDate, dimensions: query.dimensions, type: "web", dataState: query.dataState ?? "final", rowLimit: Math.max(1, Math.min(query.rowLimit ?? 250, 25_000)),
+      ...(filters.length ? { dimensionFilterGroups: [{ groupType: "and", filters: filters.map((filter) => ({ dimension: filter.dimension, operator: "equals", expression: filter.expression })) }] } : {}) }),
   });
   if (data.rows === undefined) return [];
   if (!Array.isArray(data.rows)) throw new ProviderError("search-console", "malformed");

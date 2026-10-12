@@ -114,6 +114,8 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
     const kind = typeof payload.kind === "string" ? payload.kind : "";
     const key = typeof payload.key === "string" ? payload.key : "";
     if (kind && key && !recommendationByFinding.has(`${kind}:${key}`)) recommendationByFinding.set(`${kind}:${key}`, item.id);
+    // Opportunités de l'Agent SEO V2 : rattachées par mot-clé ou page cible.
+    if (kind === "keyword_opportunity" && key && !recommendationByFinding.has(`any:${key}`)) recommendationByFinding.set(`any:${key}`, item.id);
   }
 
   return {
@@ -173,7 +175,7 @@ export async function getClientHealthOverview(clientId: string): Promise<ClientH
         const severity = item.severity;
         if (!["page_drop", "page_growth", "emerging_query", "low_ctr"].includes(String(kind)) || typeof key !== "string" || typeof detail !== "string" || !["low", "medium", "high"].includes(String(severity))) return [];
         const finding = item as unknown as SeoOpportunity;
-        return [{ ...finding, recommendationId: recommendationByFinding.get(`${finding.kind}:${finding.key}`) }];
+        return [{ ...finding, recommendationId: recommendationByFinding.get(`${finding.kind}:${finding.key}`) ?? recommendationByFinding.get(`any:${finding.key}`) }];
       }),
       counts: object(opportunityData.counts as Json) as Record<string, number>,
     } : null,

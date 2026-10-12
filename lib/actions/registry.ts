@@ -1,12 +1,14 @@
 // Types d'actions préparées par les agents. Une action est un payload gelé à l'approbation
 // (hash vérifié en base) ; son exécution dépend de son mode :
 //  - internal : exécutée par CODE-V OS (effet interne uniquement) ;
-//  - manual   : réalisée par un humain hors de CODE-V OS, puis marquée « réalisée ».
-// Aucun mode « external » n'est activé en V1 : pas de mutation Ads, site, réseau social ou e-mail.
+//  - manual   : réalisée par un humain hors de CODE-V OS, puis marquée « réalisée » ;
+//  - external : exécutée par CODE-V OS chez un fournisseur APRÈS approbation explicite, sur demande de l'administrateur.
+//    Seul cas en V2 : branche + PR GitHub d'une modification SEO (jamais de fusion ni de déploiement).
 import { z } from "zod";
 import type { CapabilityId } from "@/lib/agents/registry";
+import { describeGithubChange, githubChangeSchema } from "@/lib/seo/github-change-model";
 
-export type ActionExecutionMode = "internal" | "manual";
+export type ActionExecutionMode = "internal" | "manual" | "external";
 
 export type ActionTypeDefinition = {
   id: string;
@@ -30,6 +32,11 @@ export const actionTypes: Record<string, ActionTypeDefinition> = {
     id: "seo.site_change", label: "Modification du site proposée", capability: "modify_site", executionMode: "manual",
     parameters: strict({ page: text(300), change: text(2000), rationale: text(2000).optional() }),
     describe: (p) => `Modifier « ${p.page} » : ${p.change}`,
+  },
+  "seo.github_pull_request": {
+    id: "seo.github_pull_request", label: "Modification SEO du dépôt (PR)", capability: "modify_site", executionMode: "external",
+    parameters: githubChangeSchema as unknown as z.ZodType<Record<string, unknown>>,
+    describe: (p) => describeGithubChange(p as z.infer<typeof githubChangeSchema>),
   },
   "ads.optimization": {
     id: "ads.optimization", label: "Optimisation Google Ads proposée", capability: "modify_campaign", executionMode: "manual",

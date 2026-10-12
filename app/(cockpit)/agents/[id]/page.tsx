@@ -12,6 +12,7 @@ import { deleteAgentAction } from "./actions";
 import { AgentTestRunForm } from "@/components/agents/agent-test-run-form";
 import { GoogleAdsRunForm } from "@/components/agents/google-ads-run-form";
 import { Badge, PageHeading, Panel } from "@/components/ui/primitives";
+import { actionClass } from "@/components/ui/button";
 import { getAgentById, listClientsForAgent } from "@/lib/agents/data";
 import { ANALYSIS_ENGINE_NOTE, isGoogleAdsAgent } from "@/lib/integrations/google-ads/service";
 import { requireAdmin } from "@/lib/require-admin";
@@ -48,6 +49,11 @@ export default async function AgentDetailPage({ params, searchParams }: PageProp
     </li>)}</ul>
     {agent.enabled && agent.status === "Actif" ? <GoogleAdsRunForm agentId={agent.id} clients={activeClients} /> : <p className="mt-4 text-sm text-muted">Activez l’agent et passez son statut à Actif pour lancer une analyse réelle.</p>}
   </Panel>;
+  const seoModule = agent.agent_type === "seo" && <Panel className="mb-6 border-accent/30 p-6">
+    <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">Opportunités de mots-clés</h2><Badge tone="green">Search Console</Badge><Badge>Validation requise</Badge></div>
+    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Requêtes proches du top 3, CTR faibles, requêtes émergentes, pages en recul, cannibalisation et contenus manquants, détectés par client à partir des données réelles. Aucune modification externe sans approbation.</p>
+    <Link href={`/agents/${agent.id}/opportunities`} className={`mt-4 inline-flex ${actionClass("primary")}`}>Ouvrir les opportunités</Link>
+  </Panel>;
 
   return (
     <>
@@ -56,7 +62,7 @@ export default async function AgentDetailPage({ params, searchParams }: PageProp
       <Link href="#modifier" className="mb-4 inline-block text-sm text-accent hover:underline">Modifier l’agent</Link>
       <Panel className="mb-6 p-6"><h2 className="mb-4 font-semibold">Portée et autorisations projet</h2><ScopeControls agentId={id} scope={agent.agent_scope} review={agent.scope_review_required} projects={scopeProjects}/>{agent.agent_scope==="client"&&<div className="mt-4 space-y-3">{assignments.map(a=><div key={a.client_id}><Link className="text-accent" href={`/clients/${a.client_id}/summary`}>Synthèse : {a.client?.name??"Client"}</Link><ul className="mt-2 flex flex-wrap gap-3">{clientProjects.flat().filter(p=>p.client_id===a.client_id).map(p=><li key={p.id}><Link href={`/projects/${p.id}`}>{p.name}</Link></li>)}</ul></div>)}</div>}</Panel>
       <PageHeading eyebrow="Configuration agent" title={agent.name} description={googleAds ? "Agent Google Ads : analyse réelle en lecture seule par règles déterministes (sans IA). Le test interne, distinct, n’utilise aucune donnée Google Ads." : "Configuration enregistrée. Les analyses de test restent internes et n’appellent ni IA ni API externe."} action={<div className="flex gap-2"><Badge tone={agent.status === "Actif" ? "green" : "neutral"}>{agent.status}</Badge><Badge tone={agent.enabled ? "green" : "neutral"}>{agent.enabled ? "Activé" : "Désactivé"}</Badge></div>} />
-      {realAnalysis}
+      {realAnalysis}{seoModule}
       <section id="agent-test-run" className="mb-6"><Panel className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><h2 className="font-semibold">Test interne</h2><Badge tone="amber">Simulation</Badge></div><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Vérifie la chaîne run → recommandation avec un contenu fictif et déterministe. N’utilise aucune donnée réelle{googleAds ? " Google Ads" : ""}, aucune IA ni API externe ; ce n’est pas une analyse du compte.</p></div></div>
         {agent.enabled && agent.status === "Actif" ? agent.agent_scope === "project" ? <p className="mt-4 text-sm text-muted">Choisissez un projet autorisé dans la section Portée.</p> : <AgentTestRunForm agentId={agent.id} clients={assignments.filter((item) => item.enabled && item.client).map((item) => ({ id: item.client_id, name: item.client?.name ?? "Client" }))} /> : <p className="mt-4 text-sm text-muted">Activez cet agent et passez son statut à Actif avant de lancer une analyse.</p>}

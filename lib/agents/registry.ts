@@ -84,7 +84,7 @@ export const runTypes: Record<RunType, RunTypeDefinition> = {
 
   "report.generate": { id: "report.generate", label: "Générer les rapports", agent: "report", capability: "generate_report", scope: "global", description: "Rapport hebdomadaire ou mensuel d’un client, ou de tous les clients actifs." },
   "monitoring.check_sites": { id: "monitoring.check_sites", label: "Contrôle technique des sites", agent: "monitoring", capability: "check_http", scope: "global", description: "Disponibilité, code HTTP et temps de réponse des sites des clients Maintenance / Site web." },
-  "seo.analyze": { id: "seo.analyze", label: "Analyse SEO", agent: "seo", capability: "analyze_search_console", deferProviderCheck: true, scope: "client", description: "Search Console et PageSpeed : pertes, gains, pages à améliorer. PageSpeed reste disponible même sans Search Console." },
+  "seo.analyze": { id: "seo.analyze", label: "Analyse SEO", agent: "seo", capability: "analyze_search_console", deferProviderCheck: true, scope: "client", description: "Opportunités de mots-clés (Search Console) : quotidienne pour les nouvelles données, hebdomadaire avec le contenu des pages (GitHub), les sujets absents et PageSpeed." },
   "ads.monitor": { id: "ads.monitor", label: "Veille des campagnes Google Ads", agent: "google-ads", capability: "detect_ads_anomalies", scope: "client", description: "Lecture seule : coûts, conversions, anomalies." },
   "news.fetch": { id: "news.fetch", label: "Veille tech & IA", agent: "veille", capability: "fetch_news", scope: "global", description: "Collecte, déduplication et classement des flux publics." },
 };

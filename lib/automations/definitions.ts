@@ -12,7 +12,8 @@ export const runConfigSchemas: Record<RunType, z.ZodType<Record<string, unknown>
 
   "report.generate": z.object({ kind: z.enum(["weekly", "monthly"]).default("weekly") }).strict(),
   "monitoring.check_sites": z.object({}).strict(),
-  "seo.analyze": z.object({}).strict(),
+  // daily : nouvelles données Search Console ; weekly : recherche approfondie (contenu des pages, sujets absents, PageSpeed).
+  "seo.analyze": z.object({ depth: z.enum(["daily", "weekly"]).optional() }).strict(),
   "ads.monitor": z.object({}).strict(),
   "news.fetch": z.object({}).strict(),
 };
@@ -76,6 +77,12 @@ export function automationFromForm(form: { get(name: string): unknown; getAll(na
 }
 
 export type AutomationPreset = { id: string; name: string; runType: RunType; frequency: Frequency; schedule: Schedule; config: Record<string, unknown>; why: string };
+
+/** Analyses de l'Agent SEO pour un client : quotidienne (07:30) et approfondie hebdomadaire (lundi 08:00), heure de Paris. */
+export const seoAutomationPresets = [
+  { id: "seo-daily", name: "Analyse SEO quotidienne", frequency: "daily" as const, schedule: { time: "07:30" }, config: { depth: "daily" as const } },
+  { id: "seo-weekly", name: "Recherche SEO hebdomadaire", frequency: "weekly" as const, schedule: { time: "08:00", weekdays: [1] }, config: { depth: "weekly" as const } },
+];
 
 /** Automatisations recommandées : créées en un clic, modifiables, jamais actives sans action de l'administrateur. */
 export const automationPresets: AutomationPreset[] = [

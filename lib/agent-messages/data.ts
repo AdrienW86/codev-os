@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/lib/audit-logs";
 import { isRecommendationUuid } from "@/lib/recommendations/validation";
 import type { AgentMessageRecord, CreateAdminMessageResult } from "./types";
+import type { Json } from "@/lib/supabase/database.types";
 
 const genericError = "Impossible de traiter le message. Actualisez la recommandation et réessayez.";
 const columns = "id,recommendation_id,agent_id,client_id,project_id,sender_type,message,metadata,created_at";
@@ -53,6 +54,24 @@ export async function createAdminMessage(recommendationId: string, message: unkn
       after_data: { id: data.id, recommendation_id: recommendation.id, agent_id: recommendation.agent_id, client_id: recommendation.client_id, project_id: recommendation.project_id??null, sender_type: "admin", created_at: data.created_at },
       metadata: {},
     });
+    return { ok: true, message: data };
+  } catch { storageFailure("create"); }
+}
+
+/** Réponse de l'agent dans la conversation d'une recommandation (texte et proposition éventuelle, jamais exécutée). */
+export async function createAgentMessage(recommendationId: string, message: string, metadata: Record<string, unknown> = {}): Promise<CreateAdminMessageResult> {
+  await requireAdmin();
+  if (!isRecommendationUuid(recommendationId) || !message.trim()) return { ok: false, message: genericError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: recommendation, error: recommendationError } = await supabase.from("recommendations").select("id,agent_id,client_id,project_id").eq("id", recommendationId).maybeSingle();
+    if (recommendationError) throw new Error();
+    if (!recommendation) return { ok: false, message: genericError };
+    const { data, error } = await supabase.from("agent_messages").insert({
+      recommendation_id: recommendation.id, agent_id: recommendation.agent_id, client_id: recommendation.client_id, project_id: recommendation.project_id ?? null,
+      sender_type: "agent", message: message.trim().slice(0, 5000), metadata: metadata as Json,
+    }).select(columns).single();
+    if (error || !data) throw new Error();
     return { ok: true, message: data };
   } catch { storageFailure("create"); }
 }

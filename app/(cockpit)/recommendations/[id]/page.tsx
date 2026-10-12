@@ -11,6 +11,8 @@ import { getRecommendationById } from "@/lib/recommendations/data";
 import { formatDate } from "@/lib/format-date";
 import { requireAdmin } from "@/lib/require-admin";
 import type { Json } from "@/lib/supabase/database.types";
+import { AgentProposalButton } from "@/components/recommendations/agent-proposal-button";
+import { categoryLabels, intentLabels, levelLabels, pathOf, type OpportunityCategory, type SearchIntent, type Level } from "@/lib/seo/opportunities";
 
 export async function generateMetadata({ params }: PageProps<"/recommendations/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -20,6 +22,32 @@ export async function generateMetadata({ params }: PageProps<"/recommendations/[
 
 const record = (value: Json | null): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+function KeywordOpportunityEvidence({ payload, agentId }: { payload: Json; agentId: string }) {
+  const data = record(payload);
+  if (data.kind !== "keyword_opportunity" || typeof data.opportunity_id !== "string") return null;
+  const metrics = record(data.metrics as Json);
+  const category = String(data.category) as OpportunityCategory;
+  const period = record(data.period as Json);
+  return (
+    <div className="mt-5 border-t border-border pt-5">
+      <h2 className="text-sm font-semibold">Opportunité de mot-clé</h2>
+      <p className="mt-2 text-sm"><span className="text-muted">Type :</span> {categoryLabels[category] ?? "Opportunité SEO"} · <span className="text-muted">Mot-clé :</span> {String(data.key)}</p>
+      {typeof data.target_page === "string" && <p className="mt-1 break-words text-sm"><span className="text-muted">Page cible :</span> {pathOf(data.target_page)}</p>}
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
+        {typeof metrics.clicks === "number" && <span>Clics : {metrics.clicks}</span>}
+        {typeof metrics.impressions === "number" && <span>Impressions : {metrics.impressions}</span>}
+        {typeof metrics.ctr === "number" && <span>CTR : {(metrics.ctr * 100).toFixed(1)} %</span>}
+        {typeof metrics.position === "number" && <span>Position : {metrics.position.toFixed(1)}</span>}
+        {typeof period.start === "string" && <span>Période : {period.start} → {String(period.end)}</span>}
+        {data.verified === false && <span>Hypothèse (aucune donnée Google)</span>}
+      </div>
+      <p className="mt-2 text-xs text-muted">Intention estimée : {intentLabels[String(data.intent) as SearchIntent] ?? "—"} · Priorité {levelLabels[String(data.priority) as Level]?.toLowerCase() ?? "—"} · Confiance {levelLabels[String(data.confidence) as Level]?.toLowerCase() ?? "—"}</p>
+      <Link href={`/agents/${agentId}/opportunities/${data.opportunity_id}`} className="mt-3 inline-block text-sm text-accent hover:underline">Ouvrir la fiche de l’opportunité →</Link>
+      <p className="mt-2 text-xs text-muted">Posez vos questions à l’Agent SEO dans la conversation ci-dessous (« Pourquoi ? », « Compare sur trois mois », « Écarte-la parce que… »).</p>
+    </div>
+  );
+}
 
 function SeoRecommendationEvidence({ payload }: { payload: Json }) {
   const data = record(payload);
@@ -64,7 +92,9 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
   if (!recommendation) notFound();
   const [messages, actions] = await Promise.all([listMessagesByRecommendation(id), listActionsByRecommendation(id)]);
   const recommendationPayload = record(recommendation.payload);
-  const seoActionAvailable = ["page_drop", "emerging_query", "low_ctr"].includes(String(recommendationPayload.kind));
+  // Seule la dernière proposition de l'agent reste confirmable.
+  const lastProposalId = [...messages].reverse().find((message) => message.sender_type === "agent" && record(record(message.metadata).proposal as Json).type)?.id ?? null;
+  const seoActionAvailable = ["page_drop", "emerging_query", "low_ctr", "keyword_opportunity"].includes(String(recommendationPayload.kind));
   return (
     <>
       <Link href="/recommendations" className="mb-6 inline-block text-xs text-accent hover:underline">← Toutes les recommandations</Link>
@@ -78,14 +108,15 @@ export default async function RecommendationDetailPage({ params }: PageProps<"/r
               <div><dt className="text-xs text-muted">Importance</dt><dd className="mt-1 text-sm">{severityLabel(recommendation.severity).label}</dd></div>
               <div><dt className="text-xs text-muted">Créée</dt><dd className="mt-1 text-sm"><time dateTime={recommendation.created_at}>{formatDate(recommendation.created_at)}</time></dd></div>
             </dl>
-            <div className="mt-5 border-t border-border pt-5"><h2 className="text-sm font-semibold">Raison</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">{recommendation.reason || "Aucune raison fournie."}</p></div><SeoRecommendationEvidence payload={recommendation.payload} />
+            <div className="mt-5 border-t border-border pt-5"><h2 className="text-sm font-semibold">Raison</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">{recommendation.reason || "Aucune raison fournie."}</p></div><SeoRecommendationEvidence payload={recommendation.payload} /><KeywordOpportunityEvidence payload={recommendation.payload} agentId={recommendation.agent_id} />
             <details className="mt-5 border-t border-border pt-5"><summary className="min-h-10 cursor-pointer text-sm font-medium">Données techniques (vue avancée)</summary><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-background p-4 text-xs leading-5 text-muted">{JSON.stringify(recommendation.payload, null, 2)}</pre></details>
           </Panel>
           <Panel className="p-6">
             <h2 className="font-semibold">Conversation <span className="text-sm font-normal text-muted">({messages.length})</span></h2>
             {messages.length ? <ol className="mt-5 space-y-5">{messages.map((message) => <li key={message.id} className="border-l-2 border-border pl-4">
-              <div className="flex flex-wrap justify-between gap-2"><span className="text-xs font-medium">{message.sender_type === "admin" ? "Administration" : message.sender_type === "system" ? "Système" : "Agent (message existant)"}</span><time dateTime={message.created_at} className="text-xs text-muted">{formatDate(message.created_at)}</time></div>
+              <div className="flex flex-wrap justify-between gap-2"><span className="text-xs font-medium">{message.sender_type === "admin" ? "Administration" : message.sender_type === "system" ? "Système" : record(message.metadata).source ? `${recommendation.agent?.name ?? "Agent"}${record(message.metadata).source === "ai" ? " · IA" : ""}` : "Agent (message existant)"}</span><time dateTime={message.created_at} className="text-xs text-muted">{formatDate(message.created_at)}</time></div>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{message.message}</p>
+              {message.sender_type === "agent" && record(record(message.metadata).proposal as Json).type === "dismiss" && message.id === lastProposalId && <AgentProposalButton recommendationId={recommendation.id} messageId={message.id} />}
             </li>)}</ol> : <p className="mt-4 text-sm text-muted">Aucun message enregistré.</p>}
           </Panel>
           <Panel className="p-6">

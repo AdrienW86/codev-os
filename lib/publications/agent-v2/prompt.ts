@@ -17,15 +17,18 @@ export const AGENT_V2_INSTRUCTIONS=[
  `Interdit sauf si le fait figure mot pour mot dans le contexte : ${FORBIDDEN_INVENTIONS.join(', ')}.`,
  'Si une information manque, reste générique et factuel ; n’écris aucun chiffre, aucun prix, aucune promesse, aucun avis, aucune garantie, aucun délai, aucune ville non fournie.',
  'Une seule idée éditoriale commune (idea.subject et idea.angle), différente des previous_subjects, déclinée en un texte natif et DIFFÉRENT pour chaque occurrence fournie.',
+ 'previous_publications : les 3 dernières publications (sujet, textes, photo). Ne reprends ni leur sujet, ni leurs formulations, ni leur accroche, ni une photo de même description.',
+ 'Choisis le sujet ET la photo ensemble : le sujet doit être illustré par la photo choisie, de préférence parmi les priority_topics. Si aucune photo ne convient, media_id=null : une « Photo manquante » sera signalée, n’invente jamais une photo.',
  ...Object.values(PLATFORM_GUIDELINES),
  'Une publication par occurrence fournie, avec exactement son occurrence_id ; aucune autre.',
- 'media_id : un identifiant de la liste media si une photo est pertinente selon sa description, sinon null. Ne décris jamais une photo au-delà de sa description fournie.',
+ 'media_id : un identifiant de la liste media si une photo est pertinente selon sa description ou ses catégories, sinon null. Ne décris jamais une photo au-delà de sa description fournie.',
  'cta : null ou une courte invitation neutre au contact, sans promesse ni offre.'].join('\n');
 
 // Payload sent to the model: only the provided facts, null when absent (never a fictitious default).
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
-  channel_rules:input.channelRules,previous_subjects:input.previousSubjects,
+  channel_rules:input.channelRules,previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
+  previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
   occurrences:input.occurrences.map(o=>({occurrence_id:o.occurrenceId,platform:o.platform,date:o.date,time:o.time})),
   media:input.media.filter(m=>!m.used).map(m=>({id:m.id,categories:m.categories,description:m.description}))};
 }

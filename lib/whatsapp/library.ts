@@ -9,10 +9,11 @@ import { IMAGE_BUCKET } from "@/lib/publications/editor";
 import { adaptImage } from "@/lib/publications/media/transform";
 import { saveDraft, saveUnscheduledDraft, currentRevision } from "@/lib/publications/workspace";
 import type { PublicationPlatform } from "@/lib/publications/types";
-import { driveReadProvider } from "@/lib/integrations/publications-drive";
 import { promptSafeCaption } from "@/lib/media-intelligence/model";
 import { captionPrompt, checkSelection, cleanSuggestion, draftFields } from "./library-model";
-import { downloadDrive, importDriveToken, maxImageBytes, maxVideoBytes } from "./providers";
+import { importDriveToken } from "./providers";
+import { assetOriginal } from "./originals";
+export { assetOriginal };
 import { THUMBNAIL_BUCKET } from "./service";
 import type { Asset, AssetAssessment, AssetUse, LibraryStatus } from "./types";
 
@@ -62,19 +63,6 @@ export async function setLibraryStatus(userId: string, clientId: string, assetId
   if (legacyError) throw Error("library_unavailable");
   await writeAudit({ kind: "admin", userId }, { action: "whatsapp.library.status", resource_type: "client", resource_id: clientId, metadata: { status, asset_ids: (data ?? []).map(row => row.id) } });
   return data?.length ?? 0;
-}
-
-/**
- * Original Drive d'un média, relu par le bon accès : import (drive.file) pour les fichiers créés par l'application,
- * lecture seule Publications pour les photos déposées à la main dans le dossier Drive du client (origine « drive »).
- */
-export async function assetOriginal(asset: Pick<Asset, "origin" | "drive_file_id" | "drive_folder_id" | "md5" | "media_kind">, token?: string) {
-  if (asset.origin === "drive") {
-    const bytes = await driveReadProvider().download(asset.drive_file_id, asset.drive_folder_id);
-    if (createHash("md5").update(bytes).digest("hex") !== asset.md5) throw Error("Drive file changed");
-    return bytes;
-  }
-  return downloadDrive(token ?? await importDriveToken(), asset.drive_file_id, asset.drive_folder_id, asset.md5, asset.media_kind === "video" ? maxVideoBytes : maxImageBytes);
 }
 
 /** Original Drive d'un média du client, pour la prévisualisation interne (jamais de lien public). */

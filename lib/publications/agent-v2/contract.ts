@@ -7,10 +7,14 @@ import type {PublicationPlatform} from '../types';
 export type OpenOccurrenceCandidate={occurrenceId:string;projectId:string;clientId:string;platform:PublicationPlatform;date:string;time:string;timezone:string;scheduledFor:string};
 // Media sent to the generator: internal id, reliable categories and the fixed description of its stored analysis.
 // Never a file name, URL, storage path, Drive id, token or credential.
-export type AgentMediaCandidate={id:string;categories:string[];description:string|null;used:boolean};
+// source : catalogue Drive de l'agent ou photothèque du client (socle lots 4-5) ; les deux passent par les mêmes RPC.
+export type AgentMediaCandidate={id:string;categories:string[];description:string|null;used:boolean;source?:'catalog'|'library'};
+// Une des dernières publications du projet : sujet, textes par plateforme et description de sa photo (anti-répétition).
+export type PreviousPublication={subject:string;texts:{platform:PublicationPlatform;text:string}[];media:string|null};
 // Everything the generator may receive: only facts actually stored (no fictitious fallback), no secret.
 export type AgentV2GeneratorInput={client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
- channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[]};
+ channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[];
+ previousPublications?:PreviousPublication[];priorityTopics?:string[]};
 export type AgentV2GeneratedPublication={occurrenceId:string;platform:PublicationPlatform;text:string;cta:string|null;mediaId:string|null};
 export type AgentV2GeneratorOutput={idea:{subject:string;angle:string};publications:AgentV2GeneratedPublication[]};
 export type AgentV2Usage={input_tokens:number;output_tokens:number;estimated_cost_eur:number;model:string};

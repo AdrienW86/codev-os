@@ -6,6 +6,7 @@ import {publicationPlatforms,type PublicationPlatform} from '../types';
 import {checkSourceImage} from '../media/validate';
 import type {PublicationMediaRef,PublicationMediaSource} from '../media/source';
 import type {AgentV2MediaFailure,AgentV2MediaOutcome} from './media-view';
+import type {AssetOrigin} from '@/lib/whatsapp/types';
 
 // Agent v2 media step (Lot 4.3 P8), after the drafts were created and the media reserved by finish (pending).
 // Compensable workflow, external I/O outside any transaction:
@@ -38,11 +39,16 @@ function parseClaim(data:unknown):Claim|'attached'|null{
  if(d.media_status!=='pending'||!Number.isInteger(d.attempt)||(d.attempt as number)<1||!isPublicationUuid(d.client_id)||!media||!isPublicationUuid(media.id)
   ||typeof media.drive_file_id!=='string'||typeof media.drive_folder_id!=='string'||typeof media.mime_type!=='string'||typeof media.file_size!=='number'
   ||!Array.isArray(targets)||!targets.length||targets.length>3)return null;
+ // Photothèque : origine fermée et empreinte MD5 obligatoires (relecture par le bon accès Drive, fichier inchangé).
+ const library=media.source==='library';
+ if(library&&(!['whatsapp','drive','whatsapp_export'].includes(media.origin as string)||typeof media.md5!=='string'||!/^[a-f0-9]{32}$/.test(media.md5)))return null;
+ if(media.source!==undefined&&media.source!=='library'&&media.source!=='catalog')return null;
  const parsed=targets.map(t=>t as Record<string,unknown>).filter(t=>isPublicationUuid(t.publication_id)&&(publicationPlatforms as readonly unknown[]).includes(t.platform))
   .map(t=>({publicationId:t.publication_id as string,platform:t.platform as PublicationPlatform}));
  if(parsed.length!==targets.length||new Set(parsed.map(t=>t.publicationId)).size!==parsed.length)return null;
  return {attempt:d.attempt as number,clientId:d.client_id as string,targets:parsed,
-  media:{id:media.id as string,driveFileId:media.drive_file_id,driveFolderId:media.drive_folder_id,mimeType:media.mime_type,fileSize:media.file_size}};
+  media:{id:media.id as string,driveFileId:media.drive_file_id,driveFolderId:media.drive_folder_id,mimeType:media.mime_type,fileSize:media.file_size,
+   ...(library?{source:'library' as const,origin:media.origin as AssetOrigin,md5:media.md5 as string}:{})}};
 }
 async function readMediaState(db:AgentV2MediaDb,runId:string):Promise<RunMediaState|null>{
  try{const r=await db.from('publication_agent_v2_runs').select('media_status,media_attempts,media_error_code').eq('id',runId).maybeSingle();

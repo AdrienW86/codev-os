@@ -4,7 +4,7 @@ Depuis la fiche client, onglet **Médias**, un administrateur dépose l'archive 
 de WhatsApp. Les photos retenues rejoignent la photothèque du client (`whatsapp_assets`, origine `whatsapp_export`) avec leur date
 d'origine et la légende du message, puis passent dans le parcours habituel (analyse IA, validation, agent Publications).
 
-Dépend du lot 2 (#37, migration `20261028000000_media_library_intelligence.sql`) : **fusionner #37 avant cette PR**.
+Dépend du lot 2 (#37, migration `20261028000000_media_library_intelligence.sql`) et s’empile sur #36 à #40 : **fusionner #36 à #40 avant cette PR**.
 
 ## Parcours
 
@@ -49,7 +49,7 @@ cette taille (Storage → Settings → « Upload file size limit ») ; sinon l'e
 
 ## Déploiement
 
-1. Fusionner #37, puis cette PR.
+1. Fusionner #36 à #40, puis cette PR.
 2. Appliquer la migration `20261101000000_whatsapp_export_import.sql` (crée le bucket privé et les deux tables), après
    vérification qu'elle n'est pas déjà présente en production.
 3. Vérifier la limite de taille de fichier du stockage Supabase.
@@ -58,4 +58,4 @@ cette taille (Storage → Settings → « Upload file size limit ») ; sinon l'e
 
 - `node --test tests/whatsapp-export-import.test.mjs` : parseur (Android/iOS, FR/EN, heure d'été), lecteur ZIP par plages
   et refus de sécurité, service complet (analyse, doublons, aperçu, import, purge, annulation, expiration, câblage sans injection HTML).
-- `supabase/tests/publications-socle-3-whatsapp-export.sql` (via `tests/publications-socle-db.test.mjs`, PostgreSQL local).
+- `supabase/tests/publications-socle-5-whatsapp-export.sql` (via `tests/publications-socle-db.test.mjs`, PostgreSQL local).

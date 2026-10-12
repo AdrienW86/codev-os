@@ -45,9 +45,9 @@ export function BoardViews({query,counts}:{query:BoardQuery;counts:BoardResult['
 }
 
 // Shared switch between the two views of the same publications.
-export function PublicationsNav({current}:{current:'board'|'calendar'}){
- const item=(key:'board'|'calendar',label:string,href:string)=><Link href={href} aria-current={current===key?'page':undefined} className={`rounded-md px-3 py-1.5 ${current===key?'bg-accent-strong text-accent-foreground':'hover:bg-border/40'}`}>{label}</Link>;
- return <nav aria-label="Vues Publications" className="inline-flex rounded-lg border border-border p-0.5 text-sm">{item('board','Tableau','/publications')}{item('calendar','Calendrier','/publications/calendar')}</nav>;
+export function PublicationsNav({current}:{current:'board'|'calendar'|'supervision'}){
+ const item=(key:'board'|'calendar'|'supervision',label:string,href:string)=><Link href={href} aria-current={current===key?'page':undefined} className={`rounded-md px-3 py-1.5 ${current===key?'bg-accent-strong text-accent-foreground':'hover:bg-border/40'}`}>{label}</Link>;
+ return <nav aria-label="Vues Publications" className="inline-flex rounded-lg border border-border p-0.5 text-sm">{item('board','Tableau','/publications')}{item('calendar','Calendrier','/publications/calendar')}{item('supervision','Supervision','/publications/supervision')}</nav>;
 }
 
 // Desktop: dense table, every cell links to the publication. Mobile: compact cards with the same link.

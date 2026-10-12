@@ -40,8 +40,33 @@ export function unsupportedClaims(text:string,facts:string):string[]{
 }
 // All stored facts the texts may quote (anything else is an invention).
 export function factsOf(input:AgentV2GeneratorInput):string{
- return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,input.rules,...input.channelRules.map(c=>c.rules),
+ return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules),
   ...input.media.map(m=>[...m.categories,m.description??''].join(' '))].join('\n');
+}
+
+// --- Socle lots 4-5 : règles natives des plateformes et anti-répétition (pur) ---
+// Limites éditoriales, plus strictes que les plafonds techniques des publishers (GBP 1 500, Instagram 2 200).
+export const PLATFORM_TEXT_RULES:Record<PublicationPlatform,{maxLength:number;maxHashtags:number}>={facebook:{maxLength:3000,maxHashtags:3},instagram:{maxLength:2200,maxHashtags:8},google_business_profile:{maxLength:1500,maxHashtags:0}};
+const hashtags=(text:string)=>text.match(/(?<![\p{L}\p{N}&])#[\p{L}\p{N}_]+/gu)?.length??0;
+export function platformRuleViolation(platform:PublicationPlatform,text:string):string|null{
+ const rule=PLATFORM_TEXT_RULES[platform];
+ if(text.length>rule.maxLength)return 'length';if(hashtags(text)>rule.maxHashtags)return 'hashtags';return null;
+}
+const normalize=(text:string)=>text.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/#[\p{L}\p{N}_]+/gu,' ').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+const bigrams=(text:string)=>{const w=normalize(text).split(' ').filter(Boolean);const set=new Set<string>();for(let i=0;i<w.length-1;i++)set.add(w[i]+' '+w[i+1]);return set;};
+// Similarité de Jaccard sur les paires de mots (formulation), indépendante des accents, de la ponctuation et des hashtags.
+export function textSimilarity(a:string,b:string):number{
+ const x=bigrams(a),y=bigrams(b);if(!x.size||!y.size)return 0;let common=0;for(const g of x)if(y.has(g))common++;
+ return common/(x.size+y.size-common);
+}
+export const REPETITION_THRESHOLD=.5;
+const opening=(text:string)=>normalize(text).split(' ').slice(0,6).join(' ');
+// Répétition : même sujet qu'une publication récente, formulation trop proche ou même accroche (6 premiers mots).
+export function repeatsPrevious(subject:string,texts:readonly string[],input:Pick<AgentV2GeneratorInput,'previousSubjects'|'previousPublications'>):boolean{
+ const subjects=new Set([...input.previousSubjects,...(input.previousPublications??[]).map(p=>p.subject)].map(normalize));
+ if(subjects.has(normalize(subject)))return true;
+ const previous=(input.previousPublications??[]).flatMap(p=>p.texts.map(t=>t.text));
+ return texts.some(t=>previous.some(old=>textSimilarity(t,old)>=REPETITION_THRESHOLD||(opening(t).split(' ').length>=6&&opening(t)===opening(old))));
 }
 
 export type OutputCheck={ok:true;value:AgentV2GeneratorOutput}|{ok:false;reason:string};
@@ -57,6 +82,7 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
   if(p.platform!==occ.platform)return {ok:false,reason:'platform_mismatch'};
   if(typeof p.text!=='string'||!p.text.trim()||p.text.length>AGENT_V2_LIMITS.text)return {ok:false,reason:'invalid_text'};
   if(p.cta!==null&&(typeof p.cta!=='string'||p.cta.length>AGENT_V2_LIMITS.cta))return {ok:false,reason:'invalid_cta'};
+  if(platformRuleViolation(occ.platform,p.text.trim()))return {ok:false,reason:'platform_rules'};
   if(p.mediaId!==null&&(typeof p.mediaId!=='string'||!media.has(p.mediaId)||media.get(p.mediaId)?.used))return {ok:false,reason:'invalid_media'};}
  if(new Set(o.publications.map(p=>p.mediaId)).size>1)return {ok:false,reason:'invalid_media'};
  const texts=o.publications.map(p=>p.text.trim().toLocaleLowerCase('fr'));if(new Set(texts).size!==texts.length)return {ok:false,reason:'identical_texts'};
@@ -64,5 +90,6 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
   for(const t of [value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])])if(unsupportedClaims(t,facts).length)return {ok:false,reason:'unsupported_claim'};}
+ if(input.previousSubjects&&repeatsPrevious(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput))return {ok:false,reason:'repetition'};
  return {ok:true,value};
 }

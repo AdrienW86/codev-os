@@ -290,14 +290,23 @@ test('callback route, actions and UI: internal 303 redirect without referrer, ad
  assert.deepEqual(json(oauthModel.oauthBanner({oauth:'success',provider:'google_business_profile'})),{ok:true,message:'Connexion Google Business Profile réussie'});
  for(const [o,m] of [['refused','Connexion refusée'],['expired','Autorisation expirée'],['inaccessible','Compte inaccessible'],['unavailable','Connexion impossible pour le moment']])assert.equal(oauthModel.oauthBanner({oauth:o,provider:'meta'}).message,m);
  assert.equal(oauthModel.oauthBanner({oauth:'<script>',provider:'meta'}),null);assert.equal(oauthModel.oauthBanner({oauth:'success',provider:'evil'}),null);
- const acts=[];let redirected=null;
- const a=load('app/(cockpit)/publications/connection-actions.ts',{'next/cache':{revalidatePath:p=>acts.push(['revalidate',p])},'next/navigation':{redirect:u=>{redirected=u;throw Object.assign(Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT'});}},
+ assert.equal(oauthModel.oauthReturnPath(P,'meta','success',{view:'client',clientId:uid(1,9)}),`/clients/${uid(1,9)}?tab=publications&project=${P}&oauth=success&provider=meta`,'client view: back to the client tab');
+ assert.equal(oauthModel.oauthReturnPath(P,'meta','refused',{view:'client',clientId:'../x'}),`/projects/${P}/configuration?oauth=refused&provider=meta`,'invalid client id: project view');
+ const viewed=load('lib/publications/oauth/callback.ts',{'next/server':{NextResponse:{redirect:(url,status)=>{const deleted=[];return {url:String(url),status,headers:{set:()=>{}},cookies:{delete:c=>deleted.push(c)},deleted};}}},
+  './service':{completeOAuthCallback:async(provider,params,deps,view)=>`/views/${view}`}});
+ assert.equal((await viewed.handleOAuthCallback('meta',{nextUrl:{searchParams:q({}),origin:'https://cockpit.example.test'},cookies:{get:()=>({value:'client'})}})).url,'https://cockpit.example.test/views/client');
+ assert.equal((await viewed.handleOAuthCallback('meta',{nextUrl:{searchParams:q({}),origin:'https://cockpit.example.test'},cookies:{get:()=>({value:'https://evil.test'})}})).url,'https://cockpit.example.test/views/project','closed cookie value');
+ const acts=[];let redirected=null;const jar=[];
+ const a=load('app/(cockpit)/publications/connection-actions.ts',{'next/headers':{cookies:async()=>({set:(...x)=>jar.push(['set',...x]),delete:(...x)=>jar.push(['delete',...x])})},'next/cache':{revalidatePath:p=>acts.push(['revalidate',p])},'next/navigation':{redirect:u=>{redirected=u;throw Object.assign(Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT'});}},
   '@/lib/require-admin':{requireAdmin:async()=>{acts.push('admin');}},'@/lib/publications/connections/service':{assignPublicationAccountToChannel:async()=>({ok:true,message:'ok'}),disconnectConnection:async()=>({ok:true,message:'ok'})},
   '@/lib/publications/oauth/service':{startOAuth:async(provider,project)=>{acts.push(['start',provider,project]);return provider==='meta'?{ok:true,url:'https://www.facebook.com/v26.0/dialog/oauth?state=x'}:{ok:false,message:'Connexion indisponible'};},
    verifyConnection:async(project,provider)=>{acts.push(['verify',project,provider]);return {ok:true,message:'Connexion vérifiée'};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
  await assert.rejects(()=>a.startOAuthAction({},form({project_id:P,provider:'meta',client_id:uid(1,9)})),/NEXT_REDIRECT/);
  assert.equal(redirected,'https://www.facebook.com/v26.0/dialog/oauth?state=x');assert.deepEqual(json(acts.slice(0,2)),['admin',['start','meta',P]],'client id from the browser ignored');
+ assert.equal(jar[0][0],'delete','project view clears any stale view cookie');
+ await assert.rejects(()=>a.startOAuthAction({},form({project_id:P,provider:'meta',return_view:'client'})),/NEXT_REDIRECT/);
+ assert.deepEqual(json(jar[1]),['set','publications_oauth_view','client',{httpOnly:true,secure:true,sameSite:'lax',path:'/api/publications/oauth',maxAge:600}],'client view cookie: closed value, callback path, short-lived');
  acts.length=0;assert.deepEqual(json(await a.startOAuthAction({},form({project_id:P,provider:'google_business_profile'}))),{ok:false,message:'Connexion indisponible'});
  acts.length=0;await a.verifyConnectionAction({},form({project_id:P,provider:'meta'}));assert.deepEqual(json(acts.slice(0,2)),['admin',['verify',P,'meta']]);
  const panel=load('components/publications/connections-panel.tsx',{'@/app/(cockpit)/publications/connection-actions':{assignPublicationAccountAction:async()=>({}),disconnectPublicationConnectionAction:async()=>({}),startOAuthAction:async()=>({}),verifyConnectionAction:async()=>({})}});

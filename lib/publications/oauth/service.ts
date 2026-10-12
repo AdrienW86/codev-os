@@ -12,7 +12,7 @@ import {createMetaConnectionProvider} from '../connections/meta';
 import {createGoogleBusinessProfileConnectionProvider} from '../connections/google-business-profile';
 import {createEncryptedCredentialVault} from '../connections/encrypted-vault';
 import {supabaseSecretStore} from '../connections/secret-store';
-import {oauthReturnPath,type OAuthOutcome} from './model';
+import {oauthReturnPath,type OAuthOutcome,type OAuthReturnView} from './model';
 
 // Publication OAuth (Lot 4.3 P11-a). Start (Server Action) → provider consent → callback (Route Handler behind the
 // Clerk admin proxy) → state consumed BEFORE any code exchange → code exchanged on the server → credential validated →
@@ -86,7 +86,7 @@ function outcomeOfError(error:unknown,during:'exchange'|'discovery'):OAuthOutcom
 const providerCode=(error:unknown)=>error instanceof ConnectionProviderError||error instanceof CredentialVaultError?error.kind:'internal';
 
 // 2. Callback. Returns the internal path to redirect to (never external, never carrying a provider value).
-export async function completeOAuthCallback(provider:ConnectionProvider,query:URLSearchParams,deps:OAuthDeps=productionOAuthDeps()):Promise<string>{
+export async function completeOAuthCallback(provider:ConnectionProvider,query:URLSearchParams,deps:OAuthDeps=productionOAuthDeps(),view:OAuthReturnView='project'):Promise<string>{
  const {userId}=await requireAdmin();
  const state=query.get('state');
  if(!state||!STATE.test(state))return oauthReturnPath(null,provider,'invalid');
@@ -96,7 +96,7 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  if(consumed.error||!consumed.data){log(provider,'state');return oauthReturnPath(null,provider,'invalid');}
  const s=consumed.data as {status:string;client_id:string;project_id:string|null};
  if(!isPublicationUuid(s.client_id))return oauthReturnPath(null,provider,'invalid');
- const back=(outcome:OAuthOutcome)=>oauthReturnPath(s.project_id,provider,outcome);
+ const back=(outcome:OAuthOutcome)=>oauthReturnPath(s.project_id,provider,outcome,{view,clientId:s.client_id});
  if(s.status==='expired')return back('expired');
  const providerError=query.get('error');
  if(providerError){await record(deps,s.client_id,provider,'oauth_failed',providerError==='access_denied'?'access_denied':'provider_error',userId);return back(providerError==='access_denied'?'refused':'unavailable');}

@@ -125,7 +125,7 @@ test('component: legacy banner, FB/IG/GBP cards, one save button per channel, sl
   {platform:'instagram',enabled:false,accountConnected:false,rules:null,schedule:sched([],false)},{platform:'google_business_profile',enabled:true,accountConnected:false,rules:null,schedule:null}];
  const html=renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:model.buildChannelConfiguration(caps('configured',['facebook','google_business_profile'],false),explicit)}));
  for(const label of ['Facebook','Instagram','Google Business Profile'])assert.match(html,new RegExp(`data-channel="[a-z_]+"[^>]*>[\\s\\S]*?${label}`));
- assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,6,'toggle + schedule form per card');
+ assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,9,'toggle + editorial rules + schedule form per card');
  assert.ok(html.indexOf('value="1"')>-1);const fb=html.slice(html.indexOf('data-channel="facebook"'),html.indexOf('data-channel="instagram"'));
  assert.match(fb,/2 publications \/ semaine/);assert.match(fb,/Réactiver Mercredi 18:00/);assert.match(fb,/Compte connecté/);assert.match(fb,/Ton chaleureux/);assert.match(fb,/Europe\/Paris/);assert.match(fb,/>Actif</);
  assert.ok(fb.indexOf('<option value="1" selected')<fb.lastIndexOf('<option value="5" selected'),'Monday row before Friday row');
@@ -135,7 +135,7 @@ test('component: legacy banner, FB/IG/GBP cards, one save button per channel, sl
  for(const id of [FB,IG,S1,ACC])assert.ok(!html.includes(id),'no channel, schedule or account identifier rendered (only the project id of the URL)');
  assert.ok(!/resource_type|project_channel|legacy_materialized|source=/.test(html),'no internal value rendered');
  const suspended=renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:model.buildChannelConfiguration({...caps('configured',[]),channels:[{platform:'facebook',enabled:false}]},[{platform:'facebook',enabled:false,accountConnected:false,rules:null,schedule:null}])}));
- assert.match(suspended,/Publications suspendues : aucun canal actif\./);assert.match(suspended,/Activer le canal/);
+ assert.match(suspended,/Publications suspendues : aucun canal actif\./);assert.match(suspended,/Publier sur Facebook/);assert.match(fb,/name="rules"[^>]*>Ton chaleureux</,'per-channel editorial rules editable');assert.match(fb,/<select name="timezone"/,'timezone editable');
  assert.match(renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:null})),/Configuration des canaux indisponible/);});
 
 test('page: admin guard, workspace rule (0 active channel keeps the tab), no write on display, debug only on request',async()=>{

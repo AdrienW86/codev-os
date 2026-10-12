@@ -80,7 +80,7 @@ function classifyHarness({ profile = { client_id: CLIENT, version: 2, ai_classif
     "@/lib/integrations/publications-openai": { structuredResponse: async () => { throw Error("real provider must not be called"); } },
     "@/lib/integrations/publications-drive": { driveReadProvider: () => ({}) },
     "@/lib/publications/media/transform": { visionPreview: async bytes => bytes },
-    "@/lib/whatsapp/library": { assetOriginal: async a => new Uint8Array([a.id.length]) },
+    "@/lib/whatsapp/originals": { assetOriginal: async a => new Uint8Array([a.id.length]) },
     "@/lib/whatsapp/providers": { importDriveToken: async () => "dummy", trashDrive: async () => "trashed" },
     "@/lib/whatsapp/service": { storeThumbnail: async () => {}, THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   });
@@ -135,7 +135,7 @@ test("purge trashes only app-imported files rejected by a human; Drive-folder ph
   const service = load("lib/media-intelligence/service.ts", {
     "node:crypto": require("node:crypto"), sharp: () => ({}),
     "@/lib/supabase/server": { getSupabaseServerClient: () => db },
-    "@/lib/integrations/publications-openai": {}, "@/lib/integrations/publications-drive": {}, "@/lib/publications/media/transform": {}, "@/lib/whatsapp/library": {},
+    "@/lib/integrations/publications-openai": {}, "@/lib/integrations/publications-drive": {}, "@/lib/publications/media/transform": {}, "@/lib/whatsapp/originals": {},
     "@/lib/whatsapp/providers": { importDriveToken: async () => "dummy", trashDrive: async (_t, id) => { trashed.push(id); return "trashed"; } },
     "@/lib/whatsapp/service": { storeThumbnail: async () => {}, THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   });
@@ -211,8 +211,8 @@ function libraryHarness({ rpcMissing = false, assessments = [] } = {}) {
     "@/lib/publications/editor": { IMAGE_BUCKET: "publication-images" },
     "@/lib/publications/media/transform": { adaptImage: async () => ({ bytes: new Uint8Array([1]), mime_type: "image/jpeg" }) },
     "@/lib/publications/workspace": { saveUnscheduledDraft: async () => { drafts++; return {}; }, saveDraft: async () => ({}), currentRevision: async () => null },
-    "@/lib/integrations/publications-drive": { driveReadProvider: () => ({}) },
-    "./providers": { importDriveToken: async () => "dummy", downloadDrive: async () => new Uint8Array([1]), maxImageBytes: 1, maxVideoBytes: 1 },
+    "./providers": { importDriveToken: async () => "dummy" },
+    "./originals": { assetOriginal: async () => new Uint8Array([1]) },
     "./service": { THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   });
   return { library, fake, audits, drafts: () => drafts };

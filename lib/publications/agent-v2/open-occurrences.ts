@@ -8,7 +8,11 @@ import type {OpenOccurrenceCandidate} from './contract';
 // configured project, paginated (no N+1). Fail closed. No write, no AI, no Drive (Lot 4.3 P7-prep).
 const unavailable='Occurrences ouvertes indisponibles.';
 export async function getOpenOccurrencesForAgent(projectId:string,horizonDays=28,now=new Date()):Promise<OpenOccurrenceCandidate[]>{
- await requireAdmin();if(!isPublicationUuid(projectId)||!Number.isInteger(horizonDays)||horizonDays<1||horizonDays>84)throw Error(unavailable);
+ await requireAdmin();return loadOpenOccurrences(projectId,horizonDays,now);
+}
+// Sans session : planificateur authentifié par CRON_SECRET (socle lot 6) ; les appelants ont vérifié leur accès.
+export async function loadOpenOccurrences(projectId:string,horizonDays=28,now=new Date()):Promise<OpenOccurrenceCandidate[]>{
+ if(!isPublicationUuid(projectId)||!Number.isInteger(horizonDays)||horizonDays<1||horizonDays>84)throw Error(unavailable);
  const db=getSupabaseServerClient(),from=now.toISOString(),to=new Date(now.getTime()+horizonDays*86400000).toISOString(),result:OpenOccurrenceCandidate[]=[];
  for(let offset=0;;offset+=100){
   const {data,error}=await db.from('publication_channel_occurrences').select('id,client_id,project_id,platform,local_date,local_time,timezone,scheduled_for')

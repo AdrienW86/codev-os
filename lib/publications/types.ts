@@ -23,6 +23,7 @@ export type PublicationSettings = Updated & {
 export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
+  auto_prepare_enabled: boolean; prepare_lead_days: number; media_reuse_allowed: boolean; media_reuse_after_days: number; require_human_approval: boolean;
 };
 // Legacy rows (connection_id null) keep the historical statuses and credential model; connection-backed rows
 // (Lot 4.3 P9) use active | unavailable | revoked | disabled and never carry a credential.
@@ -116,7 +117,7 @@ export type PublicationChannelOccurrenceRow = Updated & {
 // Agent v2 run (Lot 4.3 P7) and its media step (P8). Written only through the publication_agent_v2_* RPCs.
 export type PublicationAgentV2RunRow = {
   id: string; agent_run_id: string; agent_id: string; client_id: string; project_id: string; status: "processing" | "completed" | "failed";
-  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; editorial_group_id: string | null; publication_ids: string[];
+  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; selected_library_asset_id: string | null; editorial_group_id: string | null; publication_ids: string[];
   reserved_cost_eur: number; estimated_cost_eur: number; input_tokens: number; output_tokens: number; model: string; error_code: string | null;
   created_at: string; completed_at: string | null; lease_until: string;
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
@@ -178,6 +179,7 @@ export type PublicationFunctions = {
   publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
   publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
+  publication_reschedule:{Args:{p_publication_id:string;p_expected_revision_id:string;p_occurrence_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};
   publication_job_dispatch:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:boolean};
@@ -201,6 +203,8 @@ export type PublicationFunctions = {
   publication_save_cadence: {Args:{p_project_id:string;p_config:Json;p_actor_id:string};Returns:string};
   publication_ensure_calendar: {Args:{p_project_id:string;p_start_week:string;p_placeholders:boolean;p_actor_id:string};Returns:Json};
   publication_save_draft: {Args:{p_publication_id:string|null;p_expected_revision_id:string|null;p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_target_date:string|null;p_week:string|null;p_slot:number|null;p_variants:Json;p_actor_id:string};Returns:string};
+  publication_client_settings_save: {Args:{p_client_id:string;p_settings:Json;p_actor_id:string};Returns:string};
+  publication_client_project_ensure: {Args:{p_client_id:string;p_actor_id:string};Returns:Json};
   publication_schedule_draft: {Args:{p_publication_id:string;p_expected_revision_id:string;p_assignments:Json;p_actor_id:string};Returns:Json};
   publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};

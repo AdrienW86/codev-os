@@ -59,15 +59,29 @@ export type DueRunDeps={db:SettingsDb;run:(workerId:string)=>Promise<ExecutionRe
 export type DueRunSummary={ok:boolean;message:string;counts:{published:number;failed:number;uncertain:number;blocked:number;retry:number}};
 export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
  const {userId}=await requireAdmin();
+ return processDue('cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60),deps);
+}
+// Diffusion à l'heure prévue par le planificateur (socle lot 6). Désactivée tant que PUBLICATIONS_SCHEDULED_DELIVERY
+// ne vaut pas exactement « enabled » ; ensuite mêmes garde-fous que le bouton : arrêt d'urgence levé, publication
+// activée, et le moteur re-vérifie chaque interrupteur, l'approbation humaine et la disponibilité du canal.
+// Un seul envoi par passage : le pire cas Instagram (~290 s) tient dans la durée maximale du tick (300 s).
+export const MAX_SCHEDULED_DUE_PER_TICK=1;
+export const SCHEDULED_DELIVERY_FLAG='PUBLICATIONS_SCHEDULED_DELIVERY';
+// L'environnement est lu par l'appelant (route du planificateur), jamais dans lib/publications.
+export function scheduledDeliveryEnabled(env:Record<string,string|undefined>):boolean{return env[SCHEDULED_DELIVERY_FLAG]==='enabled';}
+export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary|{disabled:true}>{
+ if(!scheduledDeliveryEnabled(env))return {disabled:true};
+ return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
+}
+async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN):Promise<DueRunSummary>{
  const counts={published:0,failed:0,uncertain:0,blocked:0,retry:0};
  const settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();
  const s=settings.data as {emergency_stop?:unknown;publishing_enabled?:unknown}|null;
  if(settings.error||!s)return {ok:false,message:'Réglages de publication illisibles : aucun envoi.',counts};
  if(s.emergency_stop!==false)return {ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts};
  if(s.publishing_enabled!==true)return {ok:false,message:'Publication désactivée dans les réglages : aucun envoi.',counts};
- const worker='cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60);
  let processed=0;
- for(let i=0;i<MAX_DUE_PER_RUN;i++){
+ for(let i=0;i<max;i++){
   let r:ExecutionResult;try{r=await deps.run(worker);}catch{log('process_due');break;}
   if(r.state==='idle')break;processed++;
   if(r.state==='completed'){const o=r.outcome;

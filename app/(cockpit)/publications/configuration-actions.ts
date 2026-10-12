@@ -8,7 +8,7 @@ import {confirmLegacyChannels,saveScheduleForPlatform,setChannelEnabled} from "@
 // Each channel card submits independently; no global save.
 export type ConfigurationState={ok?:boolean;message?:string};
 function refresh(form:FormData){const project=form.get("project_id");if(!isPublicationUuid(project))return;
- for(const tab of ["","/configuration","/calendar","/agent","/review"])revalidatePath(`/projects/${project}${tab}`);revalidatePath("/publications");}
+ for(const tab of ["","/configuration","/calendar","/agent","/review"])revalidatePath(`/projects/${project}${tab}`);revalidatePath("/publications");revalidatePath("/clients/[id]","page");}
 
 export async function confirmChannelsAction(_state:ConfigurationState,form:FormData):Promise<ConfigurationState>{
  await requireAdmin();const result=await confirmLegacyChannels(form.get("project_id"));if(result.ok)refresh(form);return result;

@@ -10,11 +10,12 @@ import { libraryStatuses, type LibraryStatus } from "@/lib/whatsapp/types";
 import { SENSITIVE_LABELS, type MediaProfile, type SensitiveKind } from "@/lib/media-intelligence/model";
 import { MediaLibraryForm, type LibraryCard } from "./media-library-form";
 import { MediaMaintenance, MediaProfileForm } from "./media-profile-form";
+import { WhatsAppExportImport } from "./whatsapp-export-import";
 
 const size = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(bytes / 1024))} Ko`;
 
 /** Photothèque du client : médias WhatsApp importés dans son dossier Drive, jamais ceux d'un autre client. */
-export function MediaLibraryPanel({ clientId, items, folders, projects, status, unavailable, profile }: { clientId: string; items: LibraryItem[]; folders: string[]; projects: PublicationProjectOption[]; status: LibraryStatus | null; unavailable: boolean; profile: MediaProfile | null }) {
+export function MediaLibraryPanel({ clientId, items, folders, projects, status, unavailable, profile, exportImport = null }: { clientId: string; items: LibraryItem[]; folders: string[]; projects: PublicationProjectOption[]; status: LibraryStatus | null; unavailable: boolean; profile: MediaProfile | null; exportImport?: { current: { id: string; status: string } | null; folderReady: boolean } | null }) {
   const href = (value: LibraryStatus | null) => `/clients/${clientId}?tab=media${value ? `&status=${value}` : ""}`;
   const cards: LibraryCard[] = items.map(item => {
     const received = item.received_at ?? item.imported_at ?? item.created_at;
@@ -39,6 +40,8 @@ export function MediaLibraryPanel({ clientId, items, folders, projects, status, 
         <MediaMaintenance clientId={clientId} profileSaved={profile.saved} />
         <MediaProfileForm clientId={clientId} profile={profile} />
       </div> : <p className="mt-4 text-sm text-muted">Analyse IA indisponible : appliquez la migration de la photothèque intelligente.</p>}
+      <div className="mt-4">{exportImport ? <WhatsAppExportImport clientId={clientId} current={exportImport.current} folderReady={exportImport.folderReady} />
+        : <p className="text-sm text-muted">Import d’export WhatsApp indisponible : appliquez la migration de l’import d’historique.</p>}</div>
     </Panel>
     {unavailable ? <Panel className="p-5" ><p role="alert">Photothèque indisponible : appliquez la migration de la photothèque WhatsApp.</p></Panel>
       : cards.length ? <MediaLibraryForm clientId={clientId} cards={cards} projects={projects.map(p => ({ id: p.id, name: p.name, platforms: p.platforms.map(platform => ({ id: platform, label: platformLabels[platform] })) }))} />

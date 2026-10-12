@@ -7,6 +7,7 @@ import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
 import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
+import { purgeExportImports } from "@/lib/whatsapp/export-import";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -31,7 +32,10 @@ async function handle(request: Request) {
     // Photothèque intelligente : classement borné des clients qui l'ont activé et purge des rejets expirés. Jamais de publication.
     let mediaIntelligence;
     try { mediaIntelligence = await runMediaIntelligenceTick(); } catch { console.error("[scheduler] Classement de la photothèque différé."); mediaIntelligence = { unavailable: true }; }
-    return NextResponse.json({ ok: true, ...summary, push, searchConsole, whatsapp, mediaIntelligence }, { headers });
+    // Imports d'export WhatsApp : archives temporaires expirées (24 h) ou terminées supprimées. Les photos importées restent.
+    let whatsappExports;
+    try { whatsappExports = await purgeExportImports(); } catch { console.error("[scheduler] Purge des exports WhatsApp différée."); whatsappExports = { unavailable: true }; }
+    return NextResponse.json({ ok: true, ...summary, push, searchConsole, whatsapp, mediaIntelligence, whatsappExports }, { headers });
   } catch {
     console.error("[scheduler] Tick interrompu.");
     return NextResponse.json({ error: "tick_failed" }, { status: 500, headers });

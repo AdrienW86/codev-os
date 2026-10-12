@@ -22,7 +22,9 @@ create table public.client_media_profiles (
   rejected_deletion_policy text not null default 'keep' check (rejected_deletion_policy in ('keep','trash_drive')),
   version integer not null default 1 check (version >= 1),
   updated_by text not null check (updated_by ~ '^user_[a-zA-Z0-9_-]{1,200}$'),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Rotation équitable du classement planifié : dernier passage du planificateur pour ce client (jamais = prioritaire).
+  last_classified_at timestamptz
 );
 create function codev_private.media_profile_list_valid(p_items text[]) returns boolean
 language sql immutable security invoker set search_path=pg_catalog as $$
@@ -82,6 +84,10 @@ alter table public.whatsapp_assets
   add column origin text not null default 'whatsapp' check (origin in ('whatsapp','drive','whatsapp_export')),
   add column captured_at timestamptz,
   add column purged_at timestamptz,
+  -- Échecs de classement IA (téléchargement, réponse invalide, enregistrement) : au-delà de 3, ou dans les heures
+  -- qui suivent un échec, la photo sort de la sélection automatique (pas de nouvel appel payant en boucle).
+  add column classification_failures smallint not null default 0 check (classification_failures between 0 and 100),
+  add column classification_failed_at timestamptz,
   -- « Rejeté » est une décision humaine (jamais l'IA) : la purge éventuelle ne s'applique qu'à elle.
   add constraint whatsapp_assets_rejected_by_human check (library_status<>'rejected' or status_changed_by ~ '^user_[a-zA-Z0-9_-]{1,200}$');
 create index whatsapp_assets_rejected on public.whatsapp_assets (status_changed_at) where library_status='rejected' and purged_at is null;
@@ -148,7 +154,12 @@ begin
   coalesce((select array_agg(x) from jsonb_array_elements_text(p_assessment->'quality_issues') x),'{}'),(p_assessment->>'profile_version')::integer,p_usage->>'model',cost,now())
  on conflict(asset_id) do update set verdict=excluded.verdict,business_relevance=excluded.business_relevance,publishability=excluded.publishability,sensitive=excluded.sensitive,
   confidential=excluded.confidential,description=excluded.description,topics=excluded.topics,quality=excluded.quality,quality_issues=excluded.quality_issues,
-  profile_version=excluded.profile_version,model=excluded.model,estimated_cost_eur=excluded.estimated_cost_eur,analyzed_at=excluded.analyzed_at;
+  profile_version=excluded.profile_version,model=excluded.model,estimated_cost_eur=excluded.estimated_cost_eur,analyzed_at=excluded.analyzed_at,
+  -- Une nouvelle évaluation confidentielle efface une décision humaine antérieure : elle ne peut plus la rendre publiable.
+  manual_verdict=case when excluded.confidential then null else whatsapp_asset_assessments.manual_verdict end,
+  reviewed_by=case when excluded.confidential then null else whatsapp_asset_assessments.reviewed_by end,
+  reviewed_at=case when excluded.confidential then null else whatsapp_asset_assessments.reviewed_at end;
+ update public.whatsapp_assets set classification_failures=0,classification_failed_at=null where id=a.id and classification_failures<>0;
  insert into public.client_media_ai_usage(client_id,asset_id,purpose,model,input_tokens,output_tokens,estimated_cost_eur)
  values(a.client_id,a.id,'classification',p_usage->>'model',(p_usage->>'input_tokens')::integer,(p_usage->>'output_tokens')::integer,cost);
  next_status:=a.library_status;
@@ -161,21 +172,54 @@ begin
  return next_status;
 end $$;
 
+-- Échec d'un classement : le coût déjà engagé auprès du fournisseur est journalisé (budget mensuel respecté),
+-- le compteur d'échecs de la photo augmente. Retourne le nombre d'échecs cumulés.
+create function public.whatsapp_asset_assessment_failed(p_asset_id uuid,p_client_id uuid,p_usage jsonb)
+returns smallint language plpgsql security invoker set search_path=pg_catalog as $$
+declare a public.whatsapp_assets;failures smallint;
+begin
+ if p_usage is not null and (jsonb_typeof(p_usage)<>'object' or jsonb_typeof(p_usage->'model') is distinct from 'string' or jsonb_typeof(p_usage->'input_tokens') is distinct from 'number'
+  or jsonb_typeof(p_usage->'output_tokens') is distinct from 'number' or jsonb_typeof(p_usage->'estimated_cost_eur') is distinct from 'number') then raise exception 'Invalid usage' using errcode='22023'; end if;
+ select * into a from public.whatsapp_assets where id=p_asset_id and client_id=p_client_id for update;
+ if not found then raise exception 'Asset not assessable' using errcode='55000'; end if;
+ if p_usage is not null then
+  insert into public.client_media_ai_usage(client_id,asset_id,purpose,model,input_tokens,output_tokens,estimated_cost_eur)
+  values(a.client_id,a.id,'classification',left(p_usage->>'model',100),(p_usage->>'input_tokens')::integer,(p_usage->>'output_tokens')::integer,(p_usage->>'estimated_cost_eur')::numeric);
+ end if;
+ update public.whatsapp_assets set classification_failures=least(classification_failures+1,100),classification_failed_at=now() where id=a.id
+ returning classification_failures into failures;
+ return failures;
+end $$;
+
 -- Décision humaine sur des médias (reclassement, sortie de quarantaine, rejet définitif) : l'évaluation garde la trace.
+-- Quarantaine ou rejet : les diffusions pas encore envoyées (programmées, en reprise, bloquées) des publications qui
+-- utilisent ces médias sont annulées par publication_delivery_cancel ; les diffusions publiées ou en cours sont intactes.
 create function public.whatsapp_assets_review(p_client_id uuid,p_asset_ids uuid[],p_status text,p_actor_id text)
 returns integer language plpgsql security invoker set search_path=pg_catalog as $$
-declare n integer;
+declare n integer;changed uuid[];d record;cancelled integer:=0;
 begin
  if p_actor_id is null or p_actor_id !~ '^user_[a-zA-Z0-9_-]{1,200}$' or p_status not in ('received','to_review','validated','archived','quarantined','rejected')
   or p_asset_ids is null or cardinality(p_asset_ids) not between 1 and 120 then raise exception 'Invalid review' using errcode='22023'; end if;
- update public.whatsapp_assets set library_status=p_status,status_changed_at=now(),status_changed_by=p_actor_id
- where client_id=p_client_id and id=any(p_asset_ids) and imported_at is not null and purged_at is null;
- get diagnostics n=row_count;
+ with u as (update public.whatsapp_assets set library_status=p_status,status_changed_at=now(),status_changed_by=p_actor_id
+  where client_id=p_client_id and id=any(p_asset_ids) and imported_at is not null and purged_at is null returning id)
+ select coalesce(array_agg(id),'{}') into changed from u;
+ n:=cardinality(changed);
+ if p_status in ('quarantined','rejected') and n>0 then
+  for d in select distinct pd.id,pd.publication_id from public.whatsapp_asset_uses u
+   join public.publication_deliveries pd on pd.publication_id=u.publication_id and pd.client_id=u.client_id
+   where u.client_id=p_client_id and u.asset_id=any(changed) and pd.revision_id is not null and pd.status in ('scheduled','retryable_error','blocked')
+   order by pd.id loop
+   perform public.publication_delivery_cancel(d.id,p_actor_id);
+   insert into public.publication_events(actor_type,actor_id,action,client_id,resource_type,resource_id,metadata)
+   values('admin',p_actor_id,'publication.delivery_cancelled_media_withdrawn',p_client_id,'publication',d.publication_id,jsonb_build_object('delivery_id',d.id,'library_status',p_status));
+   cancelled:=cancelled+1;
+  end loop;
+ end if;
  update public.whatsapp_asset_assessments set manual_verdict=case p_status when 'validated' then 'relevant' when 'rejected' then 'off_topic' when 'quarantined' then 'off_topic' else manual_verdict end,
   reviewed_by=p_actor_id,reviewed_at=now()
  where client_id=p_client_id and asset_id=any(p_asset_ids);
  insert into public.audit_logs(action,actor_type,actor_id,resource_type,resource_id,metadata)
- values('whatsapp.library.status','admin',p_actor_id,'client',p_client_id,jsonb_build_object('status',p_status,'count',n));
+ values('whatsapp.library.status','admin',p_actor_id,'client',p_client_id,jsonb_build_object('status',p_status,'count',n,'cancelled_deliveries',cancelled));
  return n;
 end $$;
 
@@ -188,15 +232,27 @@ language sql stable security invoker set search_path=pg_catalog as $$
    and a.status_changed_at < now() - make_interval(days => p.quarantine_retention_days)
  order by a.status_changed_at limit least(greatest(coalesce(p_limit,0),0),50);
 $$;
-create function public.whatsapp_asset_mark_purged(p_asset_id uuid,p_client_id uuid,p_drive_trashed boolean) returns boolean
+-- Marquage AVANT toute mise à la corbeille : faux si le média n'est plus rejeté (un humain l'a repêché entre-temps),
+-- auquel cas rien n'est mis à la corbeille. p_drive_trash_planned : une mise à la corbeille Drive va être tentée.
+create function public.whatsapp_asset_mark_purged(p_asset_id uuid,p_client_id uuid,p_drive_trash_planned boolean) returns boolean
 language plpgsql security invoker set search_path=pg_catalog as $$
 begin
  update public.whatsapp_assets set purged_at=now(),thumbnail_path=null,caption=null,sender=null
- where id=p_asset_id and client_id=p_client_id and library_status='rejected' and purged_at is null;
+ where id=p_asset_id and client_id=p_client_id and library_status='rejected' and status_changed_by ~ '^user_' and purged_at is null;
  if not found then return false; end if;
  insert into public.audit_logs(action,actor_type,actor_id,resource_type,resource_id,metadata)
- values('whatsapp.library.purged','system',null,'client',p_client_id,jsonb_build_object('asset_id',p_asset_id,'drive_trashed',coalesce(p_drive_trashed,false)));
+ values('whatsapp.library.purged','system',null,'client',p_client_id,jsonb_build_object('asset_id',p_asset_id,'drive_trash_planned',coalesce(p_drive_trash_planned,false)));
  return true;
+end $$;
+-- Résultat de la mise à la corbeille Drive d'un média déjà marqué purgé (journal uniquement).
+create function public.whatsapp_asset_purge_trash_logged(p_asset_id uuid,p_client_id uuid,p_outcome text) returns void
+language plpgsql security invoker set search_path=pg_catalog as $$
+begin
+ if p_outcome is null or p_outcome not in ('trashed','missing','failed') then raise exception 'Invalid outcome' using errcode='22023'; end if;
+ if not exists(select 1 from public.whatsapp_assets where id=p_asset_id and client_id=p_client_id and purged_at is not null) then
+  raise exception 'Asset not purged' using errcode='55000'; end if;
+ insert into public.audit_logs(action,actor_type,actor_id,resource_type,resource_id,metadata)
+ values('whatsapp.library.purge_trash','system',null,'client',p_client_id,jsonb_build_object('asset_id',p_asset_id,'outcome',p_outcome));
 end $$;
 
 -- 4. Droits : service_role uniquement, RLS sans politique.
@@ -207,9 +263,9 @@ revoke all on public.client_media_profiles, public.whatsapp_asset_assessments, p
 grant select, insert, update on public.client_media_profiles, public.whatsapp_asset_assessments to service_role;
 grant select, insert on public.client_media_ai_usage to service_role;
 revoke all on function codev_private.media_profile_list_valid(text[]), public.client_media_profile_save(uuid,jsonb,text), public.client_media_ai_month_spend(uuid),
-  public.whatsapp_asset_assessment_record(uuid,uuid,jsonb,jsonb), public.whatsapp_assets_review(uuid,uuid[],text,text),
-  public.whatsapp_rejected_purge_candidates(integer), public.whatsapp_asset_mark_purged(uuid,uuid,boolean) from public, anon, authenticated;
+  public.whatsapp_asset_assessment_record(uuid,uuid,jsonb,jsonb), public.whatsapp_asset_assessment_failed(uuid,uuid,jsonb), public.whatsapp_assets_review(uuid,uuid[],text,text),
+  public.whatsapp_rejected_purge_candidates(integer), public.whatsapp_asset_mark_purged(uuid,uuid,boolean), public.whatsapp_asset_purge_trash_logged(uuid,uuid,text) from public, anon, authenticated;
 grant execute on function codev_private.media_profile_list_valid(text[]), public.client_media_profile_save(uuid,jsonb,text), public.client_media_ai_month_spend(uuid),
-  public.whatsapp_asset_assessment_record(uuid,uuid,jsonb,jsonb), public.whatsapp_assets_review(uuid,uuid[],text,text),
-  public.whatsapp_rejected_purge_candidates(integer), public.whatsapp_asset_mark_purged(uuid,uuid,boolean) to service_role;
+  public.whatsapp_asset_assessment_record(uuid,uuid,jsonb,jsonb), public.whatsapp_asset_assessment_failed(uuid,uuid,jsonb), public.whatsapp_assets_review(uuid,uuid[],text,text),
+  public.whatsapp_rejected_purge_candidates(integer), public.whatsapp_asset_mark_purged(uuid,uuid,boolean), public.whatsapp_asset_purge_trash_logged(uuid,uuid,text) to service_role;
 notify pgrst, 'reload schema';

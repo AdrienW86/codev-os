@@ -18,7 +18,7 @@ export function MediaProfileForm({ clientId, profile }: { clientId: string; prof
     <form action={action} className="mt-3 grid gap-4 lg:grid-cols-2">
       <input type="hidden" name="client_id" value={clientId} />
       <label className="text-sm lg:col-span-2">Activité du client<textarea className={field} name="activity_summary" rows={3} maxLength={2000} defaultValue={profile.activitySummary} placeholder="Ex. couvreur zingueur, rénovation de toitures et charpentes." /></label>
-      {area("services", "Prestations confirmées", profile.services, "Une prestation par ligne. Seules ces prestations rendent une photo pertinente.")}
+      {area("services", "Prestations confirmées", profile.services, "Une prestation par ligne. Seules ces prestations rendent une photo pertinente ; elles complètent celles de l’agent (onglet Publications, avec son dossier Drive de photos).")}
       {area("priority_topics", "Sujets prioritaires", profile.priorityTopics, "Un sujet par ligne, utilisé pour la sélection éditoriale.")}
       {area("accepted_photo_types", "Photos acceptées", profile.acceptedPhotoTypes, "Ex. chantier terminé, avant/après, équipe au travail (de dos).")}
       {area("excluded_photo_types", "Photos exclues", profile.excludedPhotoTypes, `Toujours exclues : ${ALWAYS_EXCLUDED.join(" ; ")}.`)}

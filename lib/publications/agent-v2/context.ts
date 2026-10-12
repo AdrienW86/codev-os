@@ -30,7 +30,7 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   db.from('publication_agent_projects').select('enabled,rights_confirmed,verified_services,editorial_rules,drive_folder_id').eq('project_id',projectId).eq('client_id',clientId).maybeSingle(),
   db.from('publication_project_channels').select('platform,enabled,editorial_rules').eq('project_id',projectId).eq('client_id',clientId),
   db.from('publication_client_settings').select('editorial_brief,media_reuse_allowed,media_reuse_after_days').eq('client_id',clientId).maybeSingle(),
-  db.from('publications').select('id,subject,current_revision_id').eq('project_id',projectId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(20),
+  db.from('publications').select('id,subject,current_revision_id,status,archived_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(50),
   db.from('client_media_profiles').select('services,priority_topics,communication_guidelines').eq('client_id',clientId).maybeSingle(),
   db.from('whatsapp_assets').select('id,library_status,media_kind,mime_type,size,width,height,purged_at,imported_at,claimed_agent_v2_run_id').eq('client_id',clientId).eq('media_kind','image').order('imported_at',{ascending:false}).limit(300),
   db.from('whatsapp_asset_assessments').select('asset_id,verdict,confidential,sensitive,manual_verdict,description,topics,quality,quality_issues,business_relevance,publishability').eq('client_id',clientId),
@@ -39,8 +39,11 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  if(!config.data?.enabled||!config.data.rights_confirmed)throw new AgentV2ContextError('agent_disabled');
  const strings=(v:unknown)=>Array.isArray(v)?v.filter((s):s is string=>typeof s==='string'&&s.trim()!=='').map(s=>s.trim()):[];
  const services=[...new Set([...strings(config.data.verified_services),...strings(profile.data?.services)])];
- // Les 3 dernières idées (sujets distincts) : leurs publications, textes de la révision courante et photo.
- const rows=recent.data as {id:string;subject:string|null;current_revision_id:string|null}[];
+ // Les 3 dernières idées (sujets distincts) du CLIENT, tous projets confondus (même photothèque, même audience) :
+ // seules les publications réellement proposées comptent — jamais une refusée, ni un brouillon archivé (une
+ // publication approuvée puis archivée reste comptée). Leurs publications, textes de la révision courante et photo.
+ const proposed=(p:{status?:string|null;archived_at?:string|null})=>p.status!=='rejected'&&(!p.archived_at||p.status==='approved');
+ const rows=(recent.data as {id:string;subject:string|null;current_revision_id:string|null;status?:string|null;archived_at?:string|null}[]).filter(proposed).slice(0,20);
  const lastSubjects=[...new Set(rows.map(p=>p.subject?.trim()).filter((s):s is string=>Boolean(s)))].slice(0,3);
  const lastRows=rows.filter(p=>p.subject&&lastSubjects.includes(p.subject.trim()));
  const revisionIds=lastRows.flatMap(p=>p.current_revision_id?[p.current_revision_id]:[]);

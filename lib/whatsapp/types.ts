@@ -11,11 +11,12 @@ export type Asset = {
   media_kind: MediaKind; imported_at: string | null; library_status: LibraryStatus; status_changed_at: string; status_changed_by: string | null;
   caption: string | null; sender: string | null; received_at: string | null; width: number | null; height: number | null; thumbnail_path: string | null;
   origin: AssetOrigin; captured_at: string | null; purged_at: string | null; claimed_agent_v2_run_id: string | null;
+  classification_failures: number; classification_failed_at: string | null;
 };
 export type AssetOrigin = "whatsapp" | "drive" | "whatsapp_export";
 export type AssetInsert = Pick<Asset, "client_id" | "drive_folder_id" | "sha256" | "md5" | "drive_file_id" | "mime_type" | "size"> & Partial<Pick<Asset, "media_kind" | "caption" | "sender" | "received_at" | "width" | "height" | "origin" | "captured_at" | "imported_at">>;
 // Socle lot 2 : profil média du client, évaluation IA courante d'un média, journal des coûts IA.
-export type MediaProfileRow = { client_id: string; activity_summary: string; services: string[]; accepted_photo_types: string[]; excluded_photo_types: string[]; priority_topics: string[]; communication_guidelines: string; ai_classification_enabled: boolean; ai_monthly_budget_eur: number; quarantine_retention_days: number; rejected_deletion_policy: "keep" | "trash_drive"; version: number; updated_by: string; updated_at: string };
+export type MediaProfileRow = { client_id: string; activity_summary: string; services: string[]; accepted_photo_types: string[]; excluded_photo_types: string[]; priority_topics: string[]; communication_guidelines: string; ai_classification_enabled: boolean; ai_monthly_budget_eur: number; quarantine_retention_days: number; rejected_deletion_policy: "keep" | "trash_drive"; version: number; updated_by: string; updated_at: string; last_classified_at: string | null };
 export type AssetAssessment = { asset_id: string; client_id: string; verdict: "relevant" | "to_review" | "off_topic"; business_relevance: number; publishability: number; sensitive: string[]; confidential: boolean; description: string; topics: string[]; quality: "good" | "acceptable" | "poor"; quality_issues: string[]; profile_version: number; model: string; estimated_cost_eur: number; analyzed_at: string; manual_verdict: "relevant" | "off_topic" | null; reviewed_by: string | null; reviewed_at: string | null };
 export type MediaAiUsage = { id: string; client_id: string; asset_id: string | null; purpose: "classification"; model: string; input_tokens: number; output_tokens: number; estimated_cost_eur: number; created_at: string };
 export type AssetUse = { id: string; asset_id: string; client_id: string; publication_id: string; platform: "facebook" | "instagram" | "google_business_profile"; publication_asset_id: string | null; used_by: string; used_at: string };
@@ -37,7 +38,9 @@ export type WhatsAppFunctions = {
   client_media_profile_save: { Args: { p_client_id: string; p_profile: Json; p_actor_id: string }; Returns: number };
   client_media_ai_month_spend: { Args: { p_client_id: string }; Returns: number };
   whatsapp_asset_assessment_record: { Args: { p_asset_id: string; p_client_id: string; p_assessment: Json; p_usage: Json }; Returns: string };
+  whatsapp_asset_assessment_failed: { Args: { p_asset_id: string; p_client_id: string; p_usage: Json | null }; Returns: number };
   whatsapp_assets_review: { Args: { p_client_id: string; p_asset_ids: string[]; p_status: string; p_actor_id: string }; Returns: number };
   whatsapp_rejected_purge_candidates: { Args: { p_limit: number }; Returns: { asset_id: string; client_id: string; drive_file_id: string; drive_folder_id: string; origin: string; thumbnail_path: string | null }[] };
-  whatsapp_asset_mark_purged: { Args: { p_asset_id: string; p_client_id: string; p_drive_trashed: boolean }; Returns: boolean };
+  whatsapp_asset_mark_purged: { Args: { p_asset_id: string; p_client_id: string; p_drive_trash_planned: boolean }; Returns: boolean };
+  whatsapp_asset_purge_trash_logged: { Args: { p_asset_id: string; p_client_id: string; p_outcome: "trashed" | "missing" | "failed" }; Returns: undefined };
 };

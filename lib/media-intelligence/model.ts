@@ -72,7 +72,8 @@ export type Assessment={verdict:Verdict;business_relevance:number;publishability
  quality:'good'|'acceptable'|'poor';quality_issues:(typeof QUALITY_ISSUES)[number][];profile_version:number};
 const round=(n:number)=>Math.round(Math.min(1,Math.max(0,n))*100)/100;
 // Réponse du modèle → évaluation enregistrable. Les règles de sûreté priment sur l'avis du modèle :
-// un élément confidentiel force confidential, jamais « pertinent » ; visage, mineur ou faible score → à examiner.
+// un élément confidentiel force confidential, jamais « pertinent » ; visage, mineur, faible score, capture d'écran ou
+// image surtout textuelle → à examiner.
 export function normalizeAssessment(value:unknown,profileVersion:number):Assessment{
  const v=value as Record<string,unknown>;
  if(!v||typeof v!=='object')throw Error('Invalid classification');
@@ -89,6 +90,8 @@ export function normalizeAssessment(value:unknown,profileVersion:number):Assessm
  let finalVerdict:Verdict=verdict;
  if(confidential&&finalVerdict==='relevant')finalVerdict='to_review';
  if(finalVerdict==='relevant'&&(relevance<0.6||publishability<0.5||sensitive.includes('face')||sensitive.includes('minor')||quality==='poor'))finalVerdict='to_review';
+ // Capture d'écran ou image surtout textuelle : jamais « pertinent » sans regard humain (données privées possibles).
+ if(finalVerdict==='relevant'&&(issues.includes('screenshot')||issues.includes('text_heavy')))finalVerdict='to_review';
  if(relevance<0.25&&!confidential)finalVerdict='off_topic';
  return {verdict:finalVerdict,business_relevance:relevance,publishability,sensitive,confidential,description,topics:list(v.topics).map(t=>t.replace(/[\x00-\x1f]/g,' ').trim().slice(0,80)).filter(Boolean).slice(0,4),
   quality,quality_issues:issues,profile_version:profileVersion};

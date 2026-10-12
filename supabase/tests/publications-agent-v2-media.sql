@@ -110,6 +110,8 @@ begin
  select id,current_revision_id into pub,rev from public.publications where id=pubs[1];
  perform public.publication_submit_manual(pub,rev,'user_local');
  perform pg_temp.replay_failure(format('select public.publication_review_manual(%L,%L,''approved'',null,''user_local'')',pub,rev),'23514','no approval while the media is not attached');
+ -- Back to draft before the media step (since the socle lots 4-5, a photo is never attached to a draft under review).
+ reset role;update public.publications set status='draft' where id=pub;set local role service_role;
  -- Claim: server-side descriptor and targets, one attempt at a time.
  perform pg_temp.replay_failure(format('select public.publication_agent_v2_media_claim(%L,''admin'')',run),'22023','invalid actor');
  c:=public.publication_agent_v2_media_claim(run,'user_local');
@@ -149,7 +151,7 @@ begin
   and (select media_attempts=1 from public.publication_agent_v2_runs where id=run),'attached is final: no new attempt, no failure overwrite');
  perform pg_temp.replay_failure(format('select public.publication_agent_v2_media_attach(%L,2,%L,%L,''user_local'')',run,h,a),'40001','other attempt after attachment refused');
  -- Approval now possible.
- perform public.publication_review_manual(pub,rev,'approved',null,'user_local');
+ perform public.publication_submit_manual(pub,rev,'user_local');perform public.publication_review_manual(pub,rev,'approved',null,'user_local');
  perform pg_temp.replay_assert((select status='approved' from public.publications where id=pub),'approval with the attached media');
  -- The consumed media cannot be suggested again.
  other:=(public.publication_agent_v2_begin((select id from p8_ids where name='social'),array[pg_temp.p8_occ('facebook')],1,'user_local')->>'run_id')::uuid;
@@ -198,6 +200,8 @@ begin
  select id,current_revision_id into pub,rev from public.publications where id=pubs[1];
  perform public.publication_submit_manual(pub,rev,'user_local');
  perform pg_temp.replay_failure(format('select public.publication_review_manual(%L,%L,''approved'',null,''user_local'')',pub,rev),'23514','needs_media: approval impossible');
+ -- Back to draft before the retry (since the socle lots 4-5, a photo is never attached to a draft under review).
+ reset role;update public.publications set status='draft' where id=pub;set local role service_role;
  -- Retry: new attempt; an expired attempt is superseded and can no longer attach.
  c:=public.publication_agent_v2_media_claim(run,'user_local');
  perform pg_temp.replay_assert((c->>'attempt')::integer=2 and (select claimed_agent_v2_run_id=run from public.publication_drive_media where id=m),'retry re-reserves the media (attempt 2)');
@@ -208,7 +212,7 @@ begin
  perform pg_temp.replay_failure(format('select public.publication_agent_v2_media_fail(%L,2,''upload_failed'',''user_local'')',run),'40001','superseded attempt cannot fail the current one');
  perform pg_temp.replay_assert(public.publication_agent_v2_media_attach(run,3,h,pg_temp.p8_assets(c2,'fail3'),'user_local')->>'media_status'='attached','retry attached');
  perform pg_temp.replay_assert((select count(*) from public.publication_media_uses where media_id=m)=2 and (select input_tokens=tokens and media_attempts=3 from public.publication_agent_v2_runs where id=run),'one use per draft, generation untouched');
- perform public.publication_review_manual(pub,rev,'approved',null,'user_local');
+ perform public.publication_submit_manual(pub,rev,'user_local');perform public.publication_review_manual(pub,rev,'approved',null,'user_local');
  perform pg_temp.replay_assert((select status='approved' from public.publications where id=pub),'approved once the retry attached the media');
 end $$;
 

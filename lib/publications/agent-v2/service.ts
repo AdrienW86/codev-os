@@ -5,9 +5,9 @@ import {isPublicationUuid} from '../validation';
 import {platformLabels} from '../editor';
 import {getPublicationProjectChannels} from '../project-channels';
 import {projectSupportsPublications} from '../channels';
-import {getOpenOccurrencesForAgent} from './open-occurrences';
+import {loadOpenOccurrences} from './open-occurrences';
 import {selectIdeaBatch,validateGeneratorOutput} from './selection';
-import {AgentV2ContextError,buildAgentV2Context} from './context';
+import {AgentV2ContextError,loadAgentV2Context} from './context';
 import {openaiAgentV2Generator} from './openai-generator';
 import {AGENT_V2_LIMITS,type AgentV2Usage,type PublicationsAgentV2Generator} from './contract';
 import {attachAgentV2Media,type AgentV2MediaDb,type ImageAdapter} from './media';
@@ -46,8 +46,19 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
  if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.maxCost};
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
 }
-export async function prepareNextPublications(projectId:unknown,options:{allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date}&AgentV2MediaOptions):Promise<AgentV2Result>{
- const {userId}=await requireAdmin();const now=options.now??new Date();
+export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';
+export type PrepareOptions={allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number}&AgentV2MediaOptions;
+export async function prepareNextPublications(projectId:unknown,options:PrepareOptions):Promise<AgentV2Result>{
+ const {userId}=await requireAdmin();return prepareNextPublicationsAs(userId,projectId,options);
+}
+/**
+ * Même préparation pour le planificateur (socle lot 6), au nom de l'administrateur qui a activé la préparation
+ * automatique du client (délégation journalisée par l'appelant). leadDays : seules les occurrences de l'horizon de
+ * préparation du client sont candidates. Jamais de soumission, d'approbation ni de diffusion ici.
+ */
+export async function prepareNextPublicationsAs(userId:string,projectId:unknown,options:PrepareOptions):Promise<AgentV2Result>{
+ const now=options.now??new Date();
+ if(!/^user_[a-zA-Z0-9_-]{1,200}$/.test(userId))return result(false,'Acteur invalide.');
  if(!isPublicationUuid(projectId))return result(false,'Projet invalide.');
  if(!options.generator&&!options.allowRealAI)return result(false,'Un appel IA réel doit être explicitement autorisé.');
  const db=getSupabaseServerClient();
@@ -57,11 +68,12 @@ export async function prepareNextPublications(projectId:unknown,options:{allowRe
  if(capabilities.source!=='configured')return result(false,'Confirmez d’abord les canaux du projet (onglet Configuration).');
  if(!projectSupportsPublications(capabilities))return result(false,'Publications suspendues : aucun canal actif.');
  // The state is re-read here: occurrences linked by a previous run are no longer candidates (idempotence).
- const open=(await getOpenOccurrencesForAgent(projectId,28,now)).filter(o=>capabilities.platforms.includes(o.platform));
+ const horizon=options.leadDays?Math.min(Math.max(Math.trunc(options.leadDays),1),28):28;
+ const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform));
  const batch=selectIdeaBatch(open,now);
- if(!batch.length)return result(false,'Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.');
+ if(!batch.length)return result(false,NO_OPEN_OCCURRENCE);
  let context;
- try{context=await buildAgentV2Context(projectId,batch);}
+ try{context=await loadAgentV2Context(projectId,batch);}
  catch(error){return result(false,error instanceof AgentV2ContextError&&error.code==='agent_disabled'?'Activez et configurez l’Agent Publications (droits médias confirmés) avant la préparation.':'Contexte indisponible : aucune préparation lancée.');}
  const begun=await db.rpc('publication_agent_v2_begin',{p_project_id:projectId,p_occurrence_ids:batch.map(o=>o.occurrenceId),p_considered:open.length,p_actor_id:userId});
  if(begun.error)return result(false,begun.error.code==='55000'?(/budget/i.test(begun.error.message??'')?'Budget mensuel de l’agent atteint.':'Agent désactivé pour ce projet.'):'Occurrences indisponibles : rechargez le calendrier.');

@@ -16,7 +16,11 @@ const descriptions:Record<string,string>={roof:'Surface de toiture visible.',pes
 type Analysis={scene?:unknown;usable?:unknown};
 
 export async function buildAgentV2Context(projectId:string,occurrences:readonly OpenOccurrenceCandidate[]):Promise<{input:AgentV2GeneratorInput;clientId:string}>{
- await requireAdmin();if(!isPublicationUuid(projectId)||!occurrences.length||occurrences.some(o=>o.projectId!==projectId))throw new AgentV2ContextError('context_unavailable');
+ await requireAdmin();return loadAgentV2Context(projectId,occurrences);
+}
+// Sans session : planificateur authentifié par CRON_SECRET (socle lot 6) ; les appelants ont vérifié leur accès.
+export async function loadAgentV2Context(projectId:string,occurrences:readonly OpenOccurrenceCandidate[]):Promise<{input:AgentV2GeneratorInput;clientId:string}>{
+ if(!isPublicationUuid(projectId)||!occurrences.length||occurrences.some(o=>o.projectId!==projectId))throw new AgentV2ContextError('context_unavailable');
  const db=getSupabaseServerClient();
  const project=await db.from('projects').select('id,client_id,name').eq('id',projectId).maybeSingle();
  if(project.error||!project.data)throw new AgentV2ContextError('context_unavailable');

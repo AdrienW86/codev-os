@@ -212,6 +212,18 @@ async function release(userId: string, clientId: string, ids: string[]) {
   if (error) console.error("[whatsapp] Libération des médias réservés impossible.");
 }
 
+/** Brouillon multi-plateforme planifié en plusieurs publications : l'historique d'utilisation suit chaque publication. */
+export async function recordScheduledSplit(userId: string, clientId: string, sourcePublicationId: string, publications: { publicationId: string; platform: PublicationPlatform }[]) {
+  const { data, error } = await db().from("whatsapp_asset_uses").select("asset_id,platform,publication_asset_id").eq("client_id", clientId).eq("publication_id", sourcePublicationId);
+  if (error) throw Error("library_unavailable");
+  const rows = publications.flatMap(target => (data ?? []).filter(use => use.platform === target.platform)
+    .map(use => ({ asset_id: use.asset_id, client_id: clientId, publication_id: target.publicationId, platform: target.platform, publication_asset_id: use.publication_asset_id, used_by: userId })));
+  if (!rows.length) return 0;
+  const { error: insertError } = await db().from("whatsapp_asset_uses").insert(rows);
+  if (insertError) throw Error("library_unavailable");
+  return rows.length;
+}
+
 /** Dossiers Drive attribués au client (associations WhatsApp), pour les liens de la photothèque. */
 export async function clientFolders(clientId: string) {
   const { data, error } = await db().from("whatsapp_senders").select("drive_folder_id,enabled").eq("client_id", clientId);

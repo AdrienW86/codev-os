@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { boundedBytes, folderSchema, imageMimes, videoMimes } from "./payload";
-import { driveErrorCode, oauthErrorCode, type ImportVariable } from "./drive-errors";
+import { driveErrorCode, importVariables, oauthErrorCode, sharedDriveVariables, type CredentialSource, type ImportVariable } from "./drive-errors";
 
 // Limites Meta : images 5 Mo, vidéos 16 Mo (H.264/AAC, MP4 ou 3GPP). Marge conservée pour les images.
 export const maxImageBytes = 8 * 1024 * 1024;
@@ -21,7 +21,7 @@ export function isIsoVideo(bytes: Uint8Array) {
 }
 // Le message ne contient que le code : aucune donnée de requête, de réponse ni de credential.
 export class ImportFailure extends Error {
-  constructor(public readonly code: string, public readonly context: { stage?: string; status?: number; variable?: ImportVariable } = {}) { super(code); }
+  constructor(public readonly code: string, public readonly context: { stage?: string; status?: number; variable?: ImportVariable; source?: CredentialSource } = {}) { super(code); }
 }
 // Transferts de fichiers (jusqu'à 16 Mo) : délai plus long que les appels de métadonnées.
 async function request(url: string | URL, init: RequestInit = {}, timeout = 15000) {
@@ -86,28 +86,44 @@ export async function thumbnail(bytes: Uint8Array): Promise<Uint8Array | null> {
   } catch { return null; }
 }
 
-// Accès d'import distinct : ne réutilise pas et n'élargit pas le connecteur de lecture Publications.
+// Accès d'import : GOOGLE_DRIVE_IMPORT_* en priorité. Si aucune n'est renseignée, repli sur les trois GOOGLE_DRIVE_*
+// du connecteur Publications, lues sans modifier ce connecteur ; les deux jeux ne sont jamais mélangés.
+// La portée reste vérifiée strictement : un token Publications en lecture seule est refusé, jamais élargi.
 // Les espaces et retours à la ligne collés autour d'une valeur sont ignorés ; la valeur n'est jamais journalisée.
-function importCredential(name: ImportVariable) {
+function importCredential(name: ImportVariable, source: CredentialSource) {
   const value = process.env[name]?.trim();
-  if (!value) throw new ImportFailure("config_missing", { stage: "config", variable: name });
-  if (!opaque.safeParse(value).success || (name === "GOOGLE_DRIVE_IMPORT_CLIENT_ID" && !value.endsWith(".apps.googleusercontent.com"))) throw new ImportFailure("config_invalid", { stage: "config", variable: name });
+  if (!value) throw new ImportFailure("config_missing", { stage: "config", variable: name, source });
+  if (!opaque.safeParse(value).success || (name.endsWith("_CLIENT_ID") && !value.endsWith(".apps.googleusercontent.com"))) throw new ImportFailure("config_invalid", { stage: "config", variable: name, source });
   return value;
 }
+export function importCredentialSource(): CredentialSource {
+  return importVariables.some(name => process.env[name]?.trim()) ? "import" : "shared";
+}
 const driveFileScope = "https://www.googleapis.com/auth/drive.file";
+const readOnlyScopes = new Set(["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.metadata.readonly"]);
 export async function importDriveToken() {
-  const clientId = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_ID");
-  const clientSecret = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_SECRET");
-  const refreshToken = importCredential("GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN");
-  const data = parseGoogle(z.object({ access_token: opaque, token_type: z.string(), scope: z.string() }), await googleJson(await request("https://oauth2.googleapis.com/token", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  }), "oauth"), "oauth");
-  const scopes = data.scope.split(" ");
-  if (data.token_type.toLowerCase() !== "bearer") throw new ImportFailure("provider_response", { stage: "oauth" });
-  if (scopes.some(scope => scope.startsWith("https://www.googleapis.com/auth/drive") && scope !== driveFileScope)) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
-  if (!scopes.includes(driveFileScope)) throw new ImportFailure("drive_scope_missing", { stage: "oauth" });
-  return data.access_token;
+  const source = importCredentialSource();
+  const [idName, secretName, tokenName] = source === "import" ? importVariables : sharedDriveVariables;
+  const clientId = importCredential(idName, source);
+  const clientSecret = importCredential(secretName, source);
+  const refreshToken = importCredential(tokenName, source);
+  try {
+    const data = parseGoogle(z.object({ access_token: opaque, token_type: z.string(), scope: z.string() }), await googleJson(await request("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+    }), "oauth"), "oauth");
+    if (data.token_type.toLowerCase() !== "bearer") throw new ImportFailure("provider_response", { stage: "oauth" });
+    const driveScopes = data.scope.split(" ").filter(scope => scope.startsWith("https://www.googleapis.com/auth/drive"));
+    if (driveScopes.includes(driveFileScope)) {
+      if (driveScopes.some(scope => scope !== driveFileScope)) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
+    } else if (driveScopes.length && driveScopes.every(scope => readOnlyScopes.has(scope))) throw new ImportFailure("drive_scope_readonly", { stage: "oauth" });
+    else if (driveScopes.length) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
+    else throw new ImportFailure("drive_scope_missing", { stage: "oauth" });
+    return data.access_token;
+  } catch (error) {
+    if (error instanceof ImportFailure) error.context.source ??= source;
+    throw error;
+  }
 }
 export async function checkFolder(token: string, folder: string) {
   folderSchema.parse(folder);

@@ -64,11 +64,49 @@ test("token exchange failures keep only the code and HTTP status", async () => {
   assert.equal((await failure(providers(credentials, async () => { throw Error(SECRET); }).importDriveToken())).code, "provider_unavailable");
   assert.equal((await failure(providers(credentials, async () => Response.json({ token_type: "Bearer" })).importDriveToken())).code, "provider_response");
 });
-test("scope problems are distinguished: missing drive.file or broader Drive access", async () => {
+test("scope problems are distinguished: missing drive.file, read-only or broader Drive access", async () => {
   assert.equal((await failure(providers(credentials, async () => token("openid email")).importDriveToken())).code, "drive_scope_missing");
-  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.readonly")).importDriveToken())).code, "drive_scope_too_broad");
+  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.readonly")).importDriveToken())).code, "drive_scope_readonly");
   assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive")).importDriveToken())).code, "drive_scope_too_broad");
   assert.equal(await providers(credentials, async () => token("openid https://www.googleapis.com/auth/drive.file")).importDriveToken(), "ya29.dummy-access-token");
+});
+const shared = { GOOGLE_DRIVE_CLIENT_ID: "456-pub.apps.googleusercontent.com", GOOGLE_DRIVE_CLIENT_SECRET: "dummy-shared-secret-456", GOOGLE_DRIVE_REFRESH_TOKEN: "1//dummy-shared-refresh" };
+const sentClient = body => new URLSearchParams(body).get("client_id");
+test("GOOGLE_DRIVE_IMPORT_* take priority; the Publications GOOGLE_DRIVE_* set is the fallback, never mixed", async () => {
+  let body;
+  const capture = async (_url, init) => { body = String(init.body); return token(); };
+  assert.equal(await providers({ ...shared, ...credentials }, capture).importDriveToken(), "ya29.dummy-access-token");
+  assert.equal(sentClient(body), credentials.GOOGLE_DRIVE_IMPORT_CLIENT_ID);
+  assert.equal(await providers(shared, capture).importDriveToken(), "ya29.dummy-access-token");
+  assert.equal(sentClient(body), shared.GOOGLE_DRIVE_CLIENT_ID);
+  assert.equal(new URLSearchParams(body).get("refresh_token"), shared.GOOGLE_DRIVE_REFRESH_TOKEN);
+  assert.equal(providers({ ...shared, GOOGLE_DRIVE_IMPORT_CLIENT_ID: "  " }).importCredentialSource(), "shared");
+  // Un jeu d'import partiel ne complète jamais ses manques avec les variables Publications.
+  const partial = await failure(providers({ ...shared, GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN: "1//dummy-import" }, capture).importDriveToken());
+  assert.equal(partial.code, "config_missing"); assert.equal(partial.context.variable, "GOOGLE_DRIVE_IMPORT_CLIENT_ID"); assert.equal(partial.context.source, "import");
+  const none = await failure(providers({}).importDriveToken());
+  assert.equal(none.code, "config_missing"); assert.equal(none.context.variable, "GOOGLE_DRIVE_CLIENT_ID"); assert.equal(none.context.source, "shared");
+  const malformed = await failure(providers({ ...shared, GOOGLE_DRIVE_CLIENT_ID: "not-a-google-client" }).importDriveToken());
+  assert.equal(malformed.code, "config_invalid"); assert.equal(malformed.context.variable, "GOOGLE_DRIVE_CLIENT_ID");
+});
+test("a read-only Publications token is refused with a clear code, without any attempt to widen it", async () => {
+  const readonly = "https://www.googleapis.com/auth/drive.readonly";
+  for (const scope of [readonly, `${readonly} https://www.googleapis.com/auth/drive.metadata.readonly`, "https://www.googleapis.com/auth/drive.metadata.readonly"]) {
+    const urls = [];
+    const error = await failure(providers(shared, async (url, init) => { urls.push([String(url), String(init.body)]); return token(scope); }).importDriveToken());
+    assert.equal(error.code, "drive_scope_readonly"); assert.equal(error.context.source, "shared");
+    assert.equal(urls.length, 1); assert.equal(urls[0][0], "https://oauth2.googleapis.com/token");
+    assert.equal(new URLSearchParams(urls[0][1]).get("grant_type"), "refresh_token"); assert.equal(new URLSearchParams(urls[0][1]).has("scope"), false);
+  }
+  assert.equal((await failure(providers(credentials, async () => token(readonly)).importDriveToken())).code, "drive_scope_readonly");
+  assert.equal((await failure(providers(shared, async () => token(`${readonly} https://www.googleapis.com/auth/drive.file`)).importDriveToken())).code, "drive_scope_too_broad");
+  assert.equal((await failure(providers(shared, async () => token("https://www.googleapis.com/auth/drive")).importDriveToken())).code, "drive_scope_too_broad");
+  assert.equal(await providers(shared, async () => token()).importDriveToken(), "ya29.dummy-access-token");
+  const grant = await failure(providers(shared, async () => Response.json({ error: "invalid_grant" }, { status: 400 })).importDriveToken());
+  assert.equal(grant.code, "oauth_invalid_grant"); assert.equal(grant.context.source, "shared");
+  assert.match(errors.driveErrorMessage("drive_scope_readonly", null, "shared"), /drive\.readonly.*GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN.*drive\.file/);
+  assert.match(errors.driveErrorMessage("oauth_invalid_grant", null, "shared"), /GOOGLE_DRIVE_\* \(connecteur Publications\)/);
+  assert.doesNotMatch(errors.driveErrorMessage("oauth_invalid_grant", null, "import"), /Publications/);
 });
 test("folder creation reports a disabled Drive API, a refused creation and an unconfirmed id", async () => {
   const drive = second => providers(credentials, async url => String(url).includes("generateIds") ? Response.json({ ids: ["generated_folder_id_1"] }) : second());
@@ -113,6 +151,10 @@ test("createFolder shows a distinct message per cause and logs a structured, sec
     assert.equal(line.action, "whatsapp.folder.create"); assert.equal(line.code, code);
     assert.equal(h.logs[0].includes(SECRET) || state.message.includes(SECRET), false);
   }
+  const readonly = folderAction({ token: Failure => { throw new Failure("drive_scope_readonly", { stage: "oauth", source: "shared" }); } });
+  const readonlyState = await readonly.run();
+  assert.equal(readonlyState.code, "drive_scope_readonly"); assert.match(readonlyState.message, /lecture Drive.*Publications/);
+  assert.equal(JSON.parse(readonly.logs[0].replace("[whatsapp-drive] ", "")).source, "shared");
   const api = folderAction({ create: Failure => { throw new Failure("drive_api_disabled", { stage: "drive", status: 403 }); } });
   assert.match((await api.run()).message, /Google Drive API/);
   assert.match(api.logs[0], /"status":403/);

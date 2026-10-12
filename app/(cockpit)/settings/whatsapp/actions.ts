@@ -15,7 +15,7 @@ class StepFailure extends Error { constructor(public readonly code: DriveErrorCo
 function driveFailure(action: string, error: unknown): ImportState {
   const failure = error instanceof ImportFailure ? { code: error.code, ...error.context } : error instanceof StepFailure ? { code: error.code } : { code: "unexpected", stage: error instanceof Error ? error.name.slice(0, 40) : typeof error };
   logDriveFailure(action, failure);
-  return { message: driveErrorMessage(failure.code, "variable" in failure ? failure.variable : null), code: failure.code };
+  return { message: driveErrorMessage(failure.code, "variable" in failure ? failure.variable : null, "source" in failure ? failure.source : null), code: failure.code };
 }
 async function step<T>(code: DriveErrorCode, work: () => Promise<T>) {
   try { return await work(); } catch { throw new StepFailure(code); }

@@ -44,7 +44,7 @@ Variables Vercel **serveur uniquement** (jamais `NEXT_PUBLIC_`, jamais à coller
 | `CRON_SECRET` | Secret serveur du planificateur existant (`/api/internal/scheduler/tick`), qui vide aussi la file WhatsApp |
 | `WHATSAPP_RETENTION_DAYS` | Facultatif : durée de conservation des messages et numéros (30 à 3650 jours) ; absent = pas de purge automatique |
 
-L’accès Drive d’import est **distinct** des variables `GOOGLE_DRIVE_*` du lecteur Publications. Un refresh token `drive.readonly` ne permet pas l’import. Autoriser `drive.file` avec les credentials OAuth propres à l’import (par exemple via OAuth Playground avec « Use your own OAuth credentials », accès offline). Ne pas demander l’accès à tout Drive. Avec `drive.file`, coller l’ID d’un dossier arbitraire ne lui donne pas accès : créer le dossier depuis l’écran ou autoriser explicitement un dossier existant via Google Picker avec cette même application. Le sélecteur Picker n’est pas implémenté dans ce lot.
+Les variables `GOOGLE_DRIVE_IMPORT_*` sont prioritaires. Si **aucune** n’est renseignée, l’import se replie sur les trois variables `GOOGLE_DRIVE_*` du connecteur Publications (lues, jamais modifiées ; les deux jeux ne sont pas mélangés : une seule variable d’import renseignée suffit à exiger les trois). La portée reste vérifiée strictement : le token Publications est en `drive.readonly` (son connecteur refuse toute autre portée), il est donc refusé pour l’import avec le code `drive_scope_readonly`, sans tentative d’élargissement. Le repli ne fonctionne qu’avec un jeu `GOOGLE_DRIVE_*` limité à `drive.file`, ce qui ne convient pas au connecteur Publications actuel ; en pratique, l’import a besoin de son propre refresh token. Un refresh token `drive.readonly` ne permet pas l’import. Autoriser `drive.file` avec les credentials OAuth propres à l’import (par exemple via OAuth Playground avec « Use your own OAuth credentials », accès offline). Ne pas demander l’accès à tout Drive. Avec `drive.file`, coller l’ID d’un dossier arbitraire ne lui donne pas accès : créer le dossier depuis l’écran ou autoriser explicitement un dossier existant via Google Picker avec cette même application. Le sélecteur Picker n’est pas implémenté dans ce lot.
 
 L’utilisateur Google du lecteur Publications doit également avoir accès au dossier créé. Photos JPEG/PNG/WebP, 8 Mo et 40 millions de pixels maximum ; vidéos MP4/3GPP jusqu’à 16 Mo (limite Meta), conteneur vérifié (boîte `ftyp`) sans décodage. Documents, audio et stickers ne sont pas importés. Les dossiers sont créés privés : aucun partage public n’est ajouté par l’application.
 
@@ -94,7 +94,9 @@ Références :
 
 Création de dossier et association d'un expéditeur affichent un message propre à la cause, suivi d'un code (« code oauth_invalid_grant »). Chaque échec écrit une ligne de journal serveur structurée, visible dans les logs Vercel de la fonction (la requête reste en HTTP 200 car c'est une Server Action) :
 
-`[whatsapp-drive] {"action":"whatsapp.folder.create","code":"oauth_invalid_grant","stage":"oauth","status":400,"variable":null}`
+`[whatsapp-drive] {"action":"whatsapp.folder.create","code":"oauth_invalid_grant","stage":"oauth","status":400,"variable":null,"source":"import"}`
+
+`source` indique le jeu de variables utilisé : `import` (`GOOGLE_DRIVE_IMPORT_*`) ou `shared` (repli sur `GOOGLE_DRIVE_*`).
 
 Seuls l'action, le code, l'étape, le statut HTTP et le **nom** d'une variable manquante sont journalisés : jamais un token, un secret ni la réponse brute de Google (seuls les identifiants `error` / `reason` connus sont lus puis oubliés).
 
@@ -104,7 +106,8 @@ Seuls l'action, le code, l'étape, le statut HTTP et le **nom** d'une variable m
 | `oauth_invalid_grant` | Refresh token révoqué, expiré (écran de consentement en mode « Test » : 7 jours) ou émis pour un autre client OAuth | Régénérer le refresh token avec ce client et `drive.file` |
 | `oauth_invalid_client` | Client ID / secret incorrects ou ne correspondant pas | Recopier les deux valeurs du même client |
 | `oauth_unauthorized_client` | Token émis par un autre client, ou type de client inadapté | Régénérer avec le client d'import |
-| `drive_scope_missing` / `drive_scope_too_broad` | Token sans `drive.file`, ou avec `drive` / `drive.readonly` | Régénérer avec `drive.file` uniquement |
+| `drive_scope_readonly` | Token en lecture seule (`drive.readonly`), typiquement celui du connecteur Publications utilisé en repli | Renseigner les trois `GOOGLE_DRIVE_IMPORT_*` avec un token `drive.file` ; ne pas élargir le token Publications |
+| `drive_scope_missing` / `drive_scope_too_broad` | Token sans `drive.file`, ou avec `drive.file` plus une autre portée Drive (`drive`, `drive.readonly`…) | Régénérer avec `drive.file` uniquement |
 | `drive_api_disabled` | « Google Drive API » non activée dans le projet Google Cloud du client | L'activer, attendre quelques minutes |
 | `drive_permission`, `drive_storage_quota`, `drive_rate_limited` | Droits du compte, Drive plein, quota | Selon le message |
 | `provider_unavailable`, `provider_response` | Google indisponible ou réponse inattendue | Réessayer |

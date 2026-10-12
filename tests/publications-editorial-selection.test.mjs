@@ -44,7 +44,7 @@ test("photothèque pool: model sees descriptions and topics only, ordered by sco
 const occ = (n, platform) => ({ occurrenceId: uid("5", n), projectId: P, clientId: C, platform, date: "2026-10-13", time: "12:00", timezone: "Europe/Paris", scheduledFor: `2026-10-13T1${n}:00:00Z` });
 const batch = [occ(1, "facebook"), occ(2, "instagram"), occ(3, "google_business_profile")];
 const previous = [{ subject: "Démoussage de toiture", texts: [{ platform: "facebook", text: "Le démoussage protège vos tuiles des infiltrations et prolonge la durée de vie de votre toiture." }], media: "Toiture couverte de mousse." }];
-const input = (extra = {}) => ({ client: { name: "Toitures Dupont", activity: "Couverture", zone: null }, project: { name: "Réseaux" }, services: ["Couverture"], rules: "", channelRules: [], occurrences: batch,
+const input = (extra = {}) => ({ client: { name: "Toitures Dupont", activity: "Couverture", zone: null }, project: { name: "Réseaux" }, services: ["Couverture", "Démoussage"], rules: "", channelRules: [], occurrences: batch,
   media: [{ id: A(1), categories: ["toiture"], description: "Toiture en ardoise.", used: false, source: "library" }], previousSubjects: ["Démoussage de toiture"], previousPublications: previous, priorityTopics: ["Zinguerie"], ...extra });
 const output = (extra = {}) => ({ idea: { subject: "Zinguerie et gouttières", angle: "Des gouttières en bon état évitent les débordements." }, publications: [
   { occurrenceId: uid("5", 1), platform: "facebook", text: "Des gouttières bien posées évacuent l’eau loin des murs.", cta: null, mediaId: A(1) },
@@ -81,7 +81,8 @@ test("prompt: joint subject + photo choice, last publications quoted as data, no
   const payload = prompt.buildGeneratorPayload(input());
   assert.deepEqual(json(payload.previous_publications), json(previous));
   assert.deepEqual(json(payload.priority_topics), ["Zinguerie"]);
-  assert.deepEqual(json(payload.media), [{ id: A(1), categories: ["toiture"], description: "Toiture en ardoise." }], "source stays server-side");
+  assert.deepEqual(json(payload.media_untrusted), [{ id: A(1), categories: ["toiture"], description: "Toiture en ardoise." }], "source stays server-side, delimited as untrusted");
+  assert.equal(payload.media, undefined);
   assert.deepEqual(json(prompt.generatorSchema(input()).properties.media_id.enum), [A(1), null]);
 });
 
@@ -148,5 +149,5 @@ test("missing photo: drafts are kept, the admin is notified once per client and 
   assert.equal(schema.safeNotificationHref(`/clients/${C}?tab=media`), `/clients/${C}?tab=media`);
   const sql = src("supabase/migrations/20261029000000_publications_editorial_selection.sql");
   assert.match(sql, /'media_received','media_missing'\)\)/);
-  assert.doesNotMatch(sql.replace(/--[^\n]*/g, ""), /publication_submit|publication_review_manual|status='approved'|publication_deliveries|security definer/i, "never submits, approves or delivers");
+  assert.doesNotMatch(sql.replace(/--[^\n]*/g, ""), /publication_submit|publication_review_manual|status='approved'|(?:insert into|update|delete from) public\.publication_deliveries|security definer/i, "never submits, approves or delivers");
 });

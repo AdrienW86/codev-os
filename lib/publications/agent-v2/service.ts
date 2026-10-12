@@ -32,8 +32,9 @@ async function previewOf(runId:string):Promise<string|null>{try{return (await ge
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
 const zeroUsage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
 
-const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai…). Aucun brouillon créé.',
- repetition:'Contenu refusé : trop proche des dernières publications (sujet, formulation ou accroche). Aucun brouillon créé ; relancez.',
+const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai, prestation non vérifiée…). Aucun brouillon créé.',
+ repetition:'Contenu refusé : trop proche des dernières publications (sujet, prestation, formulation ou accroche). Aucun brouillon créé ; relancez.',
+ similar_texts:'Contenu refusé : les textes des plateformes étaient presque identiques (un texte natif par plateforme). Aucun brouillon créé ; relancez.',
  platform_rules:'Contenu refusé : hors des règles d’une plateforme (longueur ou hashtags). Aucun brouillon créé ; relancez.'};
 // « Photo manquante » : une notification par client et par jour au plus, vers sa photothèque (jamais de nom ni de texte).
 async function notifyMissingPhoto(db:{from(table:string):unknown},clientId:string,now:Date){

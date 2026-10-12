@@ -32,16 +32,24 @@ const CLAIM_PATTERNS:{name:string;pattern:RegExp}[]=[
  {name:'reviews',pattern:word(String.raw`avis|étoiles?|clients?\s+satisfaits?|note de`)},
  {name:'speed',pattern:/intervention\s+rapide|rapidement|sous\s+\d+\s?h(?![\p{L}])|\d+\s?h\s?\/\s?24|24\s?h(?![\p{L}])|48\s?h(?![\p{L}])|7\s?j\s?\/\s?7|en urgence/giu},
  {name:'counts',pattern:/\d+\s+(?:clients|chantiers|interventions|projets|réalisations)(?![\p{L}])/giu}];
+// Prestations reconnues : citer l'une d'elles exige qu'elle figure dans les faits (services vérifiés, profil, règles).
+// Liste fermée de termes métier, comparés sans accents ; un terme générique (toiture, gouttière) n'y figure pas.
+export const SERVICE_TERMS=['démoussage','faîtage','zinguerie','isolation','charpente','ravalement','étanchéité','hydrofuge','ramonage','désinsectisation',
+ 'dératisation','désinfection','élagage','terrassement','plomberie','maçonnerie','carrelage','menuiserie','désamiantage'] as const;
+const plain=(text:string)=>' '+text.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim()+' ';
+const mentions=(text:string,term:string)=>plain(text).includes(' '+plain(term).trim());
 // Text fragments reporting a claim absent from the facts (case-insensitive containment).
 export function unsupportedClaims(text:string,facts:string):string[]{
  const known=facts.toLocaleLowerCase('fr'),found:string[]=[];
  for(const {name,pattern} of CLAIM_PATTERNS)for(const m of text.matchAll(pattern))if(!known.includes(m[0].toLocaleLowerCase('fr')))found.push(`${name}:${m[0]}`);
+ for(const term of SERVICE_TERMS)if(mentions(text,term)&&!mentions(facts,term))found.push(`service:${term}`);
  return found;
 }
-// All stored facts the texts may quote (anything else is an invention).
+// All stored facts the texts may quote (anything else is an invention). Les descriptions et thèmes des photos sont
+// produits par le modèle de vision à partir de l'image (qui peut contenir du texte : devis, prix, garantie) : ce ne sont
+// jamais des faits autorisés, seulement un contexte non fiable pour choisir la photo.
 export function factsOf(input:AgentV2GeneratorInput):string{
- return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules),
-  ...input.media.map(m=>[...m.categories,m.description??''].join(' '))].join('\n');
+ return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules)].join('\n');
 }
 
 // --- Socle lots 4-5 : règles natives des plateformes et anti-répétition (pur) ---
@@ -60,13 +68,33 @@ export function textSimilarity(a:string,b:string):number{
  return common/(x.size+y.size-common);
 }
 export const REPETITION_THRESHOLD=.5;
+// Déclinaisons d'une même idée : les faits partagés passent, une copie à peine retouchée d'une plateforme à l'autre non.
+export const VARIANT_SIMILARITY_THRESHOLD=.8;
 const opening=(text:string)=>normalize(text).split(' ').slice(0,6).join(' ');
 // Répétition : même sujet qu'une publication récente, formulation trop proche ou même accroche (6 premiers mots).
-export function repeatsPrevious(subject:string,texts:readonly string[],input:Pick<AgentV2GeneratorInput,'previousSubjects'|'previousPublications'>):boolean{
+export function repeatsPrevious(subject:string,texts:readonly string[],input:Pick<AgentV2GeneratorInput,'previousSubjects'|'previousPublications'>&Partial<Pick<AgentV2GeneratorInput,'services'|'media'>>):boolean{
  const subjects=new Set([...input.previousSubjects,...(input.previousPublications??[]).map(p=>p.subject)].map(normalize));
  if(subjects.has(normalize(subject)))return true;
+ if(repeatsService(subject,input))return true;
  const previous=(input.previousPublications??[]).flatMap(p=>p.texts.map(t=>t.text));
  return texts.some(t=>previous.some(old=>textSimilarity(t,old)>=REPETITION_THRESHOLD||(opening(t).split(' ').length>=6&&opening(t)===opening(old))));
+}
+
+// Mots qui désignent une prestation du client (« Réparation de faîtage » → faitage) : les mots génériques sont ignorés.
+const GENERIC_WORDS=new Set(['reparation','reparations','entretien','renovation','installation','nettoyage','traitement','pose','remplacement','toiture','toitures','travaux','service','services']);
+const serviceWords=(service:string)=>normalize(service).split(' ').filter(w=>w.length>=4&&!GENERIC_WORDS.has(w));
+const aboutService=(text:string,service:string)=>{const words=serviceWords(service),t=' '+normalize(text)+' ';return words.length>0&&words.some(w=>t.includes(' '+w));};
+/**
+ * Rotation des prestations : quand les dernières idées (au moins deux, au plus trois) portent toutes sur la même
+ * prestation du client et qu'une autre prestation vérifiée est illustrable par une photo disponible, une nouvelle idée
+ * sur cette prestation est une répétition (les descriptions servent ici uniquement au choix, jamais comme faits).
+ */
+export function repeatsService(subject:string,input:Pick<AgentV2GeneratorInput,'previousPublications'>&Partial<Pick<AgentV2GeneratorInput,'services'|'media'>>):boolean{
+ const previous=(input.previousPublications??[]).slice(0,3),services=input.services??[];
+ if(previous.length<2||services.length<2)return false;
+ const available=(input.media??[]).filter(m=>!m.used).map(m=>[m.description??'',...m.categories].join(' '));
+ return services.some(s=>aboutService(subject,s)&&previous.every(p=>aboutService(p.subject,s))
+  &&services.some(o=>o!==s&&!previous.some(p=>aboutService(p.subject,o))&&available.some(d=>aboutService(d,o))));
 }
 
 export type OutputCheck={ok:true;value:AgentV2GeneratorOutput}|{ok:false;reason:string};
@@ -86,6 +114,8 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
   if(p.mediaId!==null&&(typeof p.mediaId!=='string'||!media.has(p.mediaId)||media.get(p.mediaId)?.used))return {ok:false,reason:'invalid_media'};}
  if(new Set(o.publications.map(p=>p.mediaId)).size>1)return {ok:false,reason:'invalid_media'};
  const texts=o.publications.map(p=>p.text.trim().toLocaleLowerCase('fr'));if(new Set(texts).size!==texts.length)return {ok:false,reason:'identical_texts'};
+ // Un texte natif par plateforme : deux déclinaisons quasi identiques (formulation à 80 % commune) sont refusées.
+ if(texts.some((t,i)=>texts.slice(i+1).some(u=>textSimilarity(t,u)>=VARIANT_SIMILARITY_THRESHOLD)))return {ok:false,reason:'similar_texts'};
  const value={idea:{subject,angle},publications:o.publications.map(p=>({...p,text:p.text.trim(),cta:p.cta?.trim()||null}))};
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);

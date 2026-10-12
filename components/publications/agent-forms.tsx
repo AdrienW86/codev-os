@@ -6,7 +6,7 @@ const input='mt-2 block w-full rounded-lg border border-border bg-background p-3
 export function AgentConfigurationForm({projectId,config}:{projectId:string;config:PublicationsAgentProject|null}){
  const [state,action,pending]=useActionState(configureAgentAction,{});
  return <form action={action} className="mt-4 space-y-4"><input type="hidden" name="project_id" value={projectId}/>
- <label className="block">Dossier de photos Google Drive<span className="block text-xs text-muted">Identifiant visible dans l’adresse du dossier, après /folders/.</span><input className={input} name="folder" required pattern="[a-zA-Z0-9_-]{10,200}" defaultValue={config?.drive_folder_id??''}/></label>
+ <label className="block">Lien du dossier Drive<span className="block text-xs text-muted">Collez le lien du dossier de photos (ou son identifiant). Distinct du dossier WhatsApp de l’onglet Photothèque.</span><input className={input} name="folder" required maxLength={500} autoComplete="off" defaultValue={config?.drive_folder_id??''}/></label>
  <label className="block">Prestations réellement proposées, une par ligne<textarea className={input} name="services" required maxLength={2200} defaultValue={Array.isArray(config?.verified_services)?config.verified_services.join('\n'):''}/></label>
  <label className="block">Objectif et règles éditoriales du projet<textarea className={input} name="rules" maxLength={4000} defaultValue={config?.editorial_rules??''}/></label>
  <label className="block"><input type="checkbox" name="rights" required defaultChecked={config?.rights_confirmed??false}/> Je confirme les droits d’utilisation des photos de ce dossier.</label>

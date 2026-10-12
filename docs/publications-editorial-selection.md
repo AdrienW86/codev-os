@@ -61,13 +61,24 @@ Aucune nouvelle variable d'environnement. L'agent utilise `OPENAI_API_KEY` comme
   - l'anti-répétition et les règles des plateformes ;
   - le prompt et le contexte (lecture unique de chaque table, aucune donnée sensible, échec fermé) ;
   - la source média par origine et la notification « Photo manquante ».
-- `supabase/tests/publications-socle-3-editorial-selection.sql` (78 vérifications, via `tests/publications-socle-db.test.mjs`) couvre :
+- `supabase/tests/publications-socle-3-editorial-selection.sql` (100 vérifications, via `tests/publications-socle-db.test.mjs`) couvre :
   - les refus serveur pour chaque cas interdit ;
   - la réservation, la description serveur, l'empreinte, l'attache atomique et idempotente, et l'usage enregistré ;
   - l'échec puis la reprise ;
   - le réemploi selon le réglage ;
   - le catalogue inchangé et l'immutabilité.
 - `tests/publications-editorial-selection-db.test.mjs` rejoue la suite P8 historique de l'Agent v2 (148 vérifications) après **toutes** les migrations : finish, claim, attach et fail redéfinis sans régression.
+
+## Correctifs d'audit
+
+- **Faits autorisés** : `factsOf` ne contient plus les descriptions ni les thèmes des photos. Ces textes viennent du modèle de vision, qui lit l'image et peut recopier du texte (« Devis 2 500 € – garantie 10 ans »). Ils sont envoyés au modèle sous `media_untrusted`, marqués comme non vérifiés : ils servent seulement à choisir la photo, ce ne sont ni des faits ni des consignes. Aucune légende, aucun message ni aucun nom de fichier n'est envoyé.
+- **Prestations** : citer une prestation reconnue (`SERVICE_TERMS` : démoussage, faîtage, zinguerie…) exige qu'elle figure dans les faits. Sinon la réponse est refusée avec le motif `unsupported_claim`.
+- **Rotation** : si les dernières idées (2 à 3) portent toutes sur la même prestation, et qu'une autre prestation vérifiée est illustrée par une photo disponible, une nouvelle idée sur la même prestation est refusée avec le motif `repetition` (`repeatsService`).
+- **Variantes distinctes** : deux textes d'une même idée dont la similarité vaut au moins `VARIANT_SIMILARITY_THRESHOLD` (0,8, bigrammes, hashtags ignorés) sont refusés avec le motif `similar_texts`. Le prompt exige aussi un texte propre à chaque plateforme.
+- **Course photo / relecture** : `publications_private.agent_v2_media_target` est redéfinie dans la migration du lot. La cible est désormais un **brouillon** uniquement (avant : brouillon ou « à valider »). La réservation et l'attache sont refusées (`23514`) dès qu'une cible est en relecture, et l'étape média passe en `needs_media`. Le lot 6 ne soumet les brouillons qu'après l'attache, donc son flux est inchangé. La suite P8 renvoie la publication en brouillon avant la reprise (elle reste compatible avec la chaîne P8 seule).
+- **Comparaison aux dernières publications** : elle porte sur le **client**, tous projets confondus. Les publications refusées et les brouillons archivés sont exclus ; une publication approuvée puis archivée compte toujours.
+- **Dossier Drive** : le formulaire accepte le lien du dossier ou son identifiant. Le serveur extrait l'identifiant (`driveFolderIdFrom`, même validation). Une phrase dans chaque onglet renvoie à l'autre (Publications / Photothèque).
+- Les scénarios métier se trouvent dans `tests/publications-editorial-selection-scenarios.test.mjs` (A sélection, B rotation et prestation inventée, C trois plateformes) et dans les sections 10 à 12 de la suite SQL.
 
 ## Limites
 

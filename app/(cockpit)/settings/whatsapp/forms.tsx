@@ -1,7 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import { Action } from "@/components/ui/button";
-import { saveSender, runImport, retryImport, createFolder, type ImportState } from "./actions";
+import { saveSender, runImport, retryImport, createFolder, assignMedia, dismissMedia, forgetSender, type ImportState } from "./actions";
 const initial: ImportState = {};
 const input = "block w-full rounded-lg border border-border bg-background p-3";
 export function SenderForm({ clients }: { clients: { id: string; name: string }[] }) {
@@ -19,7 +19,7 @@ export function SenderForm({ clients }: { clients: { id: string; name: string }[
 }
 export function ProcessForm() {
   const [state, action, pending] = useActionState(runImport, initial);
-  return <form action={action}><Action type="submit" disabled={pending}>{pending ? "Import en cours…" : "Traiter la prochaine photo"}</Action><p className="mt-3 text-sm" role="status">{state.message}</p></form>;
+  return <form action={action}><Action type="submit" disabled={pending}>{pending ? "Import en cours…" : "Traiter le prochain média"}</Action><p className="mt-3 text-sm" role="status">{state.message}</p></form>;
 }
 export function RetryForm({ id }: { id: string }) {
   const [state, action, pending] = useActionState(retryImport, initial);
@@ -29,4 +29,28 @@ export function RetryForm({ id }: { id: string }) {
 export function FolderForm({ clients }: { clients: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState(createFolder, initial);
   return <form action={action} className="mb-6 grid max-w-xl gap-3"><p>Si vous n’avez pas encore de dossier autorisé, créez-en un dédié au client.</p><label>Client<select className={input} name="client_id" required><option value="">Choisir le client</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><Action type="submit" disabled={pending}>{pending ? "Création…" : "Créer un dossier Drive dédié"}</Action><p role="status" className="break-all">{state.message}</p></form>;
+}
+
+export type AssignTarget = { value: string; label: string };
+export function AssignForm({ id, targets }: { id: string; targets: AssignTarget[] }) {
+  const [state, action, pending] = useActionState(assignMedia, initial);
+  const [dismissState, dismiss, dismissing] = useActionState(dismissMedia, initial);
+  if (!targets.length) return <p className="mt-2 text-sm text-muted">Associez d’abord un numéro et un dossier au client concerné pour pouvoir affecter ce média.</p>;
+  return <div className="mt-3 grid max-w-xl gap-2">
+    <form action={action} className="grid gap-2"><input type="hidden" name="id" value={id} />
+      <label className="text-sm">Affecter au client<select className={input} name="target" required defaultValue=""><option value="">Choisir le client et son dossier</option>{targets.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
+      <label className="flex gap-3 text-sm"><input type="checkbox" name="rights_confirmed" required />J’ai vérifié l’expéditeur et le client autorise l’utilisation de ce média.</label>
+      <Action type="submit" disabled={pending}>{pending ? "Affectation…" : "Affecter"}</Action><p role="status" className="text-sm">{state.message}</p>
+    </form>
+    <form action={dismiss}><input type="hidden" name="id" value={id} /><Action type="submit" disabled={dismissing}>Écarter ce média</Action><p role="status" className="text-sm">{dismissState.message}</p></form>
+  </div>;
+}
+export function ForgetSenderForm() {
+  const [state, action, pending] = useActionState(forgetSender, initial);
+  return <form action={action} className="grid max-w-xl gap-3">
+    <label>Numéro WhatsApp international<input className={input} name="sender" required maxLength={30} inputMode="tel" placeholder="33612345678" /></label>
+    <label className="flex gap-3 text-sm"><input type="checkbox" name="confirm" required />Effacer l’association, les messages et le numéro ; écarter les médias non importés.</label>
+    <Action type="submit" disabled={pending}>{pending ? "Effacement…" : "Effacer les données de ce numéro"}</Action>
+    <p role="status" className="text-sm">{state.message}</p>
+  </form>;
 }

@@ -26,7 +26,7 @@ Données personnelles : « Effacer les données de ce numéro » supprime l’as
 
 ## Configuration serveur
 
-Les migrations `20261016000001_whatsapp_drive_ingestion.sql` puis `20261023000000_whatsapp_media_library.sql` doivent être appliquées, dans cet ordre, **avant** le déploiement du code de la photothèque (le webhook écrit la colonne `caption` ; sans la seconde migration il répond 503 et Meta relivre). Créée avec la CLI, son horodatage a été placé après la migration Google Ads existante pour préserver l’ordre de déploiement. Elle ajoute trois tables et des fonctions avec RLS, accessibles uniquement à `service_role`. Aucune migration distante n’est appliquée par ce lot.
+Les migrations `20261016000001_whatsapp_drive_ingestion.sql` puis `20261024000000_whatsapp_media_library.sql` doivent être appliquées, dans cet ordre, **avant** le déploiement du code de la photothèque (le webhook écrit la colonne `caption` ; sans la seconde migration il répond 503 et Meta relivre). Créée avec la CLI, son horodatage a été placé après la migration Google Ads existante pour préserver l’ordre de déploiement. Elle ajoute trois tables et des fonctions avec RLS, accessibles uniquement à `service_role`. Aucune migration distante n’est appliquée par ce lot.
 
 Variables Vercel **serveur uniquement** (jamais `NEXT_PUBLIC_`, jamais à coller dans une conversation) :
 

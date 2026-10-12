@@ -75,6 +75,20 @@ begin
  return new;
 end $$;
 
+-- 3 bis. Cible de l'attache : un brouillon uniquement (auparavant aussi « à valider »). Une photo arrivée pendant la
+-- relecture modifierait la révision qu'un humain est en train d'approuver : la réservation comme l'attache sont alors
+-- refusées (23514) et le run passe explicitement en needs_media (étape média). Le brouillon peut être renvoyé en
+-- brouillon puis la photo réessayée ; la soumission automatique (socle lot 6) n'a lieu qu'après l'attache.
+create or replace function publications_private.agent_v2_media_target(r public.publication_agent_v2_runs,p public.publications) returns uuid
+language sql stable security invoker set search_path=pg_catalog as $$
+ select v.id from public.publication_variants v
+  where p.id is not null and p.id=any(r.publication_ids) and p.client_id=r.client_id and p.project_id=r.project_id and p.archived_at is null
+   and p.status='draft' and p.platform is not null and p.current_revision_id is not null
+   and not exists(select 1 from public.publication_deliveries d where d.publication_id=p.id)
+   and not exists(select 1 from public.publication_reviews rv where rv.revision_id=p.current_revision_id)
+   and v.revision_id=p.current_revision_id and v.publication_id=p.id and v.client_id=p.client_id and v.platform=p.platform;
+$$;
+
 -- 4. Finir, réserver, attacher, échouer : mêmes signatures, photothèque ou catalogue Drive.
 create or replace function public.publication_agent_v2_finish(p_run_id uuid,p_output jsonb,p_media_id uuid,p_usage jsonb,p_actor_id text) returns jsonb
 language plpgsql security invoker set search_path=pg_catalog as $$

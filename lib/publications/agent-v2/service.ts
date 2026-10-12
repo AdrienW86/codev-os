@@ -12,7 +12,7 @@ import {openaiAgentV2Generator} from './openai-generator';
 import {AGENT_V2_LIMITS,type AgentV2Usage,type PublicationsAgentV2Generator} from './contract';
 import {attachAgentV2Media,type AgentV2MediaDb,type ImageAdapter} from './media';
 import {getAgentV2RunMedia} from './media-runs';
-import {agentV2ResultMessage,mediaCategoryLabel,mediaStateOf,retryMessage,type AgentV2MediaView} from './media-view';
+import {agentV2ResultMessage,mediaCategoryLabel,mediaStateOf,retryMessage,type AgentV2MediaOutcome,type AgentV2MediaView} from './media-view';
 import {driveMediaSource,type PublicationMediaSource} from '../media/source';
 import {adaptImage} from '../media/transform';
 import type {Json} from '@/lib/supabase/database.types';
@@ -32,8 +32,9 @@ async function previewOf(runId:string):Promise<string|null>{try{return (await ge
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
 const zeroUsage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
 
-const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai…). Aucun brouillon créé.',
- repetition:'Contenu refusé : trop proche des dernières publications (sujet, formulation ou accroche). Aucun brouillon créé ; relancez.',
+const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai, prestation non vérifiée…). Aucun brouillon créé.',
+ repetition:'Contenu refusé : trop proche des dernières publications (sujet, prestation, formulation ou accroche). Aucun brouillon créé ; relancez.',
+ similar_texts:'Contenu refusé : les textes des plateformes étaient presque identiques (un texte natif par plateforme). Aucun brouillon créé ; relancez.',
  platform_rules:'Contenu refusé : hors des règles d’une plateforme (longueur ou hashtags). Aucun brouillon créé ; relancez.'};
 // « Photo manquante » : une notification par client et par jour au plus, vers sa photothèque (jamais de nom ni de texte).
 async function notifyMissingPhoto(db:{from(table:string):unknown},clientId:string,now:Date){
@@ -47,7 +48,8 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
 }
 export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';
-export type PrepareOptions={allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number}&AgentV2MediaOptions;
+// excludeOccurrenceIds (planificateur) : occurrences dont la préparation a trop échoué, laissées à un humain.
+export type PrepareOptions={allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number;excludeOccurrenceIds?:readonly string[]}&AgentV2MediaOptions;
 export async function prepareNextPublications(projectId:unknown,options:PrepareOptions):Promise<AgentV2Result>{
  const {userId}=await requireAdmin();return prepareNextPublicationsAs(userId,projectId,options);
 }
@@ -69,7 +71,8 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  if(!projectSupportsPublications(capabilities))return result(false,'Publications suspendues : aucun canal actif.');
  // The state is re-read here: occurrences linked by a previous run are no longer candidates (idempotence).
  const horizon=options.leadDays?Math.min(Math.max(Math.trunc(options.leadDays),1),28):28;
- const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform));
+ const excluded=new Set(options.excludeOccurrenceIds??[]);
+ const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform)&&!excluded.has(o.occurrenceId));
  const batch=selectIdeaBatch(open,now);
  if(!batch.length)return result(false,NO_OPEN_OCCURRENCE);
  let context;
@@ -108,6 +111,12 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  return result(true,agentV2ResultMessage(ids.length,mediaState)+(!mediaId?' Photo manquante signalée : ajoutez des photos à la photothèque du client.':''),{publications,withMedia:mediaState==='attached',runId:run,media,mediaMissing:!mediaId,missingNotified:missing});
 }
 
+// Reprise de l'étape média par le planificateur (socle lot 6), au nom de l'administrateur délégué : jamais de
+// génération (aucun appel OpenAI), mêmes brouillons, même étape compensable (attachAgentV2Media).
+export async function retryAgentV2MediaAs(userId:string,runId:string,options:AgentV2MediaOptions={}):Promise<AgentV2MediaOutcome['state']>{
+ if(!/^user_[a-zA-Z0-9_-]{1,200}$/.test(userId)||!isPublicationUuid(runId))return 'unconfirmed';
+ return (await attachAgentV2Media(runId,userId,mediaDeps(getSupabaseServerClient(),options))).state;
+}
 // Explicit retry of the media step of a completed run: never any generation (no OpenAI call), same drafts.
 export type AgentV2MediaRetryResult={ok:boolean;message:string;projectId?:string;media?:AgentV2MediaView};
 export async function retryAgentV2Media(runId:unknown,options:AgentV2MediaOptions={}):Promise<AgentV2MediaRetryResult>{

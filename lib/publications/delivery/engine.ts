@@ -67,10 +67,12 @@ export async function executeClaimedPublicationJob(claim:Claim,workerId:string,d
  return {state:'completed',deliveryStatus:String((done.data as {delivery_status?:unknown}).delivery_status??''),outcome:outcome.result};
 }
 // Claims and executes at most one due job. Local / test use only (explicit dependencies, no scheduler).
-export async function runOnePublicationJob(workerId:string,deps:EngineDeps&{leaseSeconds?:number}):Promise<ExecutionResult>{
+// maxLateSeconds (scheduler only, socle lot 6): jobs due for longer are blocked (late_schedule) instead of sent.
+export async function runOnePublicationJob(workerId:string,deps:EngineDeps&{leaseSeconds?:number;maxLateSeconds?:number}):Promise<ExecutionResult>{
  if(!/^[a-zA-Z0-9_.:-]{1,100}$/.test(workerId))throw Error('Invalid worker id');
  const lease=Math.min(Math.max(deps.leaseSeconds??120,30),900);
- const claimed=await settle(()=>deps.db.rpc('publication_job_claim',{p_worker_id:workerId,p_lease_seconds:lease}),{data:null,error:{code:'network'}});
+ const claimed=await settle(()=>deps.maxLateSeconds===undefined?deps.db.rpc('publication_job_claim',{p_worker_id:workerId,p_lease_seconds:lease})
+  :deps.db.rpc('publication_job_claim_on_time',{p_worker_id:workerId,p_lease_seconds:lease,p_max_late_seconds:Math.min(Math.max(Math.trunc(deps.maxLateSeconds),60),86400)}),{data:null,error:{code:'network'}});
  if(claimed.error){log('claim');return {state:'stale'};}
  if(!claimed.data)return {state:'idle'};
  return executeClaimedPublicationJob(claimed.data as Claim,workerId,deps);

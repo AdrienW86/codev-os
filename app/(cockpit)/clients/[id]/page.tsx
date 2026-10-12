@@ -258,7 +258,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
       <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} deliveryFlags={{ clientPublishing: data.settings.publishingEnabled, globalStop: data.globalStop }} />
       <Panel className="p-6">
         <h2 className="font-semibold">Photothèque Google Drive et prestations</h2>
-        <p className="mt-2 text-sm text-muted">Dossier Drive où l’agent cherche les photos du client, prestations réellement proposées et objectif éditorial. Les photos reçues par WhatsApp restent gérées dans l’onglet Photothèque.</p>
+        <p className="mt-2 text-sm text-muted">Dossier Drive où l’agent cherche les photos du client, prestations réellement proposées et objectif éditorial. Le dossier des photos reçues par WhatsApp et les « Prestations confirmées » du profil se gèrent dans l’onglet <Link className="text-accent" href={`/clients/${clientId}?tab=media`}>Photothèque</Link> ; l’agent utilise les deux.</p>
         {data.agentReady ? <AgentConfigurationForm projectId={data.project.id} config={data.agent} /> : <p role="alert" className="mt-3 text-sm">Configuration de l’agent indisponible.</p>}
         <p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${data.project.id}/calendar`}>Calendrier des publications →</Link> <Link className="ml-4 text-accent" href={`/publications/review`}>Publications à valider →</Link></p>
       </Panel>

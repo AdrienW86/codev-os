@@ -117,11 +117,12 @@ export async function prepareApprovedDeliveries(env:Record<string,string|undefin
   .order('updated_at').limit(50);
  if(pubs.error||!pubs.data?.length)return summary;
  const rows=pubs.data as {id:string;current_revision_id:string|null;occurrence_id:string}[];
- const [live,occurrences]=await Promise.all([db().from('publication_deliveries').select('publication_id,revision_id,status').in('publication_id',rows.map(p=>p.id)).neq('status','cancelled'),
+ const [live,occurrences]=await Promise.all([db().from('publication_deliveries').select('publication_id,revision_id,status').in('publication_id',rows.map(p=>p.id)),
   db().from('publication_channel_occurrences').select('id,scheduled_for').in('id',rows.map(p=>p.occurrence_id))]);
  if(live.error||occurrences.error)return summary;
  for(const p of rows){
   if(summary.prepared+summary.blocked>=MAX_DELIVERY_PREPARATIONS_PER_TICK)break;
+  // Une diffusion existe déjà pour cette révision (même annulée par un humain : « Suspendre ») : rien à refaire.
   if(!p.current_revision_id||(live.data??[]).some(d=>d.publication_id===p.id&&d.revision_id===p.current_revision_id))continue;
   const at=(occurrences.data??[]).find(o=>o.id===p.occurrence_id)?.scheduled_for;
   if(!at||Date.parse(at)<now.getTime()-LATE_DELIVERY_TOLERANCE_MS){summary.late++;continue;}

@@ -123,6 +123,9 @@ test("delivery preparation: only human-approved, scheduled, non-archived publica
   const live = setup(approvedTables({ publication_deliveries: [{ publication_id: PUB(1), revision_id: REV(1), status: "failed" }] }), { publication_prepare_delivery: () => ({}) });
   assert.equal((await live.mod.prepareApprovedDeliveries(enabled, now)).prepared, 0);
   assert.ok(!live.fake.calls.some(c => c[0] === "rpc"), "a failed delivery waits for a manual retry");
+  const cancelled = setup(approvedTables({ publication_deliveries: [{ publication_id: PUB(1), revision_id: REV(1), status: "cancelled" }] }), { publication_prepare_delivery: () => ({}) });
+  assert.equal((await cancelled.mod.prepareApprovedDeliveries(enabled, now)).prepared, 0);
+  assert.ok(!cancelled.fake.calls.some(c => c[0] === "rpc"), "a delivery cancelled by a human is never recreated for the same revision");
   // Approbation d'une ancienne révision (modifiée depuis) : aucun approbateur, rien n'est préparé.
   const stale = setup(approvedTables({ publication_reviews: [{ publication_id: PUB(1), revision_id: REV(9), decision: "approved", actor_id: "user_reviewer", created_at: "1" }] }), { publication_prepare_delivery: () => ({}) });
   assert.equal((await stale.mod.prepareApprovedDeliveries(enabled, now)).blocked, 1);

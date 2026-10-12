@@ -19,6 +19,7 @@
 
 - **Modification après approbation** : `publication_save_draft` repasse la publication en brouillon, bloque ses diffusions et annule les envois en attente. Une nouvelle approbation est nécessaire.
 - **Refus** : une publication refusée, ou en attente de validation, ne peut pas recevoir de diffusion (`publication_prepare_delivery` exige `approved`).
+- **Diffusion annulée par un humain** : le planificateur ne recrée jamais une diffusion pour une révision qui en a déjà eu une, même annulée. Pour relancer, modifier (nouvelle révision) ou reprogrammer.
 - **Reprises idempotentes** : une clé d'idempotence par variante et par compte, et une file avec bail. Une diffusion n'est jamais renvoyée si l'envoi a pu atteindre le fournisseur (état « à vérifier »).
 - **Succès** : uniquement avec confirmation de la plateforme (identifiant distant).
 - **Échecs** : chaque tentative reste dans l'historique (`publication_attempts`). La relance manuelle passe par la fiche publication. Nouveau : une notification **« Échec ou incertitude d'envoi »** par diffusion en échec ou à vérifier (déclencheur en base), vers la fiche de la publication.

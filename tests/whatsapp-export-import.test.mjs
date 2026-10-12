@@ -424,11 +424,12 @@ test("tick: the export purge runs first and isolated, so an expired import is pu
   const e = setup(); const eid = await analyzed(e);
   e.setNow(new Date("2026-10-13T09:00:00Z"));
   const order = [];
-  const failing = name => async () => { order.push(name); throw Error(`${name}_down`); };
+  const failing = name => () => { order.push(name); throw Error(`${name}_down`); };
   const mod = new Proxy({}, { get: (_t, key) => key === "__esModule" ? false : failing(String(key)) });
   const mocks = {
     "next/server": { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
     "@/lib/scheduler/cron-auth": { checkCronAuthorization: () => ({ ok: true }) },
+    "@/lib/scheduler/heartbeat": { recordSchedulerHeartbeat: async () => { throw Error("heartbeat_down"); }, stepCounts: () => { throw Error("stepCounts_down"); } },
     "@/lib/whatsapp/export-import": { purgeExportImports: async () => { order.push("purgeExportImports"); return e.mod.purgeExportImports(e.deps); } },
   };
   // Transpilation locale du handler (process requis) ; toute autre dépendance serveur échoue.
@@ -438,7 +439,8 @@ test("tick: the export purge runs first and isolated, so an expired import is pu
   vm.runInNewContext(code, { exports, console: { error() {}, log() {} }, process: { env: { CRON_SECRET: "x" } }, Error, Promise, Date, Object, JSON, Map, Set,
     require: name => name === "node:crypto" ? { randomUUID } : mocks[name] ?? (name.startsWith("@/") ? mod : (() => { throw Error(`unexpected ${name}`); })()) });
   const response = await exports.GET({ headers: { get: () => "Bearer x" } });
-  assert.equal(order[0], "purgeExportImports", "purge before runTick and every other step");
+  const work = order.filter(name => !/Heartbeat|stepCounts/.test(name));
+  assert.equal(work[0], "purgeExportImports", "purge before runTick and every other step (the heartbeat write may fail first without effect)");
   assert.ok(order.includes("runTick")); assert.equal(response.status, 500);
   const imp = e.fake.tables.whatsapp_export_imports[0];
   assert.equal(imp.status, "expired"); assert.ok(imp.purged_at); assert.deepEqual(e.log.purged, [[C, eid]]);

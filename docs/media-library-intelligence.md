@@ -47,6 +47,17 @@ Toutes les tables ont la RLS activée sans politique. Seul `service_role` y acc�
 
 Avant la migration, la photothèque existante continue de fonctionner : la liste, les anciens statuts et la préparation de brouillon restent disponibles. Le profil et l'analyse affichent « appliquez la migration ».
 
+## Corrections d'audit
+
+- **Coût et échecs** : un échec après facturation (réponse illisible, évaluation refusée, enregistrement en erreur) journalise quand même le coût dans `client_media_ai_usage` via `whatsapp_asset_assessment_failed(asset, client, usage)` ; le fournisseur joint le coût à son erreur (`AI invalid output`, `AI usage limit`). Colonnes `whatsapp_assets.classification_failures` (0 par défaut) et `classification_failed_at` : la sélection automatique écarte une photo après 3 échecs ou pendant 6 h après un échec ; un succès remet le compteur à zéro ; le bouton « Analyser » sur une sélection peut toujours relancer.
+- **Rotation** : `client_media_profiles.last_classified_at` (vide = prioritaire), mis à jour après le passage de chaque client, même en erreur ; le planificateur prend les clients les moins récemment traités.
+- **Synchro Drive automatique** : le planificateur référence au plus 5 nouvelles photos par client (dossiers Drive confirmés de l'agent Publications, accès lecture seule Publications `GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN`, le même que pour relire ces photos). Sans accès configuré, seule la synchro est sautée. La recherche des fichiers déjà connus est limitée au client.
+- **Purge** : le média est d'abord marqué purgé par `whatsapp_asset_mark_purged(asset, client, p_drive_trash_planned)` (toujours rejeté par un humain, contrôlé en base) ; la corbeille Drive n'est tentée qu'ensuite, et son résultat est journalisé par `whatsapp_asset_purge_trash_logged(asset, client, 'trashed'|'missing'|'failed')`. Un média repêché entre-temps n'est ni marqué ni mis à la corbeille (compté « skipped »).
+- **Décision humaine périmée** : une nouvelle évaluation confidentielle efface `manual_verdict`, `reviewed_by` et `reviewed_at`.
+- **Captures d'écran** : `screenshot` ou `text_heavy` empêche tout verdict automatique « pertinent ».
+- **Quarantaine ou rejet humain** : `whatsapp_assets_review` annule, par `publication_delivery_cancel`, les diffusions programmées, en reprise ou bloquées des publications qui utilisent ces médias (`whatsapp_asset_uses`), avec un événement `publication.delivery_cancelled_media_withdrawn` par diffusion et le total dans l'audit (`cancelled_deliveries`). Les diffusions publiées ou en cours ne sont pas touchées. La fonction retourne toujours le nombre de médias mis à jour.
+- **Mobile** : la barre d'actions de la photothèque n'est collante qu'à partir de la largeur `sm`.
+
 ## Déploiement
 
 1. Vérifier dans `supabase_migrations.schema_migrations` que `20261028000000` est absent.
@@ -58,7 +69,7 @@ Avant la migration, la photothèque existante continue de fonctionner : la liste
 ## Tests
 
 - `node --test tests/media-intelligence.test.mjs` couvre les règles de sûreté, la donnée non fiable, la validation du profil, le budget, la purge, les actions et l'exclusion des médias confidentiels.
-- `PUBLICATIONS_SOCLE_TEST_DATABASE_URL=… node --test tests/publications-socle-db.test.mjs` exécute `supabase/tests/publications-socle-2-media-intelligence.sql` : 61 vérifications sur une base locale reconstruite.
+- `PUBLICATIONS_SOCLE_TEST_DATABASE_URL=… node --test tests/publications-socle-db.test.mjs` exécute `supabase/tests/publications-socle-2-media-intelligence.sql` : 95 vérifications sur une base locale reconstruite.
 
 ## Limites
 

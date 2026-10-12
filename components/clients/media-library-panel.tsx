@@ -31,7 +31,7 @@ export function MediaLibraryPanel({ clientId, items, folders, projects, status, 
     <Panel className="p-5">
       <h2 id="client-media" className="font-semibold">Photothèque</h2>
       <p className="mt-1 text-sm text-muted">Photos et vidéos envoyées par le client sur WhatsApp, conservées sans modification dans son dossier Drive privé. Les numéros inconnus restent en attente dans <Link className="text-accent" href="/settings/whatsapp">Médias WhatsApp</Link>.</p>
-      {folders.length > 0 && <p className="mt-2 text-sm">Dossier{folders.length > 1 ? "s" : ""} Drive : {folders.map((folder, index) => <span key={folder}>{index > 0 && " · "}<a className="text-accent" href={driveFolderUrl(folder)} target="_blank" rel="noreferrer">{folder.slice(0, 10)}…</a></span>)}</p>}
+      {folders.length > 0 && <p className="mt-2 flex flex-wrap gap-x-3 text-sm">{folders.map((folder, index) => <a key={folder} className="text-accent hover:underline" href={driveFolderUrl(folder)} target="_blank" rel="noreferrer">{folders.length > 1 ? `Ouvrir le dossier Drive ${index + 1}` : "Ouvrir le dossier Drive"}</a>)}</p>}
       <nav aria-label="Filtrer par statut" className="mt-4 flex flex-wrap gap-2 text-sm">
         <Link href={href(null)} aria-current={!status ? "page" : undefined} className={!status ? "font-medium text-foreground" : "text-accent"}>Tous (hors archivés, quarantaine et rejetés)</Link>
         {libraryStatuses.map(value => <Link key={value} href={href(value)} aria-current={status === value ? "page" : undefined} className={status === value ? "font-medium text-foreground" : "text-accent"}>{statusLabels[value]}</Link>)}

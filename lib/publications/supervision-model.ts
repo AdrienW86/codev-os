@@ -1,6 +1,7 @@
 // Socle Publications, lot 7 — tableau de supervision. Pur et testable : classement des comptes, compteurs de
 // publications et de photos, clients à court de photos, prochaines tâches de l'agent, créneaux de reprogrammation.
 import {libraryCandidates,MAX_LIBRARY_CANDIDATES,type LibraryAssessment,type LibraryRow,type LibraryUse,type ReuseSettings} from './agent-v2/library-pool';
+import {deliveryView} from './delivery/model';
 import type {PublicationPlatform} from './types';
 
 const day=86400000;
@@ -57,15 +58,31 @@ export type DeliveryRow={id:string;publication_id:string;revision_id:string|null
 export type DeliveryState='scheduled'|'published'|'error'|'none';
 export const ERROR_DELIVERY_STATUSES=['failed','uncertain','blocked','retryable_error'] as const;
 // État de diffusion de la révision courante : la diffusion la plus récente non annulée décide.
+export function latestLiveDelivery<T extends DeliveryRow>(deliveries:readonly T[],publicationId:string,revisionId:string|null):T|undefined{
+ return deliveries.filter(d=>d.publication_id===publicationId&&d.revision_id===revisionId&&d.status!=='cancelled').sort((a,b)=>b.updated_at.localeCompare(a.updated_at))[0];
+}
 export function deliveryState(deliveries:readonly DeliveryRow[],publicationId:string,revisionId:string|null):{state:DeliveryState;cancellable:string[]}{
  const own=deliveries.filter(d=>d.publication_id===publicationId&&d.revision_id===revisionId);
- const live=own.filter(d=>d.status!=='cancelled').sort((a,b)=>b.updated_at.localeCompare(a.updated_at))[0];
+ const live=latestLiveDelivery(own,publicationId,revisionId);
  const cancellable=own.filter(d=>d.status==='scheduled'||d.status==='retryable_error'||d.status==='blocked').map(d=>d.id);
  if(!live)return {state:'none',cancellable};
  if(live.status==='published'||live.status==='simulated')return {state:'published',cancellable};
  if((ERROR_DELIVERY_STATUSES as readonly string[]).includes(live.status))return {state:'error',cancellable};
  return {state:'scheduled',cancellable};
 }
+// Raison sûre d'une diffusion en erreur : celle de la fiche (classe d'erreur et code court, motif de blocage), jamais un
+// message du fournisseur. Une publication approuvée dont le créneau est passé sans diffusion a sa propre raison.
+export type DeliveryDetailRow=DeliveryRow&{platform?:PublicationPlatform;remote_id?:string|null;blocked_reason?:string|null;last_error_class?:string|null;last_error_code?:string|null};
+export const MISSED_SLOT_REASON='Créneau passé sans diffusion : approuvée mais jamais préparée. Reprogrammez-la.';
+export function deliveryErrorReason(row:DeliveryDetailRow|undefined):string|null{
+ if(!row)return null;
+ const v=deliveryView({id:row.id,platform:row.platform as PublicationPlatform,status:row.status,remote_id:row.remote_id??null,blocked_reason:row.blocked_reason??null,
+  last_error_class:row.last_error_class??null,last_error_code:row.last_error_code??null},{accountName:null,attempts:0,nextRetryAt:null});
+ return v?v.blockedReason??v.lastError??v.statusLabel:null;
+}
+// Approuvée, créneau passé, aucune diffusion pour la version actuelle : rien ne partira, à signaler.
+export const missedSlot=(p:{status:string;scheduledFor:string|null;delivery:DeliveryState},now:Date)=>
+ p.status==='approved'&&p.delivery==='none'&&p.scheduledFor!==null&&Date.parse(p.scheduledFor)<=now.getTime();
 // Date et heure d'un créneau, heure de Paris (affichage).
 export function formatSlot(iso:string|null):string{
  if(!iso||Number.isNaN(Date.parse(iso)))return 'Créneau inconnu';

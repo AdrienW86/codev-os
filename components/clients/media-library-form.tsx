@@ -56,7 +56,8 @@ export function MediaLibraryForm({ clientId, cards, projects }: { clientId: stri
         </div>
       </li>;
     })}</ul>
-    <div className="sticky bottom-0 mt-6 space-y-4 rounded-xl border border-border bg-surface p-4">
+    {/* Barre collante à partir de sm seulement : sur mobile, ses boutons couvriraient la moitié de l’écran. */}
+    <div className="mt-6 space-y-4 rounded-xl border border-border bg-surface p-4 sm:sticky sm:bottom-0">
       <p className="text-sm">{selected.length ? `${selected.length} média(s) sélectionné(s)` : "Sélectionnez des médias pour changer leur statut ou préparer une publication."}</p>
       <div className="flex flex-wrap gap-2"><Action type="submit" name="intent" value="analyze" disabled={pending || !selected.length || selected.length > 20}>Analyser avec l’IA</Action>{manualStatuses.map(status => <Action key={status} type="submit" name="intent" value={`status:${status}`} disabled={pending || !selected.length}>{`Marquer « ${statusLabels[status]} »`}</Action>)}</div>
       <details className="rounded-lg border border-border p-3">

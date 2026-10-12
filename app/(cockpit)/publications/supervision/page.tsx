@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {ReactNode} from "react";
 import {requireAdmin} from "@/lib/require-admin";
 import {getSupervision,type SupervisedPublication} from "@/lib/publications/supervision";
+import {isFlagEnabled} from "@/lib/system/providers";
 import {formatSlot,MIN_AVAILABLE_PHOTOS} from "@/lib/publications/supervision-model";
 import {listPublications} from "@/lib/publications/data";
 import {buildReviewCards} from "@/lib/publications/review-cards";
@@ -31,7 +32,8 @@ const Empty=({children}:{children:ReactNode})=><p className="text-sm text-muted"
 
 export default async function PublicationsSupervisionPage(){
  await requireAdmin();const now=new Date();
- const [data,publications]=await Promise.all([getSupervision(now),listPublications()]);
+ // Interrupteur serveur lu par lib/system (présence de la valeur exacte « enabled » uniquement), jamais dans lib/publications.
+ const [data,publications]=await Promise.all([getSupervision(now,{scheduledDelivery:isFlagEnabled("publications-scheduled-delivery")}),listPublications()]);
  const cards=await buildReviewCards(publications.filter(p=>p.status==="pending_review").slice(0,REVIEW_PREVIEW),{debug:false});
  const clientName=new Map(data.clients.map(c=>[c.id,c.name]));
  const name=(id:string)=>clientName.get(id)??"Client";
@@ -40,18 +42,27 @@ export default async function PublicationsSupervisionPage(){
   <div className="min-w-0"><p className="text-sm font-medium"><Link href={`/publications/${p.id}`} className="hover:underline">{p.subject}</Link></p>
    <p className="mt-0.5 text-xs text-muted">{name(p.clientId)} · {platformLabels[p.platform]} · {formatSlot(p.scheduledFor)}</p>
    <div className="mt-1 flex flex-wrap gap-1.5"><Badge tone={p.status==="approved"?"green":p.status==="pending_review"?"amber":"neutral"}>{statusLabels[p.status]}</Badge>
-    <Badge tone={p.delivery==="error"?"amber":p.delivery==="published"?"green":"neutral"}>{deliveryLabels[p.delivery]}</Badge></div></div>
+    <Badge tone={p.delivery==="error"||p.errorReason?"amber":p.delivery==="published"?"green":"neutral"}>{p.errorReason&&p.delivery==="none"?"Créneau manqué":deliveryLabels[p.delivery]}</Badge></div>
+   {p.errorReason&&<p className="mt-1 text-xs text-warning" data-error-reason="true">{p.errorReason}</p>}</div>
   {actions&&<div className="flex flex-wrap items-start gap-2">
    <Link href={`/publications/${p.id}/edit`} className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-border/40">Modifier</Link>
    <RescheduleForm publicationId={p.id} revisionId={p.revisionId} targets={p.targets} approved={p.status==="approved"}/>
    {p.cancellable.length>0&&<SuspendDeliveryForm publicationId={p.id}/>}
   </div>}
  </li>;
- return <><PageHeading title="Supervision des publications" eyebrow="Tous les clients" description="Comptes, validations, diffusions, photothèques et prochaines préparations de l’agent. Aucune diffusion sans approbation humaine." action={<PublicationsNav current="supervision"/>}/>
+ return <><PageHeading title="Supervision des publications" eyebrow="Tous les clients" description="Comptes, validations, diffusions, photothèques et prochaines préparations de l’agent. Aucune diffusion sans approbation humaine." action={<div className="flex flex-col items-start gap-2 sm:items-end"><PublicationsNav current="supervision"/><Link href="/settings/diagnostic" className="text-sm text-accent hover:underline">Diagnostic technique</Link></div>}/>
   {!s?<p role="alert" className="rounded-lg border border-border p-3 text-sm">Réglages de publication illisibles : tout est considéré comme arrêté.</p>
-   :<p className="rounded-lg border border-border bg-surface-raised p-3 text-sm" data-switches="true">
-    {s.emergencyStop?"Arrêt d’urgence actif : aucune préparation automatique ni diffusion.":`Préparation automatique ${s.automation&&s.generation?"active":"arrêtée"} · diffusion ${s.publishing?"autorisée":"désactivée"} dans les réglages.`}
-    {" "}<Link href="/publications" className="text-accent hover:underline">Réglages</Link></p>}
+   :<div className="rounded-lg border border-border bg-surface-raised p-3 text-sm" data-switches="true">
+    <p>{s.emergencyStop?"Arrêt d’urgence actif : aucune préparation automatique ni diffusion.":`Préparation automatique ${s.automation&&s.generation?"active":"arrêtée"} · diffusion ${s.publishing?"autorisée":"désactivée"} dans les réglages.`}</p>
+    <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Interrupteurs">
+     <li><Badge tone={s.emergencyStop?"amber":"green"}>{s.emergencyStop?"Arrêt d’urgence actif":"Arrêt d’urgence levé"}</Badge></li>
+     <li><Badge tone={s.automation?"green":"neutral"}>{`Automatisation ${s.automation?"activée":"désactivée"}`}</Badge></li>
+     <li><Badge tone={s.generation?"green":"neutral"}>{`Génération ${s.generation?"activée":"désactivée"}`}</Badge></li>
+     <li><Badge tone={s.publishing?"green":"neutral"}>{`Diffusion ${s.publishing?"autorisée":"désactivée"}`}</Badge></li>
+     <li data-scheduled-delivery={data.scheduledDelivery?"enabled":"disabled"}><Badge tone={data.scheduledDelivery?"green":"neutral"}>{`Diffusion automatique à l’heure prévue ${data.scheduledDelivery?"activée":"désactivée"}`}</Badge></li>
+    </ul>
+    {!data.scheduledDelivery&&<p className="mt-2 text-xs text-muted">Diffusion automatique désactivée sur le serveur : les publications approuvées partent uniquement via « Envoyer les publications dues ».</p>}
+    <p className="mt-2"><Link href="/publications" className="text-accent hover:underline">Réglages</Link></p></div>}
   <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" aria-label="Synthèse">
    <Tile label="À valider" value={data.counts.pendingReview} href="/publications/review" tone="amber"/>
    <Tile label="Programmées" value={data.counts.scheduled}/>
@@ -66,7 +77,7 @@ export default async function PublicationsSupervisionPage(){
     :<Empty>Aucune publication à valider.</Empty>}
   </Section>
 
-  <Section id="sv-errors" title="En erreur" description="Diffusions en échec, bloquées, à réessayer ou à vérifier. Relance et vérification depuis la fiche de la publication.">
+  <Section id="sv-errors" title="En erreur" description="Diffusions en échec, bloquées, à réessayer ou à vérifier, et publications approuvées dont le créneau est passé sans diffusion. Relance et vérification depuis la fiche de la publication.">
    {data.errors.length?<ul>{data.errors.map(p=>row(p,false))}</ul>:<Empty>Aucune diffusion en erreur.</Empty>}
   </Section>
 

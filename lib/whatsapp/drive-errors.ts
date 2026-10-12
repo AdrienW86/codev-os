@@ -87,6 +87,34 @@ export function driveErrorMessage(code: string, variable?: ImportVariable | null
   const base = messages[known];
   return variable && (known === "config_missing" || known === "config_invalid") ? base.replace("Configuration Drive d’import", `Variable ${variable}`) : base;
 }
+// Codes d'échec de la file d'import WhatsApp (whatsapp_inbox.error_code) : libellés courts, sans aucune donnée.
+const inboxLabels: Record<string, string> = {
+  retry_exhausted: "Abandon après 5 tentatives",
+  import_unavailable: "Import interrompu (erreur serveur)",
+  scope_missing: "Client ou dossier Drive non associé",
+  lease_lost: "Traitement repris par un autre passage",
+  asset_unavailable: "Photothèque indisponible pendant l’import",
+  inbox_unavailable: "File d’import indisponible",
+  invalid_media: "Média illisible",
+  media_mismatch: "Média différent de celui annoncé par Meta",
+  media_too_large: "Média trop volumineux",
+  media_host: "Adresse de téléchargement Meta inattendue",
+  media_unavailable: "Média plus disponible chez Meta (conservé 7 jours)",
+  media_integrity: "Média altéré pendant le téléchargement",
+  invalid_video: "Vidéo non prise en charge",
+  invalid_image: "Image non prise en charge",
+  provider_permission: "Accès refusé par Meta (jeton WhatsApp)",
+  drive_upload: "Dépôt dans Drive refusé",
+  drive_upload_host: "Adresse de dépôt Drive inattendue",
+  drive_file_missing: "Fichier introuvable dans Drive après dépôt",
+  drive_file_conflict: "Conflit de fichier dans Drive",
+};
+/** Libellé français d'un code d'échec de la file d'import (jamais le code brut seul, jamais un message fournisseur). */
+export function inboxErrorLabel(code: string | null | undefined): string | null {
+  if (!code) return null;
+  if (Object.hasOwn(inboxLabels, code)) return inboxLabels[code];
+  return isDriveErrorCode(code) ? driveErrorMessage(code) : "Erreur d’import non identifiée";
+}
 /** Journal serveur structuré : action, étape, code et statut HTTP uniquement. */
 export function logDriveFailure(action: string, failure: { code: string; stage?: string; status?: number; variable?: string | null }) {
   console.error("[whatsapp-drive]", JSON.stringify({ action, code: failure.code, stage: failure.stage ?? null, status: failure.status ?? null, variable: failure.variable ?? null }));

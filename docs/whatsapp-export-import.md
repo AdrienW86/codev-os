@@ -19,7 +19,7 @@ Dépend du lot 2 (#37, migration `20261028000000_media_library_intelligence.sql`
 5. **Import par lots** (8 photos par appel) vers le dossier Drive du client (expéditeur WhatsApp actif avec droits confirmés),
    puis référencement dans la photothèque.
 6. **Fin, annulation ou expiration (24 h)** : archive et aperçus supprimés, légendes effacées des lignes d'import, audit.
-   La tâche planifiée (`/api/internal/scheduler/tick`, étape `whatsappExports`) purge les imports expirés.
+   La tâche planifiée (`/api/internal/scheduler/tick`, étape `whatsapp_exports` du battement `scheduler_heartbeats`) purge les imports expirés.
 
 Le traitement est repris là où il s'est arrêté (bouton « Reprendre l'import ») : chaque lot est idempotent.
 

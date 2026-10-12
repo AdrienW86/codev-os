@@ -133,3 +133,61 @@ test("supervision page: every requested action wired to an existing or audited p
   assert.doesNotMatch(actions + page, /processDuePublications|publication_prepare_delivery|runOnePublicationJob/, "no send from the supervision page");
   assert.match(src("components/publications/publications-board.tsx"), /item\('supervision','Supervision','\/publications\/supervision'\)/);
 });
+
+test("errors: safe reason of the failing delivery; approved publication whose slot passed without delivery listed; delivery flag passed in", async () => {
+  const t = tables();
+  t.publication_deliveries[1] = { ...t.publication_deliveries[1], platform: "facebook", last_error_class: "auth", last_error_code: "token_expired", blocked_reason: null, remote_id: null };
+  t.publications.push(pubRow(7, "approved", OCC(9)), pubRow(8, "pending_review", OCC(10)));
+  t.publication_channel_occurrences.push(occRow(9, -10, { publication_id: PUB(7) }), occRow(10, -12, { publication_id: PUB(8) }));
+  const { mod } = service(t);
+  const s = await mod.getSupervision(now, { scheduledDelivery: true });
+  assert.equal(s.scheduledDelivery, true);
+  assert.equal((await service(tables()).mod.getSupervision(now)).scheduledDelivery, false, "disabled unless the page passes the flag");
+  assert.deepEqual(s.errors.map(p => p.id), [PUB(3), PUB(7)], "pending review with a passed slot is not a delivery error");
+  assert.equal(s.errors[0].errorReason, "Autorisation refusée ou révoquée (token_expired)");
+  assert.match(s.errors[1].errorReason, /Créneau passé sans diffusion/);
+  assert.equal(s.counts.errors, 2);
+  assert.equal(s.scheduled.find(p => p.id === PUB(2)).errorReason, null);
+  assert.equal(model.deliveryErrorReason({ id: D(1), status: "blocked", blocked_reason: "channel_disabled", platform: "facebook" }) !== null, true);
+  const page = src("app/(cockpit)/publications/supervision/page.tsx");
+  assert.match(page, /getSupervision\(now,\{scheduledDelivery:isFlagEnabled\("publications-scheduled-delivery"\)\}\)/, "flag read outside lib/publications and passed in");
+  const providers = load("lib/system/providers.ts"), registry = load("lib/publications/delivery/registry.ts", { "@/lib/require-admin": {}, "@/lib/supabase/server": {}, "./execution": {} });
+  for (const value of [undefined, "", "true", "ENABLED", "enabled "]) assert.equal(providers.isFlagEnabled("publications-scheduled-delivery", { PUBLICATIONS_SCHEDULED_DELIVERY: value }), false, String(value));
+  assert.equal(providers.isFlagEnabled("publications-scheduled-delivery", { PUBLICATIONS_SCHEDULED_DELIVERY: "enabled" }), true);
+  for (const value of [undefined, "true", "enabled"]) assert.equal(providers.isFlagEnabled("publications-scheduled-delivery", { PUBLICATIONS_SCHEDULED_DELIVERY: value }), registry.scheduledDeliveryEnabled({ PUBLICATIONS_SCHEDULED_DELIVERY: value }), "same rule as the scheduler");
+  assert.match(page, /Diffusion automatique à l’heure prévue/); assert.match(page, /href="\/settings\/diagnostic"/); assert.match(page, /p\.errorReason/);
+  for (const file of ["lib/publications/supervision.ts", "lib/publications/supervision-model.ts"]) assert.doesNotMatch(src(file), /process\.env|fetch\(|https:\/\//);
+});
+
+test("reschedule refusal: a library photo that is no longer publishable is explained", async () => {
+  const failing = service({}, { publication_reschedule: () => { throw Error("Library photo no longer publishable"); } });
+  assert.match((await failing.mod.reschedulePublication(PUB(1), REV(1), OCC(7))).message, /photothèque n’est plus publiable/);
+});
+
+test("UX: tokens instead of palette classes, human labels instead of raw values", () => {
+  const board = load("lib/publications/board-query.ts");
+  for (const classes of Object.values(board.boardStatusClasses)) assert.doesNotMatch(classes, /(?:amber|emerald|red|sky)-\d/);
+  assert.match(board.boardStatusClasses.draft, /border-warning bg-warning\/10/); assert.match(board.boardStatusClasses.rejected, /border-danger/);
+  assert.match(src("app/(cockpit)/publications/[id]/page.tsx"), /boardOriginLabels\.agent/); assert.doesNotMatch(src("app/(cockpit)/publications/[id]/page.tsx"), /p\.creation_origin\?\?"manual"/);
+  assert.match(src("components/publications/schedule-draft-form.tsx"), /platformLabels\[p\.platform/);
+  const manual = src("components/publications/manual-form.tsx");
+  assert.doesNotMatch(manual, /\{p\.type\}/); assert.match(manual, /1re publication de la semaine/);
+  const conn = src("components/publications/connections-panel.tsx");
+  assert.match(conn, /<details className="mt-3 border-t border-border pt-3" data-disconnect/); assert.match(conn, /href="\/settings\?tab=connections"/);
+  assert.match(src("components/publications/board-filter-bar.tsx"), /<details open=\{advancedOpen\}[\s\S]*<summary className="[^"]*sm:hidden">Plus de filtres/);
+  const setup = load("lib/publications/client-setup-model.ts");
+  assert.equal(setup.timezoneLabel("Europe/Paris"), "Paris (France)"); assert.equal(setup.timezoneLabel("Asia/Ho_Chi_Minh"), "Ho Chi Minh (Asia/Ho_Chi_Minh)");
+  for (const zone of setup.COMMON_TIMEZONES) assert.notEqual(setup.timezoneLabel(zone), zone, zone);
+  for (const file of ["components/publications/channel-configuration.tsx", "components/clients/client-publications-panel.tsx"]) assert.match(src(file), /timezoneLabel\(t\)/, file);
+  const channels = load("lib/publications/channel-configuration-model.ts");
+  assert.deepEqual(json(channels.channelDeliverySummary("publishable")), { active: true, text: "Diffusion : active" });
+  assert.equal(channels.channelDeliverySummary("no_account").text, "Diffusion : bloquée — Aucun compte de publication");
+  assert.match(channels.channelDeliverySummary("publishing_disabled", { clientPublishing: false, globalStop: false }).text, /pour ce client/);
+  assert.match(channels.channelDeliverySummary("publishing_disabled", { clientPublishing: true, globalStop: false }).text, /réglages généraux/);
+  assert.match(src("components/publications/channel-configuration.tsx"), /data-channel-delivery/);
+  assert.doesNotMatch(src("components/clients/media-library-panel.tsx"), /folder\.slice\(0, 10\)/); assert.match(src("components/clients/media-library-panel.tsx"), /Ouvrir le dossier Drive/);
+  const wa = src("app/(cockpit)/settings/whatsapp/page.tsx");
+  assert.match(wa, /inboxErrorLabel\(item\.error_code\)/); assert.doesNotMatch(wa, /` · \$\{item\.error_code\}`/);
+  const labels = load("lib/whatsapp/drive-errors.ts");
+  assert.equal(labels.inboxErrorLabel("retry_exhausted"), "Abandon après 5 tentatives"); assert.equal(labels.inboxErrorLabel("weird_code"), "Erreur d’import non identifiée"); assert.equal(labels.inboxErrorLabel(null), null);
+});

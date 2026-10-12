@@ -7,10 +7,17 @@
 -- journal. Approbation : toujours remise à zéro. Une publication en attente ou approuvée repasse « À valider » ; un
 -- brouillon reste brouillon. Les diffusions non envoyées sont annulées ; une diffusion en cours, envoyée ou à
 -- vérifier bloque la reprogrammation. Une publication refusée n'est jamais reprogrammée. Forward-only.
+-- Photothèque (lot 4-5) : une photo de la photothèque du client attachée à la publication (historique
+-- whatsapp_asset_uses) doit être encore publiable (publications_private.library_asset_publishable) ; sinon refus clair,
+-- rien n'est modifié. L'historique d'utilisation suit la nouvelle publication. Une publication qui repasse « À valider »
+-- crée la notification de validation (catégorie publication_review du lot 6, idempotente par publication).
+-- Groupe éditorial : non repris. L'ancienne publication (archivée) garde sa liaison immuable au groupe et sur la
+-- même plateforme ; l'index unique (groupe, plateforme) interdit donc d'y rattacher la nouvelle sans modifier le socle.
 create function public.publication_reschedule(p_publication_id uuid,p_expected_revision_id uuid,p_occurrence_id uuid,p_actor_id text)
 returns jsonb language plpgsql security invoker set search_path=pg_catalog as $$
 declare pub public.publications;rev public.publication_revisions;v public.publication_variants;occ public.publication_channel_occurrences;
  created jsonb;new_id uuid;new_revision uuid;new_variant uuid;d uuid;cancelled uuid[]:='{}';
+ lib public.whatsapp_assets;lib_id uuid;
 begin
  if p_actor_id is null or p_actor_id !~ '^user_[a-zA-Z0-9_-]{1,200}$' or p_publication_id is null or p_expected_revision_id is null or p_occurrence_id is null then
   raise exception 'Invalid reschedule' using errcode='22023'; end if;
@@ -31,6 +38,13 @@ begin
  select * into rev from public.publication_revisions where id=pub.current_revision_id;
  select * into v from public.publication_variants where revision_id=pub.current_revision_id and platform=pub.platform;
  if not found then raise exception 'Variant missing' using errcode='23514'; end if;
+ -- Photos de la photothèque attachées : toujours publiables (confidentielle, rejetée, archivée, purgée, hors sujet → refus).
+ for lib_id in select distinct u.asset_id from public.publication_variant_assets va
+   join public.whatsapp_asset_uses u on u.publication_asset_id=va.asset_id and u.client_id=va.client_id where va.variant_id=v.id loop
+  select * into lib from public.whatsapp_assets where id=lib_id and client_id=pub.client_id;
+  if not publications_private.library_asset_publishable(lib) then
+   raise exception 'Library photo no longer publishable' using errcode='23514'; end if;
+ end loop;
 
  -- Diffusions pas encore envoyées : annulées par la fonction existante (jobs compris, journalisées).
  for d in select id from public.publication_deliveries where publication_id=pub.id and status in('scheduled','retryable_error','blocked') order by id loop
@@ -42,8 +56,19 @@ begin
  select id into new_variant from public.publication_variants where revision_id=new_revision;
  insert into public.publication_variant_assets(variant_id,asset_id,client_id,sort_order)
   select new_variant,va.asset_id,va.client_id,va.sort_order from public.publication_variant_assets va where va.variant_id=v.id order by va.sort_order;
+ -- Historique de la photothèque : la nouvelle publication réutilise les mêmes fichiers privés (une ligne par photo).
+ insert into public.whatsapp_asset_uses(asset_id,client_id,publication_id,platform,publication_asset_id,used_by)
+  select distinct on (u.asset_id) u.asset_id,u.client_id,new_id,pub.platform,u.publication_asset_id,p_actor_id
+  from public.publication_variant_assets va join public.whatsapp_asset_uses u on u.publication_asset_id=va.asset_id and u.client_id=va.client_id
+  where va.variant_id=v.id order by u.asset_id,va.sort_order
+ on conflict(asset_id,publication_id,platform) do nothing;
  perform public.publication_archive(pub.id,p_actor_id);
- if pub.status in('pending_review','approved') then perform public.publication_submit_manual(new_id,new_revision,p_actor_id); end if;
+ if pub.status in('pending_review','approved') then
+  perform public.publication_submit_manual(new_id,new_revision,p_actor_id);
+  -- « À valider » : même notification que la préparation planifiée (aucun texte ni nom de client).
+  insert into public.admin_notifications(event_key,category,href) values('publication-review:'||new_id::text,'publication_review','/publications/review')
+  on conflict(event_key) do nothing;
+ end if;
  insert into public.publication_events(actor_type,actor_id,action,client_id,resource_type,resource_id,metadata)
  values('admin',p_actor_id,'publication.rescheduled',pub.client_id,'publication',pub.id,jsonb_build_object('project_id',pub.project_id,
   'from_occurrence_id',pub.occurrence_id,'to_occurrence_id',occ.id,'publication_id',new_id,'revision_id',new_revision,'source_revision_id',pub.current_revision_id,

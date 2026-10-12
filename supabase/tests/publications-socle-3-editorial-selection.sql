@@ -18,7 +18,8 @@ do $$declare r text;f text;begin
  foreach f in array array['publications_private.library_asset_publishable(public.whatsapp_assets)','publications_private.library_asset_reusable(public.whatsapp_assets)',
   'publications_private.agent_v2_library_available(public.publication_agent_v2_runs,public.whatsapp_assets)',
   'public.publication_agent_v2_finish(uuid,jsonb,uuid,jsonb,text)','public.publication_agent_v2_media_claim(uuid,text)',
-  'public.publication_agent_v2_media_attach(uuid,integer,text,jsonb,text)','public.publication_agent_v2_media_fail(uuid,integer,text,text)','publications_private.guard_agent_v2_run()'] loop
+  'public.publication_agent_v2_media_attach(uuid,integer,text,jsonb,text)','public.publication_agent_v2_media_fail(uuid,integer,text,text)','publications_private.guard_agent_v2_run()',
+  'publications_private.agent_v2_media_target(public.publication_agent_v2_runs,public.publications)'] loop
   foreach r in array array['public','anon','authenticated'] loop perform pg_temp.replay_assert(not has_function_privilege(r,f,'EXECUTE'),'browser denied '||f||' '||r);end loop;
   perform pg_temp.replay_assert(has_function_privilege('service_role',f,'EXECUTE'),'server '||f);
   perform pg_temp.replay_assert((select not prosecdef and proconfig @> array['search_path=pg_catalog'] from pg_proc where oid=f::regprocedure),'invoker '||f);
@@ -181,4 +182,64 @@ do $$begin
  perform pg_temp.replay_assert(pg_temp.es_error($q$insert into public.admin_notifications(event_key,category,href) values('es-missing-2','media_missing','https://evil.test')$q$)='23514','external href refused');
  perform pg_temp.replay_assert(pg_temp.es_error($q$insert into public.admin_notifications(event_key,category,href) values('es-missing-3','photo_missing','/notifications')$q$)='23514','unknown category refused');
  perform pg_temp.replay_assert((select column_default from information_schema.columns where table_schema='public' and table_name='admin_notification_preferences' and column_name='categories') like '%media_missing%','visible by default');
+end $$;
+
+-- 10. Scénario A (couvreur, cinq photos) : trois photos de toiture publiables, une facture jugée confidentielle et une
+-- photo hors sujet en quarantaine. La garde serveur n'offre jamais les deux dernières ; une photo publiable est retenue.
+reset role;
+do $$declare cl uuid:=pg_temp.es_id('client');n integer:=100;name text;begin
+ foreach name in array array['roof_1','roof_2','roof_3','invoice','off_topic'] loop
+  n:=n+1;insert into es_ids values(name,gen_random_uuid());
+  insert into public.whatsapp_assets(id,client_id,drive_folder_id,sha256,md5,drive_file_id,mime_type,size,media_kind,imported_at,library_status,status_changed_by,origin)
+  values(pg_temp.es_id(name),cl,'folder_wa_'||left(cl::text,8),lpad(to_hex(n),64,'0'),lpad(to_hex(n),32,'0'),'drive_file_es_'||n,'image/jpeg',3000+n,'image',now(),
+   case name when 'off_topic' then 'quarantined' when 'roof_3' then 'validated' else 'received' end,'user_local','whatsapp');
+ end loop;
+ insert into public.whatsapp_asset_assessments(asset_id,client_id,verdict,business_relevance,publishability,sensitive,confidential,description,topics,quality,quality_issues,profile_version,model,estimated_cost_eur,manual_verdict)
+ values(pg_temp.es_id('roof_1'),cl,'relevant',0.9,0.9,'{}',false,'Toiture en tuiles après démoussage.','{toiture}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
+  (pg_temp.es_id('roof_2'),cl,'relevant',0.8,0.8,'{}',false,'Faîtage de toiture en tuiles.','{toiture}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
+  (pg_temp.es_id('invoice'),cl,'to_review',0.6,0.1,'{invoice}',true,'Devis 2 500 € – garantie 10 ans.','{}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
+  (pg_temp.es_id('off_topic'),cl,'off_topic',0.1,0.1,'{}',false,'Plat cuisiné.','{}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null);
+end $$;
+do $$declare name text;begin
+ foreach name in array array['roof_1','roof_2','roof_3'] loop
+  perform pg_temp.replay_assert((select publications_private.library_asset_publishable(a) from public.whatsapp_assets a where id=pg_temp.es_id(name)),'scénario A publishable: '||name);end loop;
+ foreach name in array array['invoice','off_topic'] loop
+  perform pg_temp.replay_assert(not (select publications_private.library_asset_publishable(a) from public.whatsapp_assets a where id=pg_temp.es_id(name)),'scénario A never offered: '||name);end loop;
+end $$;
+set local role service_role;
+do $$declare run uuid;begin
+ perform pg_temp.replay_assert(pg_temp.es_refused(pg_temp.es_id('invoice'))='22023' and pg_temp.es_refused(pg_temp.es_id('off_topic'))='22023','scénario A: invoice and off-topic refused at finish');
+ run:=pg_temp.es_run(pg_temp.es_id('roof_1'),array['facebook']);
+ perform pg_temp.replay_assert((select selected_library_asset_id=pg_temp.es_id('roof_1') and media_status='pending' from public.publication_agent_v2_runs where id=run),'scénario A: a publishable roof photo is chosen');
+end $$;
+
+-- 11. Course photo / relecture : une photo n'est jamais attachée à une publication « à valider » (révision en relecture).
+do $$declare run uuid;claim jsonb;pub uuid;rev uuid;a public.whatsapp_assets;begin
+ run:=pg_temp.es_run(pg_temp.es_id('roof_2'),array['facebook','instagram']);
+ select * into a from public.whatsapp_assets where id=pg_temp.es_id('roof_2');
+ -- Réservée pendant le brouillon, puis soumise avant l'attache : l'attache est refusée en bloc, aucun lien créé.
+ claim:=public.publication_agent_v2_media_claim(run,'user_local');
+ select id,current_revision_id into pub,rev from public.publications where id=(select publication_ids[1] from public.publication_agent_v2_runs where id=run);
+ perform public.publication_submit_manual(pub,rev,'user_local');
+ perform pg_temp.replay_assert(pg_temp.es_error(format('select public.publication_agent_v2_media_attach(%L,%s,%L,%L,%L)',run,claim->>'attempt',a.sha256,pg_temp.es_assets(claim,'race'),'user_local'))='23514','attach refused once a target is under review');
+ perform pg_temp.replay_assert(not exists(select 1 from public.whatsapp_asset_uses where asset_id=a.id) and not exists(select 1 from public.publication_variant_assets va join public.publication_variants v on v.id=va.variant_id where v.publication_id=pub),'nothing linked');
+ perform pg_temp.replay_assert(public.publication_agent_v2_media_fail(run,(claim->>'attempt')::integer,'attach_failed','user_local')->>'media_status'='needs_media','explicit needs_media');
+ -- Nouvelle tentative pendant la relecture : refusée dès la réservation.
+ perform pg_temp.replay_assert(pg_temp.es_error(format('select public.publication_agent_v2_media_claim(%L,''user_local'')',run))='23514','claim refused while a target is under review');
+ perform pg_temp.replay_assert((select status from public.publications where id=pub)='pending_review' and (select claimed_agent_v2_run_id is null from public.whatsapp_assets where id=a.id),'review untouched, photo released');
+end $$;
+
+-- 12. Scénario C : Facebook, Instagram et Google Business Profile — une idée, trois brouillons, UNE photo autorisée
+-- (même photo de la photothèque, un dérivé par plateforme) ; la photo d'un autre client est refusée par le serveur.
+do $$declare run uuid;claim jsonb;r public.publication_agent_v2_runs;a public.whatsapp_assets;foreign_asset public.whatsapp_assets;begin
+ perform pg_temp.replay_assert(pg_temp.es_refused(pg_temp.es_id('foreign'))='22023','scénario C: photo of another client refused at finish');
+ run:=pg_temp.es_run(pg_temp.es_id('roof_3'),array['facebook','instagram','google_business_profile']);
+ select * into r from public.publication_agent_v2_runs where id=run;select * into foreign_asset from public.whatsapp_assets where id=pg_temp.es_id('foreign');
+ perform pg_temp.replay_assert(not publications_private.agent_v2_library_available(r,foreign_asset),'scénario C: wrong client/photo association never available');
+ perform pg_temp.replay_assert((select count(distinct p.platform)=3 and count(distinct p.editorial_group_id)=1 from public.publications p where p.id=any(r.publication_ids)),'one idea, three platforms');
+ claim:=public.publication_agent_v2_media_claim(run,'user_local');select * into a from public.whatsapp_assets where id=pg_temp.es_id('roof_3');
+ perform public.publication_agent_v2_media_attach(run,(claim->>'attempt')::integer,a.sha256,pg_temp.es_assets(claim,'scenario_c'),'user_local');
+ perform pg_temp.replay_assert((select count(*)=3 and count(distinct publication_asset_id)=3 and count(distinct platform)=3 from public.whatsapp_asset_uses where asset_id=a.id),'same photo, one derivative per platform');
+ perform pg_temp.replay_assert((select count(*) from public.publication_assets pa join public.publication_variant_assets va on va.asset_id=pa.id join public.publication_variants v on v.id=va.variant_id
+  where v.publication_id=any(r.publication_ids) and pa.client_id=r.client_id)=3,'each draft linked to its own derivative of the client photo');
 end $$;

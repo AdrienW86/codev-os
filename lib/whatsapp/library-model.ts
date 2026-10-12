@@ -1,9 +1,9 @@
 // Règles pures de la photothèque WhatsApp (testables sans base ni fournisseur).
 import type { Asset, LibraryStatus } from "./types";
 
-export const statusLabels: Record<LibraryStatus, string> = { received: "Reçu", to_review: "À examiner", validated: "Validé", used: "Utilisé", archived: "Archivé" };
+export const statusLabels: Record<LibraryStatus, string> = { received: "Reçu", to_review: "À examiner", validated: "Validé", used: "Utilisé", archived: "Archivé", quarantined: "Quarantaine", rejected: "Rejeté" };
 /** Statuts choisis à la main ; « Utilisé » est posé par la préparation d'une publication. */
-export const manualStatuses = ["received", "to_review", "validated", "archived"] as const satisfies readonly LibraryStatus[];
+export const manualStatuses = ["received", "to_review", "validated", "archived", "quarantined", "rejected"] as const satisfies readonly LibraryStatus[];
 /** Meta conserve les médias reçus par webhook 7 jours : au-delà, ils ne peuvent plus être téléchargés. */
 export const META_MEDIA_RETENTION_DAYS = 7;
 export const mediaExpiry = (receivedAt: string) => new Date(Date.parse(receivedAt) + META_MEDIA_RETENTION_DAYS * 86400000);

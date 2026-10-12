@@ -9,24 +9,28 @@ import { IMAGE_BUCKET } from "@/lib/publications/editor";
 import { adaptImage } from "@/lib/publications/media/transform";
 import { saveDraft, saveUnscheduledDraft, currentRevision } from "@/lib/publications/workspace";
 import type { PublicationPlatform } from "@/lib/publications/types";
+import { driveReadProvider } from "@/lib/integrations/publications-drive";
+import { promptSafeCaption } from "@/lib/media-intelligence/model";
 import { captionPrompt, checkSelection, cleanSuggestion, draftFields } from "./library-model";
 import { downloadDrive, importDriveToken, maxImageBytes, maxVideoBytes } from "./providers";
 import { THUMBNAIL_BUCKET } from "./service";
-import type { Asset, AssetUse, LibraryStatus } from "./types";
+import type { Asset, AssetAssessment, AssetUse, LibraryStatus } from "./types";
 
 // Photothèque interne : lecture strictement filtrée par client, miniatures privées en URL signées courtes,
 // originaux relus depuis Drive par le serveur uniquement. Les appelants ont déjà vérifié requireAdmin().
 const db = () => getSupabaseServerClient();
 const THUMBNAIL_URL_TTL = 300;
 export type LibraryUse = AssetUse & { subject: string | null; status: string | null };
-export type LibraryItem = Asset & { thumbnailUrl: string | null; uses: LibraryUse[] };
+export type LibraryAssessment = Pick<AssetAssessment, "verdict" | "business_relevance" | "publishability" | "sensitive" | "confidential" | "description" | "quality" | "quality_issues" | "manual_verdict">;
+export type LibraryItem = Asset & { thumbnailUrl: string | null; uses: LibraryUse[]; assessment: LibraryAssessment | null };
 
 export async function listClientLibrary(clientId: string, status?: LibraryStatus | null): Promise<LibraryItem[]> {
   let query = db().from("whatsapp_assets").select("*").eq("client_id", clientId).not("imported_at", "is", null);
-  query = status ? query.eq("library_status", status) : query.neq("library_status", "archived");
+  // Vue par défaut : ni archivés, ni quarantaine, ni rejetés (consultables par leur filtre). Les médias purgés n'apparaissent plus.
+  query = status ? query.eq("library_status", status) : query.not("library_status", "in", "(archived,quarantined,rejected)");
   const { data, error } = await query.order("imported_at", { ascending: false }).limit(120);
   if (error) throw Error("library_unavailable");
-  const assets = (data ?? []) as Asset[];
+  const assets = ((data ?? []) as Asset[]).filter(asset => !asset.purged_at);
   if (!assets.length) return [];
   const paths = assets.flatMap(asset => asset.thumbnail_path?.startsWith(`${clientId}/`) ? [asset.thumbnail_path] : []);
   const signed = paths.length ? await db().storage.from(THUMBNAIL_BUCKET).createSignedUrls(paths, THUMBNAIL_URL_TTL) : { data: [], error: null };
@@ -36,33 +40,60 @@ export async function listClientLibrary(clientId: string, status?: LibraryStatus
   const publicationIds = [...new Set((uses ?? []).map(use => use.publication_id))];
   const { data: publications } = publicationIds.length ? await db().from("publications").select("id,subject,status").eq("client_id", clientId).in("id", publicationIds) : { data: [] };
   const byPublication = new Map((publications ?? []).map(p => [p.id, p]));
+  // Évaluations IA : facultatives (migration non appliquée ou photo jamais analysée), jamais bloquantes.
+  const { data: assessed, error: assessedError } = await db().from("whatsapp_asset_assessments").select("asset_id,verdict,business_relevance,publishability,sensitive,confidential,description,quality,quality_issues,manual_verdict").eq("client_id", clientId).in("asset_id", assets.map(asset => asset.id));
+  const assessments = new Map(assessedError ? [] : ((assessed ?? []) as (LibraryAssessment & { asset_id: string })[]).map(({ asset_id, ...rest }) => [asset_id, rest]));
   return assets.map(asset => ({
     ...asset,
+    assessment: assessments.get(asset.id) ?? null,
     thumbnailUrl: asset.thumbnail_path ? urls.get(asset.thumbnail_path) ?? null : null,
     uses: (uses ?? []).filter(use => use.asset_id === asset.id).map(use => ({ ...use, subject: byPublication.get(use.publication_id)?.subject ?? null, status: byPublication.get(use.publication_id)?.status ?? null })),
   }));
 }
 
+// Décision humaine : passe par whatsapp_assets_review (verdict manuel, journal d'audit). Si la migration de la photothèque
+// intelligente n'est pas encore appliquée, les anciens statuts restent modifiables comme avant.
 export async function setLibraryStatus(userId: string, clientId: string, assetIds: string[], status: LibraryStatus) {
-  const { data, error } = await db().from("whatsapp_assets").update({ library_status: status, status_changed_at: new Date().toISOString(), status_changed_by: userId })
+  const { data: count, error } = await db().rpc("whatsapp_assets_review", { p_client_id: clientId, p_asset_ids: assetIds, p_status: status, p_actor_id: userId });
+  if (!error) return Number(count ?? 0);
+  if (!["PGRST202", "42883"].includes(error.code ?? "") || status === "quarantined" || status === "rejected") throw Error("library_unavailable");
+  const { data, error: legacyError } = await db().from("whatsapp_assets").update({ library_status: status, status_changed_at: new Date().toISOString(), status_changed_by: userId })
     .eq("client_id", clientId).in("id", assetIds).not("imported_at", "is", null).select("id");
-  if (error) throw Error("library_unavailable");
+  if (legacyError) throw Error("library_unavailable");
   await writeAudit({ kind: "admin", userId }, { action: "whatsapp.library.status", resource_type: "client", resource_id: clientId, metadata: { status, asset_ids: (data ?? []).map(row => row.id) } });
   return data?.length ?? 0;
+}
+
+/**
+ * Original Drive d'un média, relu par le bon accès : import (drive.file) pour les fichiers créés par l'application,
+ * lecture seule Publications pour les photos déposées à la main dans le dossier Drive du client (origine « drive »).
+ */
+export async function assetOriginal(asset: Pick<Asset, "origin" | "drive_file_id" | "drive_folder_id" | "md5" | "media_kind">, token?: string) {
+  if (asset.origin === "drive") {
+    const bytes = await driveReadProvider().download(asset.drive_file_id, asset.drive_folder_id);
+    if (createHash("md5").update(bytes).digest("hex") !== asset.md5) throw Error("Drive file changed");
+    return bytes;
+  }
+  return downloadDrive(token ?? await importDriveToken(), asset.drive_file_id, asset.drive_folder_id, asset.md5, asset.media_kind === "video" ? maxVideoBytes : maxImageBytes);
 }
 
 /** Original Drive d'un média du client, pour la prévisualisation interne (jamais de lien public). */
 export async function readOriginal(clientId: string, assetId: string) {
   const { data: asset, error } = await db().from("whatsapp_assets").select("*").eq("id", assetId).eq("client_id", clientId).not("imported_at", "is", null).maybeSingle();
   if (error || !asset) return null;
-  const bytes = await downloadDrive(await importDriveToken(), asset.drive_file_id, asset.drive_folder_id, asset.md5, asset.media_kind === "video" ? maxVideoBytes : maxImageBytes);
-  return { bytes, mime: asset.mime_type };
+  if (asset.purged_at) return null;
+  return { bytes: await assetOriginal(asset), mime: asset.mime_type };
 }
 
 async function selectedAssets(clientId: string, ids: string[]) {
   const { data, error } = await db().from("whatsapp_assets").select("*").eq("client_id", clientId).in("id", ids);
   if (error) throw Error("library_unavailable");
   return (data ?? []) as Asset[];
+}
+// Évaluations IA des médias sélectionnés (absentes tant que la migration n'est pas appliquée ou l'analyse non faite).
+async function assessmentsFor(clientId: string, ids: string[]) {
+  const { data, error } = await db().from("whatsapp_asset_assessments").select("asset_id,confidential,manual_verdict").eq("client_id", clientId).in("asset_id", ids);
+  return new Map(error ? [] : ((data ?? []) as Pick<AssetAssessment, "asset_id" | "confidential" | "manual_verdict">[]).map(a => [a.asset_id, a]));
 }
 
 /** Proposition de légende à relire, fondée uniquement sur la fiche client et les messages du client. */
@@ -91,6 +122,11 @@ export async function preparePublication(userId: string, input: PrepareInput): P
   const assets = await selectedAssets(input.clientId, input.assetIds);
   const check = checkSelection(input.clientId, input.assetIds, assets, input.allowReuse);
   if (!check.ok) return { message: check.message };
+  // Photo signalée confidentielle par l'analyse : utilisable seulement après une validation humaine postérieure.
+  const assessments = await assessmentsFor(input.clientId, input.assetIds);
+  if ([...assessments.values()].some(a => a.confidential && a.manual_verdict !== "relevant")) return { message: "Une photo a été signalée confidentielle par l’analyse : vérifiez-la puis validez-la à nouveau avant de l’utiliser." };
+  // Les légendes d'un média confidentiel ne sont jamais reprises dans un prompt ni dans la source du brouillon.
+  const captioned = (asset: Asset) => promptSafeCaption({ caption: asset.caption, libraryStatus: asset.library_status, assessment: assessments.get(asset.id) ?? null });
   const { data: project, error: projectError } = await db().from("projects").select("id,client_id,type").eq("id", input.projectId).eq("client_id", input.clientId).maybeSingle();
   if (projectError || !project) return { message: "Projet introuvable pour ce client." };
   const capabilities = await getPublicationProjectChannels(project);
@@ -120,9 +156,9 @@ export async function preparePublication(userId: string, input: PrepareInput): P
   // 1. Originaux Drive et dérivés par plateforme, avant toute écriture.
   const prepared: { asset: Asset; platform: PublicationPlatform; bytes: Uint8Array; mime: string }[] = [];
   try {
-    const token = await importDriveToken();
+    const token = ordered.some(asset => asset.origin !== "drive") ? await importDriveToken() : undefined;
     for (const asset of ordered) {
-      const original = await downloadDrive(token, asset.drive_file_id, asset.drive_folder_id, asset.md5, maxImageBytes);
+      const original = await assetOriginal(asset, token);
       for (const platform of input.platforms) {
         const derivative = await adaptImage(original, platform);
         prepared.push({ asset, platform, bytes: derivative.bytes, mime: derivative.mime_type });
@@ -132,8 +168,8 @@ export async function preparePublication(userId: string, input: PrepareInput): P
     console.error("[whatsapp] Préparation des médias interrompue.");
     return fail("Les photos n’ont pas pu être lues dans Drive ou adaptées. Aucun brouillon n’a été créé.");
   }
-  const suggestion = input.text ?? (input.suggest ? await suggestCaption(input.clientId, ordered) : null);
-  const fields = draftFields({ receivedAt: ordered.map(asset => asset.received_at ?? asset.imported_at ?? asset.created_at), messages: ordered.flatMap(asset => asset.caption ? [asset.caption] : []), suggestion });
+  const suggestion = input.text ?? (input.suggest ? await suggestCaption(input.clientId, ordered.map(asset => ({ caption: captioned(asset) }))) : null);
+  const fields = draftFields({ receivedAt: ordered.map(asset => asset.received_at ?? asset.imported_at ?? asset.created_at), messages: ordered.flatMap(asset => { const caption = captioned(asset); return caption ? [caption] : []; }), suggestion });
   const form = (extra: (form: FormData) => void) => {
     const data = new FormData();
     for (const [key, value] of Object.entries({ client_id: input.clientId, project_id: input.projectId, title: fields.title, angle: fields.angle, source: fields.source })) data.set(key, value);
@@ -155,7 +191,7 @@ export async function preparePublication(userId: string, input: PrepareInput): P
     const publicationAssetId = randomUUID(), path = `${input.clientId}/${publicationId}/${publicationAssetId}`;
     const upload = await db().storage.from(IMAGE_BUCKET).upload(path, item.bytes, { contentType: item.mime, upsert: false });
     if (upload.error) return fail(incomplete, publicationId);
-    const registered = await db().rpc("publication_register_image", { p_publication_id: publicationId, p_revision_id: revisionId, p_asset_id: publicationAssetId, p_path: path, p_hash: createHash("sha256").update(item.bytes).digest("hex"), p_mime: item.mime, p_provenance: `WhatsApp client, reçu le ${new Date(item.asset.received_at ?? item.asset.created_at).toISOString().slice(0, 10)} · original Drive ${item.asset.drive_file_id}`, p_actor_id: userId });
+    const registered = await db().rpc("publication_register_image", { p_publication_id: publicationId, p_revision_id: revisionId, p_asset_id: publicationAssetId, p_path: path, p_hash: createHash("sha256").update(item.bytes).digest("hex"), p_mime: item.mime, p_provenance: `${item.asset.origin === "drive" ? "Dossier Drive du client" : "WhatsApp client"}, reçu le ${new Date(item.asset.received_at ?? item.asset.created_at).toISOString().slice(0, 10)} · original Drive ${item.asset.drive_file_id}`, p_actor_id: userId });
     if (registered.error) { await db().storage.from(IMAGE_BUCKET).remove([path]); return fail(incomplete, publicationId); }
     (attached[item.platform] ??= []).push(publicationAssetId);
     uses.push({ asset_id: item.asset.id, platform: item.platform, publication_asset_id: publicationAssetId });

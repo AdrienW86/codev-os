@@ -6,15 +6,19 @@ import { Action } from "@/components/ui/button";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { mediaLibraryAction, type MediaLibraryState } from "@/app/(cockpit)/clients/[id]/media-actions";
 import { MAX_PUBLICATION_MEDIA, statusLabels, manualStatuses } from "@/lib/whatsapp/library-model";
+import { SENSITIVE_LABELS, VERDICT_LABELS, type SensitiveKind, type Verdict } from "@/lib/media-intelligence/model";
 import type { LibraryStatus, MediaKind } from "@/lib/whatsapp/types";
 
 export type LibraryCard = {
   id: string; kind: MediaKind; status: LibraryStatus; thumbnailUrl: string | null; previewHref: string; driveHref: string;
   receivedLabel: string; receivedIso: string; caption: string | null; sender: string; sizeLabel: string;
   uses: { id: string; label: string; href: string; date: string }[];
+  ai: { verdict: Verdict; relevance: number; publishability: number; sensitive: SensitiveKind[]; confidential: boolean; description: string; reviewed: boolean } | null;
 };
+const verdictTones: Record<Verdict, StatusTone> = { relevant: "green", to_review: "amber", off_topic: "red" };
+const percent = (value: number) => `${Math.round(value * 100)} %`;
 export type ProjectChoice = { id: string; name: string; platforms: { id: string; label: string }[] };
-const tones: Record<LibraryStatus, StatusTone> = { received: "blue", to_review: "amber", validated: "green", used: "neutral", archived: "neutral" };
+const tones: Record<LibraryStatus, StatusTone> = { received: "blue", to_review: "amber", validated: "green", used: "neutral", archived: "neutral", quarantined: "red", rejected: "neutral" };
 const initial: MediaLibraryState = {};
 const field = "block w-full rounded-lg border border-border bg-background p-3";
 
@@ -39,6 +43,12 @@ export function MediaLibraryForm({ clientId, cards, projects }: { clientId: stri
           <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="asset_id" value={card.id} checked={checked} onChange={() => toggle(card.id)} />
             <StatusBadge label={statusLabels[card.status]} tone={tones[card.status]} />{card.kind === "video" && <span className="text-xs text-muted">Vidéo</span>}</label>
           <p className="text-xs text-muted"><time dateTime={card.receivedIso}>{card.receivedLabel}</time> · {card.sender} · {card.sizeLabel}</p>
+          {card.ai && <div className="space-y-1 rounded-lg border border-border p-2 text-xs">
+            <p className="flex flex-wrap items-center gap-2"><StatusBadge label={`IA : ${VERDICT_LABELS[card.ai.verdict]}`} tone={verdictTones[card.ai.verdict]} />{card.ai.confidential && <StatusBadge label="Confidentiel" tone="red" />}{card.ai.reviewed && <span className="text-muted">Vérifié par un humain</span>}</p>
+            <p className="text-muted">Pertinence {percent(card.ai.relevance)} · Publiable {percent(card.ai.publishability)}</p>
+            {card.ai.sensitive.length > 0 && <p className="text-warning">{card.ai.sensitive.map(kind => SENSITIVE_LABELS[kind]).join(" · ")}</p>}
+            <p className="line-clamp-3">{card.ai.description}</p>
+          </div>}
           {card.caption ? <p className="line-clamp-4 whitespace-pre-line" title={card.caption}>« {card.caption} »</p> : <p className="text-xs text-muted">Aucun message associé.</p>}
           <a href={card.driveHref} target="_blank" rel="noreferrer" className="text-xs text-accent">Ouvrir dans Drive</a>
           {card.uses.length > 0 && <details className="text-xs"><summary className="cursor-pointer text-warning">Déjà utilisé {card.uses.length} fois</summary>
@@ -46,9 +56,10 @@ export function MediaLibraryForm({ clientId, cards, projects }: { clientId: stri
         </div>
       </li>;
     })}</ul>
-    <div className="sticky bottom-0 mt-6 space-y-4 rounded-xl border border-border bg-surface p-4">
+    {/* Barre collante à partir de sm seulement : sur mobile, ses boutons couvriraient la moitié de l’écran. */}
+    <div className="mt-6 space-y-4 rounded-xl border border-border bg-surface p-4 sm:sticky sm:bottom-0">
       <p className="text-sm">{selected.length ? `${selected.length} média(s) sélectionné(s)` : "Sélectionnez des médias pour changer leur statut ou préparer une publication."}</p>
-      <div className="flex flex-wrap gap-2">{manualStatuses.map(status => <Action key={status} type="submit" name="intent" value={`status:${status}`} disabled={pending || !selected.length}>{`Marquer « ${statusLabels[status]} »`}</Action>)}</div>
+      <div className="flex flex-wrap gap-2"><Action type="submit" name="intent" value="analyze" disabled={pending || !selected.length || selected.length > 20}>Analyser avec l’IA</Action>{manualStatuses.map(status => <Action key={status} type="submit" name="intent" value={`status:${status}`} disabled={pending || !selected.length}>{`Marquer « ${statusLabels[status]} »`}</Action>)}</div>
       <details className="rounded-lg border border-border p-3">
         <summary className="min-h-10 cursor-pointer font-medium">Préparer une publication avec les photos validées</summary>
         {projects.length ? <div className="mt-3 grid max-w-xl gap-3">

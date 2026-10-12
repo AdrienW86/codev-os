@@ -6,9 +6,20 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import { phoneSchema, folderSchema } from "@/lib/whatsapp/payload";
-import { checkFolder, importDriveToken, createImportFolder } from "@/lib/whatsapp/providers";
+import { checkFolder, importDriveToken, createImportFolder, ImportFailure } from "@/lib/whatsapp/providers";
+import { driveErrorMessage, logDriveFailure, type DriveErrorCode } from "@/lib/whatsapp/drive-errors";
 import { processOneMedia } from "@/lib/whatsapp/service";
-export type ImportState = { message?: string; ok?: boolean };
+export type ImportState = { message?: string; ok?: boolean; code?: string };
+// Échec Drive d'import : code fermé journalisé côté serveur et message distinct pour l'interface, sans secret.
+class StepFailure extends Error { constructor(public readonly code: DriveErrorCode) { super(code); } }
+function driveFailure(action: string, error: unknown): ImportState {
+  const failure = error instanceof ImportFailure ? { code: error.code, ...error.context } : error instanceof StepFailure ? { code: error.code } : { code: "unexpected", stage: error instanceof Error ? error.name.slice(0, 40) : typeof error };
+  logDriveFailure(action, failure);
+  return { message: driveErrorMessage(failure.code, "variable" in failure ? failure.variable : null), code: failure.code };
+}
+async function step<T>(code: DriveErrorCode, work: () => Promise<T>) {
+  try { return await work(); } catch { throw new StepFailure(code); }
+}
 const mapping = z.object({ sender: phoneSchema, client_id: z.uuid(), drive_folder_id: folderSchema, rights_confirmed: z.boolean(), enabled: z.boolean() }).refine(value => !value.enabled || value.rights_confirmed);
 
 export async function saveSender(_state: ImportState, form: FormData): Promise<ImportState> {
@@ -18,15 +29,23 @@ export async function saveSender(_state: ImportState, form: FormData): Promise<I
   if (!parsed.success) return { message: "Vérifiez le numéro international, le client, le dossier et l’autorisation d’utilisation des photos." };
   try {
     const db = getSupabaseServerClient();
-    const { data: client, error: clientError } = await db.from("clients").select("id").eq("id", parsed.data.client_id).single();
-    if (clientError || !client) return { message: "Client introuvable." };
-    await checkFolder(await importDriveToken(), parsed.data.drive_folder_id);
-    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.sender.configure.request", resource_type: "client", resource_id: client.id, metadata: { drive_folder_id: parsed.data.drive_folder_id } });
+    const { data: client, error: clientError } = await step("database_unavailable", async () => await db.from("clients").select("id").eq("id", parsed.data.client_id).maybeSingle());
+    if (clientError) throw new StepFailure("database_unavailable");
+    if (!client) return { message: "Client introuvable.", code: "client_not_found" };
+    try { await checkFolder(await importDriveToken(), parsed.data.drive_folder_id); }
+    catch (error) {
+      if (error instanceof ImportFailure && (error.code === "drive_folder" || error.code === "drive_not_found")) {
+        logDriveFailure("whatsapp.sender.configure", { code: error.code, ...error.context });
+        return { message: driveErrorMessage("drive_folder"), code: error.code };
+      }
+      throw error;
+    }
+    await step("audit_unavailable", () => writeAudit({ kind: "admin", userId }, { action: "whatsapp.sender.configure.request", resource_type: "client", resource_id: client.id, metadata: { drive_folder_id: parsed.data.drive_folder_id } }));
     const { error } = await db.from("whatsapp_senders").upsert({ ...parsed.data, updated_by: userId });
     if (error) return { message: "Association refusée : vérifiez la migration et que ce dossier n’appartient pas à un autre client." };
     revalidatePath("/settings/whatsapp");
-    return { message: "Association enregistrée. Les prochaines photos pourront être importées dans ce dossier.", ok: true };
-  } catch { return { message: "Dossier non accessible en écriture ou configuration Drive d’import absente. Le connecteur de lecture ne suffit pas." }; }
+    return { message: "Association enregistrée. Les prochains médias pourront être importés dans ce dossier.", ok: true };
+  } catch (error) { return driveFailure("whatsapp.sender.configure", error); }
 }
 export async function runImport(): Promise<ImportState> {
   const { userId } = await requireAdmin();
@@ -58,13 +77,16 @@ export async function createFolder(_state: ImportState, form: FormData): Promise
   const id = z.uuid().safeParse(form.get("client_id"));
   if (!id.success) return { message: "Choisissez le client." };
   try {
-    const { data: client, error } = await getSupabaseServerClient().from("clients").select("id,name").eq("id", id.data).single();
-    if (error || !client) return { message: "Client introuvable." };
-    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.folder.create.request", resource_type: "client", resource_id: client.id });
+    const { data: client, error } = await step("database_unavailable", async () => await getSupabaseServerClient().from("clients").select("id,name").eq("id", id.data).maybeSingle());
+    if (error) throw new StepFailure("database_unavailable");
+    if (!client) return { message: "Client introuvable.", code: "client_not_found" };
+    await step("audit_unavailable", () => writeAudit({ kind: "admin", userId }, { action: "whatsapp.folder.create.request", resource_type: "client", resource_id: client.id }));
     const folder = await createImportFolder(await importDriveToken(), client.name);
-    await writeAudit({ kind: "admin", userId }, { action: "whatsapp.folder.created", resource_type: "client", resource_id: client.id, metadata: { drive_folder_id: folder } });
+    // Le dossier existe déjà dans Drive : un échec du journal ne doit pas faire croire à une création ratée.
+    try { await writeAudit({ kind: "admin", userId }, { action: "whatsapp.folder.created", resource_type: "client", resource_id: client.id, metadata: { drive_folder_id: folder } }); }
+    catch { logDriveFailure("whatsapp.folder.create", { code: "audit_unavailable", stage: "after_create" }); }
     return { message: `Dossier créé. Copiez cet ID dans l’association ci-dessous : ${folder}`, ok: true };
-  } catch { return { message: "Création indisponible. Vérifiez les credentials Drive d’import et la permission drive.file." }; }
+  } catch (error) { return driveFailure("whatsapp.folder.create", error); }
 }
 
 // Affectation explicite d'un média d'un numéro inconnu : jamais automatique, droits confirmés par l'administrateur.

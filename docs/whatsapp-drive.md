@@ -89,3 +89,23 @@ Références :
 - https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/webhooks/start/
 - https://developers.google.com/workspace/drive/api/guides/manage-uploads
 - https://developers.google.com/workspace/drive/api/guides/api-specific-auth
+
+## Diagnostic de l'accès Drive d'import
+
+Création de dossier et association d'un expéditeur affichent un message propre à la cause, suivi d'un code (« code oauth_invalid_grant »). Chaque échec écrit une ligne de journal serveur structurée, visible dans les logs Vercel de la fonction (la requête reste en HTTP 200 car c'est une Server Action) :
+
+`[whatsapp-drive] {"action":"whatsapp.folder.create","code":"oauth_invalid_grant","stage":"oauth","status":400,"variable":null}`
+
+Seuls l'action, le code, l'étape, le statut HTTP et le **nom** d'une variable manquante sont journalisés : jamais un token, un secret ni la réponse brute de Google (seuls les identifiants `error` / `reason` connus sont lus puis oubliés).
+
+| Code | Cause probable | Correction |
+| --- | --- | --- |
+| `config_missing` / `config_invalid` | Variable absente du runtime (ajoutée sans redéploiement, mauvais environnement Vercel) ou mal formée (Client ID ne finissant pas par `.apps.googleusercontent.com`, espace interne) | Corriger la variable nommée dans le message, puis redéployer |
+| `oauth_invalid_grant` | Refresh token révoqué, expiré (écran de consentement en mode « Test » : 7 jours) ou émis pour un autre client OAuth | Régénérer le refresh token avec ce client et `drive.file` |
+| `oauth_invalid_client` | Client ID / secret incorrects ou ne correspondant pas | Recopier les deux valeurs du même client |
+| `oauth_unauthorized_client` | Token émis par un autre client, ou type de client inadapté | Régénérer avec le client d'import |
+| `drive_scope_missing` / `drive_scope_too_broad` | Token sans `drive.file`, ou avec `drive` / `drive.readonly` | Régénérer avec `drive.file` uniquement |
+| `drive_api_disabled` | « Google Drive API » non activée dans le projet Google Cloud du client | L'activer, attendre quelques minutes |
+| `drive_permission`, `drive_storage_quota`, `drive_rate_limited` | Droits du compte, Drive plein, quota | Selon le message |
+| `provider_unavailable`, `provider_response` | Google indisponible ou réponse inattendue | Réessayer |
+| `audit_unavailable`, `database_unavailable` | Journal d'audit ou base indisponible (aucune action Drive faite) | Réessayer |

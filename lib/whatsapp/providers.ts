@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { boundedBytes, folderSchema, imageMimes, videoMimes } from "./payload";
+import { driveErrorCode, oauthErrorCode, type ImportVariable } from "./drive-errors";
 
 // Limites Meta : images 5 Mo, vidéos 16 Mo (H.264/AAC, MP4 ou 3GPP). Marge conservée pour les images.
 export const maxImageBytes = 8 * 1024 * 1024;
@@ -18,8 +19,9 @@ const isVideoMime = (mime: string) => (videoMimes as readonly string[]).includes
 export function isIsoVideo(bytes: Uint8Array) {
   return bytes.length >= 12 && Buffer.from(bytes.subarray(4, 8)).toString("latin1") === "ftyp";
 }
+// Le message ne contient que le code : aucune donnée de requête, de réponse ni de credential.
 export class ImportFailure extends Error {
-  constructor(public readonly code: string) { super(code); }
+  constructor(public readonly code: string, public readonly context: { stage?: string; status?: number; variable?: ImportVariable } = {}) { super(code); }
 }
 // Transferts de fichiers (jusqu'à 16 Mo) : délai plus long que les appels de métadonnées.
 async function request(url: string | URL, init: RequestInit = {}, timeout = 15000) {
@@ -30,6 +32,21 @@ async function json(response: Response): Promise<unknown> {
   if (!response.ok) throw new ImportFailure(response.status === 401 || response.status === 403 ? "provider_permission" : "provider_unavailable");
   try { return JSON.parse(Buffer.from(await boundedBytes(response, 65536)).toString("utf8")); }
   catch { throw new ImportFailure("provider_response"); }
+}
+// Réponses Google : en cas d'erreur, seul un identifiant connu (error / reason) est extrait du corps, puis oublié.
+async function googleJson(response: Response, stage: "oauth" | "drive"): Promise<unknown> {
+  if (!response.ok) {
+    let body: unknown = null;
+    try { body = JSON.parse(Buffer.from(await boundedBytes(response, 65536)).toString("utf8")); } catch { body = null; }
+    throw new ImportFailure(stage === "oauth" ? oauthErrorCode(response.status, body) : driveErrorCode(response.status, body), { stage, status: response.status });
+  }
+  try { return JSON.parse(Buffer.from(await boundedBytes(response, 65536)).toString("utf8")); }
+  catch { throw new ImportFailure("provider_response", { stage, status: response.status }); }
+}
+function parseGoogle<T>(schema: z.ZodType<T>, value: unknown, stage: string): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) throw new ImportFailure("provider_response", { stage });
+  return parsed.data;
 }
 export async function downloadWhatsApp(mediaId: string, expectedMime?: string): Promise<MediaBytes> {
   if (!/^[0-9]{1,100}$/.test(mediaId)) throw new ImportFailure("invalid_media");
@@ -70,32 +87,43 @@ export async function thumbnail(bytes: Uint8Array): Promise<Uint8Array | null> {
 }
 
 // Accès d'import distinct : ne réutilise pas et n'élargit pas le connecteur de lecture Publications.
+// Les espaces et retours à la ligne collés autour d'une valeur sont ignorés ; la valeur n'est jamais journalisée.
+function importCredential(name: ImportVariable) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new ImportFailure("config_missing", { stage: "config", variable: name });
+  if (!opaque.safeParse(value).success || (name === "GOOGLE_DRIVE_IMPORT_CLIENT_ID" && !value.endsWith(".apps.googleusercontent.com"))) throw new ImportFailure("config_invalid", { stage: "config", variable: name });
+  return value;
+}
+const driveFileScope = "https://www.googleapis.com/auth/drive.file";
 export async function importDriveToken() {
-  const clientId = opaque.parse(process.env.GOOGLE_DRIVE_IMPORT_CLIENT_ID);
-  const clientSecret = opaque.parse(process.env.GOOGLE_DRIVE_IMPORT_CLIENT_SECRET);
-  const refreshToken = opaque.parse(process.env.GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN);
-  const data = z.object({ access_token: opaque, token_type: z.string(), scope: z.string() }).parse(await json(await request("https://oauth2.googleapis.com/token", {
+  const clientId = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_ID");
+  const clientSecret = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_SECRET");
+  const refreshToken = importCredential("GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN");
+  const data = parseGoogle(z.object({ access_token: opaque, token_type: z.string(), scope: z.string() }), await googleJson(await request("https://oauth2.googleapis.com/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  })));
+  }), "oauth"), "oauth");
   const scopes = data.scope.split(" ");
-  if (data.token_type.toLowerCase() !== "bearer" || !scopes.includes("https://www.googleapis.com/auth/drive.file") || scopes.some(scope => scope.startsWith("https://www.googleapis.com/auth/drive") && scope !== "https://www.googleapis.com/auth/drive.file")) throw new ImportFailure("drive_scope");
+  if (data.token_type.toLowerCase() !== "bearer") throw new ImportFailure("provider_response", { stage: "oauth" });
+  if (scopes.some(scope => scope.startsWith("https://www.googleapis.com/auth/drive") && scope !== driveFileScope)) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
+  if (!scopes.includes(driveFileScope)) throw new ImportFailure("drive_scope_missing", { stage: "oauth" });
   return data.access_token;
 }
 export async function checkFolder(token: string, folder: string) {
   folderSchema.parse(folder);
-  const data = z.object({ id: z.string(), mimeType: z.literal("application/vnd.google-apps.folder"), trashed: z.boolean().optional(), capabilities: z.object({ canAddChildren: z.literal(true) }) }).parse(await json(await request(`https://www.googleapis.com/drive/v3/files/${folder}?fields=id,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })));
-  if (data.id !== folder || data.trashed) throw new ImportFailure("drive_folder");
+  const response = await googleJson(await request(`https://www.googleapis.com/drive/v3/files/${folder}?fields=id,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }), "drive");
+  const data = z.object({ id: z.string(), mimeType: z.literal("application/vnd.google-apps.folder"), trashed: z.boolean().optional(), capabilities: z.object({ canAddChildren: z.literal(true) }) }).safeParse(response);
+  if (!data.success || data.data.id !== folder || data.data.trashed) throw new ImportFailure("drive_folder", { stage: "drive" });
 }
 export async function generateDriveId(token: string) {
-  const data = z.object({ ids: z.array(driveFileId).length(1) }).parse(await json(await request("https://www.googleapis.com/drive/v3/files/generateIds?count=1&space=drive&type=files", { headers: { Authorization: `Bearer ${token}` } })));
+  const data = parseGoogle(z.object({ ids: z.array(driveFileId).length(1) }), await googleJson(await request("https://www.googleapis.com/drive/v3/files/generateIds?count=1&space=drive&type=files", { headers: { Authorization: `Bearer ${token}` } }), "drive"), "drive");
   return data.ids[0];
 }
 export async function driveFileMatches(token: string, id: string, folder: string, md5: string) {
   driveFileId.parse(id);
   const response = await request(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,parents,md5Checksum,trashed&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 404) return false;
-  const data = z.object({ id: z.string(), parents: z.array(z.string()).optional(), md5Checksum: z.string().optional(), trashed: z.boolean().optional() }).parse(await json(response));
+  const data = parseGoogle(z.object({ id: z.string(), parents: z.array(z.string()).optional(), md5Checksum: z.string().optional(), trashed: z.boolean().optional() }), await googleJson(response, "drive"), "drive");
   if (data.id !== id || data.trashed || !data.parents?.includes(folder) || data.md5Checksum !== md5) throw new ImportFailure("drive_file_conflict");
   return true;
 }
@@ -127,18 +155,18 @@ export async function downloadDrive(token: string, id: string, folder: string, m
   driveFileId.parse(id); folderSchema.parse(folder);
   if (!await driveFileMatches(token, id, folder, md5)) throw new ImportFailure("drive_file_missing");
   const response = await request(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }, 60000);
-  if (!response.ok) throw new ImportFailure(response.status === 401 || response.status === 403 ? "provider_permission" : "provider_unavailable");
+  if (!response.ok) await googleJson(response, "drive");
   const bytes = await boundedBytes(response, max);
   if (createHash("md5").update(bytes).digest("hex") !== md5) throw new ImportFailure("drive_file_conflict");
   return bytes;
 }
 export async function createImportFolder(token: string, name: string) {
   const id = await generateDriveId(token);
-  const data = z.object({ id: driveFileId }).parse(await json(await request("https://www.googleapis.com/drive/v3/files?fields=id", {
+  const data = parseGoogle(z.object({ id: driveFileId }), await googleJson(await request("https://www.googleapis.com/drive/v3/files?fields=id", {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ id, name: `Photos chantier — ${name.slice(0, 100)}`, mimeType: "application/vnd.google-apps.folder" }),
-  })));
-  if (data.id !== id) throw new ImportFailure("drive_folder");
+  }), "drive"), "drive");
+  if (data.id !== id) throw new ImportFailure("drive_folder_create", { stage: "drive" });
   return id;
 }
 // Exported for deterministic lease ids in provider-independent workers.

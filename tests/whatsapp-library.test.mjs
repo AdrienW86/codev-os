@@ -31,7 +31,7 @@ test("unsupported video formats and oversized captions are bounded, never acknow
   assert.equal(payload.cleanCaption("   "), null);
 });
 
-const providers = fetchImpl => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
+const providers = fetchImpl => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, "./drive-errors": loadTs("lib/whatsapp/drive-errors.ts"), sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
 const meta = (bytes, mime) => async url => String(url).includes("graph.facebook.com")
   ? Response.json({ id: "789", url: "https://lookaside.fbsbx.com/whatsapp_business/attachments/test", mime_type: mime, file_size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") })
   : new Response(bytes);

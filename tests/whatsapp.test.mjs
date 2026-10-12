@@ -53,7 +53,7 @@ test("webhook only acknowledges durable enqueue, returns retryable failure on un
   assert.equal((await route(env).POST(new Request("https://example.test", { method: "POST", body }))).status, 401);
   assert.equal((await route(env, { ingestionEnabled: () => false }).POST(request())).status, 503);
 });
-const makeProviders = (fetchImpl) => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
+const makeProviders = (fetchImpl) => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, "./drive-errors": loadTs("lib/whatsapp/drive-errors.ts"), sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
 test("media download validates byte hash and actual image format", async () => {
   const bytes = await require("sharp")({ create: { width: 5, height: 5, channels: 3, background: "red" } }).jpeg().toBuffer();
   let calls = 0;
@@ -184,7 +184,8 @@ test("WhatsApp actions authenticate before DB or providers; simulation never wri
     "@/lib/supabase/server": { getSupabaseServerClient: () => { calls++; throw Error("unexpected DB"); } },
     "@/lib/core/audit": { writeAudit: () => { calls++; } },
     "@/lib/whatsapp/payload": payload,
-    "@/lib/whatsapp/providers": {},
+    "@/lib/whatsapp/providers": { ImportFailure: class extends Error {} },
+    "@/lib/whatsapp/drive-errors": loadTs("lib/whatsapp/drive-errors.ts"),
     "@/lib/whatsapp/service": { processOneMedia: () => { calls++; } },
   });
   for (const name of ["saveSender", "retryImport", "createFolder", "runImport", "assignMedia", "dismissMedia", "forgetSender"]) {
@@ -206,9 +207,9 @@ test("scheduled worker verifies CRON_SECRET before touching the queue", async ()
   assert.equal(response.status, 200); assert.equal(calls, 1);
 });
 test("Drive import refuses a read-only token and overly broad Drive scopes", async () => {
-  const credentials = { GOOGLE_DRIVE_IMPORT_CLIENT_ID: "dummy-client-id", GOOGLE_DRIVE_IMPORT_CLIENT_SECRET: "dummy-client-secret", GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN: "dummy-refresh-token" };
+  const credentials = { GOOGLE_DRIVE_IMPORT_CLIENT_ID: "dummy-client-id.apps.googleusercontent.com", GOOGLE_DRIVE_IMPORT_CLIENT_SECRET: "dummy-client-secret", GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN: "dummy-refresh-token" };
   for (const scope of ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive"]) {
-    const p = loadTs("lib/whatsapp/providers.ts", { "./payload": payload, sharp: { default: require("sharp") } }, { Response, Blob, process: { env: credentials }, fetch: async () => Response.json({ access_token: "dummy-access-token", token_type: "Bearer", scope }) });
+    const p = loadTs("lib/whatsapp/providers.ts", { "./payload": payload, "./drive-errors": loadTs("lib/whatsapp/drive-errors.ts"), sharp: { default: require("sharp") } }, { Response, Blob, process: { env: credentials }, fetch: async () => Response.json({ access_token: "dummy-access-token", token_type: "Bearer", scope }) });
     await assert.rejects(() => p.importDriveToken(), /drive_scope/);
   }
 });

@@ -14,7 +14,7 @@ export function SenderForm({ clients }: { clients: { id: string; name: string }[
     <label className="flex gap-3"><input type="checkbox" name="rights_confirmed" />Le client autorise l’utilisation de ces photos pour ses contenus.</label>
     <label className="flex gap-3"><input type="checkbox" name="enabled" defaultChecked />Activer cet expéditeur</label>
     <Action type="submit" disabled={pending} variant="primary">{pending ? "Vérification…" : "Enregistrer l’association"}</Action>
-    <p role="status">{state.message}</p>
+    <p role="status">{state.message}{state.code && <span className="text-sm text-muted"> (code {state.code})</span>}</p>
   </form>;
 }
 export function ProcessForm() {
@@ -28,7 +28,7 @@ export function RetryForm({ id }: { id: string }) {
 
 export function FolderForm({ clients }: { clients: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState(createFolder, initial);
-  return <form action={action} className="mb-6 grid max-w-xl gap-3"><p>Si vous n’avez pas encore de dossier autorisé, créez-en un dédié au client.</p><label>Client<select className={input} name="client_id" required><option value="">Choisir le client</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><Action type="submit" disabled={pending}>{pending ? "Création…" : "Créer un dossier Drive dédié"}</Action><p role="status" className="break-all">{state.message}</p></form>;
+  return <form action={action} className="mb-6 grid max-w-xl gap-3"><p>Si vous n’avez pas encore de dossier autorisé, créez-en un dédié au client.</p><label>Client<select className={input} name="client_id" required><option value="">Choisir le client</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><Action type="submit" disabled={pending}>{pending ? "Création…" : "Créer un dossier Drive dédié"}</Action><p role="status" className="break-all">{state.message}{state.code && <span className="text-sm text-muted"> (code {state.code})</span>}</p></form>;
 }
 
 export type AssignTarget = { value: string; label: string };

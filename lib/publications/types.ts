@@ -205,6 +205,7 @@ export type PublicationFunctions = {
   publication_save_draft: {Args:{p_publication_id:string|null;p_expected_revision_id:string|null;p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_target_date:string|null;p_week:string|null;p_slot:number|null;p_variants:Json;p_actor_id:string};Returns:string};
   publication_client_settings_save: {Args:{p_client_id:string;p_settings:Json;p_actor_id:string};Returns:string};
   publication_client_project_ensure: {Args:{p_client_id:string;p_actor_id:string};Returns:Json};
+  publication_schedule_draft: {Args:{p_publication_id:string;p_expected_revision_id:string;p_assignments:Json;p_actor_id:string};Returns:Json};
   publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_review_manual: {Args:{p_publication_id:string;p_revision_id:string;p_decision:string;p_reason:string|null;p_actor_id:string};Returns:undefined};

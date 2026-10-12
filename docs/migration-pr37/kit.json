@@ -1,0 +1,3 @@
+{"pr":37,"file":"20261028000000_media_library_intelligence.sql",
+ "requires":["publications_client_setup","whatsapp_media_library"],
+ "snapshot":["public.whatsapp_assets"]}

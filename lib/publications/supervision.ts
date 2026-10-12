@@ -2,8 +2,8 @@ import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from './validation';
-import {accountHealth,deliveryState,photoStats,rescheduleTargets,tooFewPhotos,upcomingTasks,ERROR_DELIVERY_STATUSES,
- type AccountHealth,type AccountRow,type ConnectionRow,type DeliveryRow,type DeliveryState,type OccurrenceRow,type PhotoStats,type UpcomingTask} from './supervision-model';
+import {accountHealth,deliveryErrorReason,deliveryState,latestLiveDelivery,missedSlot,MISSED_SLOT_REASON,photoStats,rescheduleTargets,tooFewPhotos,upcomingTasks,ERROR_DELIVERY_STATUSES,
+ type AccountHealth,type AccountRow,type ConnectionRow,type DeliveryDetailRow,type DeliveryState,type OccurrenceRow,type PhotoStats,type UpcomingTask} from './supervision-model';
 import type {LibraryAssessment,LibraryRow,LibraryUse} from './agent-v2/library-pool';
 import type {PublicationPlatform,PublicationStatus} from './types';
 
@@ -11,15 +11,19 @@ import type {PublicationPlatform,PublicationStatus} from './types';
 // passent par les fonctions existantes (validation, agent, diffusion) ou par publication_reschedule.
 const unavailable='Supervision indisponible.';
 export type SupervisedPublication={id:string;clientId:string;projectId:string;platform:PublicationPlatform;subject:string;status:PublicationStatus;
- revisionId:string;occurrenceId:string|null;scheduledFor:string|null;delivery:DeliveryState;cancellable:string[];targets:{id:string;scheduledFor:string}[]};
+ revisionId:string;occurrenceId:string|null;scheduledFor:string|null;delivery:DeliveryState;cancellable:string[];targets:{id:string;scheduledFor:string}[];
+ /** Raison sûre (lignes « En erreur » uniquement) : classe d'erreur, motif de blocage ou créneau manqué. */
+ errorReason:string|null};
 export type ClientSupervision={id:string;name:string;autoPrepare:boolean;generation:boolean;leadDays:number;photos:PhotoStats;tooFewPhotos:boolean;
  agentProjects:string[];accounts:AccountHealth[]};
-export type Supervision={settings:{emergencyStop:boolean;automation:boolean;generation:boolean;publishing:boolean}|null;clients:ClientSupervision[];
+export type Supervision={settings:{emergencyStop:boolean;automation:boolean;generation:boolean;publishing:boolean}|null;
+ /** Diffusion à l'heure prévue par le planificateur (PUBLICATIONS_SCHEDULED_DELIVERY, lu par la page et passé ici). */
+ scheduledDelivery:boolean;clients:ClientSupervision[];
  counts:{pendingReview:number;scheduled:number;published:number;errors:number;connected:number;reconnect:number};
  scheduled:SupervisedPublication[];errors:SupervisedPublication[];published:SupervisedPublication[];tasks:UpcomingTask[]};
 
 const MAX_ROWS=500;
-export async function getSupervision(now=new Date()):Promise<Supervision>{
+export async function getSupervision(now=new Date(),options:{scheduledDelivery?:boolean}={}):Promise<Supervision>{
  await requireAdmin();const db=getSupabaseServerClient();
  const horizon=new Date(now.getTime()+28*86400000).toISOString(),since=new Date(now.getTime()-30*86400000).toISOString();
  const [settings,clients,clientSettings,agents,accounts,connections,pubs,occurrences,assets,assessments,uses]=await Promise.all([
@@ -38,20 +42,24 @@ export async function getSupervision(now=new Date()):Promise<Supervision>{
  if(clients.error||clientSettings.error||agents.error||pubs.error||occurrences.error)throw Error(unavailable);
  const occ=(occurrences.data??[]) as OccurrenceRow[];
  const publications=(pubs.data??[]).filter(p=>p.current_revision_id&&p.project_id&&p.platform) as {id:string;client_id:string;project_id:string;platform:PublicationPlatform;subject:string;status:PublicationStatus;current_revision_id:string;occurrence_id:string|null}[];
- const deliveries=publications.length?await db.from('publication_deliveries').select('id,publication_id,revision_id,status,scheduled_for,updated_at').in('publication_id',publications.map(p=>p.id)):{data:[],error:null};
+ const deliveries=publications.length?await db.from('publication_deliveries').select('id,publication_id,revision_id,status,scheduled_for,updated_at,platform,remote_id,blocked_reason,last_error_class,last_error_code').in('publication_id',publications.map(p=>p.id)):{data:[],error:null};
  // Publiées : diffusions confirmées des 30 derniers jours (y compris de publications archivées depuis).
  const publishedRows=await db.from('publication_deliveries').select('id,publication_id,revision_id,status,scheduled_for,updated_at').in('status',['published']).gte('updated_at',since).order('updated_at',{ascending:false}).limit(20);
  if(deliveries.error||publishedRows.error)throw Error(unavailable);
- const delivered=(deliveries.data??[]) as DeliveryRow[];
+ const delivered=(deliveries.data??[]) as DeliveryDetailRow[];
 
  const view=(p:typeof publications[number]):SupervisedPublication=>{const o=occ.find(x=>x.id===p.occurrence_id),d=deliveryState(delivered,p.id,p.current_revision_id);
   return {id:p.id,clientId:p.client_id,projectId:p.project_id,platform:p.platform,subject:p.subject,status:p.status,revisionId:p.current_revision_id,occurrenceId:p.occurrence_id,
    scheduledFor:o?.scheduled_for??null,delivery:d.state,cancellable:d.cancellable,
+   errorReason:d.state==='error'?deliveryErrorReason(latestLiveDelivery(delivered,p.id,p.current_revision_id)):null,
    targets:p.occurrence_id&&p.status!=='rejected'&&d.state!=='published'?rescheduleTargets(occ,{project_id:p.project_id,platform:p.platform,occurrence_id:p.occurrence_id},now).map(t=>({id:t.id,scheduledFor:t.scheduled_for})):[]};};
  const views=publications.map(view);
  const future=(v:SupervisedPublication)=>v.scheduledFor!==null&&Date.parse(v.scheduledFor)>now.getTime();
  const scheduled=views.filter(v=>future(v)&&v.delivery!=='published'&&v.delivery!=='error').sort((a,b)=>(a.scheduledFor??'').localeCompare(b.scheduledFor??''));
- const errors=views.filter(v=>v.delivery==='error');
+ // En erreur : diffusions en échec, bloquées, à réessayer ou à vérifier, et publications approuvées dont le créneau est
+ // passé sans aucune diffusion (rien ne partira plus).
+ const errors=views.filter(v=>v.delivery==='error'||missedSlot(v,now)).map(v=>v.delivery==='error'?v:{...v,errorReason:MISSED_SLOT_REASON})
+  .sort((a,b)=>(a.scheduledFor??'').localeCompare(b.scheduledFor??''));
  const publishedIds=new Set((publishedRows.data??[]).map(d=>d.publication_id));
  const published=views.filter(v=>publishedIds.has(v.id));
 
@@ -70,6 +78,7 @@ export async function getSupervision(now=new Date()):Promise<Supervision>{
   new Map(supervised.map(c=>[c.id,{autoPrepare:c.autoPrepare&&c.generation,leadDays:c.leadDays}])),now);
  const s=settings.data as {emergency_stop:boolean;automation_enabled:boolean;generation_enabled:boolean;publishing_enabled:boolean}|null;
  return {settings:s?{emergencyStop:s.emergency_stop,automation:s.automation_enabled,generation:s.generation_enabled,publishing:s.publishing_enabled}:null,
+  scheduledDelivery:options.scheduledDelivery===true,
   clients:supervised,scheduled,errors,published,tasks,
   counts:{pendingReview:views.filter(v=>v.status==='pending_review').length,scheduled:scheduled.length,published:(publishedRows.data??[]).length,errors:errors.length,
    connected:health.filter(h=>h.state==='connected').length,reconnect:health.filter(h=>h.state==='reconnect').length}};
@@ -86,6 +95,7 @@ function rescheduleRefusal(error:{code?:string;message?:string}):string{
  if(/already has a publication/i.test(m))return 'Ce créneau est déjà pris : choisissez-en un autre.';
  if(/in the past/i.test(m))return 'Ce créneau est passé : choisissez-en un autre.';
  if(/Archived/i.test(m))return 'Publication archivée.';
+ if(/Library photo no longer publishable/i.test(m))return 'Une photo de la photothèque n’est plus publiable (rejetée, archivée, confidentielle ou hors sujet) : remplacez-la avant de reprogrammer.';
  return 'Reprogrammation non confirmée. Rechargez la page.';
 }
 export async function reschedulePublication(publicationId:unknown,revisionId:unknown,occurrenceId:unknown):Promise<Result>{

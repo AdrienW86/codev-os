@@ -4,6 +4,7 @@ import {platformLabels} from './editor';
 import {DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS,postsPerWeek,sortScheduleSlots,type ChannelSchedule} from './channel-schedule-model';
 import {legacyProductionBlock,projectSupportsPublications,SUSPENDED_PUBLICATIONS_MESSAGE,type PublicationCapabilities} from './channels';
 import {publicationPlatforms,type PublicationPlatform} from './types';
+import {PUBLISHABILITY_LABELS,type ChannelPublishability} from './connections/model';
 
 export const WEEKDAY_LABELS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'] as const;
 export type ChannelState='legacy'|'active'|'inactive';
@@ -45,3 +46,14 @@ export function slotRowsError(rows:readonly ConfigurationSlot[]):string|null{
 // Complete payload for the P2-a RPC: the rows kept on screen are enabled; anything absent is disabled by the RPC.
 export function scheduleSlotsPayload(rows:readonly ConfigurationSlot[]){return sortConfigurationSlots(rows).map(r=>({weekday:r.weekday,local_time:r.localTime,enabled:true}));}
 export {DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS};
+
+// Résumé d'une ligne par canal : « Diffusion : active » ou « Diffusion : bloquée — raison ». Réutilise l'état de
+// publication du canal (interrupteurs généraux, réglage du client, canal, compte, connexion) et, quand la publication
+// est désactivée, précise si c'est le réglage général ou celui du client.
+export function channelDeliverySummary(publishability:ChannelPublishability,flags?:{clientPublishing?:boolean;globalStop?:boolean}|null):{active:boolean;text:string}{
+ if(publishability==='publishable')return {active:true,text:'Diffusion : active'};
+ let reason=PUBLISHABILITY_LABELS[publishability]??'Diffusion bloquée';
+ if(publishability==='publishing_disabled'&&flags)reason=flags.clientPublishing===false?'Diffusion désactivée pour ce client':'Publication désactivée dans les réglages généraux';
+ if(publishability==='emergency_stop'||flags?.globalStop)reason=PUBLISHABILITY_LABELS.emergency_stop;
+ return {active:false,text:`Diffusion : bloquée — ${reason}`};
+}

@@ -7,6 +7,16 @@ export const DEFAULT_CLIENT_PUBLICATION_SETTINGS:ClientPublicationSettings={time
 // Fuseaux proposés (France, DOM-TOM, voisins). Le fuseau courant reste proposé même s'il n'est pas dans la liste.
 export const COMMON_TIMEZONES=['Europe/Paris','Europe/Brussels','Europe/Luxembourg','Europe/Zurich','Europe/Monaco','Europe/London','Europe/Madrid','Europe/Lisbon',
  'America/Guadeloupe','America/Martinique','America/Cayenne','Indian/Reunion','Indian/Mayotte','Pacific/Noumea','Pacific/Tahiti','America/Montreal'] as const;
+// Libellés lisibles des fuseaux proposés ; un fuseau inconnu garde son nom technique (ville extraite).
+export const TIMEZONE_LABELS:Record<typeof COMMON_TIMEZONES[number],string>={'Europe/Paris':'Paris (France)','Europe/Brussels':'Bruxelles (Belgique)',
+ 'Europe/Luxembourg':'Luxembourg','Europe/Zurich':'Zurich (Suisse)','Europe/Monaco':'Monaco','Europe/London':'Londres (Royaume-Uni)','Europe/Madrid':'Madrid (Espagne)',
+ 'Europe/Lisbon':'Lisbonne (Portugal)','America/Guadeloupe':'Guadeloupe','America/Martinique':'Martinique','America/Cayenne':'Cayenne (Guyane)',
+ 'Indian/Reunion':'La Réunion','Indian/Mayotte':'Mayotte','Pacific/Noumea':'Nouméa (Nouvelle-Calédonie)','Pacific/Tahiti':'Tahiti (Polynésie française)',
+ 'America/Montreal':'Montréal (Canada)'};
+export function timezoneLabel(zone:string):string{
+ if(zone in TIMEZONE_LABELS)return TIMEZONE_LABELS[zone as keyof typeof TIMEZONE_LABELS];
+ const city=zone.split('/').at(-1)?.replace(/_/g,' ');return city?`${city} (${zone})`:zone;
+}
 export function timezoneOptions(current:string|null|undefined):string[]{return current&&!(COMMON_TIMEZONES as readonly string[]).includes(current)?[current,...COMMON_TIMEZONES]:[...COMMON_TIMEZONES];}
 const TIMEZONE=/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/;
 

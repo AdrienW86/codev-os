@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import {useActionState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {assignPublicationAccountAction,disconnectPublicationConnectionAction,startOAuthAction,verifyConnectionAction,type ConnectionActionState} from '@/app/(cockpit)/publications/connection-actions';
@@ -34,7 +35,7 @@ function ConnectionCard({projectId,connection:c,oauthMessage,ready,returnView,ac
   {ready?<div className="mt-3 flex flex-wrap items-start gap-2"><ConnectForm projectId={projectId} provider={c.provider} label={`${existing?'Reconnecter':'Connecter'} ${c.label}`} returnView={returnView}/>
     {existing&&<VerifyForm projectId={projectId} provider={c.provider}/>}</div>
    :<div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" disabled className="rounded-lg border border-border px-3 py-2 disabled:opacity-60">Connecter {c.label}</button>
-    <span className="text-xs text-muted" data-oauth-pending="true">{oauthMessage}</span></div>}
+    <span className="text-xs text-muted" data-oauth-pending="true">{oauthMessage} <Link href="/settings?tab=connections" className="text-accent hover:underline">Configurer les connexions</Link></span></div>}
   {c.canDisconnect&&<DisconnectForm projectId={projectId} provider={c.provider} label={c.label}/>}</article>;
 }
 // The server builds the consent URL (state, PKCE) and redirects; the browser only sends the project and provider.
@@ -50,12 +51,14 @@ function VerifyForm({projectId,provider}:{projectId:string;provider:ConnectionSu
   <button disabled={pending} className="rounded-lg border border-border px-3 py-2">{pending?'Vérification…':'Vérifier la connexion'}</button>
   {state.message&&<p role={state.ok?'status':'alert'} className={`mt-1 ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }
+// Repliée par défaut : une action rare et destructive ne doit pas occuper chaque carte.
 function DisconnectForm({projectId,provider,label}:{projectId:string;provider:ConnectionSummary['provider'];label:string}){
  const [state,disconnect,pending]=useActionState(disconnectPublicationConnectionAction,initial);
- return <form action={disconnect} className="mt-3 space-y-2 border-t border-border pt-3"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
+ return <details className="mt-3 border-t border-border pt-3" data-disconnect={provider} open={Boolean(state.message)}><summary className="cursor-pointer text-xs text-muted">Déconnecter {label}…</summary>
+  <form action={disconnect} className="mt-2 space-y-2"><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="provider" value={provider}/>
   <label className="block text-xs"><input type="checkbox" name="confirm" required/> Je confirme : les comptes {label} ne pourront plus être utilisés pour publier.</label>
   <button disabled={pending} className="rounded-lg border border-danger/60 px-3 py-2 text-danger">{pending?'Déconnexion…':'Déconnecter'}</button>
-  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form>;
+  {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form></details>;
 }
 
 // "Compte de publication" of one channel card: accounts of the right platform only; non-assignable ones are shown

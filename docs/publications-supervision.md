@@ -74,3 +74,58 @@ Aucune nouvelle variable d'environnement.
 - Lecture bornée : 500 publications non archivées, 5 000 photos et 2 000 créneaux sur une fenêtre de −30 à +28 jours. C'est suffisant pour le portefeuille actuel.
 - Le créneau quitté reste consommé par la publication archivée : l'agent ne le reprépare pas.
 - Un ancien média d'agent encore en cours d'attache sur la publication archivée ne la suit pas : la nouvelle publication garde les médias déjà attachés.
+
+## Compléments (revue du lot 7)
+
+### Reprogrammer et photothèque
+
+- **Photo de la photothèque** : si une photo attachée provient de la photothèque du client (historique `whatsapp_asset_uses`), elle doit être encore publiable (`publications_private.library_asset_publishable`, lot 4-5). Sinon refus `23514` « Library photo no longer publishable ». L'interface affiche « Une photo de la photothèque n’est plus publiable… ». Rien n'est modifié.
+- **Historique** : une ligne `whatsapp_asset_uses` est ajoutée pour la nouvelle publication (même photo, même fichier privé). L'ancienne ligne est conservée.
+- **« À valider »** : une publication qui repasse en attente crée la notification `publication_review` vers `/publications/review`. Elle est idempotente (`event_key` `publication-review:<nouvelle publication>`), sans texte ni nom de client. Un brouillon n'en crée pas.
+- **Groupe éditorial : non repris.** L'index unique (groupe, plateforme) est déjà occupé par l'ancienne publication archivée, et sa liaison est immuable. Rattacher la nouvelle demanderait de modifier le socle. Elle est donc créée sans groupe.
+
+### Supervision
+
+- Bandeau des interrupteurs : arrêt d'urgence, automatisation, génération, diffusion, et **diffusion automatique à l'heure prévue** (`PUBLICATIONS_SCHEDULED_DELIVERY`). La page lit cette variable via `isFlagEnabled` (`lib/system/providers.ts`) et la transmet à `getSupervision(now, { scheduledDelivery })` ; `lib/publications` ne lit jamais l'environnement.
+- **En erreur** inclut les publications approuvées dont le créneau est passé sans aucune diffusion (« Créneau manqué »).
+- Chaque ligne en erreur affiche sa raison sûre, la même que sur la fiche : classe d'erreur et code court, ou motif de blocage (`deliveryErrorReason`, à partir de `deliveryView`).
+- L'en-tête comporte un lien vers le diagnostic technique.
+
+### Diagnostic technique (`/settings/diagnostic`)
+
+Page admin (`requireAdmin`), en lecture seule. On y accède depuis Paramètres › Observabilité et depuis l'en-tête de la supervision. Le module serveur `lib/system/diagnostic.ts` contient une fonction par section. Chaque section échoue seule et s'affiche alors « indisponible » :
+
+| Section | Contenu |
+| --- | --- |
+| Planificateur | Interrupteurs de publication, drapeau de diffusion automatique, cron configuré, dernier job planifié, battement (voir ci-dessous) |
+| Agent Publications | 5 derniers runs v2 (client, statut, erreur, média, coût, dates), échecs sur 7 jours, dernières préparations planifiées (`audit_logs`) |
+| Validation | Nombre de publications à valider et lien vers la file |
+| Ingestion WhatsApp | Échecs, abandons après 5 tentatives, traitements bloqués, avec libellés français (`inboxErrorLabel`) |
+| Connexions et diffusion | Connexions expirées, en erreur ou révoquées (jamais le texte de `last_error` ni de référence), échecs OAuth sur 7 jours, diffusions en échec, bloquées, à réessayer ou à vérifier |
+| Tâches bloquées | Bail expiré : `jobs`, `publication_jobs`, runs Agent v2, `whatsapp_inbox` |
+| Variables | Présence par module (configuré oui / non) et interrupteurs (activé / désactivé), jamais une valeur ni une longueur |
+
+`lib/system/providers.ts` gagne :
+- les entrées `credentials`, `google-drive-import`, `whatsapp-webhook`, `whatsapp-ingestion` et `push` ;
+- `featureFlags` et `isFlagEnabled` (`PUBLICATIONS_SCHEDULED_DELIVERY=enabled`, `WHATSAPP_INGESTION_ENABLED`, `PUSH_SENDING_ENABLED`, `EMAIL_SENDING_ENABLED` : `true`).
+
+Aucun interrupteur n'est activé par défaut.
+
+**Battement du planificateur (lot #39)** : la section accepte un chargeur `HeartbeatLoader` (paramètre `heartbeat` de `getDiagnostic`, valeur par défaut `loadSchedulerHeartbeat`, `null` dans ce lot). Pour le brancher, définir `loadSchedulerHeartbeat` dans `lib/system/diagnostic.ts`. Il lit `public.scheduler_heartbeats` (`name='tick'` : `started_at, finished_at, ok, steps, last_success_at, last_failure_at`). `heartbeatView` normalise déjà la ligne (noms d'étapes en échec uniquement) et la page l'affiche.
+
+### Retouches d'interface
+
+- Statuts du tableau en jetons (`warning`, `success`, `danger`, `info`).
+- Origine, plateforme, projet et place dans la semaine en libellés.
+- Déconnexion repliée dans `<details>`, avec un lien vers Paramètres › Connexions quand OAuth n'est pas configuré.
+- Filtres avancés repliés sur mobile.
+- Fuseaux horaires lisibles (« Paris (France) »).
+- Une ligne « Diffusion : active / bloquée — raison » par canal.
+- « Ouvrir le dossier Drive » au lieu d'identifiants tronqués.
+- Codes d'échec WhatsApp traduits.
+
+Tests ajoutés :
+- `tests/system-diagnostic.test.mjs` ;
+- des compléments dans `tests/publications-supervision.test.mjs` ;
+- la section 5 de la suite SQL ;
+- les notifications des sections 2 et 3.

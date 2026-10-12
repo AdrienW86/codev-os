@@ -100,6 +100,17 @@ test("diagnostic: heartbeat hook (lot #39) normalised and isolated", async () =>
   assert.equal(failing.scheduler.ok, true); assert.equal(failing.scheduler.data.heartbeat, "unavailable");
 });
 
+test("diagnostic: default heartbeat loader reads the lot #39 row (scheduler_tick, steps by status)", async () => {
+  const t = tables();
+  t.scheduler_heartbeats = [{ name: "scheduler_tick", started_at: ago(1), finished_at: ago(1), ok: false, steps: { whatsapp: { status: "failed", ms: 12 }, push: { status: "ok", ms: 3 }, publication_preparation: { status: "skipped", ms: 0 } }, last_success_at: ago(2), last_failure_at: ago(1) }];
+  const { mod } = diagnostic(t);
+  const d = json(await mod.getDiagnostic({ now, env }));
+  assert.equal(d.scheduler.data.heartbeat.ok, false);
+  assert.deepEqual(d.scheduler.data.heartbeat.failedSteps, ["whatsapp"]);
+  const none = json(await diagnostic().mod.getDiagnostic({ now, env }));
+  assert.equal(none.scheduler.data.heartbeat, null, "aucun passage enregistré");
+});
+
 test("diagnostic page: admin only, linked from Observabilité and supervision, tokens only, env never in lib/publications", () => {
   const page = src("app/(cockpit)/settings/diagnostic/page.tsx");
   assert.match(page, /await requireAdmin\(\)/); assert.match(page, /getDiagnostic\(\{ env: process\.env \}\)/);

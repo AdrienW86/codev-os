@@ -5,6 +5,7 @@ import "server-only";
 // ni d'identifiant brut : uniquement des états, des libellés français, des dates et des noms de clients.
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSchedulerHeartbeat, SCHEDULER_HEARTBEAT } from "@/lib/scheduler/heartbeat";
 import { featureFlags, isFlagEnabled, isProviderConfigured, providerRequirements, providerStatus, type Env } from "@/lib/system/providers";
 import { inboxErrorLabel } from "@/lib/whatsapp/drive-errors";
 import { blockedReasonLabel, DELIVERY_STATUS_LABELS, ERROR_CLASS_LABELS, type DeliveryErrorClass, type DeliveryStatus } from "@/lib/publications/delivery/model";
@@ -47,21 +48,19 @@ async function clientNames(db: DiagnosticDb, ids: (string | null | undefined)[])
 const safeCode = (value: unknown) => (typeof value === "string" && /^[a-z0-9_.-]{1,80}$/.test(value) ? value : null);
 
 // --- 1. Planificateur ---
-/**
- * Battement du planificateur (table public.scheduler_heartbeats, ligne name='tick', ajoutée par le lot #39).
- * POINT DE BRANCHEMENT : la table n'existe pas encore dans cette branche. Une fois le lot #39 fusionné, définir
- * `loadSchedulerHeartbeat` ci-dessous (lecture de started_at, finished_at, ok, steps, last_success_at, last_failure_at)
- * et le passer par défaut dans getDiagnostic ; schedulerSection et la page l'affichent déjà.
- */
+/** Battement du planificateur (table public.scheduler_heartbeats, ligne SCHEDULER_HEARTBEAT, écrite à chaque passage par le lot #39). */
 export type SchedulerHeartbeatRow = { started_at: string | null; finished_at: string | null; ok: boolean | null; steps: unknown; last_success_at: string | null; last_failure_at: string | null };
 export type HeartbeatLoader = (db: DiagnosticDb) => Promise<SchedulerHeartbeatRow | null>;
-export const loadSchedulerHeartbeat: HeartbeatLoader | null = null;
+export const loadSchedulerHeartbeat: HeartbeatLoader = async (db) => {
+  const beat = await getSchedulerHeartbeat(SCHEDULER_HEARTBEAT, db as unknown as Parameters<typeof getSchedulerHeartbeat>[1]);
+  return beat && { started_at: beat.startedAt, finished_at: beat.finishedAt, ok: beat.ok, steps: beat.steps, last_success_at: beat.lastSuccessAt, last_failure_at: beat.lastFailureAt };
+};
 export type HeartbeatView = { startedAt: string | null; finishedAt: string | null; ok: boolean | null; failedSteps: string[]; lastSuccessAt: string | null; lastFailureAt: string | null };
-/** Étapes en échec : uniquement des noms courts (objet {étape: {ok}} ou liste [{name, ok}]), jamais leur contenu. */
+/** Étapes en échec : uniquement des noms courts (objet {étape: {status}} ou liste [{name, ok}]), jamais leur contenu. */
 export function heartbeatView(row: SchedulerHeartbeatRow): HeartbeatView {
   const failed: string[] = [];
   const add = (name: unknown, value: unknown) => {
-    if (typeof name === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(name) && value && typeof value === "object" && (value as { ok?: unknown }).ok === false) failed.push(name);
+    if (typeof name === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(name) && value && typeof value === "object" && ((value as { ok?: unknown }).ok === false || (value as { status?: unknown }).status === "failed")) failed.push(name);
   };
   if (Array.isArray(row.steps)) for (const step of row.steps.slice(0, 30)) add((step as { name?: unknown } | null)?.name, step);
   else if (row.steps && typeof row.steps === "object") for (const [name, value] of Object.entries(row.steps).slice(0, 30)) add(name, value);
@@ -71,7 +70,7 @@ export type SchedulerDiagnostic = {
   switches: { emergencyStop: boolean; automation: boolean; generation: boolean; publishing: boolean } | null;
   scheduledDelivery: boolean; cronConfigured: boolean;
   lastScheduledJob: { at: string; status: string } | null; stale: boolean;
-  /** null : battement pas encore branché (lot #39) ; "unavailable" : lecture en échec. */
+  /** null : aucun passage enregistré ; "unavailable" : lecture en échec. */
   heartbeat: HeartbeatView | null | "unavailable";
 };
 const JOB_STATUS_LABELS: Record<string, string> = { queued: "En file", running: "En cours", succeeded: "Réussi", failed: "Échec", cancelled: "Annulé", skipped: "Ignoré" };

@@ -18,7 +18,8 @@ grant execute on function pg_temp.mi_assessment(text,boolean,text[]),pg_temp.mi_
 -- 1. Grants: browser roles have nothing, invoker functions with a fixed search_path.
 do $$declare r text;f text;t text;begin
  foreach f in array array['public.client_media_profile_save(uuid,jsonb,text)','public.whatsapp_asset_assessment_record(uuid,uuid,jsonb,jsonb)','public.whatsapp_assets_review(uuid,uuid[],text,text)',
-  'public.whatsapp_rejected_purge_candidates(integer)','public.whatsapp_asset_mark_purged(uuid,uuid,boolean)','public.client_media_ai_month_spend(uuid)'] loop
+  'public.whatsapp_rejected_purge_candidates(integer)','public.whatsapp_asset_mark_purged(uuid,uuid,boolean)','public.client_media_ai_month_spend(uuid)',
+  'public.whatsapp_asset_assessment_failed(uuid,uuid,jsonb)','public.whatsapp_asset_purge_trash_logged(uuid,uuid,text)'] loop
   foreach r in array array['public','anon','authenticated'] loop perform pg_temp.replay_assert(not has_function_privilege(r,f,'EXECUTE'),'browser denied '||f||' '||r);end loop;
   perform pg_temp.replay_assert((select not prosecdef and proconfig @> array['search_path=pg_catalog'] from pg_proc where oid=f::regprocedure),'invoker '||f);
  end loop;
@@ -50,7 +51,8 @@ reset role;
 create temporary table mi_ids(name text primary key,id uuid not null);grant select,insert on mi_ids to service_role;
 insert into mi_ids values('ok',pg_temp.mi_asset(1,'c6000000-0000-4000-8000-000000000001')),('doc',pg_temp.mi_asset(2,'c6000000-0000-4000-8000-000000000001')),
  ('off',pg_temp.mi_asset(3,'c6000000-0000-4000-8000-000000000001')),('human',pg_temp.mi_asset(4,'c6000000-0000-4000-8000-000000000001')),
- ('video',pg_temp.mi_asset(5,'c6000000-0000-4000-8000-000000000001','video')),('other',pg_temp.mi_asset(6,'c6000000-0000-4000-8000-000000000002'));
+ ('video',pg_temp.mi_asset(5,'c6000000-0000-4000-8000-000000000001','video')),('other',pg_temp.mi_asset(6,'c6000000-0000-4000-8000-000000000002')),
+ ('flaky',pg_temp.mi_asset(7,'c6000000-0000-4000-8000-000000000001')),('used',pg_temp.mi_asset(8,'c6000000-0000-4000-8000-000000000001'));
 update public.whatsapp_assets set library_status='validated',status_changed_by='user_local' where id=(select id from mi_ids where name='human');
 set local role service_role;
 do $$declare ok uuid:=(select id from mi_ids where name='ok');doc uuid:=(select id from mi_ids where name='doc');off uuid:=(select id from mi_ids where name='off');human uuid:=(select id from mi_ids where name='human');begin
@@ -65,6 +67,32 @@ do $$declare ok uuid:=(select id from mi_ids where name='ok');doc uuid:=(select 
  perform pg_temp.replay_assert(pg_temp.mi_error(format('select public.whatsapp_asset_assessment_record(%L,%L,pg_temp.mi_assessment(''relevant'',false),pg_temp.mi_usage())',(select id from mi_ids where name='video'),'c6000000-0000-4000-8000-000000000001'))='55000','videos not assessed');
  perform pg_temp.replay_assert(public.client_media_ai_month_spend('c6000000-0000-4000-8000-000000000001')=0.0024 and (select count(*) from public.client_media_ai_usage)=4,'cost journal and monthly spend');
  perform pg_temp.replay_assert(public.client_media_ai_month_spend('c6000000-0000-4000-8000-000000000002')=0,'spend isolated per client');
+end $$;
+
+-- 3b. Classification failures: billed cost always journaled, failures counted, success resets the counter.
+do $$declare flaky uuid:=(select id from mi_ids where name='flaky');a public.whatsapp_assets;begin
+ select * into a from public.whatsapp_assets where id=flaky;
+ perform pg_temp.replay_assert(a.classification_failures=0 and a.classification_failed_at is null,'failure columns default to zero');
+ perform pg_temp.replay_assert(public.whatsapp_asset_assessment_failed(flaky,'c6000000-0000-4000-8000-000000000001',pg_temp.mi_usage())=1,'first failure counted');
+ perform pg_temp.replay_assert(public.whatsapp_asset_assessment_failed(flaky,'c6000000-0000-4000-8000-000000000001',null)=2,'failure without usage counted');
+ perform pg_temp.replay_assert(public.client_media_ai_month_spend('c6000000-0000-4000-8000-000000000001')=0.0030 and (select count(*) from public.client_media_ai_usage where asset_id=flaky)=1,'billed failure enters the monthly budget');
+ perform pg_temp.replay_assert((select classification_failed_at is not null and library_status='received' from public.whatsapp_assets where id=flaky),'failure time recorded, status untouched');
+ perform pg_temp.replay_assert(pg_temp.mi_error(format('select public.whatsapp_asset_assessment_failed(%L,%L,''{"model":"m"}'')',flaky,'c6000000-0000-4000-8000-000000000001'))='22023','malformed usage refused');
+ perform pg_temp.replay_assert(pg_temp.mi_error(format('select public.whatsapp_asset_assessment_failed(%L,%L,null)',flaky,'c6000000-0000-4000-8000-000000000002'))='55000','another client media refused');
+ perform public.whatsapp_asset_assessment_record(flaky,'c6000000-0000-4000-8000-000000000001',pg_temp.mi_assessment('relevant',false),pg_temp.mi_usage());
+ perform pg_temp.replay_assert((select classification_failures=0 and classification_failed_at is null from public.whatsapp_assets where id=flaky),'success resets failures');
+end $$;
+
+-- 3c. A new confidential assessment clears a previous human verdict (no stale override keeps it publishable).
+do $$declare flaky uuid:=(select id from mi_ids where name='flaky');x public.whatsapp_asset_assessments;begin
+ perform public.whatsapp_assets_review('c6000000-0000-4000-8000-000000000001',array[flaky],'validated','user_local');
+ perform pg_temp.replay_assert((select manual_verdict='relevant' from public.whatsapp_asset_assessments where asset_id=flaky),'human verdict set');
+ perform public.whatsapp_asset_assessment_record(flaky,'c6000000-0000-4000-8000-000000000001',pg_temp.mi_assessment('relevant',false),pg_temp.mi_usage());
+ perform pg_temp.replay_assert((select manual_verdict='relevant' from public.whatsapp_asset_assessments where asset_id=flaky),'non-confidential re-assessment keeps the human verdict');
+ perform public.whatsapp_asset_assessment_record(flaky,'c6000000-0000-4000-8000-000000000001',pg_temp.mi_assessment('to_review',true,array['screen']),pg_temp.mi_usage());
+ select * into x from public.whatsapp_asset_assessments where asset_id=flaky;
+ perform pg_temp.replay_assert(x.confidential and x.manual_verdict is null and x.reviewed_by is null and x.reviewed_at is null,'confidential re-assessment clears the human verdict');
+ perform pg_temp.replay_assert((select library_status='validated' from public.whatsapp_assets where id=flaky),'human status never changed by AI');
 end $$;
 
 -- 4. Human review: out of quarantine, rejection only by a human, then purge after retention when the policy asks.
@@ -93,4 +121,55 @@ do $$declare off uuid:=(select id from mi_ids where name='off');begin
  perform public.whatsapp_assets_review('c6000000-0000-4000-8000-000000000001',array[off],'rejected','user_local');
  reset role;update public.whatsapp_assets set status_changed_at=now()-interval '400 days' where id=off;set local role service_role;
  perform pg_temp.replay_assert(not exists(select 1 from public.whatsapp_rejected_purge_candidates(10)),'keep policy: no purge');
+end $$;
+
+-- 6. Quarantine or rejection by a human cancels the not-yet-sent deliveries of publications using the photo.
+-- Synthetic deliveries (snapshot model) inserted without the publication chain: triggers and foreign keys are skipped
+-- for the fixture only; the review then runs with every trigger active.
+reset role;
+insert into mi_ids values('pub',gen_random_uuid()),('pub_other',gen_random_uuid()),('project',gen_random_uuid()),('channel',gen_random_uuid());
+set local session_replication_role=replica;
+insert into public.projects(id,client_id,name,type) values((select id from mi_ids where name='project'),'c6000000-0000-4000-8000-000000000001','Réseaux sociaux','Réseaux sociaux');
+insert into public.publication_project_channels(id,client_id,project_id,platform) values((select id from mi_ids where name='channel'),'c6000000-0000-4000-8000-000000000001',(select id from mi_ids where name='project'),'facebook');
+insert into public.publications(id,client_id,editorial_week,subject,status,project_id,platform)
+ select id,'c6000000-0000-4000-8000-000000000001',date_trunc('week',now())::date,'Chantier toiture','draft',(select id from mi_ids where name='project'),'facebook' from mi_ids where name in ('pub','pub_other');
+insert into public.publication_revisions(id,publication_id,client_id,revision_number,origin)
+ select gen_random_uuid(),id,'c6000000-0000-4000-8000-000000000001',1,'manual' from mi_ids where name in ('pub','pub_other');
+insert into public.publication_variants(revision_id,publication_id,client_id,platform,text_content)
+ select r.id,r.publication_id,r.client_id,'facebook','Texte' from public.publication_revisions r where r.publication_id in (select id from mi_ids where name in ('pub','pub_other'));
+insert into public.whatsapp_asset_uses(asset_id,client_id,publication_id,platform,used_by)
+ select (select id from mi_ids where name='used'),'c6000000-0000-4000-8000-000000000001',(select id from mi_ids where name='pub'),'facebook','user_local';
+-- Une diffusion par compte et publication (index unique) : un compte synthétique par diffusion.
+insert into public.publication_accounts(id,client_id,platform,external_account_id,status,enabled,credential_reference,metadata)
+ select gen_random_uuid(),'c6000000-0000-4000-8000-000000000001','facebook','page-mi-'||n,'connected',true,'ref:mi/page-'||n,'{}' from generate_series(1,6) n;
+insert into public.publication_deliveries(publication_id,client_id,publication_account_id,variant_id,platform,scheduled_for,status,idempotency_key,remote_id,revision_id,project_channel_id,text_hash)
+ select v.publication_id,v.client_id,(select id from public.publication_accounts where external_account_id='page-mi-'||x.n),v.id,'facebook',now()+interval '1 day',
+  case when x.s='other' then 'scheduled' else x.s end,'mi:'||x.s,case when x.s='published' then 'remote-1' end,v.revision_id,(select id from mi_ids where name='channel'),repeat('a',64)
+ from unnest(array['scheduled','retryable_error','blocked','published','processing','other']) with ordinality x(s,n)
+ join public.publication_variants v on v.publication_id=(select id from mi_ids where name=case when x.s='other' then 'pub_other' else 'pub' end);
+set local session_replication_role=origin;
+set local role service_role;
+do $$declare used uuid:=(select id from mi_ids where name='used');begin
+ perform pg_temp.replay_assert(public.whatsapp_assets_review('c6000000-0000-4000-8000-000000000001',array[used],'to_review','user_local')=1,'non-blocking status');
+ perform pg_temp.replay_assert((select count(*) from public.publication_deliveries where status='cancelled')=0,'to_review cancels nothing');
+ perform pg_temp.replay_assert(public.whatsapp_assets_review('c6000000-0000-4000-8000-000000000001',array[used],'quarantined','user_local')=1,'human quarantine');
+ perform pg_temp.replay_assert((select array_agg(idempotency_key order by idempotency_key) from public.publication_deliveries where status='cancelled')=array['mi:blocked','mi:retryable_error','mi:scheduled'],'pending deliveries cancelled');
+ perform pg_temp.replay_assert((select status from public.publication_deliveries where idempotency_key='mi:published')='published' and (select status from public.publication_deliveries where idempotency_key='mi:processing')='processing'
+  and (select status from public.publication_deliveries where idempotency_key='mi:other')='scheduled','published, in-flight and unrelated deliveries untouched');
+ perform pg_temp.replay_assert((select count(*) from public.publication_events where action='publication.delivery_cancelled')=3
+  and (select count(*) from public.publication_events where action='publication.delivery_cancelled_media_withdrawn' and actor_id='user_local' and metadata->>'library_status'='quarantined')=3,'cancellations journaled');
+ perform pg_temp.replay_assert((select (metadata->>'cancelled_deliveries')::integer from public.audit_logs where action='whatsapp.library.status' and metadata->>'status'='quarantined' order by created_at desc limit 1)=3,'cancel count audited');
+ perform pg_temp.replay_assert(public.whatsapp_assets_review('c6000000-0000-4000-8000-000000000001',array[used],'rejected','user_local')=1
+  and (select (metadata->>'cancelled_deliveries')::integer from public.audit_logs where action='whatsapp.library.status' and metadata->>'status'='rejected' order by created_at desc limit 1)=0,'rejection after quarantine: nothing left to cancel');
+end $$;
+
+-- 7. Purge marking is re-checked by the database; the trash outcome is journaled only for a purged media.
+do $$declare used uuid:=(select id from mi_ids where name='used');ok uuid:=(select id from mi_ids where name='ok');begin
+ perform pg_temp.replay_assert(not public.whatsapp_asset_mark_purged(ok,'c6000000-0000-4000-8000-000000000001',true),'not rejected: never marked');
+ perform pg_temp.replay_assert(pg_temp.mi_error(format('select public.whatsapp_asset_purge_trash_logged(%L,%L,''trashed'')',ok,'c6000000-0000-4000-8000-000000000001'))='55000','no trash log for a live media');
+ perform pg_temp.replay_assert(public.whatsapp_asset_mark_purged(used,'c6000000-0000-4000-8000-000000000001',true),'rejected by a human: marked');
+ perform public.whatsapp_asset_purge_trash_logged(used,'c6000000-0000-4000-8000-000000000001','missing');
+ perform pg_temp.replay_assert(exists(select 1 from public.audit_logs where action='whatsapp.library.purge_trash' and metadata->>'outcome'='missing'),'trash outcome journaled');
+ perform pg_temp.replay_assert(pg_temp.mi_error(format('select public.whatsapp_asset_purge_trash_logged(%L,%L,''deleted'')',used,'c6000000-0000-4000-8000-000000000001'))='22023','closed outcome vocabulary');
+ perform pg_temp.replay_assert((select last_classified_at is null from public.client_media_profiles where client_id='c6000000-0000-4000-8000-000000000001'),'rotation column starts empty');
 end $$;

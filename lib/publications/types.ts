@@ -24,6 +24,8 @@ export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
   auto_prepare_enabled: boolean; prepare_lead_days: number; media_reuse_allowed: boolean; media_reuse_after_days: number; require_human_approval: boolean;
+  // Socle lot 6 : rotation de la préparation automatique (écrit par le planificateur uniquement).
+  last_auto_prepared_at: string | null;
 };
 // Legacy rows (connection_id null) keep the historical statuses and credential model; connection-backed rows
 // (Lot 4.3 P9) use active | unavailable | revoked | disabled and never carry a credential.
@@ -123,6 +125,8 @@ export type PublicationAgentV2RunRow = {
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
   media_lease_until: string | null; media_attached_at: string | null;
 };
+// Socle lot 6 : préparation planifiée dont l'étape média ou la soumission reste à reprendre (sans IA).
+export type PublicationScheduledRunRow = { run_id: string; client_id: string; state: "open" | "done" | "gave_up"; created_at: string; updated_at: string };
 // Lot 4.3 P11-a: encrypted credential store (server role only; ciphertext as PostgreSQL hex bytea) and OAuth states.
 export type PublicationCredentialSecretRow = { reference: string; provider: "meta" | "google_business_profile"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
 export type PublicationOAuthStateRow = { id: string; state_hash: string; provider: "meta" | "google_business_profile"; client_id: string; project_id: string | null; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
@@ -144,7 +148,8 @@ export type PublicationTables = {
   publication_calendar_slots: Table<CalendarSlot, "cadence_id" | "client_id" | "project_id" | "editorial_week" | "slot" | "local_date" | "local_time" | "timezone" | "scheduled_for" | "platforms", "publication_id">;
   publication_planning_jobs: Table<PlanningJob, "type" | "client_id" | "project_id" | "idempotency_key", "status" | "attempts" | "run_after" | "last_error">;
   publication_settings: Table<PublicationSettings, never, "generation_enabled" | "automation_enabled" | "publishing_enabled" | "emergency_stop">;
-  publication_client_settings: Table<PublicationClientSettings, "client_id", "timezone" | "generation_enabled" | "publishing_enabled" | "editorial_brief" | "weekly_slots">;
+  publication_client_settings: Table<PublicationClientSettings, "client_id", "timezone" | "generation_enabled" | "publishing_enabled" | "editorial_brief" | "weekly_slots" | "last_auto_prepared_at">;
+  publication_scheduled_runs: Table<PublicationScheduledRunRow, "run_id" | "client_id", "state" | "updated_at">;
   publication_accounts: Table<PublicationAccount, "client_id" | "platform", "external_account_id" | "status" | "enabled" | "credential_reference" | "metadata">;
   publications: Table<Publication, "client_id" | "editorial_week" | "slot" | "subject", "status" | "current_revision_id", [{
     foreignKeyName: "publications_client_id_fkey"; columns: ["client_id"]; isOneToOne: false;
@@ -180,6 +185,8 @@ export type PublicationFunctions = {
   publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
+  publication_job_claim_on_time:{Args:{p_worker_id:string;p_lease_seconds:number;p_max_late_seconds:number};Returns:Json};
+  publication_scheduled_delivery_candidates:{Args:{p_late_before:string;p_limit:number};Returns:{publication_id:string;revision_id:string;scheduled_for:string;state:"ready"|"missed"|"photo_unpublishable"}[]};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};
   publication_job_dispatch:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:boolean};
   publication_job_complete:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number;p_outcome:Json};Returns:Json};

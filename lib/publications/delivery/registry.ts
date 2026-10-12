@@ -44,9 +44,10 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
 // checks (20 s timeout each) + 9 waits of 3 s + media_publish ≈ 290 s. 600 s keeps a margin (bound: 900 s).
 export const PRODUCTION_LEASE_SECONDS=600;
 // Explicit, single-job execution for a future worker. Fail closed: no vault → nothing runs.
-export async function runOnePublicationJobInProduction(workerId:string):Promise<ExecutionResult>{
+// maxLateSeconds: scheduler path only (never more late than the tolerance, see processScheduledDuePublications).
+export async function runOnePublicationJobInProduction(workerId:string,options:{maxLateSeconds?:number}={}):Promise<ExecutionResult>{
  const deps=productionOAuthDeps();if(!deps.vault)return {state:'idle'};
- return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS});
+ return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS,...options});
 }
 
 // Explicit admin trigger (Lot 4.3 P13): send the deliveries that are due now — prepared after the manual approval,
@@ -65,11 +66,15 @@ export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServ
 // ne vaut pas exactement « enabled » ; ensuite mêmes garde-fous que le bouton : arrêt d'urgence levé, publication
 // activée, et le moteur re-vérifie chaque interrupteur, l'approbation humaine et la disponibilité du canal.
 // Un seul envoi par passage : le pire cas Instagram (~290 s) tient dans la durée maximale du tick (300 s).
+// Jamais d'envoi planifié plus de SCHEDULED_LATE_TOLERANCE_SECONDS après l'heure due (cron ou drapeau revenu après
+// une coupure) : la tâche est bloquée en base (motif late_schedule, notifiée), un humain décide de la relancer.
 export const MAX_SCHEDULED_DUE_PER_TICK=1;
+export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
 export const SCHEDULED_DELIVERY_FLAG='PUBLICATIONS_SCHEDULED_DELIVERY';
 // L'environnement est lu par l'appelant (route du planificateur), jamais dans lib/publications.
 export function scheduledDeliveryEnabled(env:Record<string,string|undefined>):boolean{return env[SCHEDULED_DELIVERY_FLAG]==='enabled';}
-export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary|{disabled:true}>{
+const scheduledRun=(workerId:string)=>runOnePublicationJobInProduction(workerId,{maxLateSeconds:SCHEDULED_LATE_TOLERANCE_SECONDS});
+export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun}):Promise<DueRunSummary|{disabled:true}>{
  if(!scheduledDeliveryEnabled(env))return {disabled:true};
  return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
 }

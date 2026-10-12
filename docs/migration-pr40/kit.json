@@ -1,0 +1,3 @@
+{"pr":40,"file":"20261031000000_publications_supervision.sql",
+ "requires":["publications_scheduled_flow"],
+ "snapshot":[]}

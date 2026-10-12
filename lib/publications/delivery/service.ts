@@ -31,6 +31,7 @@ function refusal(message:string|undefined):string{
  const reason=/Not publishable: ([a-z_]+)/.exec(message??'')?.[1]??null;
  if(reason)return `Diffusion impossible : ${blockedReasonLabel(reason)?.toLowerCase()}.`;
  if(/not approved/i.test(message??''))return 'Diffusion impossible : la publication doit être validée.';
+ if(/unscheduled publication/i.test(message??''))return 'Diffusion impossible : ce brouillon n’est lié à aucun créneau du calendrier.';
  if(/archived/i.test(message??''))return 'Diffusion impossible : publication archivée.';
  if(/resolve deliveries/i.test(message??''))return 'Une diffusion est déjà en cours ou terminée pour cette publication.';
  if(/cannot be retried|cannot be cancelled/i.test(message??''))return 'Cette diffusion ne peut pas être relancée dans son état actuel.';

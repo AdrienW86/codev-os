@@ -7,7 +7,7 @@ import { getPublicationProjectChannels } from "@/lib/publications/project-channe
 import { projectAllowsPlatform } from "@/lib/publications/channels";
 import { IMAGE_BUCKET } from "@/lib/publications/editor";
 import { adaptImage } from "@/lib/publications/media/transform";
-import { saveDraft, currentRevision } from "@/lib/publications/workspace";
+import { saveDraft, saveUnscheduledDraft, currentRevision } from "@/lib/publications/workspace";
 import type { PublicationPlatform } from "@/lib/publications/types";
 import { captionPrompt, checkSelection, cleanSuggestion, draftFields } from "./library-model";
 import { downloadDrive, importDriveToken, maxImageBytes, maxVideoBytes } from "./providers";
@@ -84,6 +84,9 @@ export type PrepareInput = { clientId: string; projectId: string; platforms: Pub
  * dans le stockage privé Publications (publication_register_image), puis révision qui attache les médias.
  * La publication reste un brouillon : soumission et approbation humaines obligatoires avant toute diffusion.
  */
+// Brouillon non planifié : aucun créneau éditorial n'est réservé (la planification se fait ensuite dans Publications).
+// Les étapes sans effet de bord (Drive, dérivés) précèdent la création ; un échec après création archive le brouillon
+// créé par cet appel, pour ne laisser ni brouillon incomplet ni doublon. Les publications existantes ne sont jamais touchées.
 export async function preparePublication(userId: string, input: PrepareInput): Promise<{ id?: string; message: string }> {
   const assets = await selectedAssets(input.clientId, input.assetIds);
   const check = checkSelection(input.clientId, input.assetIds, assets, input.allowReuse);
@@ -93,6 +96,42 @@ export async function preparePublication(userId: string, input: PrepareInput): P
   const capabilities = await getPublicationProjectChannels(project);
   if (!input.platforms.length || input.platforms.some(platform => !projectAllowsPlatform(capabilities, platform))) return { message: "Choisissez des plateformes autorisées par ce projet." };
   const ordered = input.assetIds.map(id => assets.find(asset => asset.id === id)!);
+  // Réservation des médias encore « validés » : un double envoi ne crée pas deux brouillons avec les mêmes photos.
+  const claimable = ordered.filter(asset => asset.library_status === "validated").map(asset => asset.id);
+  const claimedAt = new Date().toISOString();
+  let claimed: string[] = [];
+  if (claimable.length) {
+    const { data, error } = await db().from("whatsapp_assets").update({ library_status: "used", status_changed_at: claimedAt, status_changed_by: userId })
+      .eq("client_id", input.clientId).in("id", claimable).eq("library_status", "validated").select("id");
+    claimed = (data ?? []).map(row => (row as { id: string }).id);
+    if (error || claimed.length !== claimable.length) {
+      await release(userId, input.clientId, claimed);
+      return { message: error ? "Photothèque indisponible : réessayez." : "Ces médias sont déjà en cours d’utilisation dans un autre brouillon. Rechargez la photothèque." };
+    }
+  }
+  const fail = async (message: string, publicationId?: string) => {
+    if (publicationId) {
+      const archived = await db().rpc("publication_archive", { p_publication_id: publicationId, p_actor_id: userId });
+      if (archived.error) console.error("[whatsapp] Archivage du brouillon incomplet impossible.");
+    }
+    await release(userId, input.clientId, claimed);
+    return { message };
+  };
+  // 1. Originaux Drive et dérivés par plateforme, avant toute écriture.
+  const prepared: { asset: Asset; platform: PublicationPlatform; bytes: Uint8Array; mime: string }[] = [];
+  try {
+    const token = await importDriveToken();
+    for (const asset of ordered) {
+      const original = await downloadDrive(token, asset.drive_file_id, asset.drive_folder_id, asset.md5, maxImageBytes);
+      for (const platform of input.platforms) {
+        const derivative = await adaptImage(original, platform);
+        prepared.push({ asset, platform, bytes: derivative.bytes, mime: derivative.mime_type });
+      }
+    }
+  } catch {
+    console.error("[whatsapp] Préparation des médias interrompue.");
+    return fail("Les photos n’ont pas pu être lues dans Drive ou adaptées. Aucun brouillon n’a été créé.");
+  }
   const suggestion = input.text ?? (input.suggest ? await suggestCaption(input.clientId, ordered) : null);
   const fields = draftFields({ receivedAt: ordered.map(asset => asset.received_at ?? asset.imported_at ?? asset.created_at), messages: ordered.flatMap(asset => asset.caption ? [asset.caption] : []), suggestion });
   const form = (extra: (form: FormData) => void) => {
@@ -102,36 +141,39 @@ export async function preparePublication(userId: string, input: PrepareInput): P
     extra(data);
     return data;
   };
-  const draft = await saveDraft(form(() => {}));
-  if (!draft.id) return { message: draft.message ?? "Brouillon non créé." };
+  // 2. Brouillon non planifié, puis médias enregistrés sur sa révision, puis nouvelle révision qui les attache.
+  const draft = await saveUnscheduledDraft(form(() => {}));
+  if (!draft.id) return fail(draft.message ?? "Brouillon non créé.");
   const publicationId = draft.id;
-  const partial = { id: publicationId, message: "Brouillon créé, mais les médias n’ont pas pu être attachés. Ajoutez-les depuis la publication ou réessayez." };
-  const revision = await currentRevision(publicationId);
-  if (!revision?.revision_id) return partial;
+  const incomplete = "Les médias n’ont pas pu être attachés : le brouillon incomplet a été archivé. Réessayez.";
+  let revisionId: string | null | undefined;
+  try { revisionId = (await currentRevision(publicationId))?.revision_id; } catch { revisionId = null; }
+  if (!revisionId) return fail(incomplete, publicationId);
   const attached: Record<string, string[]> = {};
   const uses: { asset_id: string; platform: PublicationPlatform; publication_asset_id: string }[] = [];
-  try {
-    const token = await importDriveToken();
-    for (const asset of ordered) {
-      const original = await downloadDrive(token, asset.drive_file_id, asset.drive_folder_id, asset.md5, maxImageBytes);
-      for (const platform of input.platforms) {
-        const derivative = await adaptImage(original, platform);
-        const publicationAssetId = randomUUID(), path = `${input.clientId}/${publicationId}/${publicationAssetId}`;
-        const upload = await db().storage.from(IMAGE_BUCKET).upload(path, derivative.bytes, { contentType: derivative.mime_type, upsert: false });
-        if (upload.error) return partial;
-        const registered = await db().rpc("publication_register_image", { p_publication_id: publicationId, p_revision_id: revision.revision_id, p_asset_id: publicationAssetId, p_path: path, p_hash: createHash("sha256").update(derivative.bytes).digest("hex"), p_mime: derivative.mime_type, p_provenance: `WhatsApp client, reçu le ${new Date(asset.received_at ?? asset.created_at).toISOString().slice(0, 10)} · original Drive ${asset.drive_file_id}`, p_actor_id: userId });
-        if (registered.error) { await db().storage.from(IMAGE_BUCKET).remove([path]); return partial; }
-        (attached[platform] ??= []).push(publicationAssetId);
-        uses.push({ asset_id: asset.id, platform, publication_asset_id: publicationAssetId });
-      }
-    }
-  } catch { console.error("[whatsapp] Préparation des médias interrompue."); return partial; }
-  const revised = await saveDraft(form(data => { data.set("publication_id", publicationId); data.set("revision_id", revision.revision_id!); for (const [platform, ids] of Object.entries(attached)) for (const id of ids) data.append(`${platform}_assets`, id); }));
-  if (!revised.id) return partial;
+  for (const item of prepared) {
+    const publicationAssetId = randomUUID(), path = `${input.clientId}/${publicationId}/${publicationAssetId}`;
+    const upload = await db().storage.from(IMAGE_BUCKET).upload(path, item.bytes, { contentType: item.mime, upsert: false });
+    if (upload.error) return fail(incomplete, publicationId);
+    const registered = await db().rpc("publication_register_image", { p_publication_id: publicationId, p_revision_id: revisionId, p_asset_id: publicationAssetId, p_path: path, p_hash: createHash("sha256").update(item.bytes).digest("hex"), p_mime: item.mime, p_provenance: `WhatsApp client, reçu le ${new Date(item.asset.received_at ?? item.asset.created_at).toISOString().slice(0, 10)} · original Drive ${item.asset.drive_file_id}`, p_actor_id: userId });
+    if (registered.error) { await db().storage.from(IMAGE_BUCKET).remove([path]); return fail(incomplete, publicationId); }
+    (attached[item.platform] ??= []).push(publicationAssetId);
+    uses.push({ asset_id: item.asset.id, platform: item.platform, publication_asset_id: publicationAssetId });
+  }
+  const revised = await saveDraft(form(data => { data.set("publication_id", publicationId); data.set("revision_id", revisionId!); for (const [platform, ids] of Object.entries(attached)) for (const id of ids) data.append(`${platform}_assets`, id); }));
+  if (!revised.id) return fail(incomplete, publicationId);
+  // 3. Historique d'utilisation ; les médias réutilisés passent aussi au statut « utilisé ».
   const { error: useError } = await db().from("whatsapp_asset_uses").insert(uses.map(use => ({ ...use, client_id: input.clientId, publication_id: publicationId, used_by: userId })));
-  if (!useError) await db().from("whatsapp_assets").update({ library_status: "used", status_changed_at: new Date().toISOString(), status_changed_by: userId }).eq("client_id", input.clientId).in("id", input.assetIds);
-  await writeAudit({ kind: "admin", userId }, { action: "whatsapp.library.publication_prepared", resource_type: "publication", resource_id: publicationId, metadata: { client_id: input.clientId, asset_ids: input.assetIds, platforms: input.platforms, ai_suggestion: Boolean(suggestion && !input.text) } });
-  return { id: publicationId, message: useError ? "Brouillon prêt, mais l’historique d’utilisation n’a pas été enregistré." : "Brouillon de publication prêt à relire." };
+  const reused = ordered.filter(asset => asset.library_status !== "validated").map(asset => asset.id);
+  if (!useError && reused.length) await db().from("whatsapp_assets").update({ library_status: "used", status_changed_at: new Date().toISOString(), status_changed_by: userId }).eq("client_id", input.clientId).in("id", reused);
+  await writeAudit({ kind: "admin", userId }, { action: "whatsapp.library.publication_prepared", resource_type: "publication", resource_id: publicationId, metadata: { client_id: input.clientId, asset_ids: input.assetIds, platforms: input.platforms, ai_suggestion: Boolean(suggestion && !input.text), unscheduled: true } });
+  return { id: publicationId, message: useError ? "Brouillon non planifié prêt, mais l’historique d’utilisation n’a pas été enregistré." : "Brouillon non planifié prêt à relire. Planifiez-le depuis Publications." };
+}
+// Rend aux médias réservés par cet appel leur statut « validé » (uniquement s'ils n'ont pas changé depuis).
+async function release(userId: string, clientId: string, ids: string[]) {
+  if (!ids.length) return;
+  const { error } = await db().from("whatsapp_assets").update({ library_status: "validated", status_changed_at: new Date().toISOString(), status_changed_by: userId }).eq("client_id", clientId).in("id", ids).eq("library_status", "used");
+  if (error) console.error("[whatsapp] Libération des médias réservés impossible.");
 }
 
 /** Dossiers Drive attribués au client (associations WhatsApp), pour les liens de la photothèque. */

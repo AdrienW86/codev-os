@@ -58,6 +58,16 @@ export async function saveDraft(form:FormData):Promise<{id?:string;message?:stri
  const result=await db.rpc("publication_save_draft",{p_publication_id:input.publication_id,p_expected_revision_id:input.expected_revision_id,p_client_id:input.client_id,p_project_id:input.project_id,p_title:input.title,p_angle:input.angle,p_source:input.source,p_target_date:input.target_date,p_week:input.week,p_slot:input.slot,p_variants:input.variants,p_actor_id:userId});
  if(result.error)return {message:result.error.code==="23505"?"Ce créneau est occupé ou les deux créneaux de cette semaine sont déjà utilisés.":result.error.code==="40001"?"La publication a changé. Rechargez avant de modifier.":result.error.code==="55000"?lockedMessage(result.error.message):failed};return {id:result.data};
 }
+// Brouillon non planifié (photothèque WhatsApp) : mêmes validations que saveDraft, sans date, semaine ni créneau.
+// Il ne réserve aucun créneau éditorial et ne peut être diffusé tant qu'il n'est pas planifié.
+export async function saveUnscheduledDraft(form:FormData):Promise<{id?:string;message?:string}>{
+ const {userId}=await requireAdmin();const input=parseEditorialForm(form);if(!input||input.publication_id||input.target_date||input.week||input.slot)return {message:"Vérifiez les champs obligatoires et les variantes."};const db=getSupabaseServerClient();
+ const project=await db.from("projects").select("id,client_id,type").eq("id",input.project_id).eq("client_id",input.client_id).maybeSingle();
+ const capabilities=project.data?await getPublicationProjectChannels(project.data):null;
+ if(project.error||!project.data||!capabilities||input.variants.some(v=>!projectAllowsPlatform(capabilities,v.platform)))return {message:"Le projet doit appartenir au client et autoriser toutes les plateformes choisies."};
+ const result=await db.rpc("publication_save_unscheduled_draft",{p_client_id:input.client_id,p_project_id:input.project_id,p_title:input.title,p_angle:input.angle,p_source:input.source,p_variants:input.variants,p_actor_id:userId});
+ return result.error?{message:failed}:{id:result.data};
+}
 export async function submitOrReview(form:FormData):Promise<{message:string}>{
  const {userId}=await requireAdmin();const id=form.get("publication_id"),revision=form.get("revision_id"),decision=form.get("decision"),reason=form.get("reason");
  if(!isPublicationUuid(id)||!isPublicationUuid(revision)||!["submit","approved","rejected"].includes(String(decision))|| (decision==="rejected"&&(typeof reason!=="string"||!reason.trim()||reason.length>3000)))return {message:"Identifiant, révision ou motif de refus invalide."};

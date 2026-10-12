@@ -155,15 +155,16 @@ test("personal data retention is opt-in and refuses short durations", async () =
   assert.deepEqual(json(await service.purgeExpiredPersonalData(new Date(), { WHATSAPP_RETENTION_DAYS: "365" })), { purged: 3 });
 });
 
-function prepareHarness({ failRegister = false } = {}) {
+function prepareHarness({ failRegister = false, failDrive = false, failRevise = false, status = "validated" } = {}) {
   const PUB = uuid(50), REV1 = uuid(51), REV2 = uuid(52), PROJECT = uuid(40);
   const stored = { client_id: CLIENT, drive_folder_id: "folder_client_a", md5: "c".repeat(32), mime_type: "image/jpeg", media_kind: "image", imported_at: "2026-10-12T08:00:00Z", received_at: "2026-10-12T08:00:00Z", created_at: "2026-10-12T08:00:00Z" };
   const fake = createFakeSupabase({
-    whatsapp_assets: [{ ...stored, id: uuid(1), drive_file_id: "drive_file_aaaa1", library_status: "validated", caption: "Toiture refaite" }, { ...stored, id: uuid(2), client_id: OTHER, drive_file_id: "drive_file_bbbb2", library_status: "validated" }],
+    whatsapp_assets: [{ ...stored, id: uuid(1), drive_file_id: "drive_file_aaaa1", library_status: status, caption: "Toiture refaite" }, { ...stored, id: uuid(2), client_id: OTHER, drive_file_id: "drive_file_bbbb2", library_status: "validated" }],
     projects: [{ id: PROJECT, client_id: CLIENT, type: "Réseaux sociaux" }],
     whatsapp_asset_uses: [],
-  }, { rpc: { publication_register_image: args => { if (failRegister) throw Error("refused"); state.registered.push(args); return null; } } });
-  const state = { drafts: [], registered: [], uploads: [], removed: [], audits: [] };
+  }, { rpc: { publication_register_image: args => { if (failRegister) throw Error("refused"); state.registered.push(args); return null; }, publication_archive: args => { state.archived.push(args.p_publication_id); return "2026-10-12T09:00:00Z"; } } });
+  const state = { drafts: [], unscheduled: [], registered: [], uploads: [], removed: [], audits: [], archived: [] };
+  const fields = form => Object.fromEntries([...new Set(form.keys())].map(key => [key, form.getAll(key).length > 1 ? form.getAll(key) : form.get(key)]));
   const db = { ...fake.client, storage: { from: bucket => ({ upload: async path => { state.uploads.push([bucket, path]); return { error: null }; }, remove: async paths => { state.removed.push(...paths); return { error: null }; } }) } };
   const library = loadTs("lib/whatsapp/library.ts", {
     "node:crypto": require("node:crypto"),
@@ -175,11 +176,12 @@ function prepareHarness({ failRegister = false } = {}) {
     "@/lib/publications/editor": { IMAGE_BUCKET: "publication-images" },
     "@/lib/publications/media/transform": { adaptImage: async (_bytes, platform) => ({ bytes: new Uint8Array([platform.length]), width: 1080, height: 1080, mime_type: "image/jpeg" }) },
     "@/lib/publications/workspace": {
-      saveDraft: async form => { state.drafts.push(Object.fromEntries([...new Set(form.keys())].map(key => [key, form.getAll(key).length > 1 ? form.getAll(key) : form.get(key)]))); return { id: PUB }; },
-      currentRevision: async () => ({ revision_id: state.drafts.length > 1 ? REV2 : REV1, status: "draft" }),
+      saveUnscheduledDraft: async form => { state.unscheduled.push(fields(form)); return { id: PUB }; },
+      saveDraft: async form => { state.drafts.push(fields(form)); return failRevise ? { message: "refusé" } : { id: PUB }; },
+      currentRevision: async () => ({ revision_id: state.drafts.length ? REV2 : REV1, status: "draft" }),
     },
     "./library-model": model,
-    "./providers": { importDriveToken: async () => "dummy-token", downloadDrive: async (_t, id, folder) => { assert.equal(folder, "folder_client_a"); return new Uint8Array([id.length]); }, maxImageBytes: 8388608, maxVideoBytes: 16777216 },
+    "./providers": { importDriveToken: async () => "dummy-token", downloadDrive: async (_t, id, folder) => { if (failDrive) throw Error("drive down"); assert.equal(folder, "folder_client_a"); return new Uint8Array([id.length]); }, maxImageBytes: 8388608, maxVideoBytes: 16777216 },
     "./service": { THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   }, { FormData });
   return { library, state, fake, PUB, REV1, PROJECT };
@@ -188,13 +190,19 @@ test("preparing a publication creates a reviewable draft with per-platform deriv
   const h = prepareHarness();
   const result = await h.library.preparePublication("user_admin", { clientId: CLIENT, projectId: h.PROJECT, platforms: ["facebook", "instagram"], assetIds: [uuid(1)], allowReuse: false, text: null, suggest: false });
   assert.equal(result.id, h.PUB);
-  assert.equal(h.state.drafts.length, 2);
-  assert.match(h.state.drafts[0].facebook_text, /^\[À rédiger\]/);
-  assert.match(h.state.drafts[0].source, /« Toiture refaite »/);
-  assert.equal(h.state.drafts[1].revision_id, h.REV1);
+  assert.match(result.message, /non planifié/);
+  // Création sans créneau : ni date, ni semaine, ni créneau transmis ; seule la révision suivante passe par saveDraft.
+  assert.equal(h.state.unscheduled.length, 1); assert.equal(h.state.drafts.length, 1);
+  for (const key of ["target_date", "week", "slot", "publication_id"]) assert.equal(key in h.state.unscheduled[0], false, key);
+  assert.match(h.state.unscheduled[0].facebook_text, /^\[À rédiger\]/);
+  assert.match(h.state.unscheduled[0].source, /« Toiture refaite »/);
+  assert.equal(h.state.drafts[0].publication_id, h.PUB);
+  assert.equal(h.state.drafts[0].revision_id, h.REV1);
   assert.equal(h.state.registered.length, 2);
   assert.ok(h.state.registered.every(args => args.p_revision_id === h.REV1 && args.p_path.startsWith(`${CLIENT}/${h.PUB}/`)));
-  assert.equal(h.state.drafts[1].facebook_assets, h.state.registered[0].p_asset_id);
+  assert.equal(h.state.drafts[0].facebook_assets, h.state.registered[0].p_asset_id);
+  assert.equal(h.state.drafts[0].instagram_assets, h.state.registered[1].p_asset_id);
+  assert.deepEqual(h.state.archived, []);
   assert.equal(h.fake.tables.whatsapp_asset_uses.length, 2);
   assert.equal(h.fake.tables.whatsapp_assets.find(a => a.id === uuid(1)).library_status, "used");
   assert.equal(h.state.audits.at(-1).action, "whatsapp.library.publication_prepared");
@@ -202,13 +210,43 @@ test("preparing a publication creates a reviewable draft with per-platform deriv
 test("another client's media or a refused registration never ends attached to the publication", async () => {
   const cross = prepareHarness();
   assert.match((await cross.library.preparePublication("user_admin", { clientId: CLIENT, projectId: cross.PROJECT, platforms: ["facebook"], assetIds: [uuid(2)], allowReuse: false, text: null, suggest: false })).message, /n’appartient pas/);
-  assert.equal(cross.state.drafts.length, 0);
+  assert.equal(cross.state.drafts.length + cross.state.unscheduled.length, 0);
   const denied = prepareHarness();
   assert.match((await denied.library.preparePublication("user_admin", { clientId: CLIENT, projectId: denied.PROJECT, platforms: ["google_business_profile"], assetIds: [uuid(1)], allowReuse: false, text: null, suggest: false })).message, /plateformes autorisées/);
   const failing = prepareHarness({ failRegister: true });
   const result = await failing.library.preparePublication("user_admin", { clientId: CLIENT, projectId: failing.PROJECT, platforms: ["facebook"], assetIds: [uuid(1)], allowReuse: false, text: "Texte", suggest: false });
-  assert.match(result.message, /médias n’ont pas pu être attachés/);
+  assert.match(result.message, /médias n’ont pas pu être attachés : le brouillon incomplet a été archivé/);
+  assert.equal(result.id, undefined);
+  assert.deepEqual(failing.state.archived, [failing.PUB]);
   assert.deepEqual(failing.state.removed, failing.state.uploads.map(([, path]) => path));
   assert.equal(failing.fake.tables.whatsapp_asset_uses.length, 0);
   assert.equal(failing.fake.tables.whatsapp_assets.find(a => a.id === uuid(1)).library_status, "validated");
+});
+test("a Drive failure creates no draft at all; a refused revision archives the incomplete draft and releases the photo", async () => {
+  const drive = prepareHarness({ failDrive: true });
+  const r1 = await drive.library.preparePublication("user_admin", { clientId: CLIENT, projectId: drive.PROJECT, platforms: ["facebook"], assetIds: [uuid(1)], allowReuse: false, text: "Texte", suggest: false });
+  assert.match(r1.message, /Aucun brouillon n’a été créé/);
+  assert.equal(drive.state.unscheduled.length, 0); assert.deepEqual(drive.state.archived, []);
+  assert.equal(drive.fake.tables.whatsapp_assets.find(a => a.id === uuid(1)).library_status, "validated");
+  const revise = prepareHarness({ failRevise: true });
+  const r2 = await revise.library.preparePublication("user_admin", { clientId: CLIENT, projectId: revise.PROJECT, platforms: ["facebook"], assetIds: [uuid(1)], allowReuse: false, text: "Texte", suggest: false });
+  assert.equal(r2.id, undefined); assert.deepEqual(revise.state.archived, [revise.PUB]);
+  assert.equal(revise.fake.tables.whatsapp_asset_uses.length, 0);
+  assert.equal(revise.fake.tables.whatsapp_assets.find(a => a.id === uuid(1)).library_status, "validated");
+});
+test("a second submission with the same photos is refused instead of creating a duplicate draft; explicit reuse still works", async () => {
+  const h = prepareHarness();
+  const input = { clientId: CLIENT, projectId: h.PROJECT, platforms: ["facebook"], assetIds: [uuid(1)], allowReuse: false, text: "Texte", suggest: false };
+  assert.equal((await h.library.preparePublication("user_admin", input)).id, h.PUB);
+  assert.match((await h.library.preparePublication("user_admin", input)).message, /déjà été utilisé/);
+  assert.equal(h.state.unscheduled.length, 1);
+  // Course entre deux envois : la réservation conditionnelle (statut « validé ») ne réussit qu'une fois.
+  const race = prepareHarness();
+  const [a, b] = await Promise.all([race.library.preparePublication("user_admin", input), race.library.preparePublication("user_admin", input)]);
+  assert.equal([a, b].filter(r => r.id).length, 1);
+  assert.match([a, b].find(r => !r.id).message, /déjà en cours d’utilisation/);
+  assert.equal(race.state.unscheduled.length, 1);
+  const reuse = prepareHarness({ status: "used" });
+  const r = await reuse.library.preparePublication("user_admin", { ...input, allowReuse: true });
+  assert.equal(r.id, reuse.PUB); assert.equal(reuse.fake.tables.whatsapp_asset_uses.length, 1);
 });

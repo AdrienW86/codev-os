@@ -36,7 +36,7 @@ export type Publication = Updated & {
   creation_origin: "manual" | "system" | "agent";
   target_date: string | null;
   project_id: string | null;
-  client_id: string; editorial_week: string; slot: 1 | 2; subject: string;
+  client_id: string; editorial_week: string; slot: 1 | 2 | null; subject: string;
   status: PublicationStatus; current_revision_id: string | null;
   // Lot 4.3 P4-a bindings (NULL on every legacy multi-variant publication; set once, never changed).
   editorial_group_id?: string | null; occurrence_id?: string | null; platform?: PublicationPlatform | null;
@@ -201,6 +201,7 @@ export type PublicationFunctions = {
   publication_save_cadence: {Args:{p_project_id:string;p_config:Json;p_actor_id:string};Returns:string};
   publication_ensure_calendar: {Args:{p_project_id:string;p_start_week:string;p_placeholders:boolean;p_actor_id:string};Returns:Json};
   publication_save_draft: {Args:{p_publication_id:string|null;p_expected_revision_id:string|null;p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_target_date:string|null;p_week:string|null;p_slot:number|null;p_variants:Json;p_actor_id:string};Returns:string};
+  publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_review_manual: {Args:{p_publication_id:string;p_revision_id:string;p_decision:string;p_reason:string|null;p_actor_id:string};Returns:undefined};
   publication_register_image: {Args:{p_publication_id:string;p_revision_id:string;p_asset_id:string;p_path:string;p_hash:string;p_mime:string;p_provenance:string;p_actor_id:string};Returns:undefined};

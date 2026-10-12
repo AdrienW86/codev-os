@@ -6,7 +6,7 @@ import {isPublicationUuid} from '@/lib/publications/validation';
 type State={message?:string};
 export async function configureAgentAction(_state:State,form:FormData):Promise<State>{
  await requireAdmin();let result:State;try{result=await configurePublicationsAgent(form);}catch{result={message:'Configuration non confirmée. Vérifiez le projet et le socle Lot 4.'};}
- const project=form.get('project_id');if(isPublicationUuid(project)){revalidatePath(`/projects/${project}`);revalidatePath(`/projects/${project}/agent`);}return result;
+ const project=form.get('project_id');if(isPublicationUuid(project)){revalidatePath(`/projects/${project}`);revalidatePath(`/projects/${project}/agent`);revalidatePath('/clients/[id]','page');}return result;
 }
 export async function prepareAgentAction(_state:State,form:FormData):Promise<State>{
  await requireAdmin();const project=form.get('project_id'),publication=form.get('publication_id');

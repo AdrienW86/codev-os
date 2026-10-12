@@ -80,3 +80,17 @@ export async function saveScheduleForPlatform(projectId:unknown,platform:unknown
   return saved.ok?{ok:true,message:'Planning enregistré.'}:{ok:false,message:saved.message};
  }catch{return {ok:false,message:unavailable};}
 }
+// Per-channel editorial rules (column and RPC parameter existed since P1, without an editor). Account and
+// activation are preserved; an empty text clears the rules.
+export async function saveChannelEditorialRules(projectId:unknown,platform:unknown,rules:unknown):Promise<Result>{
+ const {userId}=await requireAdmin();
+ if(!isPlatform(platform)||typeof rules!=='string'||rules.length>4000)return {ok:false,message:'Règles invalides (4 000 caractères maximum).'};
+ try{
+  const project=await projectRef(projectId);if(!project)return {ok:false,message:'Projet invalide.'};
+  const current=await explicitChannel(project,platform);if(!current)return {ok:false,message:'Activez ou confirmez d’abord ce canal.'};
+  const {error}=await getSupabaseServerClient().rpc('publication_channel_save',{p_project_id:project.id,p_platform:platform,p_enabled:current.enabled,
+   p_publication_account_id:current.publication_account_id??null,p_editorial_rules:rules.trim()||null,p_actor_id:userId});
+  if(error)return {ok:false,message:channelError(error.code)};
+  return {ok:true,message:rules.trim()?'Règles éditoriales enregistrées.':'Règles éditoriales retirées.'};
+ }catch{return {ok:false,message:unavailable};}
+}

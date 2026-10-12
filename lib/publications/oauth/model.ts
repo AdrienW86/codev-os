@@ -22,7 +22,14 @@ export function oauthBanner(params:{oauth?:unknown;provider?:unknown}):{ok:boole
  return {ok:params.oauth==='success',message:oauthOutcomeMessage(params.provider,params.oauth)};
 }
 // Internal path the callback redirects to: the project configuration tab, or the projects list. Never external.
-export function oauthReturnPath(projectId:string|null,provider:ConnectionProvider,outcome:OAuthOutcome):string{
- const base=projectId&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)?`/projects/${projectId}/configuration`:'/projects';
+// Socle lot 1: when the connection was started from the client page, the callback returns to its « Publications »
+// tab instead (client and project taken from the consumed state, never from the request).
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const OAUTH_VIEW_COOKIE='publications_oauth_view';
+export type OAuthReturnView='project'|'client';
+export function oauthReturnPath(projectId:string|null,provider:ConnectionProvider,outcome:OAuthOutcome,client:{view:OAuthReturnView;clientId:string|null}={view:'project',clientId:null}):string{
+ const project=projectId&&UUID.test(projectId)?projectId:null;
+ if(client.view==='client'&&client.clientId&&UUID.test(client.clientId))return `/clients/${client.clientId}?tab=publications${project?`&project=${project}`:''}&oauth=${outcome}&provider=${provider}`;
+ const base=project?`/projects/${project}/configuration`:'/projects';
  return `${base}?oauth=${outcome}&provider=${provider}`;
 }

@@ -23,6 +23,7 @@ export type PublicationSettings = Updated & {
 export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
+  auto_prepare_enabled: boolean; prepare_lead_days: number; media_reuse_allowed: boolean; media_reuse_after_days: number; require_human_approval: boolean;
 };
 // Legacy rows (connection_id null) keep the historical statuses and credential model; connection-backed rows
 // (Lot 4.3 P9) use active | unavailable | revoked | disabled and never carry a credential.
@@ -201,6 +202,8 @@ export type PublicationFunctions = {
   publication_save_cadence: {Args:{p_project_id:string;p_config:Json;p_actor_id:string};Returns:string};
   publication_ensure_calendar: {Args:{p_project_id:string;p_start_week:string;p_placeholders:boolean;p_actor_id:string};Returns:Json};
   publication_save_draft: {Args:{p_publication_id:string|null;p_expected_revision_id:string|null;p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_target_date:string|null;p_week:string|null;p_slot:number|null;p_variants:Json;p_actor_id:string};Returns:string};
+  publication_client_settings_save: {Args:{p_client_id:string;p_settings:Json;p_actor_id:string};Returns:string};
+  publication_client_project_ensure: {Args:{p_client_id:string;p_actor_id:string};Returns:Json};
   publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_review_manual: {Args:{p_publication_id:string;p_revision_id:string;p_decision:string;p_reason:string|null;p_actor_id:string};Returns:undefined};

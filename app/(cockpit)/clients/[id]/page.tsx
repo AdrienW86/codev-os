@@ -48,9 +48,14 @@ import { getMediaProfile } from "@/lib/media-intelligence/service";
 import { clientFolders, listClientLibrary } from "@/lib/whatsapp/library";
 import { libraryStatuses, type LibraryStatus } from "@/lib/whatsapp/types";
 import { publicationProjectOptions } from "@/lib/publications/project-channels";
+import { getClientPublicationsSetup } from "@/lib/publications/client-setup";
+import { oauthBanner } from "@/lib/publications/oauth/model";
+import { ChannelConfiguration } from "@/components/publications/channel-configuration";
+import { AgentConfigurationForm } from "@/components/publications/agent-forms";
+import { ClientPublicationSettingsForm, ClientPublicationsProjectPicker, ClientPublicationsSetupStart } from "@/components/clients/client-publications-panel";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
-const tabIds = ["overview", "projects", "media", "ads", "health", "agents", "activity", "information"] as const;
+const tabIds = ["overview", "projects", "publications", "media", "ads", "health", "agents", "activity", "information"] as const;
 type TabId = (typeof tabIds)[number];
 
 // Aucun generateStaticParams : les UUID réels sont résolus à chaque requête.
@@ -116,6 +121,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       <Tabs label="Sections du dossier client" current={tab} items={[
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },
         { id: "projects", label: "Projets & tâches", href: href("projects"), count: projects.length },
+        { id: "publications", label: "Publications", href: href("publications") },
         { id: "media", label: "Photothèque", href: href("media") },
         { id: "ads", label: "Campagnes", href: href("ads") },
         { id: "health", label: "Données & performance", href: href("health") },
@@ -198,6 +204,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         );
       })()}
 
+      {tab === "publications" && <PublicationsTab clientId={client.id} project={search.project} oauth={{ oauth: search.oauth, provider: search.provider }} />}
+
       {tab === "media" && <MediaTab clientId={client.id} projects={projects} status={libraryStatuses.includes(search.status as LibraryStatus) ? search.status as LibraryStatus : null} />}
 
       {tab === "ads" && adsFilters && adsInitial && (
@@ -234,6 +242,28 @@ async function MediaTab({ clientId, projects, status }: { clientId: string; proj
     safeRead("media-library-profile", () => getMediaProfile(clientId), null),
   ]);
   return <MediaLibraryPanel clientId={clientId} items={library.data} folders={folders.data} projects={options.data} status={status} unavailable={library.unavailable} profile={profile.data} />;
+}
+
+// Onglet « Publications » (socle lot 1) : réglages du client, connexions OAuth, plateformes cochées, créneaux,
+// règles par canal et photothèque Drive, sur le projet technique Publications du client (créé à la demande).
+async function PublicationsTab({ clientId, project, oauth }: { clientId: string; project: unknown; oauth: { oauth?: unknown; provider?: unknown } }) {
+  const setup = await safeRead("client-publications", () => getClientPublicationsSetup(clientId, project), null);
+  if (!setup.data) return <Panel className="p-6"><h2 className="font-semibold">Publications</h2><p role="alert" className="mt-3 text-sm">Configuration Publications indisponible pour le moment. Rechargez la page.</p></Panel>;
+  const data = setup.data;
+  if (!data.project) return <ClientPublicationsSetupStart clientId={clientId} />;
+  return (
+    <div className="space-y-6">
+      <ClientPublicationsProjectPicker clientId={clientId} projects={data.projects} current={data.project.id} />
+      <ClientPublicationSettingsForm clientId={clientId} settings={data.settings} globalStop={data.globalStop} />
+      <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} />
+      <Panel className="p-6">
+        <h2 className="font-semibold">Photothèque Google Drive et prestations</h2>
+        <p className="mt-2 text-sm text-muted">Dossier Drive où l’agent cherche les photos du client, prestations réellement proposées et objectif éditorial. Les photos reçues par WhatsApp restent gérées dans l’onglet Photothèque.</p>
+        {data.agentReady ? <AgentConfigurationForm projectId={data.project.id} config={data.agent} /> : <p role="alert" className="mt-3 text-sm">Configuration de l’agent indisponible.</p>}
+        <p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${data.project.id}/calendar`}>Calendrier des publications →</Link> <Link className="ml-4 text-accent" href={`/publications/review`}>Publications à valider →</Link></p>
+      </Panel>
+    </div>
+  );
 }
 
 async function ActivityTab({ clientId, recommendations, runs, actions }: { clientId: string } & Pick<Parameters<typeof ClientAgenticActivity>[0], "recommendations" | "runs" | "actions">) {

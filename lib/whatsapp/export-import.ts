@@ -365,25 +365,29 @@ export async function cancelExportImport(userId: string, clientId: unknown, impo
  */
 export async function purgeExportImports(deps: ExportDeps = productionExportDeps, limit = 20) {
   const now = deps.now();
+  // Ordre par dernière tentative (updated_at, réécrit à chaque passage en échec, #47) : des imports dont la suppression
+  // échoue durablement passent en fin de file au lieu de bloquer indéfiniment la purge des suivants (conservation 24 h).
   const [expired, terminal] = await Promise.all([
-    db().from("whatsapp_export_imports").select(IMPORT_COLUMNS).is("purged_at", null).lte("expires_at", now.toISOString()).order("expires_at").limit(limit),
-    db().from("whatsapp_export_imports").select(IMPORT_COLUMNS).is("purged_at", null).in("status", [...TERMINAL]).order("expires_at").limit(limit)]);
+    db().from("whatsapp_export_imports").select(IMPORT_COLUMNS).is("purged_at", null).lte("expires_at", now.toISOString()).order("updated_at").order("expires_at").limit(limit),
+    db().from("whatsapp_export_imports").select(IMPORT_COLUMNS).is("purged_at", null).in("status", [...TERMINAL]).order("updated_at").order("expires_at").limit(limit)]);
   if (expired.error || terminal.error) throw Error("export_unavailable");
   const rows = new Map<string, ImportRow>();
   for (const row of [...(expired.data ?? []), ...(terminal.data ?? [])] as ImportRow[]) rows.set(row.id, row);
   let purged = 0, failed = 0;
+  // Échec : la ligne est horodatée (déclencheur updated_at) pour céder sa place au passage suivant ; jamais d'exception.
+  const later = async (id: string) => { failed++; try { await db().from("whatsapp_export_imports").update({ updated_at: now.toISOString() }).eq("id", id).is("purged_at", null); } catch { /* passage suivant */ } };
   for (const row of [...rows.values()].slice(0, limit)) {
     const isTerminal = (TERMINAL as readonly string[]).includes(row.status);
     if (!isTerminal && Date.parse(row.expires_at) > now.getTime()) continue;
     try {
       if (!isTerminal) { await finish(null, row, "expired", deps); purged++; continue; }
-      if (!await safePurge(row, deps)) { failed++; continue; }
+      if (!await safePurge(row, deps)) { await later(row.id); continue; }
       const cleared = await db().from("whatsapp_export_items").update({ caption: null, preview_path: null }).eq("import_id", row.id);
-      if (cleared.error) { failed++; continue; }
+      if (cleared.error) { await later(row.id); continue; }
       const done = await db().from("whatsapp_export_imports").update({ purged_at: now.toISOString() }).eq("id", row.id).is("purged_at", null);
-      if (done.error) { failed++; continue; }
+      if (done.error) { await later(row.id); continue; }
       purged++;
-    } catch { failed++; console.error("[whatsapp-export] Purge d'un import différée."); }
+    } catch { await later(row.id); console.error("[whatsapp-export] Purge d'un import différée."); }
   }
   let orphans: number | null = null;
   try { orphans = await sweepExportOrphans(deps, now); } catch { console.error("[whatsapp-export] Balayage des archives orphelines différé."); }

@@ -35,11 +35,17 @@ const FAILURE_WINDOW_MS=14*86400000;
 export const MAX_MEDIA_ATTEMPTS=3;
 export const MAX_MEDIA_FOLLOW_UPS_PER_TICK=3;
 const MEDIA_FOLLOW_UP_MS=3*86400000;
+// Échéance du passage (#47, donnée par la route du planificateur) : aucune nouvelle préparation IA ne démarre s'il reste
+// moins que son pire cas (génération : délai de 60 s du fournisseur, puis finish et étape média : Drive, adaptation),
+// aucune reprise média sans IA s'il reste moins que la sienne. Une étape déjà lancée n'est jamais interrompue ici.
+export const PREPARATION_BUDGET_MS=100_000;
+export const MEDIA_FOLLOW_UP_BUDGET_MS=45_000;
+export type ScheduledPreparationOptions={deadline?:number;clock?:()=>number};
 const USER=/^user_[a-zA-Z0-9_-]{1,200}$/;
 
 type DbError={code?:string;message?:string}|null;
 export type FollowUpSummary={runs:number;attached:number;submitted:number;gaveUp:number};
-export type ScheduledPreparationSummary={disabled?:'global';clients:number;preparations:number;submitted:number;notified:number;skipped:Record<string,number>;followUp:FollowUpSummary};
+export type ScheduledPreparationSummary={disabled?:'global';clients:number;preparations:number;submitted:number;notified:number;skipped:Record<string,number>;followUp:FollowUpSummary;deadline?:boolean};
 export type DeliveryPreparationSummary={disabled?:'flag'|'global';prepared:number;blocked:number;late:number;photoBlocked:number;notified:number};
 export type ScheduledPreparationDeps={prepare:(userId:string,projectId:string,options:PrepareOptions)=>Promise<AgentV2Result>;audit:(actor:Actor,entry:Parameters<typeof writeAudit>[1])=>Promise<void>;
  isAdmin:(userId:string)=>boolean;retryMedia:(userId:string,runId:string)=>Promise<string>};
@@ -116,7 +122,7 @@ async function closeFollowUp(runId:string,state:'done'|'gave_up'){
  const r=await db().from('publication_scheduled_runs').update({state,updated_at:new Date().toISOString()}).eq('run_id',runId).eq('state','open');
  if(r.error)console.error('[publications-scheduler] follow-up not closed');
 }
-async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void){
+async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void,left:()=>number){
  const open=await db().from('publication_scheduled_runs').select('run_id,client_id,created_at').eq('state','open').order('created_at').limit(MAX_MEDIA_FOLLOW_UPS_PER_TICK);
  if(open.error||!open.data?.length)return;
  const ids=(open.data as {run_id:string}[]).map(r=>r.run_id);
@@ -143,6 +149,8 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
     if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`))summary.notified++;
     await closeFollowUp(run.id,'gave_up');summary.followUp.gaveUp++;continue;
    }
+   // Plus assez de temps pour une reprise média : elle attend le passage suivant (rien n'est abandonné pour autant).
+   if(left()<MEDIA_FOLLOW_UP_BUDGET_MS){skip('deadline');summary.deadline=true;break;}
    try{state=await deps.retryMedia(actor,run.id);}catch{state='unconfirmed';}
    if(state!=='attached')continue;
    summary.followUp.attached++;
@@ -154,27 +162,37 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
  }
 }
 
-export async function runScheduledPreparation(now=new Date(),deps:ScheduledPreparationDeps=productionDeps):Promise<ScheduledPreparationSummary>{
+export async function runScheduledPreparation(now=new Date(),deps:ScheduledPreparationDeps=productionDeps,options:ScheduledPreparationOptions={}):Promise<ScheduledPreparationSummary>{
  const summary:ScheduledPreparationSummary={clients:0,preparations:0,submitted:0,notified:0,skipped:{},followUp:{runs:0,attached:0,submitted:0,gaveUp:0}};
  const skip=(reason:string)=>{summary.skipped[reason]=(summary.skipped[reason]??0)+1;};
+ const clock=options.clock??Date.now,deadline=options.deadline;
+ const left=()=>deadline===undefined||!Number.isFinite(deadline)?Infinity:deadline-clock();
  const s=await globalSwitches();
  if(!s||s.emergency_stop!==false||s.automation_enabled!==true||s.generation_enabled!==true)return {...summary,disabled:'global'};
  // D'abord les reprises sans IA (photo, soumission), puis les nouvelles préparations.
- await followUpRuns(now,deps,summary,skip);
+ await followUpRuns(now,deps,summary,skip,left);
  // Rotation : le client le moins récemment traité d'abord (jamais traité en tête), pour qu'aucun ne soit oublié.
- const clients=await db().from('publication_client_settings').select('client_id,prepare_lead_days').eq('auto_prepare_enabled',true).eq('generation_enabled',true)
+ const clients=await db().from('publication_client_settings').select('client_id,prepare_lead_days,last_auto_prepared_at').eq('auto_prepare_enabled',true).eq('generation_enabled',true)
   .order('last_auto_prepared_at',{ascending:true,nullsFirst:true}).order('client_id').limit(MAX_CLIENTS_PER_TICK);
  if(clients.error||!clients.data)return {...summary,skipped:{...summary.skipped,settings_unavailable:1}};
- for(const client of clients.data as {client_id:string;prepare_lead_days:number}[]){
+ for(const client of clients.data as {client_id:string;prepare_lead_days:number;last_auto_prepared_at?:string|null}[]){
   if(summary.preparations>=MAX_PREPARATIONS_PER_TICK)break;
+  // Plus le temps de lancer une préparation : le client garde sa place en tête de rotation (non horodaté).
+  if(left()<PREPARATION_BUDGET_MS){skip('deadline');summary.deadline=true;break;}
+  // Rotation réservée AVANT de préparer (#47), par compare-and-set sur l'horodatage lu : deux passages simultanés ne
+  // préparent jamais le même client, et un client dont la préparation plante (processus coupé) ne reste pas en tête
+  // de rotation à chaque passage au détriment des autres ; il repasse à son tour.
+  const claim=db().from('publication_client_settings').update({last_auto_prepared_at:now.toISOString()}).eq('client_id',client.client_id);
+  const previous=client.last_auto_prepared_at??null;
+  const stamped=await (previous===null?claim.is('last_auto_prepared_at',null):claim.eq('last_auto_prepared_at',previous)).select('client_id');
+  if(stamped.error){console.error('[publications-scheduler] rotation not recorded');skip('rotation_unavailable');continue;}
+  if(!stamped.data?.length){skip('client_busy');continue;}
   summary.clients++;
-  await prepareClient(client,now,deps,summary,skip);
-  const stamped=await db().from('publication_client_settings').update({last_auto_prepared_at:now.toISOString()}).eq('client_id',client.client_id);
-  if(stamped.error)console.error('[publications-scheduler] rotation not recorded');
+  await prepareClient(client,now,deps,summary,skip,left);
  }
  return summary;
 }
-async function prepareClient(client:{client_id:string;prepare_lead_days:number},now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void){
+async function prepareClient(client:{client_id:string;prepare_lead_days:number},now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void,left:()=>number){
  const actor=await delegatedActor(client.client_id,deps.isAdmin);
  if(!actor){skip('no_delegated_admin');return;}
  const projects=await db().from('publication_agent_projects').select('project_id').eq('client_id',client.client_id).eq('enabled',true).eq('rights_confirmed',true).order('project_id');
@@ -182,6 +200,7 @@ async function prepareClient(client:{client_id:string;prepare_lead_days:number},
  const leadDays=Math.min(Math.max(Math.trunc(client.prepare_lead_days)||3,1),14),today=parisToday(now);
  for(const {project_id:projectId} of projects.data as {project_id:string}[]){
   if(summary.preparations>=MAX_PREPARATIONS_PER_TICK)break;
+  if(left()<PREPARATION_BUDGET_MS){skip('deadline');summary.deadline=true;break;}
   // Échec récent de l'agent sur ce projet : pas de nouvel appel IA avant la fin de la pause (échec fermé si illisible).
   const failures=await recentFailures(projectId,now);
   if(!failures){skip('failures_unavailable');continue;}
@@ -192,7 +211,9 @@ async function prepareClient(client:{client_id:string;prepare_lead_days:number},
   if(ensured.error){skip((ensured.error as DbError)?.code==='23514'?'channels_not_configured':'occurrences_unavailable');continue;}
   let prepared:AgentV2Result;
   try{prepared=await deps.prepare(actor,projectId,{allowRealAI:true,leadDays,now,...(failures.exhausted.length?{excludeOccurrenceIds:failures.exhausted}:{})});}
-  catch{console.error('[publications-scheduler] preparation failed');skip('preparation_failed');continue;}
+  // Une exception (délai, base ou Drive indisponible) a pu survenir après l'appel IA : elle compte comme une tentative
+  // (#47), sinon une panne en série déclencherait un appel IA par projet de chaque client visité.
+  catch{console.error('[publications-scheduler] preparation failed');summary.preparations++;skip('preparation_failed');continue;}
   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');continue;}
   // Toute tentative compte (un refus de contenu a pu consommer un appel IA) : au plus MAX_PREPARATIONS_PER_TICK.
   summary.preparations++;
@@ -231,12 +252,22 @@ export async function prepareApprovedDeliveries(env:Record<string,string|undefin
    summary.photoBlocked++;
    if(await notify(`publication-photo-unpublishable:${c.publication_id}:${c.revision_id}`,'delivery_failed',`/publications/${c.publication_id}`))summary.notified++;
    continue;}
-  if(c.state!=='ready'||summary.prepared+summary.blocked>=MAX_DELIVERY_PREPARATIONS_PER_TICK)continue;
+  // Plafond sur les diffusions préparées seulement (#47) : des candidates bloquées (approbateur parti, refus serveur)
+  // ne consomment plus le budget du passage au détriment des suivantes ; leur nombre reste borné par MAX_DELIVERY_CANDIDATES.
+  if(c.state!=='ready'||summary.prepared>=MAX_DELIVERY_PREPARATIONS_PER_TICK)continue;
   const review=await db().from('publication_reviews').select('actor_id').eq('publication_id',c.publication_id).eq('revision_id',c.revision_id).eq('decision','approved')
    .order('created_at',{ascending:false}).limit(1).maybeSingle();
   const approver=(review.data as {actor_id?:unknown}|null)?.actor_id;
   // Approbateur toujours administrateur autorisé (même règle que la délégation) ; sinon rien n'est préparé.
-  if(review.error||typeof approver!=='string'||!USER.test(approver)||!deps.isAdmin(approver)){summary.blocked++;continue;}
+  if(review.error||typeof approver!=='string'||!USER.test(approver)||!deps.isAdmin(approver)){
+   summary.blocked++;
+   // Approbation inutilisable (approbateur qui n'est plus l'administrateur, révision sans approbation) : un humain est
+   // prévenu une fois par révision ; il approuve à nouveau depuis la fiche. Jamais sur une simple erreur de lecture.
+   if(!review.error){
+    const n=await db().from('admin_notifications').upsert({event_key:`publication-approval-stale:${c.publication_id}:${c.revision_id}`,category:'delivery_failed',href:`/publications/${c.publication_id}`},{onConflict:'event_key',ignoreDuplicates:true}).select('event_key');
+    if(n.error)console.error('[publications-scheduler] notification not recorded',{category:'delivery_failed'});else if(n.data?.length)summary.notified++;
+   }
+   continue;}
   const r=await db().rpc('publication_prepare_delivery',{p_publication_id:c.publication_id,p_actor_id:approver});
   if(r.error)summary.blocked++;else summary.prepared++;
  }

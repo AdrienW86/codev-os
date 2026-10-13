@@ -53,7 +53,8 @@ async function handle(request: Request) {
   // Publications (socle lot 6), avant les étapes lourdes pour tenir l'heure prévue : diffusions des publications
   // approuvées par un humain, puis un envoi dû au plus. Désactivé tant que PUBLICATIONS_SCHEDULED_DELIVERY ≠ « enabled ».
   const delivery = await step("publication_delivery_prepare", () => prepareApprovedDeliveries(process.env), "Diffusion des publications différée.");
-  const due = await step("publication_delivery_send", () => processScheduledDuePublications(process.env), "Envoi des publications différé.");
+  // Envois dus bornés par l'échéance du passage (#47) : premier envoi libre, suivants seulement s'ils tiennent dans le temps restant.
+  const due = await step("publication_delivery_send", () => processScheduledDuePublications(process.env, undefined, { deadline }), "Envoi des publications différé.");
   const push = await step("push", () => flushPushNotifications(), "Notifications push différées.");
   // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
   const searchConsole = await step("search_console", () => syncDueSearchConsole(new Date()), "Synchro Search Console différée.");
@@ -62,7 +63,8 @@ async function handle(request: Request) {
   // Photothèque intelligente : classement borné des clients qui l'ont activé et purge des rejets expirés. Jamais de publication.
   const mediaIntelligence = await step("media_intelligence", () => runMediaIntelligenceTick(), "Classement de la photothèque différé.");
   // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
-  const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(), "Préparation des publications différée.");
+  // Aucune préparation IA ne démarre sans le temps de son pire cas avant l'échéance du passage (#47).
+  const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(new Date(), undefined, { deadline }), "Préparation des publications différée.");
   await recordSchedulerHeartbeat({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
   return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { delivery, due }, publicationPreparation, whatsappExports, steps },

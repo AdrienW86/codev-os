@@ -30,7 +30,7 @@ const db = () => getSupabaseServerClient();
 const errorText = (error: unknown) => (typeof (error as { message?: unknown })?.message === "string" ? (error as { message: string }).message : "Erreur inconnue").slice(0, 500);
 const isRetryable = (error: unknown) => (error as { retryable?: unknown } | null)?.retryable !== false;
 
-export type TickSummary = { enqueued: number; invalid: number; processed: number; succeeded: number; skipped: number; failed: number; retried: number };
+export type TickSummary = { enqueued: number; invalid: number; processed: number; succeeded: number; skipped: number; failed: number; retried: number; deferred?: number };
 
 /** Met en file les automatisations dues. Les échéances manquées sont regroupées en une seule exécution. */
 export async function enqueueDueAutomations(actor: Actor, now: Date) {
@@ -162,25 +162,43 @@ export async function runJob(actor: Actor, worker: string, job: JobRow, now = ne
   }
 }
 
-export async function processJobs(actor: Actor, worker: string, limit = 5, timeoutMs = RUN_TIMEOUT_MS) {
-  const { data, error } = await db().rpc("codev_claim_jobs", { p_worker: worker, p_limit: limit, p_lease_seconds: LEASE_SECONDS });
-  if (error) throw new Error("job claim");
-  const summary = { processed: 0, succeeded: 0, skipped: 0, failed: 0, retried: 0 };
-  for (const job of (data ?? []) as JobRow[]) {
+/**
+ * Exécution bornée des jobs dus. Sans échéance : un lot réservé d'un coup (comportement historique). Avec une échéance
+ * (#47, route du planificateur) : un job réservé à la fois, et seulement s'il reste au moins son délai maximal d'exécution ;
+ * les autres restent en file (jamais réservés pour rien : un bail expiré consommerait une tentative).
+ */
+export async function processJobs(actor: Actor, worker: string, limit = 5, timeoutMs = RUN_TIMEOUT_MS, options: { deadline?: number; clock?: () => number } = {}) {
+  const summary: { processed: number; succeeded: number; skipped: number; failed: number; retried: number; deferred?: number } = { processed: 0, succeeded: 0, skipped: 0, failed: 0, retried: 0 };
+  const run = async (job: JobRow) => {
     const result = await runJob(actor, worker, job, new Date(), timeoutMs);
     summary.processed++;
     if (result !== "lost") summary[result]++;
+  };
+  const deadline = options.deadline, clock = options.clock ?? Date.now;
+  if (deadline === undefined || !Number.isFinite(deadline)) {
+    const { data, error } = await db().rpc("codev_claim_jobs", { p_worker: worker, p_limit: limit, p_lease_seconds: LEASE_SECONDS });
+    if (error) throw new Error("job claim");
+    for (const job of (data ?? []) as JobRow[]) await run(job);
+    return summary;
+  }
+  for (let i = 0; i < limit; i++) {
+    if (deadline - clock() < timeoutMs) { summary.deferred = 1; break; }
+    const { data, error } = await db().rpc("codev_claim_jobs", { p_worker: worker, p_limit: 1, p_lease_seconds: LEASE_SECONDS });
+    if (error) throw new Error("job claim");
+    const job = ((data ?? []) as JobRow[])[0];
+    if (!job) break;
+    await run(job);
   }
   return summary;
 }
 
-/** Un « tick » du planificateur : agents globaux, mise en file, exécution bornée. */
-export async function runTick(worker: string, now = new Date(), options: { jobLimit?: number; ensureGlobal?: (actor: Actor) => Promise<unknown> } = {}): Promise<TickSummary> {
+/** Un « tick » du planificateur : agents globaux, mise en file, exécution bornée (jobDeadline : voir processJobs). */
+export async function runTick(worker: string, now = new Date(), options: { jobLimit?: number; jobDeadline?: number; ensureGlobal?: (actor: Actor) => Promise<unknown> } = {}): Promise<TickSummary> {
   const actor: Actor = { kind: "system", worker };
   if (options.ensureGlobal) { try { await options.ensureGlobal(actor); } catch { console.error("[scheduler] Rattachement des agents globaux différé."); } }
   const { enqueueDueAdsReports } = await import("@/lib/reports/recurring/service");
   const recurring = await enqueueDueAdsReports(actor, now);
   const { enqueued, invalid } = await enqueueDueAutomations(actor, now);
-  const processed = await processJobs(actor, worker, options.jobLimit ?? 5);
+  const processed = await processJobs(actor, worker, options.jobLimit ?? 5, RUN_TIMEOUT_MS, { deadline: options.jobDeadline });
   return { enqueued: enqueued + recurring, invalid, ...processed };
 }

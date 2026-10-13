@@ -95,3 +95,11 @@ Le cron Vercel vers `/api/internal/scheduler/tick` reste à activer volontaireme
 - La préparation est séquentielle et bornée. Un client avec beaucoup de créneaux est rattrapé au fil des passages.
 - La notification « Publication à valider » renvoie à la file de validation, pas à chaque publication.
 - Le tableau de supervision (statuts, actions Approuver / Refuser / Reprogrammer / Suspendre) relève du lot 7.
+
+## Robustesse et charge (phase 8, #47)
+
+Essais de charge déterministes (20 clients, pannes IA et sociales, interruptions, deux sessions PostgreSQL) et correctifs :
+plafond IA tenu même quand la préparation lève une exception, échéance du passage pour la préparation et l'envoi, rotation
+réservée avant de préparer, plafond des diffusions sur les seules préparées, garde de 2 h appliquée aux réessais automatiques
+(migration `20261106000000`), plusieurs envois par passage quand ils tiennent dans le temps restant. Détails, contrat et
+mesures : [publications-robustness.md](publications-robustness.md).

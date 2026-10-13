@@ -13,7 +13,7 @@ import {createMetaPublisher,createMetaReconciler} from './meta-publisher';
 import {createGoogleBusinessProfilePublisher,createGoogleBusinessProfileReconciler} from './gbp-publisher';
 import {runOnePublicationJob,type EngineDb,type ExecutionResult} from './engine';
 import type {PublicationPublisher,PublicationReconciler,PublishResult,ReconcileResult} from './publisher';
-import type {PublicationPlatform} from '../types';
+import {publicationPlatforms,type PublicationPlatform} from '../types';
 
 // Server-side publisher registry (Lot 4.3 P11-b). One publisher per platform; a platform whose provider is not
 // configured answers "auth / provider_not_configured" (no side effect, delivery blocked). Nothing here is wired to a
@@ -45,7 +45,7 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
 export const PRODUCTION_LEASE_SECONDS=600;
 // Explicit, single-job execution for a future worker. Fail closed: no vault → nothing runs.
 // maxLateSeconds: scheduler path only (never more late than the tolerance, see processScheduledDuePublications).
-export async function runOnePublicationJobInProduction(workerId:string,options:{maxLateSeconds?:number}={}):Promise<ExecutionResult>{
+export async function runOnePublicationJobInProduction(workerId:string,options:{maxLateSeconds?:number;platforms?:readonly PublicationPlatform[]}={}):Promise<ExecutionResult>{
  const deps=productionOAuthDeps();if(!deps.vault)return {state:'idle'};
  return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS,...options});
 }
@@ -56,7 +56,8 @@ export async function runOnePublicationJobInProduction(workerId:string,options:{
 // emergency stop is active or publishing is disabled; the engine re-checks every switch and the readiness anyway.
 export const MAX_DUE_PER_RUN=5;
 type SettingsDb={from(table:string):{select(columns:string):{limit(n:number):{maybeSingle():PromiseLike<{data:unknown;error:unknown}>}}}};
-export type DueRunDeps={db:SettingsDb;run:(workerId:string)=>Promise<ExecutionResult>};
+export type DueRunOptions={platforms?:readonly PublicationPlatform[]};
+export type DueRunDeps={db:SettingsDb;run:(workerId:string,options?:DueRunOptions)=>Promise<ExecutionResult>};
 export type DueRunSummary={ok:boolean;message:string;counts:{published:number;failed:number;uncertain:number;blocked:number;retry:number}};
 export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
  const {userId}=await requireAdmin();
@@ -70,15 +71,27 @@ export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServ
 // une coupure) : la tâche est bloquée en base (motif late_schedule, notifiée), un humain décide de la relancer.
 export const MAX_SCHEDULED_DUE_PER_TICK=1;
 export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
+// Capacité (#47) : avec une cadence de 15 min et un seul envoi par passage, au plus 8 diffusions dues au même créneau
+// partaient dans la tolérance de 2 h ; les suivantes étaient bloquées « en retard ». Quand l'appelant donne l'échéance du
+// passage, le premier envoi reste libre (comme avant) et les suivants ne réservent que les plateformes dont le pire cas
+// tient dans le temps restant (délais des transports : 20 s par requête Meta / GBP, 15 s par renouvellement OAuth, marge
+// pour le contexte, le coffre et les URL signées). Instagram (~290 s) n'est donc jamais qu'un premier envoi. Plafond fixe.
+export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000};
+export const MAX_SCHEDULED_DUE_WITH_DEADLINE=10;
+export type ScheduledDueOptions={deadline?:number;clock?:()=>number};
 export const SCHEDULED_DELIVERY_FLAG='PUBLICATIONS_SCHEDULED_DELIVERY';
 // L'environnement est lu par l'appelant (route du planificateur), jamais dans lib/publications.
 export function scheduledDeliveryEnabled(env:Record<string,string|undefined>):boolean{return env[SCHEDULED_DELIVERY_FLAG]==='enabled';}
-const scheduledRun=(workerId:string)=>runOnePublicationJobInProduction(workerId,{maxLateSeconds:SCHEDULED_LATE_TOLERANCE_SECONDS});
-export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun}):Promise<DueRunSummary|{disabled:true}>{
+const scheduledRun=(workerId:string,options:DueRunOptions={})=>runOnePublicationJobInProduction(workerId,{maxLateSeconds:SCHEDULED_LATE_TOLERANCE_SECONDS,...options});
+export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun},options:ScheduledDueOptions={}):Promise<DueRunSummary|{disabled:true}>{
  if(!scheduledDeliveryEnabled(env))return {disabled:true};
- return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
+ const deadline=options.deadline;
+ if(deadline===undefined||!Number.isFinite(deadline))return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
+ const clock=options.clock??Date.now;
+ return processDue('scheduler',deps,MAX_SCHEDULED_DUE_WITH_DEADLINE,i=>i===0?undefined:publicationPlatforms.filter(p=>SEND_BUDGET_MS[p]<=deadline-clock()));
 }
-async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN):Promise<DueRunSummary>{
+// platformsFor (planificateur avec échéance) : plateformes permises pour le i-ème envoi ; liste vide → fin du passage.
+async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN,platformsFor?:(i:number)=>readonly PublicationPlatform[]|undefined):Promise<DueRunSummary>{
  const counts={published:0,failed:0,uncertain:0,blocked:0,retry:0};
  const settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();
  const s=settings.data as {emergency_stop?:unknown;publishing_enabled?:unknown}|null;
@@ -87,12 +100,15 @@ async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN):Pro
  if(s.publishing_enabled!==true)return {ok:false,message:'Publication désactivée dans les réglages : aucun envoi.',counts};
  let processed=0;
  for(let i=0;i<max;i++){
-  let r:ExecutionResult;try{r=await deps.run(worker);}catch{log('process_due');break;}
+  const platforms=platformsFor?.(i);if(platforms&&!platforms.length)break;
+  let r:ExecutionResult;try{r=await (platforms?deps.run(worker,{platforms}):deps.run(worker));}catch{log('process_due');break;}
   if(r.state==='idle')break;processed++;
   if(r.state==='completed'){const o=r.outcome;
    if(o==='published'||o==='simulated')counts.published++;else if(o==='uncertain')counts.uncertain++;
    else if(o==='retryable'||o==='rate_limit'||o==='provider_unavailable')counts.retry++;else if(o==='auth')counts.blocked++;else counts.failed++;}
   else if(r.state==='blocked')counts.blocked++;else if(r.state==='unconfirmed')counts.uncertain++;else counts.failed++;
+  // Planificateur avec échéance : une réservation refusée par la base (« stale ») arrête le passage, sans insister.
+  if(platformsFor&&r.state==='stale')break;
  }
  if(!processed)return {ok:true,message:'Aucune publication due pour le moment.',counts};
  return {ok:true,counts,message:`${processed} envoi(s) traité(s) : ${counts.published} publié(s), ${counts.retry} à réessayer, ${counts.blocked} bloqué(s), ${counts.failed} en échec, ${counts.uncertain} à vérifier.`};

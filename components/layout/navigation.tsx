@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
+import { Fragment, useRef } from "react";
 import { Icon, type IconName } from "@/components/ui/icon";
 
 // Navigation V2 : orientée usage quotidien. Les routes /projects, /tasks,
@@ -29,8 +29,8 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
       {navigation.map(({ href, label, icon, matches = [] }) => {
         const active = within(pathname, href) || matches.some((path) => within(pathname, path));
         return (
+          <Fragment key={href}>
           <Link
-            key={href}
             href={href}
             onClick={onNavigate}
             aria-current={pathname === href ? "page" : active ? "location" : undefined}
@@ -39,6 +39,19 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
             <Icon name={icon} width={18} height={18} className={active ? "text-accent-hover" : undefined} />
             {label}
           </Link>
+          {/* Raccourci sous Publications : supervision (validations, erreurs, comptes, photos, agent), pensée pour le téléphone. */}
+          {href === "/publications" && (
+            <Link
+              href="/publications/supervision"
+              onClick={onNavigate}
+              aria-current={within(pathname, "/publications/supervision") ? "page" : undefined}
+              data-supervision-shortcut="sidebar"
+              className={`ml-9 block rounded-lg px-3 py-1.5 text-xs transition-colors ${within(pathname, "/publications/supervision") ? "font-medium text-foreground" : "text-muted hover:bg-surface-raised hover:text-foreground"}`}
+            >
+              Supervision
+            </Link>
+          )}
+          </Fragment>
         );
       })}
     </nav>
@@ -80,7 +93,11 @@ export function MobileNavigation() {
     >
       <summary className="flex cursor-pointer list-none items-center justify-between p-4">
         <span className="font-semibold">CODE-V <span className="text-muted">OS</span></span>
-        <span className="rounded-lg border border-border-strong bg-surface-raised/40 px-3 py-2 text-xs">Menu</span>
+        <span className="flex items-center gap-2">
+          {/* Raccourci mobile vers la supervision des publications (un lien dans le résumé n'ouvre pas le menu). */}
+          <Link href="/publications/supervision" className="rounded-lg border border-border-strong px-3 py-2 text-xs text-accent-hover" data-supervision-shortcut="mobile">Supervision</Link>
+          <span className="rounded-lg border border-border-strong bg-surface-raised/40 px-3 py-2 text-xs">Menu</span>
+        </span>
       </summary>
       <div className="px-4 pb-4">
         <NavigationLinks onNavigate={() => { if (ref.current) ref.current.open = false; }} />

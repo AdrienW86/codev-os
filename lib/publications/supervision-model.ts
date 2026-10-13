@@ -88,3 +88,16 @@ export function formatSlot(iso:string|null):string{
  if(!iso||Number.isNaN(Date.parse(iso)))return 'Créneau inconnu';
  return new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso));
 }
+
+// État de l'agent pour un client (lot 7 mobile) : dernière préparation Agent v2, en libellés sûrs (jamais de texte généré).
+export type AgentRunView={state:'running'|'completed'|'failed';label:string;reason:string|null;at:string};
+const AGENT_RUN_ERRORS:Record<string,string>={invalid_output:'Contenu généré invalide',unsupported_claim:'Affirmation absente du contexte',occurrence_unavailable:'Créneau devenu indisponible',
+ generation_failed:'Génération en échec',context_unavailable:'Contexte du client indisponible',lease_expired:'Préparation interrompue (délai dépassé)'};
+export function agentRunView(run:{status:string;error_code:string|null;created_at:string;completed_at:string|null}):AgentRunView{
+ const at=run.completed_at??run.created_at;
+ if(run.status==='completed')return {state:'completed',label:'Dernière préparation terminée',reason:null,at};
+ if(run.status==='failed')return {state:'failed',label:'Dernière préparation en échec',reason:run.error_code?AGENT_RUN_ERRORS[run.error_code]??'Échec non identifié':null,at};
+ return {state:'running',label:'Préparation en cours',reason:null,at:run.created_at};
+}
+// Plateforme → fournisseur de connexion (reconnexion OAuth existante).
+export const providerOfPlatform=(platform:PublicationPlatform):'meta'|'google_business_profile'=>platform==='google_business_profile'?'google_business_profile':'meta';

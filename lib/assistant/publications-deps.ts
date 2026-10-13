@@ -11,22 +11,20 @@ import { getOpenOccurrencesForAgent } from "@/lib/publications/agent-v2/open-occ
 import { prepareNextPublications } from "@/lib/publications/agent-v2/service";
 import { listPublications } from "@/lib/publications/data";
 import { getSupervision, reschedulePublication, type SupervisedPublication } from "@/lib/publications/supervision";
+import { listClientsLackingPhotos } from "@/lib/publications/editorial-health";
 import { createPublicationsTools, type PhotoShortage, type PublicationsDeps } from "@/lib/assistant/publications-tool";
 import type { PhotoDecisionRow } from "@/lib/assistant/publications-model";
 
 const db = () => getSupabaseServerClient();
 
 /**
- * Clients à court de photos publiables : seuil et comptage de la supervision (lot 7).
- * PROVISOIRE — à remplacer par la fonction exportée par #42 (« clients sans photos utilisables ») dès sa fusion :
- * seul le corps de cette fonction change, la forme PhotoShortage[] reste celle de l'outil.
+ * Clients à court de photos utilisables : modèle de lecture de la santé de la photothèque (#42), mêmes règles que la
+ * sélection de l'agent (documents exclus, doublons exacts fusionnés), avec les prestations sans photo.
  */
 export async function clientsLackingPhotos(): Promise<PhotoShortage[]> {
   await requireAdmin();
-  const supervision = await getSupervision(new Date());
-  return supervision.clients.filter((client) => client.tooFewPhotos)
-    .map((client) => ({ clientId: client.id, clientName: client.name, available: client.photos.available, capped: client.photos.capped }))
-    .sort((a, b) => a.available - b.available || a.clientName.localeCompare(b.clientName, "fr"));
+  const rows = await listClientsLackingPhotos();
+  return rows.map((row) => ({ clientId: row.clientId, clientName: row.clientName, available: row.usable, capped: false, servicesLacking: row.servicesLacking }));
 }
 
 /**

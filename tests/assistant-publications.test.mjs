@@ -124,7 +124,7 @@ test("the registry has no publish / approve / submit tool; Publications writes a
   const deps = read("lib/assistant/publications-deps.ts");
   assert.match(deps, /prepareNextPublications\(projectId, \{ allowRealAI: true, excludeOccurrenceIds \}\)/);
   assert.match(deps, /reschedulePublication\(publicationId, revisionId, occurrenceId\)/);
-  assert.match(deps, /PROVISOIRE — à remplacer par la fonction exportée par #42/);
+  assert.match(deps, /listClientsLackingPhotos\(\)/); // modèle de lecture #42, mêmes règles que la sélection de l'agent
   assert.match(deps, /PROVISOIRE — à remplacer par le modèle de lecture « usage \/ exclusion des photos »/);
 });
 

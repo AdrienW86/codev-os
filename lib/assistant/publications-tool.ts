@@ -21,7 +21,7 @@ export type PrepareRunResult = { ok: boolean; message: string; publications: { i
 export type PendingPublication = { id: string; clientId: string; clientName: string; projectName: string | null; platform: string | null; subject: string; updatedAt: string };
 export type ReschedulablePublication = { id: string; clientId: string; clientName: string; platform: string; subject: string; status: string; revisionId: string; scheduledFor: string | null; targets: { id: string; scheduledFor: string }[] };
 export type ReconnectAccount = { clientId: string; clientName: string; platform: string; name: string; reason: string | null };
-export type PhotoShortage = { clientId: string; clientName: string; available: number; capped: boolean };
+export type PhotoShortage = { clientId: string; clientName: string; available: number; capped: boolean; servicesLacking?: string[] };
 
 export type PublicationsDeps = {
   /** Même contrôle que l'interface (requireAdmin) : appelé avant toute lecture ou écriture. */
@@ -206,7 +206,7 @@ export function createPublicationsTools(deps: PublicationsDeps) {
         const rows = await deps.clientsLackingPhotos();
         const view: TableView & { link: { label: string; href: string } } = {
           type: "table", title: "Clients à court de photos", caption: "Photos réellement proposables par l’agent (mêmes règles que la sélection). Sous le seuil, l’agent risque de préparer sans photo.",
-          columns: ["Client", "Photos disponibles"], rows: rows.map((row) => ({ cells: [row.clientName, `${row.available}${row.capped ? "+" : ""}`], href: libraryHref(row.clientId) })),
+          columns: ["Client", "Photos disponibles", "Prestations sans photo"], rows: rows.map((row) => ({ cells: [row.clientName, `${row.available}${row.capped ? "+" : ""}`, row.servicesLacking?.length ? row.servicesLacking.slice(0, 4).join(", ") : "—"], href: libraryHref(row.clientId) })),
           empty: "Aucun client à court de photos.", link: { label: "Supervision", href: "/publications/supervision" },
         };
         if (!rows.length) return { ok: true, text: "Aucun client ne manque de photos pour les Publications.", links: [{ label: "Supervision", href: "/publications/supervision" }], view };

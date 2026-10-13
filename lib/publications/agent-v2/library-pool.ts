@@ -3,8 +3,9 @@
 // proposer au modèle une photo que la base refuserait, ou qui illustrerait mal une plateforme.
 import {isPublicationCandidate,type Verdict} from '@/lib/media-intelligence/model';
 import type {AgentMediaCandidate} from './contract';
+import {dedupeByHash,isDocumentPhoto} from '../editorial-photos';
 
-export type LibraryRow={id:string;library_status:string;media_kind:string;mime_type:string;size:number;width:number|null;height:number|null;purged_at:string|null;imported_at:string|null;claimed_agent_v2_run_id:string|null};
+export type LibraryRow={id:string;library_status:string;media_kind:string;mime_type:string;size:number;width:number|null;height:number|null;purged_at:string|null;imported_at:string|null;claimed_agent_v2_run_id:string|null;sha256?:string|null};
 export type LibraryAssessment={asset_id:string;verdict:Verdict;confidential:boolean;sensitive:string[];manual_verdict:'relevant'|'off_topic'|null;description:string;topics:string[];
  quality:string;quality_issues:string[];business_relevance:number;publishability:number};
 export type LibraryUse={asset_id:string;publication_id:string;used_at:string};
@@ -33,17 +34,20 @@ export function reusable(uses:readonly LibraryUse[],settings:ReuseSettings,now:D
  * Photos candidates : publiables (décision humaine ou évaluation IA prudente, jamais confidentielle ni hors sujet),
  * au bon format et de bonne qualité, réemploi permis, non réservées, et jamais une photo des dernières publications.
  * Ordre : jamais utilisées d'abord, puis meilleur score IA, puis les plus récentes.
+ * PR #42 : jamais une photo de document (facture, attestation, capture…), même validée ; une seule photo par empreinte
+ * SHA-256 (les usages d'un doublon sont fournis par l'appelant, cf. usesWithDuplicates).
  */
 export function libraryCandidates(rows:readonly LibraryRow[],assessments:readonly LibraryAssessment[],uses:readonly LibraryUse[],settings:ReuseSettings,recentPublicationIds:ReadonlySet<string>,now:Date):AgentMediaCandidate[]{
- const byAsset=new Map(assessments.map(a=>[a.asset_id,a]));
+ const byAsset=new Map(assessments.map(a=>[a.asset_id,a])),hashes=new Map(rows.map(r=>[r.id,r.sha256??null]));
  const usesOf=(id:string)=>uses.filter(u=>u.asset_id===id);
- return rows.filter(r=>{const a=byAsset.get(r.id)??null,u=usesOf(r.id);
+ const ranked=rows.filter(r=>{const a=byAsset.get(r.id)??null,u=usesOf(r.id);
   return IMAGE_MIMES.includes(r.mime_type)&&r.size>0&&r.size<=MAX_BYTES&&!r.claimed_agent_v2_run_id&&r.imported_at!==null
    &&isPublicationCandidate({libraryStatus:r.library_status,mediaKind:r.media_kind,purged:r.purged_at!==null,assessment:a})
-   &&fitsPlatforms(r)&&(!a||(a.quality!=='poor'&&!a.quality_issues.some(i=>BLOCKING_ISSUES.includes(i))))
+   &&fitsPlatforms(r)&&(!a||(a.quality!=='poor'&&!a.quality_issues.some(i=>BLOCKING_ISSUES.includes(i))&&!isDocumentPhoto(a)))
    &&reusable(u,settings,now)&&!u.some(x=>recentPublicationIds.has(x.publication_id));})
   .map(r=>({r,a:byAsset.get(r.id)??null,used:usesOf(r.id).length>0}))
   .sort((x,y)=>Number(x.used)-Number(y.used)||((y.a?y.a.business_relevance*y.a.publishability:0.5)-(x.a?x.a.business_relevance*x.a.publishability:0.5))||String(y.r.imported_at).localeCompare(String(x.r.imported_at)))
-  .slice(0,MAX_LIBRARY_CANDIDATES)
+  .map(x=>({...x,id:x.r.id}));
+ return dedupeByHash(ranked,id=>hashes.get(id)).slice(0,MAX_LIBRARY_CANDIDATES)
   .map(({r,a})=>({id:r.id,source:'library' as const,used:false,description:a?.description||null,categories:a?.topics.length?a.topics.slice(0,4):[LIBRARY_FALLBACK_CATEGORY]}));
 }

@@ -124,6 +124,8 @@ export type PublicationAgentV2RunRow = {
   created_at: string; completed_at: string | null; lease_until: string;
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
   media_lease_until: string | null; media_attached_at: string | null;
+  // PR #42 : justification éditoriale (posée une fois pendant la préparation, immuable ensuite).
+  editorial_justification?: Json | null;
 };
 // Socle lot 6 : préparation planifiée dont l'étape média ou la soumission reste à reprendre (sans IA).
 export type PublicationScheduledRunRow = { run_id: string; client_id: string; state: "open" | "done" | "gave_up"; created_at: string; updated_at: string };
@@ -172,6 +174,7 @@ export type PublicationFunctions = {
   publication_agent_v2_media_claim:{Args:{p_run_id:string;p_actor_id:string};Returns:Json};
   publication_agent_v2_media_attach:{Args:{p_run_id:string;p_attempt:number;p_original_hash:string;p_assets:Json;p_actor_id:string};Returns:Json};
   publication_agent_v2_media_fail:{Args:{p_run_id:string;p_attempt:number;p_error_code:string;p_actor_id:string};Returns:Json};
+  publication_editorial_justification_record:{Args:{p_run_id:string;p_justification:Json;p_actor_id:string};Returns:Json};
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};

@@ -1,6 +1,8 @@
 // Agent Publications v2 — deterministic selection, output validation and anti-invention check (Lot 4.3 P7). Pure.
 import {AGENT_V2_LIMITS,type AgentV2GeneratorInput,type AgentV2GeneratorOutput,type OpenOccurrenceCandidate} from './contract';
 import type {PublicationPlatform} from '../types';
+import {aboutService,textSimilarity as similarity} from '../editorial-text';
+import {historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
 
 const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
 const byTime=(a:OpenOccurrenceCandidate,b:OpenOccurrenceCandidate)=>a.scheduledFor.localeCompare(b.scheduledFor)||platformOrder.indexOf(a.platform)-platformOrder.indexOf(b.platform)||a.occurrenceId.localeCompare(b.occurrenceId);
@@ -31,7 +33,9 @@ const CLAIM_PATTERNS:{name:string;pattern:RegExp}[]=[
  {name:'experience',pattern:/\d+\s+ans(?![\p{L}])|depuis\s+(?:19|20)\d{2}|expérience de/giu},
  {name:'reviews',pattern:word(String.raw`avis|étoiles?|clients?\s+satisfaits?|note de`)},
  {name:'speed',pattern:/intervention\s+rapide|rapidement|sous\s+\d+\s?h(?![\p{L}])|\d+\s?h\s?\/\s?24|24\s?h(?![\p{L}])|48\s?h(?![\p{L}])|7\s?j\s?\/\s?7|en urgence/giu},
- {name:'counts',pattern:/\d+\s+(?:clients|chantiers|interventions|projets|réalisations)(?![\p{L}])/giu}];
+ {name:'counts',pattern:/\d+\s+(?:clients|chantiers|interventions|projets|réalisations)(?![\p{L}])/giu},
+ // PR #42 : un chantier ou une intervention présentés comme réalisés (date, lieu, client) exigent un fait confirmé.
+ {name:'worksite',pattern:word(String.raw`nous sommes intervenus?|nous avons (?:réalisé|effectué|traité|rénové|réparé|posé|installé|remplacé|terminé|livré)|(?:chantier|intervention|travaux) (?:réalisée?s?|terminée?s?|livrée?s?|effectuée?s?)|hier|la semaine dernière|le mois dernier|récemment|chez (?:m\.|mme|monsieur|madame|un client|une cliente|nos clients|des clients)`)}];
 // Prestations reconnues : citer l'une d'elles exige qu'elle figure dans les faits (services vérifiés, profil, règles).
 // Liste fermée de termes métier, comparés sans accents ; un terme générique (toiture, gouttière) n'y figure pas.
 export const SERVICE_TERMS=['démoussage','faîtage','zinguerie','isolation','charpente','ravalement','étanchéité','hydrofuge','ramonage','désinsectisation',
@@ -61,12 +65,8 @@ export function platformRuleViolation(platform:PublicationPlatform,text:string):
  if(text.length>rule.maxLength)return 'length';if(hashtags(text)>rule.maxHashtags)return 'hashtags';return null;
 }
 const normalize=(text:string)=>text.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/#[\p{L}\p{N}_]+/gu,' ').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
-const bigrams=(text:string)=>{const w=normalize(text).split(' ').filter(Boolean);const set=new Set<string>();for(let i=0;i<w.length-1;i++)set.add(w[i]+' '+w[i+1]);return set;};
-// Similarité de Jaccard sur les paires de mots (formulation), indépendante des accents, de la ponctuation et des hashtags.
-export function textSimilarity(a:string,b:string):number{
- const x=bigrams(a),y=bigrams(b);if(!x.size||!y.size)return 0;let common=0;for(const g of x)if(y.has(g))common++;
- return common/(x.size+y.size-common);
-}
+// Similarité de Jaccard sur les paires de mots (formulation) : implémentation partagée (editorial-text.ts, PR #42).
+export const textSimilarity=similarity;
 export const REPETITION_THRESHOLD=.5;
 // Déclinaisons d'une même idée : les faits partagés passent, une copie à peine retouchée d'une plateforme à l'autre non.
 export const VARIANT_SIMILARITY_THRESHOLD=.8;
@@ -80,24 +80,22 @@ export function repeatsPrevious(subject:string,texts:readonly string[],input:Pic
  return texts.some(t=>previous.some(old=>textSimilarity(t,old)>=REPETITION_THRESHOLD||(opening(t).split(' ').length>=6&&opening(t)===opening(old))));
 }
 
-// Mots qui désignent une prestation du client (« Réparation de faîtage » → faitage) : les mots génériques sont ignorés.
-const GENERIC_WORDS=new Set(['reparation','reparations','entretien','renovation','installation','nettoyage','traitement','pose','remplacement','toiture','toitures','travaux','service','services']);
-const serviceWords=(service:string)=>normalize(service).split(' ').filter(w=>w.length>=4&&!GENERIC_WORDS.has(w));
-const aboutService=(text:string,service:string)=>{const words=serviceWords(service),t=' '+normalize(text)+' ';return words.length>0&&words.some(w=>t.includes(' '+w));};
+// Prestations du client reconnues dans un texte : editorial-text.ts (mots propres + vocabulaire associé, PR #42).
 /**
- * Rotation des prestations : quand les dernières idées (au moins deux, au plus trois) portent toutes sur la même
- * prestation du client et qu'une autre prestation vérifiée est illustrable par une photo disponible, une nouvelle idée
- * sur cette prestation est une répétition (les descriptions servent ici uniquement au choix, jamais comme faits).
+ * Rotation des prestations : quand les deux dernières idées portent sur la même prestation du client et qu'une autre
+ * prestation vérifiée est illustrable par une photo disponible, une nouvelle idée sur cette prestation est une
+ * répétition (jamais 3 publications de suite sur la même prestation quand les photos permettent de varier ; PR #42,
+ * avant : les 2 à 3 dernières). Les descriptions servent ici uniquement au choix, jamais comme faits.
  */
 export function repeatsService(subject:string,input:Pick<AgentV2GeneratorInput,'previousPublications'>&Partial<Pick<AgentV2GeneratorInput,'services'|'media'>>):boolean{
- const previous=(input.previousPublications??[]).slice(0,3),services=input.services??[];
+ const previous=(input.previousPublications??[]).slice(0,2),services=input.services??[];
  if(previous.length<2||services.length<2)return false;
  const available=(input.media??[]).filter(m=>!m.used).map(m=>[m.description??'',...m.categories].join(' '));
  return services.some(s=>aboutService(subject,s)&&previous.every(p=>aboutService(p.subject,s))
   &&services.some(o=>o!==s&&!previous.some(p=>aboutService(p.subject,o))&&available.some(d=>aboutService(d,o))));
 }
 
-export type OutputCheck={ok:true;value:AgentV2GeneratorOutput}|{ok:false;reason:string};
+export type OutputCheck={ok:true;value:AgentV2GeneratorOutput}|{ok:false;reason:string;detail?:string};
 // Strict validation of a generator output against its input before anything is written (fail closed).
 export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurrences'|'media'>&Partial<AgentV2GeneratorInput>,output:unknown):OutputCheck{
  if(!output||typeof output!=='object')return {ok:false,reason:'invalid_output'};const o=output as AgentV2GeneratorOutput;
@@ -121,5 +119,16 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
   for(const t of [value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])])if(unsupportedClaims(t,facts).length)return {ok:false,reason:'unsupported_claim'};}
  if(input.previousSubjects&&repeatsPrevious(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput))return {ok:false,reason:'repetition'};
+ // PR #42 : lieux autorisés, photo cohérente (jamais un document), répétitions sur tout l'historique chargé.
+ const refusal=editorialRefusal(input,value);if(refusal)return {ok:false,...refusal};
  return {ok:true,value};
+}
+
+// Gardes de l'intelligence éditoriale (PR #42), dans l'ordre : lieux (quand les faits sont connus), photo, historique.
+function editorialRefusal(input:Pick<AgentV2GeneratorInput,'occurrences'|'media'>&Partial<AgentV2GeneratorInput>,value:AgentV2GeneratorOutput):EditorialRefusal|null{
+ const all=[value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])];
+ if(input.client&&input.project){const place=placeRefusal(all,factsOf(input as AgentV2GeneratorInput));if(place)return place;}
+ const mediaId=value.publications[0]?.mediaId??null;
+ const photo=mediaId?photoRefusal(value.idea.subject,input.media.find(m=>m.id===mediaId),input.services??[]):null;if(photo)return photo;
+ return input.editorial?historyRefusal(value,input.editorial):null;
 }

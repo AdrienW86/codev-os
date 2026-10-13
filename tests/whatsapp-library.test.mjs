@@ -167,6 +167,7 @@ function prepareHarness({ failRegister = false, failDrive = false, failRevise = 
   const state = { drafts: [], unscheduled: [], registered: [], uploads: [], removed: [], audits: [], archived: [] };
   const fields = form => Object.fromEntries([...new Set(form.keys())].map(key => [key, form.getAll(key).length > 1 ? form.getAll(key) : form.get(key)]));
   const db = { ...fake.client, storage: { from: bucket => ({ upload: async path => { state.uploads.push([bucket, path]); return { error: null }; }, remove: async paths => { state.removed.push(...paths); return { error: null }; } }) } };
+  const providers = { importDriveToken: async () => "dummy-token", downloadDrive: async (_t, id, folder) => { if (failDrive) throw Error("drive down"); assert.equal(folder, "folder_client_a"); return new Uint8Array([id.length]); }, maxImageBytes: 8388608, maxVideoBytes: 16777216 };
   const library = loadTs("lib/whatsapp/library.ts", {
     "node:crypto": require("node:crypto"),
     "@/lib/supabase/server": { getSupabaseServerClient: () => db },
@@ -182,9 +183,9 @@ function prepareHarness({ failRegister = false, failDrive = false, failRevise = 
       currentRevision: async () => ({ revision_id: state.drafts.length ? REV2 : REV1, status: "draft" }),
     },
     "./library-model": model,
-    "@/lib/integrations/publications-drive": { driveReadProvider: () => ({ download: async () => { throw Error("publications drive must not be used for WhatsApp media"); } }) },
     "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"),
-    "./providers": { importDriveToken: async () => "dummy-token", downloadDrive: async (_t, id, folder) => { if (failDrive) throw Error("drive down"); assert.equal(folder, "folder_client_a"); return new Uint8Array([id.length]); }, maxImageBytes: 8388608, maxVideoBytes: 16777216 },
+    "./providers": providers,
+    "./originals": { assetOriginal: async (asset, token) => providers.downloadDrive(token ?? await providers.importDriveToken(), asset.drive_file_id, asset.drive_folder_id, asset.md5, providers.maxImageBytes) },
     "./service": { THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
   }, { FormData });
   return { library, state, fake, PUB, REV1, PROJECT };

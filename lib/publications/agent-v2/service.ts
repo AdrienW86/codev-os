@@ -23,7 +23,7 @@ import type {PublicationPlatform} from '../types';
 // nothing). Every failure after begin is recorded (fail). Never submits, approves, publishes or schedules.
 // P8: when a media was selected, finish reserves it and the compensable media step attaches it (media.ts). A media
 // failure keeps the drafts (explicit needs_media, never reported as a full success) and can be retried without AI.
-export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView};
+export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean};
 export type AgentV2MediaOptions={mediaSource?:PublicationMediaSource;adapt?:ImageAdapter};
 const result=(ok:boolean,message:string,extra:Partial<AgentV2Result>={}):AgentV2Result=>({ok,message,publications:[],withMedia:false,...extra});
 const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2MediaDb,source:options.mediaSource??driveMediaSource(),adapt:options.adapt??adaptImage});
@@ -32,6 +32,17 @@ async function previewOf(runId:string):Promise<string|null>{try{return (await ge
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
 const zeroUsage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
 
+const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai, prestation non vérifiée…). Aucun brouillon créé.',
+ repetition:'Contenu refusé : trop proche des dernières publications (sujet, prestation, formulation ou accroche). Aucun brouillon créé ; relancez.',
+ similar_texts:'Contenu refusé : les textes des plateformes étaient presque identiques (un texte natif par plateforme). Aucun brouillon créé ; relancez.',
+ platform_rules:'Contenu refusé : hors des règles d’une plateforme (longueur ou hashtags). Aucun brouillon créé ; relancez.'};
+// « Photo manquante » : une notification par client et par jour au plus, vers sa photothèque (jamais de nom ni de texte).
+async function notifyMissingPhoto(db:{from(table:string):unknown},clientId:string,now:Date){
+ try{const table=db.from('admin_notifications') as {upsert(row:Record<string,string>,o:{onConflict:string;ignoreDuplicates:boolean}):PromiseLike<{error:unknown}>};
+  const r=await table.upsert({event_key:`media-missing:${clientId}:${now.toISOString().slice(0,10)}`,category:'media_missing',href:`/clients/${clientId}?tab=media`},{onConflict:'event_key',ignoreDuplicates:true});
+  if(r.error)throw Error('notification refused');return true;}
+ catch{console.error('[publications-agent-v2] missing photo notification not recorded');return false;}
+}
 function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
  if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.maxCost};
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
@@ -65,8 +76,7 @@ export async function prepareNextPublications(projectId:unknown,options:{allowRe
  try{const generated=await (options.generator??openaiAgentV2Generator()).generate(context.input);raw=generated.output;usage=generated.usage;}
  catch{console.error('[publications-agent-v2] generation failed',{run_id:run});return fail('generation_failed','Génération indisponible. Aucun brouillon créé.');}
  const checked=validateGeneratorOutput(context.input,raw);
- if(!checked.ok)return fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',checked.reason==='unsupported_claim'
-  ?'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai…). Aucun brouillon créé.':'Contenu généré invalide. Aucun brouillon créé.');
+ if(!checked.ok)return fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',refusals[checked.reason]??'Contenu généré invalide. Aucun brouillon créé.');
  const value=checked.value,mediaId=value.publications[0]?.mediaId??null;
  const finished=await db.rpc('publication_agent_v2_finish',{p_run_id:run,p_output:json({idea:value.idea,publications:value.publications.map(p=>({occurrence_id:p.occurrenceId,text:p.text,cta:p.cta}))}),
   p_media_id:mediaId,p_usage:json({input_tokens:usage?.input_tokens??0,output_tokens:usage?.output_tokens??0,estimated_cost_eur:safeUsage(usage).estimated_cost_eur}),p_actor_id:userId});
@@ -79,9 +89,12 @@ export async function prepareNextPublications(projectId:unknown,options:{allowRe
  // Media step (only when a media was selected): drafts already exist, whatever happens next.
  const outcome=mediaId?await attachAgentV2Media(run,userId,mediaDeps(db,options)):null;
  const mediaState=mediaStateOf(outcome);
- const media:AgentV2MediaView={state:mediaState,category:mediaId?mediaCategoryLabel(context.input.media.find(m=>m.id===mediaId)?.categories[0]):null,preview:mediaState==='attached'?await previewOf(run):null};
+ const chosen=context.input.media.find(m=>m.id===mediaId);
+ const media:AgentV2MediaView={state:mediaState,category:chosen?.source==='library'?'Photothèque':mediaId?mediaCategoryLabel(chosen?.categories[0]):null,preview:mediaState==='attached'?await previewOf(run):null};
  if(outcome&&outcome.state!=='attached')console.error('[publications-agent-v2] media not attached',{run_id:run,state:outcome.state,code:'code' in outcome?outcome.code:null});
- return result(true,agentV2ResultMessage(ids.length,mediaState),{publications,withMedia:mediaState==='attached',runId:run,media});
+ // Aucune photo adaptée : les brouillons existent, la photo manque (approbation impossible tant qu'elle manque).
+ const missing=!mediaId&&await notifyMissingPhoto(db,context.clientId,now);
+ return result(true,agentV2ResultMessage(ids.length,mediaState)+(!mediaId?' Photo manquante signalée : ajoutez des photos à la photothèque du client.':''),{publications,withMedia:mediaState==='attached',runId:run,media,mediaMissing:!mediaId,missingNotified:missing});
 }
 
 // Explicit retry of the media step of a completed run: never any generation (no OpenAI call), same drafts.

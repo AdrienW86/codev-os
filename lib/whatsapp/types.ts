@@ -10,7 +10,8 @@ export type Asset = {
   id: string; client_id: string; drive_folder_id: string; sha256: string; md5: string; drive_file_id: string; mime_type: string; size: number; created_at: string;
   media_kind: MediaKind; imported_at: string | null; library_status: LibraryStatus; status_changed_at: string; status_changed_by: string | null;
   caption: string | null; sender: string | null; received_at: string | null; width: number | null; height: number | null; thumbnail_path: string | null;
-  origin: AssetOrigin; captured_at: string | null; purged_at: string | null; classification_failures: number; classification_failed_at: string | null;
+  origin: AssetOrigin; captured_at: string | null; purged_at: string | null; claimed_agent_v2_run_id: string | null;
+  classification_failures: number; classification_failed_at: string | null;
 };
 export type AssetOrigin = "whatsapp" | "drive" | "whatsapp_export";
 export type AssetInsert = Pick<Asset, "client_id" | "drive_folder_id" | "sha256" | "md5" | "drive_file_id" | "mime_type" | "size"> & Partial<Pick<Asset, "media_kind" | "caption" | "sender" | "received_at" | "width" | "height" | "origin" | "captured_at" | "imported_at">>;

@@ -80,10 +80,10 @@ test('context: admin first, each table read once (no N+1), only stored facts, no
  assert.deepEqual([...new Set(c.log)].length,c.log.length,'every table read exactly once');
  assert.deepEqual(json(i.client),{name:'Toitures Dupont',activity:'Couverture',zone:null},'absent zone stays null, no fallback');
  assert.equal(i.rules,'Ton sobre\nBrief client');assert.deepEqual(json(i.channelRules),[{platform:'facebook',rules:'Pas d’emoji'}],'disabled channel rules ignored');
- assert.deepEqual(json(i.media),[{id:M,categories:['roof'],description:'Surface de toiture visible.',used:false},{id:uid(9,3),categories:['paint'],description:'Surface peinte ou matériel de peinture visible.',used:true}],'unusable excluded, used flagged');
+ assert.deepEqual(json(i.media),[{id:M,categories:['roof'],description:'Surface de toiture visible.',used:false,source:'catalog'},{id:uid(9,3),categories:['paint'],description:'Surface peinte ou matériel de peinture visible.',used:true,source:'catalog'}],'unusable excluded, used flagged');
  assert.deepEqual(json(i.previousSubjects),['Ancien sujet']);
  const all=JSON.stringify(i);for(const s of ['file0000000001','chantier-lyon','Note privée','https://x','folder00000001'])assert.ok(!all.includes(s),`never sent: ${s}`);
- for(const table of ['projects','clients','publication_agent_projects','publication_project_channels','publication_drive_media','publication_media_uses'])
+ for(const table of ['projects','clients','publication_agent_projects','publication_project_channels','publication_drive_media','publication_media_uses','whatsapp_assets','whatsapp_asset_assessments','whatsapp_asset_uses','client_media_profiles'])
   await assert.rejects(()=>contextWith(ctxTables(),{fail:[table]}).m.buildAgentV2Context(P,batch),e=>e.code==='context_unavailable',table);
  const disabled=ctxTables();disabled.publication_agent_projects[0].rights_confirmed=false;await assert.rejects(()=>contextWith(disabled).m.buildAgentV2Context(P,batch),e=>e.code==='agent_disabled');
  await assert.rejects(()=>contextWith(ctxTables()).m.buildAgentV2Context(P,[]),e=>e.code==='context_unavailable');});
@@ -133,7 +133,7 @@ test('service: fail closed at every step, failures recorded, no AI without expli
  assert.match(rr.message,/Une occurrence a changé/);assert.deepEqual(fails(race),[['occurrence_unavailable',.0012]]);
  const single=serviceWith({open:[batch[2]],rpc:{publication_agent_v2_finish:()=>({data:{publication_ids:[uid(4,3)],editorial_group_id:null},error:null})}});
  const one=await single.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async i=>({output:{idea:{subject:'S',angle:'A'},publications:[{occurrenceId:i.occurrences[0].occurrenceId,platform:'google_business_profile',text:'Texte',cta:null,mediaId:null}]},usage:{input_tokens:1,output_tokens:1,estimated_cost_eur:0,model:'m'}})},now});
- assert.equal(one.message,'1 brouillon créé sans média. Média requis avant validation : ajoutez une photo à chaque brouillon.');assert.ok(!single.log.some(x=>x[0]==='attach_media'),'no media: no media step');});
+ assert.equal(one.message,'1 brouillon créé sans média. Média requis avant validation : ajoutez une photo à chaque brouillon. Photo manquante signalée : ajoutez des photos à la photothèque du client.');assert.equal(one.mediaMissing,true);assert.ok(!single.log.some(x=>x[0]==='attach_media'),'no media: no media step');});
 
 test('real generator: Responses API integration with strict instructions and schema (mocked, never called for real)',async()=>{
  const calls=[];const g=load('lib/publications/agent-v2/openai-generator.ts',{'@/lib/integrations/publications-openai':{structuredResponse:async(instructions,payload,schema)=>{calls.push({instructions,payload:JSON.parse(payload),schema});

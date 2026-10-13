@@ -1,6 +1,6 @@
 import { z } from "zod";
-export const categories = ["report_ready", "analysis_completed", "analysis_failed", "incident", "delivery_failed", "media_received"] as const;
-export const notificationLabels: Record<(typeof categories)[number], string> = { report_ready: "Rapport prêt à relire", analysis_completed: "Analyse terminée", analysis_failed: "Analyse en échec", incident: "Incident important", delivery_failed: "Échec ou incertitude d’envoi", media_received: "Nouveaux médias WhatsApp" };
+export const categories = ["report_ready", "analysis_completed", "analysis_failed", "incident", "delivery_failed", "media_received", "media_missing"] as const;
+export const notificationLabels: Record<(typeof categories)[number], string> = { report_ready: "Rapport prêt à relire", analysis_completed: "Analyse terminée", analysis_failed: "Analyse en échec", incident: "Incident important", delivery_failed: "Échec ou incertitude d’envoi", media_received: "Nouveaux médias WhatsApp", media_missing: "Photo manquante pour une publication" };
 export const preferencesSchema = z.object({ categories: z.array(z.enum(categories)).max(categories.length), push_enabled: z.boolean(), push_categories: z.array(z.enum(categories)).max(categories.length) }).strict();
 export const subscriptionSchema = z.object({ deviceId: z.uuid(), endpoint: z.url().max(2048).refine((value) => {
   const url = new URL(value);

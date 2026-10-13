@@ -1,0 +1,6 @@
+{"pr":38,"file":"20261029000000_publications_editorial_selection.sql",
+ "requires":["media_library_intelligence","publications_client_setup"],
+ "snapshot":["public.whatsapp_assets","public.publication_agent_v2_runs","public.admin_notifications","public.admin_notification_preferences"],
+ "exclude":{"public.admin_notification_preferences":["categories"]},
+ "postData":[["préférences de notification : seule la catégorie media_missing est ajoutée, les autres choix sont conservés",
+  "not exists(select 1 from pg_temp._kit_snap_public_admin_notification_preferences s left join public.admin_notification_preferences p on p.user_id=s.user_id where p.user_id is null or p.categories is distinct from (case when 'media_missing'=any(s.categories) then s.categories else array_append(s.categories,'media_missing') end))"]]}

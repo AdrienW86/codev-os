@@ -51,6 +51,7 @@ Un export sans fichier de discussion, avec des pièces jointes « omises » ou d
   est clos au démarrage suivant) ; analyse idempotente (lignes en upsert, passage `uploading → analyzing` en compare-and-set) ;
   noms d'entrée en double conservés une fois, les suivants deviennent des lignes « invalid » (`duplicate_entry`) ; chaque photo est
   réservée (`status = 'importing'`, reprise après 10 min) avant l'import, deux onglets ne la traitent jamais tous les deux.
+- **Purge bloquée** (#47) : un import dont la suppression échoue durablement passe en fin de file (ordre par dernière tentative) ; il ne bloque plus la conservation de 24 h des suivants. Charge mesurée dans [publications-robustness.md](publications-robustness.md).
 - **ZIP** : entrées du répertoire central qui se chevauchent (mêmes données référencées plusieurs fois) marquées `zip_overlap`, jamais lues.
 - **Interface** : une analyse interrompue affiche « Reprendre l'analyse » et l'annulation, comme l'import.
 

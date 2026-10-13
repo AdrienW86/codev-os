@@ -1,3 +1,3 @@
 {"pr":47,"file":"20261106000000_publications_robustness.sql",
- "requires":["whatsapp_export_import"],
+ "requires":["media_library_tools"],
  "snapshot":["public.publication_jobs"]}

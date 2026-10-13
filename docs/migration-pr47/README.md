@@ -6,7 +6,7 @@ Robustesse et charge du pipeline Publications (phase 8). Kit d'application manue
 | --- | --- |
 | Fichier officiel | `supabase/migrations/20261106000000_publications_robustness.sql` (4461 octets, md5 `0f4662e0a13d46cc9580728b2e71dc71`) |
 | Nom dans l'historique | `publications_robustness` (convention du projet : version = horodatage de l'inscription) |
-| Prérequis | `whatsapp_export_import` (#41), donc toute la pile #37 à #41. |
+| Prérequis | `media_library_tools` (#43), donc toute la pile #37 à #43 (#44 à #46 n'ont pas de migration). |
 | Contrôles après application | 6, plus 2 contrôles d'historique et d'interrupteurs dans `verify.sql` |
 
 ## Ce que fait la migration
@@ -34,7 +34,7 @@ Robustesse et charge du pipeline Publications (phase 8). Kit d'application manue
 
 ## Procédure
 
-1. **Avant tout** : la migration de #41 est appliquée et inscrite, et cette PR n'est **pas encore fusionnée**.
+1. **Avant tout** : la migration de #43 est appliquée et inscrite (et #44 à #46 fusionnées), et cette PR n'est **pas encore fusionnée**.
 2. **Appliquer** : SQL Editor, « New query », coller **tout** `apply_sql_editor.sql`, « Run ».
 3. **Résultat attendu** : une ligne `migration = 20261106000000 appliquée`, `controles_reussis = 6`, `clients_avec_preparation_automatique = 0`, `interrupteurs = emergency_stop=true …`.
 4. **En cas d'erreur** : un message `ARRET : …` ou `VERIFICATION : …` signifie que **rien n'a été appliqué**. Ne pas réessayer autrement : me transmettre le message.
@@ -51,7 +51,10 @@ Robustesse et charge du pipeline Publications (phase 8). Kit d'application manue
 | 3 | `20261030000000_publications_scheduled_flow` | #39 |
 | 4 | `20261031000000_publications_supervision` | #40 |
 | 5 | `20261101000000_whatsapp_export_import` | #41 |
-| 6 | `20261106000000_publications_robustness` | #47 |
+| 6 | `20261102000000_publications_editorial_intelligence` | #42 |
+| 7 | `20261103000000_media_library_tools` | #43 |
+| — | aucune migration | #44, #45, #46 (fusionner simplement, dans l'ordre) |
+| 8 | `20261106000000_publications_robustness` | #47 |
 
 Pour chaque ligne : appliquer, inscrire, vérifier, puis fusionner la PR, avant de passer à la suivante.
 

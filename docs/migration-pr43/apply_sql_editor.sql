@@ -16,7 +16,7 @@ set local statement_timeout = '120s';
 do $pre$
 declare missing text;
 begin
- select string_agg(n, ', ') into missing from unnest(array['whatsapp_export_import']::text[]) n
+ select string_agg(n, ', ') into missing from unnest(array['publications_editorial_intelligence']::text[]) n
   where not exists(select 1 from supabase_migrations.schema_migrations where name=n or name ~ ('^[0-9]{14}_'||n||'$'));
  if missing is not null then raise exception 'ARRET : migrations préalables absentes de l''historique : %', missing; end if;
  if exists(select 1 from supabase_migrations.schema_migrations where (name='media_library_tools' or name ~ '^[0-9]{14}_media_library_tools$')) then

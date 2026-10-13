@@ -6,7 +6,7 @@ Outils de la photothèque (recherche filtrée côté serveur, « Pourquoi écart
 | --- | --- |
 | Fichier officiel | `supabase/migrations/20261103000000_media_library_tools.sql` (16589 octets, md5 `93b8a2033773f0fb807801c06c48d375`) |
 | Nom dans l'historique | `media_library_tools` (convention du projet : version = horodatage de l'inscription) |
-| Prérequis | `whatsapp_export_import` (#41), donc toute la pile #37 → #41 déjà appliquée dans l'ordre. |
+| Prérequis | `publications_editorial_intelligence` (#42), donc toute la pile #37 → #42 déjà appliquée dans l'ordre. |
 | Contrôles après application | 31, plus 2 contrôles d'historique et d'interrupteurs dans `verify.sql` |
 
 ## Ce que fait la migration
@@ -38,7 +38,7 @@ Outils de la photothèque (recherche filtrée côté serveur, « Pourquoi écart
 
 ## Procédure
 
-1. **Avant tout** : la migration de la PR #41 est appliquée et inscrite, et cette PR n'est **pas encore fusionnée** (la fusion déploie le code qui utilise ces objets ; avant la migration, la photothèque revient d'elle-même à la liste historique sans filtres avancés).
+1. **Avant tout** : la migration de la PR #42 est appliquée et inscrite, et cette PR n'est **pas encore fusionnée** (la fusion déploie le code qui utilise ces objets ; avant la migration, la photothèque revient d'elle-même à la liste historique sans filtres avancés).
 2. **Appliquer** : SQL Editor, « New query », coller **tout** `apply_sql_editor.sql`, « Run ». Supabase peut signaler une opération potentiellement destructive (à cause des `ALTER TABLE`) : confirmer.
 3. **Résultat attendu** : une ligne `migration = 20261103000000 appliquée`, `controles_reussis = 31`, `clients_avec_preparation_automatique = 0`, `interrupteurs = emergency_stop=true …`.
 4. **En cas d'erreur** : un message `ARRET : …` ou `VERIFICATION : …` signifie que **rien n'a été appliqué**. Ne pas réessayer autrement : me transmettre le message.
@@ -55,9 +55,10 @@ Outils de la photothèque (recherche filtrée côté serveur, « Pourquoi écart
 | 3 | `20261030000000_publications_scheduled_flow` | #39 |
 | 4 | `20261031000000_publications_supervision` | #40 |
 | 5 | `20261101000000_whatsapp_export_import` | #41 |
-| 6 | `20261103000000_media_library_tools` | #43 |
+| 6 | `20261102000000_publications_editorial_intelligence` | #42 |
+| 7 | `20261103000000_media_library_tools` | #43 |
 
-Les migrations des PR #42 et #44, si elles existent, s'intercalent selon leur horodatage : respecter l'ordre croissant des versions. Pour chaque ligne : appliquer, inscrire, vérifier, puis fusionner la PR, avant de passer à la suivante.
+Les PR suivantes (#44 à #47) n'ajoutent pas de migration avant celle-ci : respecter l'ordre croissant des versions. Pour chaque ligne : appliquer, inscrire, vérifier, puis fusionner la PR, avant de passer à la suivante.
 
 ## Tests réalisés
 

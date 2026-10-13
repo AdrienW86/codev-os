@@ -124,7 +124,9 @@ test("suspend: unsent deliveries cancelled one by one; client automation off wit
 test("supervision page: every requested action wired to an existing or audited path, nav entry, design tokens only", () => {
   const page = src("app/(cockpit)/publications/supervision/page.tsx"), forms = src("components/publications/supervision-forms.tsx"), actions = src("app/(cockpit)/publications/supervision-actions.ts");
   assert.match(page, /await requireAdmin\(\)/);
-  assert.match(page, /<ReviewQueue cards=\{cards\}/, "Approuver / Refuser / Modifier via the existing review cards");
+  // Lot 7 mobile : cartes compactes avec aperçu par plateforme, mêmes formulaires (et actions serveur) que la file de validation.
+  assert.match(page, /<SupervisionReviewCard key=\{item\.card\.publicationId\} item=\{item\}\/>/, "Approuver / Refuser / Modifier via the existing review forms");
+  assert.match(src("components/publications/supervision-review-card.tsx"), /import \{ReviewApproveForm,ReviewEditForm,ReviewRejectForm,formatLongDate\} from '\.\/review-card'/);
   assert.match(page, /<AgentV2Form projectId=\{project\}/, "Générer maintenant via the existing Agent v2 form (explicit AI authorization)");
   assert.match(page, /\/publications\/\$\{p\.id\}\/edit/); assert.match(page, /<RescheduleForm/); assert.match(page, /<SuspendDeliveryForm/); assert.match(page, /<SuspendClientForm/);
   for (const label of ["Comptes connectés", "À reconnecter", "À valider", "Programmées", "Publiées", "En erreur", "Trop peu de photos", "Prochaines tâches de l’agent"]) assert.ok(page.includes(label), label);

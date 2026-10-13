@@ -5,7 +5,8 @@ import "server-only";
 // ni d'identifiant brut : uniquement des états, des libellés français, des dates et des noms de clients.
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getSchedulerHeartbeat, SCHEDULER_HEARTBEAT } from "@/lib/scheduler/heartbeat";
+import { getSchedulerHeartbeat, SCHEDULER_HEARTBEAT, schedulerSteps } from "@/lib/scheduler/heartbeat";
+import { classifyMechanism, classifyQueue, classifyScheduledDelivery, classifyScheduler, classifyStep, classifySwitch, latest, type DiagnosticItem, type HeartbeatInput, type StepStatus } from "@/lib/system/diagnostic-model";
 import { featureFlags, isFlagEnabled, isProviderConfigured, providerRequirements, providerStatus, type Env } from "@/lib/system/providers";
 import { inboxErrorLabel } from "@/lib/whatsapp/drive-errors";
 import { blockedReasonLabel, DELIVERY_STATUS_LABELS, ERROR_CLASS_LABELS, type DeliveryErrorClass, type DeliveryStatus } from "@/lib/publications/delivery/model";
@@ -19,7 +20,7 @@ import type { PublicationPlatform } from "@/lib/publications/types";
 type Query = PromiseLike<{ data: unknown; error: unknown }> & {
   eq(column: string, value: unknown): Query; neq(column: string, value: unknown): Query; in(column: string, values: readonly unknown[]): Query;
   is(column: string, value: null): Query; not(column: string, operator: string, value: unknown): Query;
-  lt(column: string, value: string): Query; gte(column: string, value: string): Query;
+  lt(column: string, value: string): Query; lte(column: string, value: string): Query; gte(column: string, value: string): Query;
   order(column: string, options?: { ascending?: boolean }): Query; limit(count: number): Query; maybeSingle(): Query;
 };
 export type DiagnosticDb = { from(table: string): { select(columns: string): Query } };
@@ -55,16 +56,20 @@ export const loadSchedulerHeartbeat: HeartbeatLoader = async (db) => {
   const beat = await getSchedulerHeartbeat(SCHEDULER_HEARTBEAT, db as unknown as Parameters<typeof getSchedulerHeartbeat>[1]);
   return beat && { started_at: beat.startedAt, finished_at: beat.finishedAt, ok: beat.ok, steps: beat.steps, last_success_at: beat.lastSuccessAt, last_failure_at: beat.lastFailureAt };
 };
-export type HeartbeatView = { startedAt: string | null; finishedAt: string | null; ok: boolean | null; failedSteps: string[]; lastSuccessAt: string | null; lastFailureAt: string | null };
-/** Étapes en échec : uniquement des noms courts (objet {étape: {status}} ou liste [{name, ok}]), jamais leur contenu. */
+export type HeartbeatView = HeartbeatInput & { ok: boolean | null; failedSteps: string[] };
+const STEP_STATUSES = new Set<StepStatus>(["ok", "failed", "skipped", "disabled"]);
+/** Étapes : uniquement des noms courts, un état fermé et une durée (objet {étape: {status, ms}} ou liste [{name, ok}]), jamais leur contenu. */
 export function heartbeatView(row: SchedulerHeartbeatRow): HeartbeatView {
-  const failed: string[] = [];
+  const steps: HeartbeatView["steps"] = [];
   const add = (name: unknown, value: unknown) => {
-    if (typeof name === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(name) && value && typeof value === "object" && ((value as { ok?: unknown }).ok === false || (value as { status?: unknown }).status === "failed")) failed.push(name);
+    if (typeof name !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(name) || !value || typeof value !== "object") return;
+    const v = value as { ok?: unknown; status?: unknown; ms?: unknown };
+    const status: StepStatus | null = typeof v.status === "string" && STEP_STATUSES.has(v.status as StepStatus) ? v.status as StepStatus : v.ok === false ? "failed" : v.ok === true ? "ok" : null;
+    if (status) steps.push({ name, status, ms: typeof v.ms === "number" && Number.isFinite(v.ms) ? Math.max(0, Math.round(v.ms)) : 0 });
   };
   if (Array.isArray(row.steps)) for (const step of row.steps.slice(0, 30)) add((step as { name?: unknown } | null)?.name, step);
   else if (row.steps && typeof row.steps === "object") for (const [name, value] of Object.entries(row.steps).slice(0, 30)) add(name, value);
-  return { startedAt: row.started_at, finishedAt: row.finished_at, ok: row.ok, failedSteps: failed, lastSuccessAt: row.last_success_at, lastFailureAt: row.last_failure_at };
+  return { startedAt: row.started_at, finishedAt: row.finished_at, ok: row.ok, steps, failedSteps: steps.filter((s) => s.status === "failed").map((s) => s.name), lastSuccessAt: row.last_success_at, lastFailureAt: row.last_failure_at };
 }
 export type SchedulerDiagnostic = {
   switches: { emergencyStop: boolean; automation: boolean; generation: boolean; publishing: boolean } | null;
@@ -220,9 +225,202 @@ export function envSection(env: Env): EnvDiagnostic {
   };
 }
 
+// --- 8. États classés (lot 9) : chaque mécanisme dans exactement un état, avec sa preuve (date ou compteur). ---
+// Une fonction par groupe, chacune échoue seule : la page affiche alors les éléments connus du groupe « inconnu ».
+export type StatusGroup = { items: DiagnosticItem[] };
+const MONTH = 30 * DAY;
+/** Préparations planifiées : au plus une par jour et par client, preuve sur 7 jours. */
+const FRESH_RUN_MS_FOR_PREP = 7 * DAY;
+const sumCost = (list: { estimated_cost_eur?: number | string | null }[]) => list.reduce((total, r) => total + (Number(r.estimated_cost_eur ?? 0) || 0), 0);
+const first = <T,>(list: T[]) => list[0] ?? null;
+type Heartbeat = HeartbeatView | null | "unavailable";
+async function readHeartbeat(db: DiagnosticDb, loader: HeartbeatLoader | null): Promise<Heartbeat> {
+  if (!loader) return null;
+  try { const row = await loader(db); return row ? heartbeatView(row) : null; } catch { return "unavailable"; }
+}
+
+/** Planificateur et chacune de ses étapes : uniquement d'après le dernier passage réel (scheduler_heartbeats). */
+export function schedulerStatus(env: Env, heartbeat: Heartbeat, now: Date): StatusGroup {
+  return { items: [classifyScheduler(isProviderConfigured("scheduler", env), heartbeat, now), ...schedulerSteps.map((name) => classifyStep(name, heartbeat, now))] };
+}
+
+/** Interrupteurs de sécurité : arrêt d'urgence, réglages globaux, drapeau de diffusion, préparation automatique par client. */
+export async function safetyStatus(db: DiagnosticDb, env: Env, heartbeat: Heartbeat, now: Date): Promise<StatusGroup> {
+  const [settings, clients, audits] = await Promise.all([
+    db.from("publication_settings").select("emergency_stop,automation_enabled,generation_enabled,publishing_enabled").limit(1).maybeSingle(),
+    rows<{ client_id: string; auto_prepare_enabled: boolean; generation_enabled: boolean }>(db.from("publication_client_settings").select("client_id,auto_prepare_enabled,generation_enabled").eq("auto_prepare_enabled", true).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ created_at: string; metadata: unknown }>(db.from("audit_logs").select("created_at,metadata").eq("action", "publications.scheduled_preparation").order("created_at", { ascending: false }).limit(20)),
+  ]);
+  const s = settings.error ? null : settings.data as { emergency_stop: boolean; automation_enabled: boolean; generation_enabled: boolean; publishing_enabled: boolean } | null;
+  // Réglages absents ou illisibles : tout est considéré comme arrêté, et dit « inconnu ».
+  const stop = s ? s.emergency_stop !== false : null;
+  const raw = env.PUBLICATIONS_SCHEDULED_DELIVERY;
+  const flag = raw === "enabled" ? "enabled" : typeof raw === "string" && raw.trim() ? "other" : "absent";
+  const autoClients = clients.filter((c) => c.generation_enabled === true).length;
+  const meta = (a: { metadata: unknown }) => (a.metadata && typeof a.metadata === "object" ? a.metadata : {}) as { ok?: unknown; run_id?: unknown };
+  const lastOk = first(audits.filter((a) => meta(a).ok === true && meta(a).run_id).map((a) => a.created_at));
+  const lastKo = first(audits.filter((a) => meta(a).ok !== true).map((a) => a.created_at));
+  const globallyOff = !s || stop || !s.automation_enabled || !s.generation_enabled;
+  return { items: [
+    classifySwitch("switch:emergency-stop", "Automatismes Publications (arrêt d’urgence)", stop === null ? null : !stop, "Arrêt d’urgence levé", "Arrêt d’urgence actif : aucune préparation ni diffusion automatique"),
+    classifySwitch("switch:automation", "Automatisation (réglage global)", s ? s.automation_enabled === true : null, "Activée dans les réglages", "Désactivée dans les réglages"),
+    classifySwitch("switch:generation", "Génération IA (réglage global)", s ? s.generation_enabled === true : null, "Activée dans les réglages", "Désactivée dans les réglages"),
+    classifySwitch("switch:publishing", "Diffusion (réglage global)", s ? s.publishing_enabled === true : null, "Autorisée dans les réglages", "Désactivée dans les réglages"),
+    classifyScheduledDelivery(flag, classifyStep("publication_delivery_send", heartbeat, now)),
+    classifyMechanism({ id: "auto-prepare", label: "Préparation automatique par client", configured: null, enabled: autoClients > 0 && !globallyOff, now, freshMs: FRESH_RUN_MS_FOR_PREP,
+      disabledReason: autoClients === 0 ? "Aucun client en préparation automatique" : `${autoClients} client${autoClients > 1 ? "s" : ""} en préparation automatique, coupée par les réglages globaux`,
+      lastSuccessAt: lastOk, lastFailureAt: lastKo, successLabel: `${autoClients} client${autoClients > 1 ? "s" : ""} · dernière préparation réussie`, failureLabel: "Dernière préparation planifiée en échec ou refusée",
+      idleLabel: `${autoClients} client${autoClients > 1 ? "s" : ""} · aucune préparation planifiée réussie enregistrée` }),
+  ] };
+}
+/** Agents actifs : agents du cockpit activés (dernier run) et Agent Publications v2 (projets autorisés, dernier run). */
+export async function agentsStatus(db: DiagnosticDb, now: Date): Promise<StatusGroup> {
+  const since = new Date(now.getTime() - MONTH).toISOString();
+  const [agents, runs, projects, v2] = await Promise.all([
+    rows<{ id: string; name: string; enabled: boolean }>(db.from("agents").select("id,name,enabled").eq("enabled", true).order("name").limit(30)),
+    rows<{ agent_id: string; status: string; started_at: string; completed_at: string | null }>(db.from("agent_runs").select("agent_id,status,started_at,completed_at").gte("started_at", since).order("started_at", { ascending: false }).limit(500)),
+    rows<{ project_id: string }>(db.from("publication_agent_projects").select("project_id").eq("enabled", true).eq("rights_confirmed", true).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ status: string; created_at: string; completed_at: string | null }>(db.from("publication_agent_v2_runs").select("status,created_at,completed_at").gte("created_at", since).order("created_at", { ascending: false }).limit(200)),
+  ]);
+  const v2Ok = first(v2.filter((r) => r.status === "completed").map((r) => r.completed_at ?? r.created_at)), v2Ko = first(v2.filter((r) => r.status === "failed").map((r) => r.completed_at ?? r.created_at));
+  const items = [classifyMechanism({ id: "agent:publications-v2", label: "Agent Publications", configured: null, enabled: projects.length > 0, now,
+    disabledReason: "Aucun projet autorisé (agent activé et droits médias confirmés)", lastSuccessAt: v2Ok, lastFailureAt: v2Ko,
+    successLabel: `${projects.length} projet${projects.length > 1 ? "s" : ""} · dernière préparation terminée`, failureLabel: "Dernière préparation en échec",
+    idleLabel: `${projects.length} projet${projects.length > 1 ? "s" : ""} · aucune préparation terminée sur 30 jours` })];
+  for (const agent of agents) {
+    const own = runs.filter((r) => r.agent_id === agent.id);
+    const ok = first(own.filter((r) => r.status === "completed" || r.status === "succeeded").map((r) => r.completed_at ?? r.started_at)), ko = first(own.filter((r) => r.status === "failed").map((r) => r.completed_at ?? r.started_at));
+    items.push(classifyMechanism({ id: `agent:${agent.id}`, label: agent.name, configured: null, enabled: true, now, lastSuccessAt: ok, lastFailureAt: ko,
+      successLabel: "Dernier run terminé", failureLabel: "Dernier run en échec", idleLabel: "Activé, aucun run terminé sur 30 jours" }));
+  }
+  return { items };
+}
+
+/** IA (OpenAI) : erreurs et coûts réels enregistrés (Agent Publications, classement de la photothèque, agents). */
+export type AiCosts = { agentPublications: number; mediaClassification: number; agents: number; total: number; capped: boolean };
+export type AiStatus = StatusGroup & { costs30d: AiCosts; errors7d: { generation: number; classification: number } };
+const AI_ERROR_CODES = new Set(["generation_failed", "invalid_output", "unsupported_claim"]);
+export async function aiStatus(db: DiagnosticDb, now: Date, env: Env): Promise<AiStatus> {
+  const since = new Date(now.getTime() - MONTH).toISOString(), week = now.getTime() - 7 * DAY;
+  const [v2, usage, agentRuns, classification] = await Promise.all([
+    rows<{ status: string; error_code: string | null; estimated_cost_eur: number | string | null; created_at: string; completed_at: string | null }>(db.from("publication_agent_v2_runs").select("status,error_code,estimated_cost_eur,created_at,completed_at").gte("created_at", since).order("created_at", { ascending: false }).limit(1000)),
+    rows<{ estimated_cost_eur: number | string | null; created_at: string }>(db.from("client_media_ai_usage").select("estimated_cost_eur,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(1000)),
+    rows<{ status: string; estimated_cost_eur: number | string | null; started_at: string; completed_at: string | null }>(db.from("agent_runs").select("status,estimated_cost_eur,started_at,completed_at").gte("started_at", since).order("started_at", { ascending: false }).limit(1000)),
+    rows<{ classification_failed_at: string | null }>(db.from("whatsapp_assets").select("classification_failed_at").gte("classification_failed_at", new Date(week).toISOString()).order("classification_failed_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
+  ]);
+  const aiFailures = v2.filter((r) => r.status === "failed" && r.error_code !== null && AI_ERROR_CODES.has(r.error_code));
+  const lastOk = latest(first(v2.filter((r) => r.status === "completed").map((r) => r.completed_at ?? r.created_at)), first(usage.map((u) => u.created_at)),
+    first(agentRuns.filter((r) => r.status === "completed" && Number(r.estimated_cost_eur ?? 0) > 0).map((r) => r.completed_at ?? r.started_at)));
+  const lastKo = latest(first(aiFailures.map((r) => r.completed_at ?? r.created_at)), first(classification.map((c) => c.classification_failed_at)));
+  const generation = aiFailures.filter((r) => Date.parse(r.created_at) >= week).length;
+  const costs = { agentPublications: sumCost(v2), mediaClassification: sumCost(usage), agents: sumCost(agentRuns) };
+  return {
+    items: [classifyMechanism({ id: "ai:openai", label: "IA (OpenAI)", configured: isProviderConfigured("openai", env), disabledReason: "OPENAI_API_KEY absente : aucune génération ni classement.", now,
+      lastSuccessAt: lastOk, lastFailureAt: lastKo, successLabel: "Dernier appel IA réussi enregistré", failureLabel: "Dernier appel IA en échec", idleLabel: "Configurée, aucun appel IA réussi sur 30 jours" })],
+    costs30d: { ...costs, total: costs.agentPublications + costs.mediaClassification + costs.agents, capped: v2.length >= 1000 || usage.length >= 1000 || agentRuns.length >= 1000 },
+    errors7d: { generation, classification: classification.length },
+  };
+}
+
+/** Médias : Drive des publications (lecture seule), Drive d'import (drive.file), réception et import WhatsApp. Jetons jamais mélangés. */
+const DRIVE_IMPORT_ERROR = /^(config_|oauth_|drive_)/;
+export async function mediaStatus(db: DiagnosticDb, now: Date, env: Env): Promise<StatusGroup> {
+  const week = new Date(now.getTime() - 7 * DAY).toISOString(), at = now.toISOString();
+  const [mediaFailures, received, failed, imported, stuck] = await Promise.all([
+    rows<{ created_at: string }>(db.from("publication_agent_v2_runs").select("created_at").eq("media_error_code", "fetch_failed").gte("created_at", week).order("created_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ received_at: string }>(db.from("whatsapp_inbox").select("received_at").order("received_at", { ascending: false }).limit(1)),
+    rows<{ error_code: string | null; received_at: string }>(db.from("whatsapp_inbox").select("error_code,received_at").eq("status", "failed").gte("received_at", week).order("received_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ imported_at: string }>(db.from("whatsapp_assets").select("imported_at").eq("origin", "whatsapp").order("imported_at", { ascending: false }).limit(1)),
+    rows<{ id: string }>(db.from("whatsapp_inbox").select("id").eq("status", "processing").lt("lease_until", at).limit(DIAGNOSTIC_LIMIT)),
+  ]);
+  const lastImport = first(imported.map((r) => r.imported_at)), driveFailures = failed.filter((r) => r.error_code && DRIVE_IMPORT_ERROR.test(r.error_code));
+  const ingestionOn = isFlagEnabled("whatsapp-ingestion", env);
+  return { items: [
+    // Aucun journal dédié aux lectures du Drive des publications : jamais « opérationnel » sans preuve.
+    classifyMechanism({ id: "drive:publications", label: "Google Drive (photos des publications, lecture seule)", configured: isProviderConfigured("google-drive", env), now,
+      disabledReason: "Variables GOOGLE_DRIVE_* absentes.", openIssues: mediaFailures.length, lastFailureAt: first(mediaFailures.map((r) => r.created_at)),
+      issueLabel: `${mediaFailures.length}${mediaFailures.length >= DIAGNOSTIC_LIMIT ? "+" : ""} récupération${mediaFailures.length > 1 ? "s" : ""} de média en échec (7 j)`,
+      idleLabel: "Configuré ; aucune lecture réussie n’est journalisée, aucun échec de récupération sur 7 jours" }),
+    classifyMechanism({ id: "drive:import", label: "Google Drive (import des photos clients, drive.file)", configured: isProviderConfigured("google-drive-import", env), now,
+      disabledReason: "Variables GOOGLE_DRIVE_IMPORT_* absentes.", lastSuccessAt: lastImport, lastFailureAt: first(driveFailures.map((r) => r.received_at)),
+      successLabel: "Dernier média déposé dans Drive", failureLabel: `Dépôt Drive en échec (${driveFailures.length} sur 7 j)`, idleLabel: "Configuré, aucun média déposé enregistré" }),
+    classifyMechanism({ id: "whatsapp:webhook", label: "WhatsApp (réception)", configured: isProviderConfigured("whatsapp-webhook", env), now,
+      disabledReason: "Variables du webhook WhatsApp absentes.", lastSuccessAt: first(received.map((r) => r.received_at)), successLabel: "Dernier média reçu",
+      idleLabel: "Configuré, aucun média reçu enregistré" }),
+    classifyMechanism({ id: "whatsapp:ingestion", label: "WhatsApp (téléchargement et import)", configured: isProviderConfigured("whatsapp-ingestion", env), enabled: ingestionOn, now,
+      disabledReason: ingestionOn ? "WHATSAPP_ACCESS_TOKEN absent." : "WHATSAPP_INGESTION_ENABLED ≠ true : import coupé.",
+      openIssues: stuck.length, issueLabel: `${stuck.length} import${stuck.length > 1 ? "s" : ""} bloqué${stuck.length > 1 ? "s" : ""} (bail expiré)`,
+      lastSuccessAt: lastImport, lastFailureAt: first(failed.map((r) => r.received_at)), successLabel: "Dernier média importé", failureLabel: `Dernier import en échec (${failed.length}${failed.length >= DIAGNOSTIC_LIMIT ? "+" : ""} sur 7 j)`,
+      idleLabel: "Configuré, aucun média importé enregistré" }),
+  ] };
+}
+
+/** Connexions sociales (expirées, révoquées, en erreur) et diffusions bloquées. */
+const PROVIDER_PLATFORMS: Record<string, readonly string[]> = { meta: ["facebook", "instagram"], google_business_profile: ["google_business_profile"] };
+export async function connectionsStatus(db: DiagnosticDb, now: Date, env: Env): Promise<StatusGroup> {
+  const month = new Date(now.getTime() - MONTH).toISOString();
+  const [connections, issues, published, settings] = await Promise.all([
+    rows<{ provider: string; status: string; expires_at: string | null; last_checked_at: string | null }>(db.from("client_connections").select("provider,status,expires_at,last_checked_at").in("provider", ["meta", "google_business_profile"]).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ status: string; updated_at: string }>(db.from("publication_deliveries").select("status,updated_at").in("status", DELIVERY_ISSUE_STATUSES).order("updated_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
+    // Preuve d'une diffusion réelle : statut « published » (jamais « simulated ») avec identifiant distant.
+    rows<{ platform: string; updated_at: string }>(db.from("publication_deliveries").select("platform,updated_at").eq("status", "published").not("remote_id", "is", null).gte("updated_at", month).order("updated_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
+    db.from("publication_settings").select("emergency_stop,publishing_enabled").limit(1).maybeSingle(),
+  ]);
+  const expired = (c: { status: string; expires_at: string | null }) => c.status === "expired" || c.status === "revoked" || c.status === "error" || (c.status === "active" && c.expires_at !== null && Date.parse(c.expires_at) <= now.getTime());
+  const items = (["meta", "google_business_profile"] as const).map((provider) => {
+    const own = connections.filter((c) => c.provider === provider), broken = own.filter(expired), active = own.filter((c) => c.status === "active" && !expired(c));
+    const lastPublished = first(published.filter((d) => PROVIDER_PLATFORMS[provider].includes(d.platform)).map((d) => d.updated_at));
+    return classifyMechanism({ id: `connections:${provider}`, label: `Connexions ${PROVIDER_LABELS[provider]}`, configured: isProviderConfigured(provider === "meta" ? "meta" : "google-business-profile", env), now, freshMs: MONTH,
+      disabledReason: "Application OAuth non configurée sur le serveur.", openIssues: broken.length,
+      issueLabel: `${broken.length} connexion${broken.length > 1 ? "s" : ""} expirée${broken.length > 1 ? "s" : ""}, révoquée${broken.length > 1 ? "s" : ""} ou en erreur · à reconnecter`,
+      lastSuccessAt: lastPublished, successLabel: `${active.length} connexion${active.length > 1 ? "s" : ""} active${active.length > 1 ? "s" : ""} · dernière diffusion confirmée`,
+      idleLabel: active.length ? `${active.length} connexion${active.length > 1 ? "s" : ""} active${active.length > 1 ? "s" : ""}, aucune diffusion confirmée sur 30 jours` : "Configuré, aucune connexion active" });
+  });
+  const s = settings.error ? null : settings.data as { emergency_stop: boolean; publishing_enabled: boolean } | null;
+  items.push(classifyMechanism({ id: "deliveries", label: "Diffusions des publications", configured: null, enabled: s ? s.emergency_stop === false && s.publishing_enabled === true : false, now, freshMs: MONTH,
+    disabledReason: !s ? "Réglages illisibles : diffusion considérée comme arrêtée." : s.emergency_stop !== false ? "Arrêt d’urgence actif." : "Diffusion désactivée dans les réglages.",
+    openIssues: issues.length, lastFailureAt: first(issues.map((d) => d.updated_at)),
+    issueLabel: `${issues.length}${issues.length >= DIAGNOSTIC_LIMIT ? "+" : ""} diffusion${issues.length > 1 ? "s" : ""} en échec, bloquée${issues.length > 1 ? "s" : ""}, à réessayer ou à vérifier`,
+    lastSuccessAt: first(published.map((d) => d.updated_at)), successLabel: "Dernière diffusion confirmée par la plateforme", idleLabel: "Autorisée, aucune diffusion confirmée sur 30 jours" }));
+  return { items };
+}
+
+/** Délais de traitement : âge du plus ancien élément en attente de chaque file. */
+export async function delaysStatus(db: DiagnosticDb, now: Date, env: Env): Promise<StatusGroup> {
+  const at = now.toISOString();
+  const [inbox, jobs, publicationJobs, deliveries] = await Promise.all([
+    rows<{ received_at: string }>(db.from("whatsapp_inbox").select("received_at").eq("status", "pending").not("client_id", "is", null).order("received_at", { ascending: true }).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ scheduled_for: string }>(db.from("jobs").select("scheduled_for").eq("status", "queued").lte("scheduled_for", at).order("scheduled_for", { ascending: true }).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ run_at: string }>(db.from("publication_jobs").select("run_at").eq("status", "pending").lte("run_at", at).order("run_at", { ascending: true }).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ scheduled_for: string }>(db.from("publication_deliveries").select("scheduled_for").eq("status", "scheduled").lte("scheduled_for", at).order("scheduled_for", { ascending: true }).limit(DIAGNOSTIC_LIMIT)),
+  ]);
+  const queue = (id: string, label: string, list: Record<string, string>[], column: string, disabled: string | null = null) =>
+    classifyQueue({ id, label, oldestAt: list[0]?.[column] ?? null, pending: list.length, capped: list.length >= DIAGNOSTIC_LIMIT, now, disabled });
+  return { items: [
+    queue("delay:whatsapp", "Retard — imports WhatsApp en attente", inbox, "received_at"),
+    queue("delay:jobs", "Retard — jobs d’automatisation dus", jobs, "scheduled_for"),
+    queue("delay:publication-jobs", "Retard — envois de publications dus", publicationJobs, "run_at"),
+    queue("delay:deliveries", "Retard — diffusions programmées échues", deliveries, "scheduled_for",
+      isFlagEnabled("publications-scheduled-delivery", env) ? null : "diffusion automatique désactivée : envoi manuel via « Envoyer les publications dues »"),
+  ] };
+}
+
+/** Éléments connus de chaque groupe, affichés « inconnu » quand sa lecture échoue. */
+export const STATUS_GROUP_FALLBACK: Record<"safety" | "agents" | "ai" | "media" | "connections" | "delays", string[]> = {
+  safety: ["Automatismes Publications (arrêt d’urgence)", "Automatisation (réglage global)", "Génération IA (réglage global)", "Diffusion (réglage global)", "Diffusion automatique à l’heure prévue (PUBLICATIONS_SCHEDULED_DELIVERY)", "Préparation automatique par client"],
+  agents: ["Agent Publications", "Agents du cockpit"], ai: ["IA (OpenAI)"],
+  media: ["Google Drive (photos des publications, lecture seule)", "Google Drive (import des photos clients, drive.file)", "WhatsApp (réception)", "WhatsApp (téléchargement et import)"],
+  connections: ["Connexions Meta", "Connexions Google Business Profile", "Diffusions des publications"],
+  delays: ["Retard — imports WhatsApp en attente", "Retard — jobs d’automatisation dus", "Retard — envois de publications dus", "Retard — diffusions programmées échues"],
+};
+
 export type Diagnostic = {
   scheduler: Section<SchedulerDiagnostic>; agent: Section<AgentDiagnostic>; review: Section<{ pending: Count }>; whatsapp: Section<WhatsAppDiagnostic>;
   connections: Section<ConnectionsDiagnostic>; stuck: Section<StuckDiagnostic>; env: Section<EnvDiagnostic>;
+  status: {
+    scheduler: Section<StatusGroup>; safety: Section<StatusGroup>; agents: Section<StatusGroup>; ai: Section<AiStatus>;
+    media: Section<StatusGroup>; connections: Section<StatusGroup>; delays: Section<StatusGroup>;
+  };
 };
 export async function getDiagnostic(options: { now?: Date; env?: Env; db?: DiagnosticDb; heartbeat?: HeartbeatLoader | null } = {}): Promise<Diagnostic> {
   await requireAdmin();
@@ -230,10 +428,19 @@ export async function getDiagnostic(options: { now?: Date; env?: Env; db?: Diagn
   let db: DiagnosticDb | null = options.db ?? null;
   try { db ??= getSupabaseServerClient() as unknown as DiagnosticDb; } catch { db = null; }
   const read = <T,>(name: string, fn: (d: DiagnosticDb) => Promise<T>) => (db ? soft(name, () => fn(db!)) : Promise.resolve({ ok: false } as Section<T>));
-  const [scheduler, agent, review, whatsapp, connections, stuck] = await Promise.all([
-    read("scheduler", (d) => schedulerSection(d, now, env, options.heartbeat === undefined ? loadSchedulerHeartbeat : options.heartbeat)),
+  // Un seul chargement du battement, partagé par la section détaillée et les états classés.
+  const loader = options.heartbeat === undefined ? loadSchedulerHeartbeat : options.heartbeat;
+  const beat: Promise<Heartbeat> = db ? readHeartbeat(db, loader) : Promise.resolve("unavailable");
+  const shared: HeartbeatLoader | null = loader && (async () => { const b = await beat; if (b === "unavailable") throw Error("heartbeat"); return b && { started_at: b.startedAt, finished_at: b.finishedAt, ok: b.ok, steps: Object.fromEntries(b.steps.map((s) => [s.name, { status: s.status, ms: s.ms }])), last_success_at: b.lastSuccessAt, last_failure_at: b.lastFailureAt }; });
+  const [scheduler, agent, review, whatsapp, connections, stuck, safety, agents, ai, media, connectionStates, delays] = await Promise.all([
+    read("scheduler", (d) => schedulerSection(d, now, env, shared)),
     read("agent", (d) => agentSection(d, now)), read("review", (d) => reviewSection(d)), read("whatsapp", (d) => whatsappSection(d, now)),
     read("connections", (d) => connectionsSection(d, now)), read("stuck", (d) => stuckSection(d, now)),
+    read("status-safety", async (d) => safetyStatus(d, env, await beat, now)), read("status-agents", (d) => agentsStatus(d, now)),
+    read("status-ai", (d) => aiStatus(d, now, env)), read("status-media", (d) => mediaStatus(d, now, env)),
+    read("status-connections", (d) => connectionsStatus(d, now, env)), read("status-delays", (d) => delaysStatus(d, now, env)),
   ]);
-  return { scheduler, agent, review, whatsapp, connections, stuck, env: await soft("env", async () => envSection(env)) };
+  const schedulerStates = await soft("status-scheduler", async () => schedulerStatus(env, await beat, now));
+  return { scheduler, agent, review, whatsapp, connections, stuck, env: await soft("env", async () => envSection(env)),
+    status: { scheduler: schedulerStates, safety, agents, ai, media, connections: connectionStates, delays } };
 }

@@ -35,9 +35,10 @@ export function reusable(uses:readonly LibraryUse[],settings:ReuseSettings,now:D
  * au bon format et de bonne qualité, réemploi permis, non réservées, et jamais une photo des dernières publications.
  * Ordre : jamais utilisées d'abord, puis meilleur score IA, puis les plus récentes.
  * PR #42 : jamais une photo de document (facture, attestation, capture…), même validée ; une seule photo par empreinte
- * SHA-256 (les usages d'un doublon sont fournis par l'appelant, cf. usesWithDuplicates).
+ * SHA-256 (les usages d'un doublon sont fournis par l'appelant, cf. usesWithDuplicates). max : plafond (30 pour le
+ * modèle ; editorial-health.ts compte sans plafond).
  */
-export function libraryCandidates(rows:readonly LibraryRow[],assessments:readonly LibraryAssessment[],uses:readonly LibraryUse[],settings:ReuseSettings,recentPublicationIds:ReadonlySet<string>,now:Date):AgentMediaCandidate[]{
+export function libraryCandidates(rows:readonly LibraryRow[],assessments:readonly LibraryAssessment[],uses:readonly LibraryUse[],settings:ReuseSettings,recentPublicationIds:ReadonlySet<string>,now:Date,max:number=MAX_LIBRARY_CANDIDATES):AgentMediaCandidate[]{
  const byAsset=new Map(assessments.map(a=>[a.asset_id,a])),hashes=new Map(rows.map(r=>[r.id,r.sha256??null]));
  const usesOf=(id:string)=>uses.filter(u=>u.asset_id===id);
  const ranked=rows.filter(r=>{const a=byAsset.get(r.id)??null,u=usesOf(r.id);
@@ -48,6 +49,6 @@ export function libraryCandidates(rows:readonly LibraryRow[],assessments:readonl
   .map(r=>({r,a:byAsset.get(r.id)??null,used:usesOf(r.id).length>0}))
   .sort((x,y)=>Number(x.used)-Number(y.used)||((y.a?y.a.business_relevance*y.a.publishability:0.5)-(x.a?x.a.business_relevance*x.a.publishability:0.5))||String(y.r.imported_at).localeCompare(String(x.r.imported_at)))
   .map(x=>({...x,id:x.r.id}));
- return dedupeByHash(ranked,id=>hashes.get(id)).slice(0,MAX_LIBRARY_CANDIDATES)
+ return dedupeByHash(ranked,id=>hashes.get(id)).slice(0,max)
   .map(({r,a})=>({id:r.id,source:'library' as const,used:false,description:a?.description||null,categories:a?.topics.length?a.topics.slice(0,4):[LIBRARY_FALLBACK_CATEGORY]}));
 }

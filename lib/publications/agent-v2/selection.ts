@@ -124,11 +124,11 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  return {ok:true,value};
 }
 
-// Gardes de l'intelligence éditoriale (PR #42), dans l'ordre : lieux (quand les faits sont connus), photo, historique.
+// Gardes de l'intelligence éditoriale (PR #42), dans l'ordre : lieux (quand les faits sont connus), historique, photo.
 function editorialRefusal(input:Pick<AgentV2GeneratorInput,'occurrences'|'media'>&Partial<AgentV2GeneratorInput>,value:AgentV2GeneratorOutput):EditorialRefusal|null{
  const all=[value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])];
  if(input.client&&input.project){const place=placeRefusal(all,factsOf(input as AgentV2GeneratorInput));if(place)return place;}
+ const repeated=input.editorial?historyRefusal(value,input.editorial):null;if(repeated)return repeated;
  const mediaId=value.publications[0]?.mediaId??null;
- const photo=mediaId?photoRefusal(value.idea.subject,input.media.find(m=>m.id===mediaId),input.services??[]):null;if(photo)return photo;
- return input.editorial?historyRefusal(value,input.editorial):null;
+ return mediaId?photoRefusal(value.idea.subject,input.media.find(m=>m.id===mediaId),input.services??[]):null;
 }

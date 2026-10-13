@@ -7,6 +7,7 @@ import { PageHeading, Panel } from "@/components/ui/primitives";
 import { ingestionEnabled } from "@/lib/whatsapp/service";
 import { SenderForm, ProcessForm, RetryForm, FolderForm, AssignForm, ForgetSenderForm } from "./forms";
 import { mediaExpiry } from "@/lib/whatsapp/library-model";
+import { inboxErrorLabel } from "@/lib/whatsapp/drive-errors";
 export const metadata = { title: "Médias WhatsApp" };
 export const maxDuration = 120;
 export default async function WhatsAppPage() {
@@ -48,7 +49,7 @@ export default async function WhatsAppPage() {
       <Panel className="p-6"><h2 className="mb-4 text-lg font-semibold">File d’import</h2><ProcessForm /><p className="my-4 text-sm text-muted">Les 100 dernières réceptions. Un numéro non associé reste en attente. Un automate serveur peut traiter la file en continu ; aucun planning n’est activé automatiquement.</p>
         <ul className="divide-y divide-border">{inbox.data?.map(item => <li key={item.id} className="py-4">
           <p>{item.sender ? `+${item.sender}` : "Numéro effacé"} · {item.mime_type.startsWith("video/") ? "Vidéo" : "Photo"} · {item.client_id ? <Link className="text-accent" href={`/clients/${item.client_id}?tab=media`}>{names.get(item.client_id) ?? "Client"}</Link> : "À associer"} · {statuses[item.status]}</p>
-          <p className="text-sm text-muted">{new Date(item.received_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })} · {item.attempts}/5 tentatives{item.error_code ? ` · ${item.error_code}` : ""}</p>
+          <p className="text-sm text-muted">{new Date(item.received_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })} · {item.attempts}/5 tentatives{item.error_code ? ` · ${inboxErrorLabel(item.error_code)}` : ""}</p>
           {item.drive_file_id && <a className="text-accent" href={`https://drive.google.com/file/d/${item.drive_file_id}/view`} target="_blank" rel="noreferrer">Voir dans Drive</a>}
           {item.status === "failed" && <RetryForm id={item.id} />}
         </li>)}</ul>{!inbox.data?.length && <p>Aucun média reçu.</p>}

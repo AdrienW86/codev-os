@@ -3,7 +3,7 @@ import Link from 'next/link';
 import {useActionState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {ensureClientPublicationsAction,saveClientPublicationSettingsAction,type ClientPublicationsState} from '@/app/(cockpit)/clients/[id]/publications-actions';
-import {automationSummary,timezoneOptions,type ClientPublicationSettings} from '@/lib/publications/client-setup-model';
+import {automationSummary,timezoneLabel,timezoneOptions,type ClientPublicationSettings} from '@/lib/publications/client-setup-model';
 
 // Onglet « Publications » de la fiche client (socle lot 1) : réglages propres au client. Les connexions, canaux,
 // créneaux et la photothèque Drive réutilisent les composants existants des projets Publications.
@@ -39,7 +39,7 @@ export function ClientPublicationSettingsForm({clientId,settings,globalStop}:{cl
    <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="media_reuse_allowed" defaultChecked={settings.mediaReuseAllowed}/><span>Autoriser le réemploi d’une photo déjà publiée<span className="block text-xs text-muted">Sinon, une photo n’est jamais réutilisée.</span></span></label>
    <label className="block text-sm">Préparer combien de jours avant le créneau<input type="number" name="prepare_lead_days" min={1} max={14} required defaultValue={settings.prepareLeadDays} className={input}/></label>
    <label className="block text-sm">Délai minimal avant réemploi (jours)<input type="number" name="media_reuse_after_days" min={30} max={730} required defaultValue={settings.mediaReuseAfterDays} className={input}/></label>
-   <label className="block text-sm">Fuseau horaire du client<select name="timezone" defaultValue={settings.timezone} className={input}>{timezoneOptions(settings.timezone).map(t=><option key={t} value={t}>{t}</option>)}</select></label>
+   <label className="block text-sm">Fuseau horaire du client<select name="timezone" defaultValue={settings.timezone} className={input}>{timezoneOptions(settings.timezone).map(t=><option key={t} value={t}>{timezoneLabel(t)}</option>)}</select></label>
    <label className="block text-sm md:col-span-2">Règles éditoriales du client<span className="block text-xs text-muted">Ton, vocabulaire, mentions obligatoires, sujets à éviter. Appliquées à toutes les plateformes.</span>
     <textarea name="editorial_brief" maxLength={10000} rows={5} defaultValue={settings.editorialBrief} className={input}/></label>
    <div className="md:col-span-2"><button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60">{pending?'Enregistrement…':'Enregistrer les réglages'}</button>

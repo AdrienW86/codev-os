@@ -32,21 +32,32 @@ export function BoardFilterBar({query,clients,projects}:{query:BoardQuery;client
   go(applyFilterChange(query,name,type==='checkbox'?(checked?'1':''):value,projects));};
  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();debounced.current?.cancel();go(applyFilterChange(query,'q',text));};
  const key=JSON.stringify({...query,q:''});
+ // Ouvert par défaut sur tablette et ordinateur (le résumé n'y est pas affiché) ; sur téléphone, replié sauf si un
+ // filtre avancé est actif.
+ const [advancedOpen,setAdvancedOpen]=useState(()=>Boolean(query.archived||query.platform||query.origin||query.media||query.from||query.to||query.published||query.hidden||query.sort!=='date_asc'));
+ useEffect(()=>{if(typeof window==='undefined'||!window.matchMedia)return;const wide=window.matchMedia('(min-width: 640px)');
+  const sync=()=>{if(wide.matches)setAdvancedOpen(true);};sync();wide.addEventListener('change',sync);return ()=>wide.removeEventListener('change',sync);},[]);
  return <form method="get" action="/publications" onSubmit={submit} aria-busy={pending} data-board-filters="instant" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
   <label className="text-xs sm:col-span-2">Recherche<input className={input} type="search" name="q" value={text} onChange={e=>{setText(e.currentTarget.value);debounced.current?.call(e.currentTarget.value);}} placeholder="Sujet, texte, client, projet" autoComplete="off"/></label>
   <div key={key} className="contents">
   <label className="text-xs">Client<select className={input} name="client" defaultValue={query.client} onChange={change}><option value="">Tous</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
   <label className="text-xs">Projet<select className={input} name="project" defaultValue={query.project} onChange={change}><option value="">Tous</option>{projects.filter(p=>!query.client||p.client_id===query.client).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-  <label className="text-xs">Vue<select className={input} name="archived" defaultValue={query.archived?'1':''} onChange={change}><option value="">Actives</option><option value="1">Archivées</option></select></label>
   <label className="text-xs">Statut<select className={input} name="status" defaultValue={query.status} onChange={change}><option value="">Tous</option>{boardStatuses.map(s=><option key={s} value={s}>{boardStatusLabels[s]}</option>)}</select></label>
-  <label className="text-xs">Plateforme<select className={input} name="platform" defaultValue={query.platform} onChange={change}><option value="">Toutes</option>{publicationPlatforms.map(p=><option key={p} value={p}>{platformLabels[p]}</option>)}</select></label>
-  <label className="text-xs">Origine<select className={input} name="origin" defaultValue={query.origin} onChange={change}><option value="">Toutes</option>{boardOrigins.map(o=><option key={o} value={o}>{boardOriginLabels[o]}</option>)}</select></label>
-  <label className="text-xs">Média<select className={input} name="media" defaultValue={query.media} onChange={change}><option value="">Tous</option><option value="with">Avec média</option><option value="without">Sans média</option></select></label>
-  <label className="text-xs">Du<input className={input} type="date" name="from" defaultValue={query.from} onChange={change}/></label>
-  <label className="text-xs">Au<input className={input} type="date" name="to" defaultValue={query.to} onChange={change}/></label>
-  <label className="text-xs">Trier par<select className={input} name="sort" defaultValue={query.sort} onChange={change}>{boardSorts.map(s=><option key={s} value={s}>{boardSortLabels[s]}</option>)}</select></label>
-  <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="published" value="1" defaultChecked={query.published} onChange={change}/>Afficher les publications publiées</label>
-  <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="hidden" value="1" defaultChecked={query.hidden} onChange={change}/>Afficher les retirées</label>
+  {/* Filtres avancés : repliés sur mobile, toujours ouverts à partir de sm. */}
+  <details open={advancedOpen} onToggle={e=>setAdvancedOpen(e.currentTarget.open)} data-board-advanced="true" className="sm:col-span-2 lg:col-span-4 xl:col-span-8">
+   <summary className="cursor-pointer text-xs text-muted sm:hidden">Plus de filtres</summary>
+   <div className="mt-2 grid gap-2 sm:mt-0 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+    <label className="text-xs">Vue<select className={input} name="archived" defaultValue={query.archived?'1':''} onChange={change}><option value="">Actives</option><option value="1">Archivées</option></select></label>
+    <label className="text-xs">Plateforme<select className={input} name="platform" defaultValue={query.platform} onChange={change}><option value="">Toutes</option>{publicationPlatforms.map(p=><option key={p} value={p}>{platformLabels[p]}</option>)}</select></label>
+    <label className="text-xs">Origine<select className={input} name="origin" defaultValue={query.origin} onChange={change}><option value="">Toutes</option>{boardOrigins.map(o=><option key={o} value={o}>{boardOriginLabels[o]}</option>)}</select></label>
+    <label className="text-xs">Média<select className={input} name="media" defaultValue={query.media} onChange={change}><option value="">Tous</option><option value="with">Avec média</option><option value="without">Sans média</option></select></label>
+    <label className="text-xs">Du<input className={input} type="date" name="from" defaultValue={query.from} onChange={change}/></label>
+    <label className="text-xs">Au<input className={input} type="date" name="to" defaultValue={query.to} onChange={change}/></label>
+    <label className="text-xs">Trier par<select className={input} name="sort" defaultValue={query.sort} onChange={change}>{boardSorts.map(s=><option key={s} value={s}>{boardSortLabels[s]}</option>)}</select></label>
+    <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="published" value="1" defaultChecked={query.published} onChange={change}/>Afficher les publications publiées</label>
+    <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="hidden" value="1" defaultChecked={query.hidden} onChange={change}/>Afficher les retirées</label>
+   </div>
+  </details>
   </div>
   {query.debug&&<input type="hidden" name="debug" value="1"/>}
   <div className="flex items-end gap-3"><Link href={query.debug?'/publications?debug=1':'/publications'} className="text-sm text-accent">Réinitialiser</Link><span role="status" className="text-xs text-muted">{pending?'Actualisation…':''}</span></div>

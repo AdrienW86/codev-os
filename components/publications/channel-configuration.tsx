@@ -4,11 +4,11 @@ import {useActionState,useState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
 import {confirmChannelsAction,saveChannelScheduleAction,setChannelEnabledAction,type ConfigurationState} from '@/app/(cockpit)/publications/configuration-actions';
 import {saveChannelRulesAction} from '@/app/(cockpit)/clients/[id]/publications-actions';
-import {timezoneOptions} from '@/lib/publications/client-setup-model';
+import {timezoneLabel,timezoneOptions} from '@/lib/publications/client-setup-model';
 import type {AccountOption} from '@/lib/publications/connections/model';
 import {ChannelAccountSelector,ConnectionsPanel} from './connections-panel';
 import type {ChannelAccountView,ConnectionSummary} from '@/lib/publications/connections/model';
-import {DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS,WEEKDAY_LABELS,postsPerWeekLabel,scheduleSlotsPayload,slotRowsError,sortConfigurationSlots,weekdayLabel,
+import {channelDeliverySummary,DEFAULT_SCHEDULE_TIMEZONE,MAX_SCHEDULE_SLOTS,WEEKDAY_LABELS,postsPerWeekLabel,scheduleSlotsPayload,slotRowsError,sortConfigurationSlots,weekdayLabel,
  type ChannelCard,type ChannelConfigurationView,type ConfigurationSlot} from '@/lib/publications/channel-configuration-model';
 
 // Project "Configuration" tab (Lot 4.3 P2-b): explicit channels and their weekly schedules. No identifier is
@@ -20,8 +20,9 @@ const initial:ConfigurationState={};
 // Lot 4.3 P9: connections of the client and the publication account of each channel (status only, no secret).
 export type ChannelConnectionsView={connections:ConnectionSummary[];channels:ChannelAccountView[];oauthMessage:string;oauthReady:Record<ConnectionSummary['provider'],boolean>};
 // Socle lot 1: also rendered in the client « Publications » tab (returnView 'client', discovered account names shown).
-export function ChannelConfiguration({projectId,view,connections=null,oauthBanner=null,returnView='project',accounts=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null;oauthBanner?:{ok:boolean;message:string}|null;
- returnView?:'project'|'client';accounts?:AccountOption[]|null}){
+// deliveryFlags (fiche client) : réglage de diffusion du client et arrêt général, pour préciser la raison d'un blocage.
+export function ChannelConfiguration({projectId,view,connections=null,oauthBanner=null,returnView='project',accounts=null,deliveryFlags=null}:{projectId:string;view:ChannelConfigurationView|null;connections?:ChannelConnectionsView|null;oauthBanner?:{ok:boolean;message:string}|null;
+ returnView?:'project'|'client';accounts?:AccountOption[]|null;deliveryFlags?:{clientPublishing:boolean;globalStop:boolean}|null}){
  if(!view)return <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2><p role="alert" className="mt-3 text-sm">Configuration des canaux indisponible pour le moment. Rechargez la page.</p></Panel>;
  return <>
   <Panel className="mt-6 p-6"><h2 className="font-semibold">Configuration des publications</h2>
@@ -34,7 +35,7 @@ export function ChannelConfiguration({projectId,view,connections=null,oauthBanne
   </Panel>
   {connections?<ConnectionsPanel projectId={projectId} connections={connections.connections} oauthMessage={connections.oauthMessage} oauthReady={connections.oauthReady} banner={oauthBanner} returnView={returnView} accounts={accounts}/>
    :<Panel className="mt-6 p-6"><h2 className="font-semibold">Connexions</h2><p role="alert" className="mt-3 text-sm">Connexions indisponibles pour le moment. Rechargez la page.</p></Panel>}
-  <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card} account={connections?.channels.find(c=>c.platform===card.platform)??null}/>)}</div></>;
+  <div className="mt-6 grid gap-6 lg:grid-cols-3">{view.cards.map(card=><ChannelCardView key={card.platform} projectId={projectId} card={card} account={connections?.channels.find(c=>c.platform===card.platform)??null} deliveryFlags={deliveryFlags}/>)}</div></>;
 }
 
 function LegacyBanner({projectId}:{projectId:string}){
@@ -45,9 +46,11 @@ function LegacyBanner({projectId}:{projectId:string}){
   {state.message&&<p role="status" className="w-full">{state.message}</p>}</form>;
 }
 
-function ChannelCardView({projectId,card,account}:{projectId:string;card:ChannelCard;account:ChannelAccountView|null}){
+function ChannelCardView({projectId,card,account,deliveryFlags}:{projectId:string;card:ChannelCard;account:ChannelAccountView|null;deliveryFlags:{clientPublishing:boolean;globalStop:boolean}|null}){
+ const delivery=account?channelDeliverySummary(account.publishability,deliveryFlags):null;
  return <Panel className="p-5" ><article data-channel={card.platform} data-state={card.state}>
   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{card.label}</h3>{stateBadges[card.state]}</div>
+  {delivery&&<p data-channel-delivery={delivery.active?'active':'blocked'} className={`mt-1 text-xs ${delivery.active?'text-success':'text-warning'}`}>{delivery.text}</p>}
   {account&&card.configured?<ChannelAccountSelector projectId={projectId} view={account}/>:<p className="mt-2 text-xs text-muted">{card.accountConnected?'Compte connecté':'Aucun compte connecté'}</p>}
   {card.state!=='legacy'&&<ChannelToggle projectId={projectId} card={card}/>}
   {card.configured?<RulesEditor key={card.rules??''} projectId={projectId} card={card}/>
@@ -84,7 +87,7 @@ function ScheduleEditor({projectId,card}:{projectId:string;card:ChannelCard}){
   <div className="flex flex-wrap items-center justify-between gap-2"><label className="text-sm"><input type="checkbox" name="enabled" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Planning actif</label>
    {!enabled&&<Badge>Planning désactivé</Badge>}</div>
   {card.state==='inactive'&&<p className="text-xs text-warning">Canal inactif : ce planning est conservé mais n’est pas utilisé.</p>}
-  <label className="block text-xs text-muted">Fuseau horaire <select name="timezone" defaultValue={timezone} className={`${input} mt-1 block w-full text-foreground`}>{timezoneOptions(timezone).map(t=><option key={t} value={t}>{t}</option>)}</select></label>
+  <label className="block text-xs text-muted">Fuseau horaire <select name="timezone" defaultValue={timezone} className={`${input} mt-1 block w-full text-foreground`}>{timezoneOptions(timezone).map(t=><option key={t} value={t}>{timezoneLabel(t)}</option>)}</select></label>
   {sorted.length?<ul className="space-y-2">{sorted.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2" data-slot-row="true">
    <select aria-label="Jour" className={input} value={r.weekday} onChange={e=>update(r.key,{weekday:Number(e.target.value)})}>{WEEKDAY_LABELS.map((d,i)=><option key={d} value={i+1}>{d}</option>)}</select>
    <input aria-label="Heure" type="time" required className={input} value={r.localTime} onChange={e=>update(r.key,{localTime:e.target.value.slice(0,5)})}/>

@@ -1,7 +1,8 @@
 // Socle Publications, lot 6 — disposable local PostgreSQL only (never a remote project).
 // The Lot 4.3 P10 delivery engine suite (prepare, claim, lease, dispatch, complete, retry, revision after approval)
 // still passes once EVERY later migration is applied, then publications-scheduled-after-delivery-engine.sql checks in
-// the same transaction that each failed or uncertain delivery notified the admin and a refused publication is never prepared.
+// the same transaction that each failed or uncertain delivery notified the admin and a refused publication is never prepared;
+// publications-supervision-after-delivery-engine.sql then checks « Reprogrammer » (lot 7) against real deliveries.
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {test} from 'node:test';
@@ -27,7 +28,7 @@ test('Delivery engine suite (P10) unchanged after the full migration chain, fail
   +'set local role postgres;set constraints all immediate;'+files.slice(6,9).map(f=>read('supabase/migrations/'+f)).join('\n')+'reset role;set constraints all deferred;';
  const migrate=f=>'set local role postgres;set constraints all immediate;'+read('supabase/migrations/'+f)+'\nreset role;set constraints all deferred;';
  const sql=foundation+files.slice(9,files.indexOf(P9)+1).map(migrate).join('')+read('supabase/tests/publications-delivery-engine-before.sql')+migrate(P10)
-  +files.slice(files.indexOf(P10)+1).map(migrate).join('')+read('supabase/tests/publications-delivery-engine.sql')+read('supabase/tests/publications-scheduled-after-delivery-engine.sql')
+  +files.slice(files.indexOf(P10)+1).map(migrate).join('')+read('supabase/tests/publications-delivery-engine.sql')+read('supabase/tests/publications-scheduled-after-delivery-engine.sql')+read('supabase/tests/publications-supervision-after-delivery-engine.sql')
   +"select 'P10_FULL_CHAIN='||passed from pg_temp.remote_replay;rollback;";
  for(let i=1;i<=2;i++){
   const admin=psql('postgres',`drop database if exists ${database}; create database ${database};`);assert.equal(admin.status,0,admin.stderr);

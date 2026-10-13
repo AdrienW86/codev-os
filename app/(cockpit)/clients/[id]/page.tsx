@@ -255,7 +255,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
     <div className="space-y-6">
       <ClientPublicationsProjectPicker clientId={clientId} projects={data.projects} current={data.project.id} />
       <ClientPublicationSettingsForm clientId={clientId} settings={data.settings} globalStop={data.globalStop} />
-      <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} />
+      <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} deliveryFlags={{ clientPublishing: data.settings.publishingEnabled, globalStop: data.globalStop }} />
       <Panel className="p-6">
         <h2 className="font-semibold">Photothèque Google Drive et prestations</h2>
         <p className="mt-2 text-sm text-muted">Dossier Drive où l’agent cherche les photos du client, prestations réellement proposées et objectif éditorial. Le dossier des photos reçues par WhatsApp et les « Prestations confirmées » du profil se gèrent dans l’onglet <Link className="text-accent" href={`/clients/${clientId}?tab=media`}>Photothèque</Link> ; l’agent utilise les deux.</p>

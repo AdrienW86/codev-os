@@ -184,6 +184,7 @@ export type PublicationFunctions = {
   publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
   publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
+  publication_reschedule:{Args:{p_publication_id:string;p_expected_revision_id:string;p_occurrence_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
   publication_job_claim_on_time:{Args:{p_worker_id:string;p_lease_seconds:number;p_max_late_seconds:number};Returns:Json};
   publication_scheduled_delivery_candidates:{Args:{p_late_before:string;p_limit:number};Returns:{publication_id:string;revision_id:string;scheduled_for:string;state:"ready"|"missed"|"photo_unpublishable"}[]};

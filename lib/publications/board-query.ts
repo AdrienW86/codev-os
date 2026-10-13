@@ -5,8 +5,8 @@ export const boardStatuses=['to_prepare','draft','ready','rejected','published']
 export type BoardStatus=typeof boardStatuses[number];
 export const boardStatusLabels:Record<BoardStatus,string>={to_prepare:'À préparer',draft:'Brouillon',ready:'À publier',rejected:'Rejeté',published:'Publié'};
 export const boardViewLabels:Record<BoardStatus,string>={to_prepare:'À préparer',draft:'Brouillons',ready:'À publier',rejected:'Rejetées',published:'Publiées'};
-export const boardStatusClasses:Record<BoardStatus,string>={to_prepare:'border-dashed border-border text-muted',draft:'border-amber-500 bg-amber-500/10',
- ready:'border-emerald-600 bg-emerald-600/10',rejected:'border-red-600 bg-red-600/10',published:'border-sky-600 bg-sky-600/10'};
+export const boardStatusClasses:Record<BoardStatus,string>={to_prepare:'border-dashed border-border text-muted',draft:'border-warning bg-warning/10',
+ ready:'border-success bg-success/10',rejected:'border-danger bg-danger/10',published:'border-info bg-info/10'};
 export const boardOrigins=['agent','manual'] as const;
 export type BoardOrigin=typeof boardOrigins[number]|'planning';
 export const boardOriginLabels:Record<BoardOrigin,string>={agent:'Agent',manual:'Manuel',planning:'Planning'};

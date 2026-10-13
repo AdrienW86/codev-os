@@ -7,9 +7,12 @@
 import { z } from "zod";
 import type { CapabilityId, RunType } from "@/lib/agents/registry";
 import { PERIOD_PRESETS, describeDates } from "@/lib/integrations/google-ads/periods";
+import { describePrepare, describeReschedule, MAX_ASSISTANT_PREPARATIONS, PUBLICATION_PLATFORMS } from "@/lib/assistant/publications-model";
 
 const clientName = z.string().trim().min(1).max(120);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const uuid = z.string().uuid();
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const adsType = z.string().regex(/^[A-Z_]{2,40}$/);
 const adsStatus = z.enum(["enabled", "paused", "all"]);
 /** Périmètre exact d'une écriture Google Ads côté CODE-V (rapport, analyse) — revalidé par parseScope. */
@@ -65,7 +68,7 @@ export const toolDefinitions = {
   },
   schedule_check: {
     kind: "write", description: "Planifie une analyse d’agent à une date et une heure précises (heure de Paris).",
-    input: z.object({ check: z.enum(["monitoring.check_sites", "seo.analyze", "ads.monitor", "news.fetch"]), client: clientName.optional(), date, time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict(), capability: null,
+    input: z.object({ check: z.enum(["monitoring.check_sites", "seo.analyze", "ads.monitor", "news.fetch"]), client: clientName.optional(), date, time }).strict(), capability: null,
   },
   generate_report: {
     kind: "write", description: "Génère (ou régénère) le rapport hebdomadaire ou mensuel de la période close d’un client, à relire avant tout envoi.",
@@ -82,6 +85,42 @@ export const toolDefinitions = {
   ads_run_analysis: {
     kind: "read", description: "Lance l’analyse de l’Agent Ads sur un périmètre exact : règles déterministes par défaut, IA personnalisée facultative avec mode=ai. Lecture seule Google Ads : analyse interne directe sans confirmation supplémentaire.",
     input: adsScopeInput.extend({ mode: z.enum(["deterministic", "ai"]).optional() }), capability: null,
+  },
+  // --- Publications (phase 6). AUCUN outil ne publie, n'approuve ni ne soumet : l'approbation reste un geste de
+  // l'interface (carte de validation) et la diffusion suit le moteur existant. Les écritures ci-dessous ne créent que
+  // des brouillons ou remettent l'approbation à zéro, et seulement après confirmation explicite.
+  publications_review_list: {
+    kind: "read", description: "Publications en attente de validation humaine (lecture seule), tous clients ou un client ; lien vers la vue « À valider » de la supervision. N’approuve rien.",
+    input: z.object({ client: clientName.optional() }).strict(), capability: null,
+  },
+  publications_photo_explain: {
+    kind: "read", description: "Explique pourquoi une photo de la photothèque d’un client a été écartée ou rejetée (décision humaine, classement IA, qualité, format). Sans photo_id, liste les photos écartées et demande laquelle.",
+    input: z.object({ client: clientName.optional(), photo_id: uuid.optional() }).strict(), capability: null,
+  },
+  publications_reconnect_list: {
+    kind: "read", description: "Comptes de publication (Instagram, Facebook, Google Business Profile) à reconnecter : connexion expirée, révoquée ou inactive ; liens de reconnexion. Lecture seule.",
+    input: z.object({ platform: z.enum(PUBLICATION_PLATFORMS).optional(), client: clientName.optional() }).strict(), capability: null,
+  },
+  publications_photo_shortage: {
+    kind: "read", description: "Clients qui manquent de photos publiables pour les Publications (sous le seuil de la supervision). Lecture seule.",
+    input: z.object({}).strict(), capability: null,
+  },
+  publications_prepare: {
+    kind: "write", description: `Prépare des BROUILLONS de publications avec l’Agent Publications v2 pour un client : period=next_week (créneaux libres de la semaine prochaine) ou count (1 à ${MAX_ASSISTANT_PREPARATIONS}, prochains créneaux libres). Ne soumet, n’approuve ni ne publie rien. project : nom du projet si le client en a plusieurs.`,
+    input: z.object({
+      client: clientName, period: z.enum(["next_week"]).optional(), count: z.number().int().min(1).max(MAX_ASSISTANT_PREPARATIONS).optional(), project: clientName.optional(),
+      // Renseignés par le serveur à la préparation de la proposition (affichage) : revérifiés à la confirmation.
+      start: date.optional(), end: date.optional(), slots: z.number().int().min(0).max(100).optional(),
+    }).strict().refine((value) => Boolean(value.period) !== (value.count !== undefined), { message: "period ou count" }), capability: null,
+  },
+  publications_reschedule: {
+    kind: "write", description: "Reprogramme une publication sur un créneau libre existant (même projet et plateforme) à une date et une heure de Paris : publication_id (publication ouverte ou listée) ou client (s’il n’a qu’une publication reprogrammable). L’approbation est remise à zéro.",
+    input: z.object({
+      publication_id: uuid.optional(), client: clientName.optional(), date, time,
+      // Renseignés par le serveur (révision attendue, créneau, affichage) : revérifiés à la confirmation et par publication_reschedule.
+      revision_id: uuid.optional(), occurrence_id: uuid.optional(), subject: z.string().max(300).optional(), platform: z.enum(PUBLICATION_PLATFORMS).optional(),
+      client_name: clientName.optional(), from: z.string().max(40).optional(),
+    }).strict().refine((value) => Boolean(value.publication_id || value.client), { message: "publication_id ou client" }), capability: null,
   },
   create_task: {
     kind: "write", description: "Crée une tâche pour un client.",
@@ -121,6 +160,8 @@ export function describeProposal(name: ToolName, input: Record<string, unknown>)
       ? `Préparer un rapport Google Ads pour ${input.client_name ?? "ce client"} (${scope}). Il sera à relire avant tout envoi ; aucune modification Google Ads.`
       : `Lancer l’analyse réelle de l’Agent Ads pour ${input.client_name ?? "ce client"} (${scope}) : ${input.mode === "ai" ? "IA personnalisée, instructions client, repli déterministe si indisponible" : "règles déterministes, sans IA"}, lecture seule.`;
   }
+  if (name === "publications_prepare") return describePrepare(input);
+  if (name === "publications_reschedule") return describeReschedule(input);
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;
   if (name === "schedule_check") return `Planifier ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""} le ${input.date} à ${input.time} (heure de Paris).`;

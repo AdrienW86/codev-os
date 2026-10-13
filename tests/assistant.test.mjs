@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as zod from "zod";
 import { loadRegistry, loadTs } from "./helpers/load-ts.mjs";
+import { publicationsModules } from "./helpers/assistant-publications.mjs";
 
 const periods = loadTs("lib/integrations/google-ads/periods.ts");
 const text = loadTs("lib/assistant/text.ts");
+const publications = publicationsModules(text);
 const adsIntents = loadTs("lib/assistant/ads-intents.ts", { "@/lib/assistant/text": text });
-const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods });
-const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents });
-const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents });
+const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods, ...publications.mocks });
+const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
+const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
 const errors = loadTs("lib/providers/errors.ts");
 const api = loadTs("lib/providers/api.ts", { "@/lib/providers/errors": errors });
 const ai = loadTs("lib/ai/providers.ts", { "@/lib/providers/api": api, "@/lib/providers/errors": errors });
@@ -36,7 +38,7 @@ test("tool registry: strict inputs, unknown tools refused, JSON schemas closed",
     assert.equal(spec.parameters.$schema, undefined);
   }
   const writes = Object.entries(tools.toolDefinitions).filter(([, item]) => item.kind === "write").map(([name]) => name).sort();
-  assert.deepEqual(writes, ["ads_prepare_report", "create_task", "generate_report", "run_check", "schedule_check"]);
+  assert.deepEqual(writes, ["ads_prepare_report", "create_task", "generate_report", "publications_prepare", "publications_reschedule", "run_check", "schedule_check"]);
   assert.equal(tools.parseToolInput("schedule_check", { check: "seo.analyze", date: "2026-10-13", time: "25:00" }).ok, false);
   assert.match(tools.describeProposal("create_task", { client: "Jrenov", title: "Relancer", priority: "Haute" }), /Créer la tâche « Relancer » pour Jrenov, priorité haute/);
 });

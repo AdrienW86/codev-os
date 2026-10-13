@@ -15,7 +15,11 @@ export type Turn = { role: "user" | "assistant"; content: string; links?: ViewLi
 
 const failure = "L’assistant est momentanément indisponible. Réessayez dans un instant.";
 
-export function useAssistant() {
+/**
+ * initialContext : contexte de départ facultatif, par exemple la publication ouverte (`{ publicationId }`) pour
+ * « Reprogramme cette publication… » depuis une fiche ou le hub de supervision. Simple donnée, revalidée par le serveur.
+ */
+export function useAssistant(initialContext: AssistantContext = {}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [pending, setPending] = useState(false);
@@ -36,7 +40,7 @@ export function useAssistant() {
   const [speaking, setSpeaking] = useState(false);
   const request = useRef<AbortController | null>(null);
   const playback = useRef<AbortController | null>(null);
-  const context = useRef<AssistantContext>({});
+  const context = useRef<AssistantContext>(initialContext);
   /** Élément qui a déclenché la demande (hors panneau) : le focus y revient à la fermeture, même s'il a été désactivé entre-temps. */
   const trigger = useRef<HTMLElement | null>(null);
   const rememberTrigger = () => {

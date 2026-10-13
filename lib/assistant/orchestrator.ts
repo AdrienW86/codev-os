@@ -7,6 +7,8 @@ import { describeProposal, parseToolInput, toolDefinitions, toolSpecs, type Tool
 import { assistantHelp, parseIntent } from "@/lib/assistant/intents";
 import { ADS_READ_ONLY_REPLY, CONFIRM_WITH_BUTTON_REPLY, isAdsMutationRequest, isBareConfirmation } from "@/lib/assistant/ads-intents";
 import type { AssistantContext, AssistantView } from "@/lib/assistant/views";
+import { isPublishRequest, PUBLISH_REFUSED_REPLY } from "@/lib/assistant/publications-intents";
+import { supervisionReviewHref } from "@/lib/assistant/publications-model";
 
 export type ToolLink = { label: string; href: string };
 /** Résultat d'un outil : texte court (lu au modèle et, si demandé, à voix haute), vue structurée facultative, contexte mis à jour. */
@@ -23,7 +25,7 @@ export type AssistantReply = {
   degradedReason?: string;
 };
 /** Préparation d'une proposition : résolution du client, normalisation, ou question de précision. */
-export type PrepareResult = { ok: true; input: Record<string, unknown> } | { ok: false; question: string };
+export type PrepareResult = { ok: true; input: Record<string, unknown> } | { ok: false; question: string; links?: ToolLink[]; view?: AssistantView; context?: AssistantContext };
 
 export type OrchestratorDeps = {
   /** Fil de la conversation (renseigné par respond). */
@@ -58,12 +60,19 @@ export const SYSTEM_PROMPT_RULES = [
   "Dates : convertis les jours relatifs (« lundi », « demain ») en AAAA-MM-JJ à partir de la date du jour ; heures au format HH:MM, heure de Paris.",
   "Google Ads est en LECTURE SEULE : aucune modification de campagne, de budget ni d’enchère n’est possible ; dis-le si on te le demande.",
   "Pour obtenir une recommandation sur des campagnes, appelle ads_recommendations directement (aucune confirmation pour une analyse interne). Pour consulter des campagnes Google Ads, appelle ads_campaigns. Pour une demande de suivi sur la vue courante (« et sur 7 jours ? », « uniquement Local Services », « compare avec la période précédente », « et pour <autre client> ? »), appelle ads_campaigns avec SEULEMENT les paramètres qui changent : le serveur conserve les autres.",
+  "Publications : tu ne publies, n’approuves ni ne soumets JAMAIS une publication (aucun outil ne le permet) ; l’approbation se fait sur la carte de validation. Si on te le demande, dis-le et propose publications_review_list.",
+  "Pour préparer des publications, appelle publications_prepare (brouillons Agent v2, confirmation obligatoire) avec period=next_week OU count (1 à 4) ; si ni la période ni le nombre ne sont clairs, demande. Pour reprogrammer, appelle publications_reschedule avec publication_id (publication courante ou de la liste numérotée) ou client, date et heure ; si la publication est ambiguë, demande laquelle.",
+  "Une photo « rejetée / écartée » s’explique avec publications_photo_explain (photo_id si elle est connue, sinon client : le serveur demandera laquelle). Comptes à reconnecter : publications_reconnect_list ; clients à court de photos : publications_photo_shortage.",
   "Les données affichées viennent du serveur : ne recopie pas les tableaux, résume en une phrase et rappelle le périmètre (client, campagnes, dates).",
 ];
 
 /** Contexte courant décrit au modèle (données non sensibles, déjà revalidées). */
 export function describeContext(context: AssistantContext = {}) {
   if (context.view === "ads_campaigns" && context.clientName) return `Vue courante : campagnes Google Ads de ${context.clientName} (filtres : ${context.adsQuery || "par défaut — actives, 30 derniers jours"}).`;
+  const items = context.items?.length ? ` Éléments numérotés affichés : ${context.items.map((id, index) => `${index + 1}=${id}`).join(", ")}.` : "";
+  if (context.view === "publications_list") return `Vue courante : liste numérotée de publications${context.clientName ? ` de ${context.clientName}` : ""}.${items}${context.publicationId ? ` Publication courante : ${context.publicationId}.` : ""}`;
+  if (context.view === "publication_photos") return `Vue courante : photos écartées de ${context.clientName ?? "ce client"}.${items}${context.assetId ? ` Photo courante : ${context.assetId}.` : ""}`;
+  if (context.publicationId) return `Publication courante : ${context.publicationId}${context.clientName ? ` (client ${context.clientName})` : ""}.`;
   if (context.clientName) return `Client courant de la conversation : ${context.clientName}.`;
   return "Aucune vue ni client courant : si le client est nécessaire et absent, demande-le.";
 }
@@ -73,12 +82,15 @@ export function systemPrompt(today: string, context: AssistantContext = {}) {
   return [...SYSTEM_PROMPT_RULES, `Nous sommes le ${weekday} ${today} (Europe/Paris).`, describeContext(context)].join("\n");
 }
 
+/** Question de précision accompagnée d'une liste numérotée (vue et contexte serveur), sans proposition. */
+const questionOutcome = (prepared: { view?: AssistantView; context?: AssistantContext }) => ({ ...(prepared.view ? { view: prepared.view } : {}), ...(prepared.context ? { context: prepared.context } : {}) });
+
 type Degraded = { degraded: true; degradedReason: string } | Record<string, never>;
 
 /** Écriture : vérifiée (client, normalisation) puis PROPOSÉE — ou question de précision, sans proposition. */
 async function propose(name: ToolName, input: Record<string, unknown>, deps: OrchestratorDeps, source: AssistantReply["source"], flags: Degraded, text?: string): Promise<AssistantReply> {
   const prepared = deps.prepare ? await deps.prepare(name, input) : { ok: true as const, input };
-  if (!prepared.ok) return { reply: prepared.question, links: [], source, ...flags };
+  if (!prepared.ok) return { reply: prepared.question, links: prepared.links ?? [], source, ...questionOutcome(prepared), ...flags };
   const summary = describeProposal(name, prepared.input);
   const heard = deps.via === "voice" ? lastUserMessage(deps.messages ?? []) : undefined;
   const reply = heard ? `J’ai compris : « ${heard.slice(0, 200)} ». Je propose : ${summary} Vérifiez, puis confirmez avec le bouton.` : text?.trim() || `Je propose : ${summary} Confirmez pour lancer.`;
@@ -143,6 +155,8 @@ export async function respond(messages: ChatMessage[], input: OrchestratorDeps):
   // rien, et aucune modification Google Ads n'est proposée.
   if (isBareConfirmation(last)) return { reply: CONFIRM_WITH_BUTTON_REPLY, links: [], source: "rules", keepProposal: true };
   if (isAdsMutationRequest(last)) return { reply: ADS_READ_ONLY_REPLY, links: [], source: "rules" };
+  // Aucune publication ni approbation par l'assistant, quelle que soit la formulation (écrite ou dictée).
+  if (isPublishRequest(last)) return { reply: PUBLISH_REFUSED_REPLY, links: [{ label: "Publications à valider", href: supervisionReviewHref() }], source: "rules" };
   if (!deps.provider) return viaRules(last, deps);
 
   const provider = deps.provider;
@@ -195,7 +209,7 @@ export async function confirmProposal(tool: unknown, input: unknown, deps: Orche
   const parsed = parseToolInput(String(tool), input);
   if (!parsed.ok || toolDefinitions[parsed.name].kind !== "write") return { reply: "Proposition invalide ou expirée. Reformulez votre demande.", links: [], source: "rules" };
   const prepared = deps.prepare ? await deps.prepare(parsed.name, parsed.input) : { ok: true as const, input: parsed.input };
-  if (!prepared.ok) return { reply: prepared.question, links: [], source: "rules" };
+  if (!prepared.ok) return { reply: prepared.question, links: prepared.links ?? [], source: "rules", ...questionOutcome(prepared) };
   const outcome = await deps.execute(parsed.name, prepared.input);
   return { reply: outcome.text, links: outcome.links ?? [], source: "rules" };
 }

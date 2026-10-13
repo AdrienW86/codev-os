@@ -2,9 +2,9 @@ import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from './validation';
-import {accountHealth,deliveryErrorReason,deliveryState,latestLiveDelivery,missedSlot,MISSED_SLOT_REASON,photoStats,rescheduleTargets,tooFewPhotos,upcomingTasks,ERROR_DELIVERY_STATUSES,
- type AccountHealth,type AccountRow,type ConnectionRow,type DeliveryDetailRow,type DeliveryState,type OccurrenceRow,type PhotoStats,type UpcomingTask} from './supervision-model';
-import type {LibraryAssessment,LibraryRow,LibraryUse} from './agent-v2/library-pool';
+import {accountHealth,agentRunView,deliveryErrorReason,deliveryState,latestLiveDelivery,missedSlot,MISSED_SLOT_REASON,rescheduleTargets,upcomingTasks,ERROR_DELIVERY_STATUSES,
+ type AccountHealth,type AccountRow,type AgentRunView,type ConnectionRow,type DeliveryDetailRow,type DeliveryState,type OccurrenceRow,type PhotoStats,type UpcomingTask} from './supervision-model';
+import {loadClientPhotoCoverage} from './supervision-photos';
 import type {PublicationPlatform,PublicationStatus} from './types';
 
 // Socle Publications, lot 7 : lecture du tableau de supervision (admin uniquement). Aucune écriture ici ; les actions
@@ -14,8 +14,14 @@ export type SupervisedPublication={id:string;clientId:string;projectId:string;pl
  revisionId:string;occurrenceId:string|null;scheduledFor:string|null;delivery:DeliveryState;cancellable:string[];targets:{id:string;scheduledFor:string}[];
  /** Raison sûre (lignes « En erreur » uniquement) : classe d'erreur, motif de blocage ou créneau manqué. */
  errorReason:string|null};
-export type ClientSupervision={id:string;name:string;autoPrepare:boolean;generation:boolean;leadDays:number;photos:PhotoStats;tooFewPhotos:boolean;
- agentProjects:string[];accounts:AccountHealth[]};
+export type ClientSupervision={id:string;name:string;autoPrepare:boolean;generation:boolean;leadDays:number;
+ /** null : photothèque illisible (jamais « trop peu » par défaut). */
+ photos:PhotoStats|null;tooFewPhotos:boolean;
+ agentProjects:string[];accounts:AccountHealth[];
+ /** Un projet du client, pour relancer la connexion OAuth existante (startOAuth résout le client depuis le projet). */
+ projectId:string|null;
+ /** Dernière préparation Agent v2 du client (null : aucune, ou lecture impossible). */
+ lastRun:AgentRunView|null};
 export type Supervision={settings:{emergencyStop:boolean;automation:boolean;generation:boolean;publishing:boolean}|null;
  /** Diffusion à l'heure prévue par le planificateur (PUBLICATIONS_SCHEDULED_DELIVERY, lu par la page et passé ici). */
  scheduledDelivery:boolean;clients:ClientSupervision[];
@@ -26,7 +32,7 @@ const MAX_ROWS=500;
 export async function getSupervision(now=new Date(),options:{scheduledDelivery?:boolean}={}):Promise<Supervision>{
  await requireAdmin();const db=getSupabaseServerClient();
  const horizon=new Date(now.getTime()+28*86400000).toISOString(),since=new Date(now.getTime()-30*86400000).toISOString();
- const [settings,clients,clientSettings,agents,accounts,connections,pubs,occurrences,assets,assessments,uses]=await Promise.all([
+ const [settings,clients,clientSettings,agents,accounts,connections,pubs,occurrences,runs]=await Promise.all([
   db.from('publication_settings').select('emergency_stop,automation_enabled,generation_enabled,publishing_enabled').limit(1).maybeSingle(),
   db.from('clients').select('id,name').order('name').limit(MAX_ROWS),
   db.from('publication_client_settings').select('client_id,auto_prepare_enabled,generation_enabled,prepare_lead_days,media_reuse_allowed,media_reuse_after_days').limit(MAX_ROWS),
@@ -36,9 +42,8 @@ export async function getSupervision(now=new Date(),options:{scheduledDelivery?:
   db.from('publications').select('id,client_id,project_id,platform,subject,status,current_revision_id,occurrence_id').is('archived_at',null)
    .not('occurrence_id','is',null).in('status',['draft','pending_review','approved']).order('updated_at',{ascending:false}).limit(MAX_ROWS),
   db.from('publication_channel_occurrences').select('id,client_id,project_id,platform,scheduled_for,publication_id,skipped_at').gte('scheduled_for',since).lte('scheduled_for',horizon).order('scheduled_for').limit(2000),
-  db.from('whatsapp_assets').select('id,client_id,library_status,media_kind,mime_type,size,width,height,purged_at,imported_at,claimed_agent_v2_run_id').eq('media_kind','image').limit(5000),
-  db.from('whatsapp_asset_assessments').select('asset_id,client_id,verdict,confidential,sensitive,manual_verdict,description,topics,quality,quality_issues,business_relevance,publishability').limit(5000),
-  db.from('whatsapp_asset_uses').select('asset_id,client_id,publication_id,used_at').limit(5000)]);
+  // État de l'agent par client : dernière préparation (statut et code d'erreur uniquement, jamais de texte généré).
+  db.from('publication_agent_v2_runs').select('client_id,status,error_code,created_at,completed_at').order('created_at',{ascending:false}).limit(MAX_ROWS)]);
  if(clients.error||clientSettings.error||agents.error||pubs.error||occurrences.error)throw Error(unavailable);
  const occ=(occurrences.data??[]) as OccurrenceRow[];
  const publications=(pubs.data??[]).filter(p=>p.current_revision_id&&p.project_id&&p.platform) as {id:string;client_id:string;project_id:string;platform:PublicationPlatform;subject:string;status:PublicationStatus;current_revision_id:string;occurrence_id:string|null}[];
@@ -65,15 +70,21 @@ export async function getSupervision(now=new Date(),options:{scheduledDelivery?:
 
  const settingsByClient=new Map((clientSettings.data??[]).map(s=>[s.client_id as string,s as {auto_prepare_enabled:boolean;generation_enabled:boolean;prepare_lead_days:number;media_reuse_allowed:boolean;media_reuse_after_days:number}]));
  const health=((accounts.data??[]) as AccountRow[]).map(a=>accountHealth(a,(connections.data??[]) as ConnectionRow[],now));
- const assetRows=(assets.data??[]) as (LibraryRow&{client_id:string})[],assessed=(assessments.data??[]) as (LibraryAssessment&{client_id:string})[],used=(uses.data??[]) as (LibraryUse&{client_id:string})[];
- const supervised=(clients.data??[]).map(c=>{const s=settingsByClient.get(c.id);
-  const photos=photoStats(assetRows.filter(a=>a.client_id===c.id),assessed.filter(a=>a.client_id===c.id),used.filter(u=>u.client_id===c.id),
-   {allowed:s?.media_reuse_allowed===true,afterDays:s?.media_reuse_after_days??180},now);
+ const runRows=runs.error?[]:(runs.data??[]) as {client_id:string;status:string;error_code:string|null;created_at:string;completed_at:string|null}[];
+ const projectOf=(clientId:string)=>(agents.data??[]).find(a=>a.client_id===clientId)?.project_id as string|undefined??publications.find(p=>p.client_id===clientId)?.project_id??occ.find(o=>o.client_id===clientId)?.project_id??null;
+ const concerned=(clients.data??[]).map(c=>{const s=settingsByClient.get(c.id);
   const agentProjects=(agents.data??[]).filter(a=>a.client_id===c.id&&a.enabled&&a.rights_confirmed).map(a=>a.project_id as string);
-  return {id:c.id,name:c.name,autoPrepare:s?.auto_prepare_enabled===true,generation:s?.generation_enabled===true,leadDays:s?.prepare_lead_days??3,photos,
-   tooFewPhotos:tooFewPhotos(photos),agentProjects,accounts:health.filter(h=>h.clientId===c.id)};})
+  const run=runRows.find(r=>r.client_id===c.id);
+  return {id:c.id,name:c.name,autoPrepare:s?.auto_prepare_enabled===true,generation:s?.generation_enabled===true,leadDays:s?.prepare_lead_days??3,
+   reuse:{allowed:s?.media_reuse_allowed===true,afterDays:s?.media_reuse_after_days??180},
+   agentProjects,accounts:health.filter(h=>h.clientId===c.id),projectId:projectOf(c.id),lastRun:run?agentRunView(run):null};})
   // Seuls les clients concernés par les Publications : agent, comptes, préparation automatique ou publications.
   .filter(c=>c.agentProjects.length||c.accounts.length||c.autoPrepare||publications.some(p=>p.client_id===c.id));
+ // Photothèque : un seul point de lecture (remplaçable par les modèles de lecture #42 / #43).
+ const coverage=await loadClientPhotoCoverage(db as unknown as Parameters<typeof loadClientPhotoCoverage>[0],concerned,now);
+ const supervised:ClientSupervision[]=concerned.map(c=>{const cov=coverage?.get(c.id);
+  return {id:c.id,name:c.name,autoPrepare:c.autoPrepare,generation:c.generation,leadDays:c.leadDays,agentProjects:c.agentProjects,accounts:c.accounts,projectId:c.projectId,lastRun:c.lastRun,
+   photos:cov?.photos??null,tooFewPhotos:cov?.tooFewPhotos===true};});
  const tasks=upcomingTasks(occ.filter(o=>supervised.some(c=>c.agentProjects.includes(o.project_id))),
   new Map(supervised.map(c=>[c.id,{autoPrepare:c.autoPrepare&&c.generation,leadDays:c.leadDays}])),now);
  const s=settings.data as {emergency_stop:boolean;automation_enabled:boolean;generation_enabled:boolean;publishing_enabled:boolean}|null;

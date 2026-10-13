@@ -12,6 +12,8 @@ export type Asset = {
   caption: string | null; sender: string | null; received_at: string | null; width: number | null; height: number | null; thumbnail_path: string | null;
   origin: AssetOrigin; captured_at: string | null; purged_at: string | null; claimed_agent_v2_run_id: string | null;
   classification_failures: number; classification_failed_at: string | null;
+  // Outils de la photothèque (migration 20261103000000) : légende éditée par un administrateur.
+  caption_edited_by?: string | null; caption_edited_at?: string | null;
 };
 export type AssetOrigin = "whatsapp" | "drive" | "whatsapp_export";
 export type AssetInsert = Pick<Asset, "client_id" | "drive_folder_id" | "sha256" | "md5" | "drive_file_id" | "mime_type" | "size"> & Partial<Pick<Asset, "media_kind" | "caption" | "sender" | "received_at" | "width" | "height" | "origin" | "captured_at" | "imported_at">>;
@@ -20,6 +22,11 @@ export type MediaProfileRow = { client_id: string; activity_summary: string; ser
 export type AssetAssessment = { asset_id: string; client_id: string; verdict: "relevant" | "to_review" | "off_topic"; business_relevance: number; publishability: number; sensitive: string[]; confidential: boolean; description: string; topics: string[]; quality: "good" | "acceptable" | "poor"; quality_issues: string[]; profile_version: number; model: string; estimated_cost_eur: number; analyzed_at: string; manual_verdict: "relevant" | "off_topic" | null; reviewed_by: string | null; reviewed_at: string | null };
 export type MediaAiUsage = { id: string; client_id: string; asset_id: string | null; purpose: "classification"; model: string; input_tokens: number; output_tokens: number; estimated_cost_eur: number; created_at: string };
 export type AssetUse = { id: string; asset_id: string; client_id: string; publication_id: string; platform: "facebook" | "instagram" | "google_business_profile"; publication_asset_id: string | null; used_by: string; used_at: string };
+// Outils de la photothèque : décisions humaines (ajout seul) et mémoire de la synchronisation Drive.
+export type AssetDecision = { id: string; asset_id: string; client_id: string; kind: "status" | "reclassify" | "caption"; from_status: LibraryStatus | null; to_status: LibraryStatus | null; reason: string | null; actor_id: string; created_at: string };
+export type DriveFileSeen = { client_id: string; drive_file_id: string; drive_folder_id: string; outcome: "duplicate" | "failed"; asset_id: string | null; failures: number; error_code: string | null; first_seen_at: string; updated_at: string };
+export type DriveSyncState = { client_id: string; drive_folder_id: string; backfill_after: string | null; backfill_completed_at: string | null; last_synced_at: string | null };
+export type UsageHistoryRow = { asset_id: string; publication_id: string; platform: AssetUse["platform"]; used_at: string; used_by: string; subject: string | null; publication_status: string | null; archived: boolean; delivery_status: string | null; scheduled_for: string | null; published_at: string | null };
 // Socle lot 3 : import d'export WhatsApp (archive temporaire, une ligne par photo de l'archive).
 export type ExportImportRow = { id: string; client_id: string; drive_folder_id: string; status: "uploading" | "analyzing" | "ready" | "importing" | "completed" | "cancelled" | "expired" | "failed"; storage_path: string; archive_size: number | null; counts: Json; incomplete: boolean; error_code: string | null; rights_confirmed: boolean; created_by: string; created_at: string; updated_at: string; expires_at: string; purged_at: string | null };
 export type ExportItemRow = { id: string; import_id: string; client_id: string; entry_name: string; entry_offset: number; compressed_size: number; size: number; method: number; crc32: number; captured_at: string | null; caption: string | null; status: "pending" | "ready" | "importing" | "duplicate" | "invalid" | "too_large" | "imported" | "failed"; selected: boolean; sha256: string | null; md5: string | null; mime_type: string | null; width: number | null; height: number | null; preview_path: string | null; asset_id: string | null; error_code: string | null; created_at: string; updated_at: string };
@@ -33,6 +40,9 @@ export type WhatsAppTables = {
   whatsapp_asset_assessments: Table<AssetAssessment, Omit<AssetAssessment, "analyzed_at" | "manual_verdict" | "reviewed_by" | "reviewed_at">>;
   client_media_ai_usage: Table<MediaAiUsage, Omit<MediaAiUsage, "id" | "created_at">>;
   whatsapp_export_imports: Table<ExportImportRow, Pick<ExportImportRow, "id" | "client_id" | "drive_folder_id" | "storage_path" | "rights_confirmed" | "created_by"> & Partial<Pick<ExportImportRow, "expires_at" | "status">>>;
+  whatsapp_asset_decisions: Table<AssetDecision, Omit<AssetDecision, "id" | "created_at">>;
+  client_media_drive_files: Table<DriveFileSeen, Pick<DriveFileSeen, "client_id" | "drive_file_id" | "drive_folder_id" | "outcome"> & Partial<Pick<DriveFileSeen, "asset_id" | "failures" | "error_code" | "updated_at">>>;
+  client_media_drive_sync: Table<DriveSyncState, Pick<DriveSyncState, "client_id" | "drive_folder_id"> & Partial<DriveSyncState>>;
   whatsapp_export_items: Table<ExportItemRow, Pick<ExportItemRow, "import_id" | "client_id" | "entry_name" | "entry_offset" | "compressed_size" | "size" | "method" | "crc32"> & Partial<Pick<ExportItemRow, "captured_at" | "caption" | "status" | "selected" | "error_code">>>;
 };
 export type WhatsAppFunctions = {
@@ -47,5 +57,9 @@ export type WhatsAppFunctions = {
   whatsapp_assets_review: { Args: { p_client_id: string; p_asset_ids: string[]; p_status: string; p_actor_id: string }; Returns: number };
   whatsapp_rejected_purge_candidates: { Args: { p_limit: number }; Returns: { asset_id: string; client_id: string; drive_file_id: string; drive_folder_id: string; origin: string; thumbnail_path: string | null }[] };
   whatsapp_asset_mark_purged: { Args: { p_asset_id: string; p_client_id: string; p_drive_trash_planned: boolean }; Returns: boolean };
+  whatsapp_asset_reclassify: { Args: { p_client_id: string; p_asset_id: string; p_status: string; p_reason: string; p_actor_id: string }; Returns: Json };
+  whatsapp_asset_caption_save: { Args: { p_client_id: string; p_asset_id: string; p_caption: string; p_actor_id: string }; Returns: boolean };
+  whatsapp_asset_usage_history: { Args: { p_client_id: string; p_asset_ids: string[] }; Returns: UsageHistoryRow[] };
+  whatsapp_library_search: { Args: { p_client_id: string; p_filters: Json; p_limit: number; p_offset: number }; Returns: { asset_id: string; total: number }[] };
   whatsapp_asset_purge_trash_logged: { Args: { p_asset_id: string; p_client_id: string; p_outcome: "trashed" | "missing" | "failed" }; Returns: undefined };
 };

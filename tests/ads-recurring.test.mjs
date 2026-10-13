@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadTs } from "./helpers/load-ts.mjs";
 import { createFakeSupabase } from "./helpers/fake-supabase.mjs";
+import { publicationsModules } from "./helpers/assistant-publications.mjs";
 const recurrence = loadTs("lib/scheduler/recurrence.ts");
 const email = loadTs("lib/reports/recipient.ts");
 const domain = loadTs("lib/reports/recurring/domain.ts", { "@/lib/scheduler/recurrence": recurrence, "@/lib/reports/recipient": email });
@@ -87,10 +88,10 @@ test("AI fallback is labelled, not cached as personalized AI; simulation never r
  await fallback.service.getAdsRecommendation(ids[0],scope);assert.equal(fallback.count(),2);
  const simulation=recommendationSetup({simulation:true});assert.equal((await simulation.service.getAdsRecommendation(ids[0],scope)).ok,false);assert.equal(simulation.count(),0);
 });
-const text=loadTs("lib/assistant/text.ts");const adsIntents=loadTs("lib/assistant/ads-intents.ts",{"@/lib/assistant/text":text});
-const intents=loadTs("lib/assistant/intents.ts",{"@/lib/assistant/text":text,"@/lib/assistant/ads-intents":adsIntents});
-const tools=loadTs("lib/assistant/tools.ts",{"@/lib/integrations/google-ads/periods":periods});
-const orchestrator=loadTs("lib/assistant/orchestrator.ts",{"@/lib/assistant/tools":tools,"@/lib/assistant/intents":intents,"@/lib/assistant/ads-intents":adsIntents});
+const text=loadTs("lib/assistant/text.ts");const publications=publicationsModules(text);const adsIntents=loadTs("lib/assistant/ads-intents.ts",{"@/lib/assistant/text":text});
+const intents=loadTs("lib/assistant/intents.ts",{"@/lib/assistant/text":text,"@/lib/assistant/ads-intents":adsIntents,...publications.mocks});
+const tools=loadTs("lib/assistant/tools.ts",{"@/lib/integrations/google-ads/periods":periods,...publications.mocks});
+const orchestrator=loadTs("lib/assistant/orchestrator.ts",{"@/lib/assistant/tools":tools,"@/lib/assistant/intents":intents,"@/lib/assistant/ads-intents":adsIntents,...publications.mocks});
 test("exact French voice/text recommendation request resolves named client and executes without proposal",async()=>{
  const question="Que me recommandes-tu pour les campagnes de Protection Nuisibles ?";
  assert.deepEqual(plain(intents.parseIntent(question,"2026-10-10")),{tool:"ads_recommendations",input:{client:"Protection Nuisibles"}});

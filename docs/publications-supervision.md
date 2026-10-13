@@ -129,3 +129,11 @@ Tests ajoutés :
 - des compléments dans `tests/publications-supervision.test.mjs` ;
 - la section 5 de la suite SQL ;
 - les notifications des sections 2 et 3.
+
+## Suite : supervision mobile et diagnostic de production (#45)
+
+La page devient un hub mobile, avec des onglets collants, un filtre client et un lien profond `?view=…&client=…`. On y trouve aussi les aperçus par plateforme, la reconnexion OAuth et l'état de l'agent. Le diagnostic classe chaque mécanisme « configuré », « opérationnel », « désactivé » ou « en erreur », avec sa preuve. Voir [publications-supervision-mobile.md](publications-supervision-mobile.md).
+
+## Assistant (phase 6)
+
+L’assistant lit cette supervision (comptes à reconnecter, clients à court de photos, créneaux de reprogrammation) et propose « Reprogrammer » via la même fonction `reschedulePublication`, après confirmation explicite. Voir [docs/assistant-publications.md](assistant-publications.md).

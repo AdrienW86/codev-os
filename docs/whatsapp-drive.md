@@ -74,6 +74,8 @@ Ce déclencheur applique les mêmes bornes. Aucun nouveau cron / fichier `vercel
 
 Une tâche possède un bail de 5 minutes, récupérable après expiration. Les erreurs attendent une reprise exponentielle ; après 5 tentatives, l’import passe en échec et peut être relancé explicitement. Un ID Drive est réservé avant upload ; une reprise contrôle le parent et le checksum MD5 du fichier avant de le réutiliser. Le SHA-256 local assure le dédoublonnage exact dans le périmètre **client + dossier**, uniquement pour les imports réalisés par ce connecteur. Les fichiers déjà présents avant l’installation ne sont pas indexés et ne sont donc pas dédoublonnés par ce lot. Deux clients peuvent conserver la même photo sans collision de périmètre.
 
+Depuis la PR #43 (`docs/media-library-tools.md`), le dédoublonnage exact s'applique à l'échelle du **client** pour toutes les arrivées : une photo déjà présente dans sa photothèque (dossier Drive de l'agent, export, autre dossier, photo purgée après rejet) est marquée « Doublon exact ignoré » et n'est pas renvoyée dans Drive.
+
 Les ressemblances visuelles, les variantes recompressées et la suppression de doublons historiques ne sont pas traitées. Une phase de revue des photos similaires sera nécessaire. Aucun effacement automatique n’est effectué.
 
 ## Validation

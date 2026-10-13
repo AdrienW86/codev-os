@@ -43,12 +43,8 @@ import { actionStatusLabel, actionTypeLabel, recommendationStatusLabel, runStatu
 import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { deleteClientAction } from "@/app/(cockpit)/clients/[id]/actions";
-import { MediaLibraryPanel } from "@/components/clients/media-library-panel";
-import { currentExportImport, exportFolderReady } from "@/lib/whatsapp/export-import";
-import { getMediaProfile } from "@/lib/media-intelligence/service";
-import { clientFolders, listClientLibrary } from "@/lib/whatsapp/library";
-import { libraryStatuses, type LibraryStatus } from "@/lib/whatsapp/types";
-import { publicationProjectOptions } from "@/lib/publications/project-channels";
+import { MediaTab } from "@/components/clients/media-tab";
+import { parseLibraryFilters } from "@/lib/whatsapp/library-filters";
 import { getClientPublicationsSetup } from "@/lib/publications/client-setup";
 import { oauthBanner } from "@/lib/publications/oauth/model";
 import { ChannelConfiguration } from "@/components/publications/channel-configuration";
@@ -210,7 +206,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       {tab === "publications" && <PublicationsTab clientId={client.id} project={search.project} oauth={{ oauth: search.oauth, provider: search.provider }} />}
 
-      {tab === "media" && <MediaTab clientId={client.id} projects={projects} status={libraryStatuses.includes(search.status as LibraryStatus) ? search.status as LibraryStatus : null} />}
+      {tab === "media" && <MediaTab clientId={client.id} projects={projects} filters={parseLibraryFilters(search)} />}
 
       {tab === "ads" && adsFilters && adsInitial && (
         <CampaignDashboard clientId={client.id} initial={adsInitial} initialFilters={adsFilters} load={loadGoogleAdsDashboardAction}
@@ -236,21 +232,6 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       )}
     </>
   );
-}
-
-async function MediaTab({ clientId, projects, status }: { clientId: string; projects: { id: string; client_id: string; name: string; type: string | null }[]; status: LibraryStatus | null }) {
-  const [library, folders, options, profile] = await Promise.all([
-    safeRead("media-library", () => listClientLibrary(clientId, status), []),
-    safeRead("media-library-folders", () => clientFolders(clientId), []),
-    safeRead("media-library-projects", () => publicationProjectOptions(projects), []),
-    safeRead("media-library-profile", () => getMediaProfile(clientId), null),
-  ]);
-  // Import d'export WhatsApp (socle lot 3) : indisponible tant que sa migration n'est pas appliquée.
-  const exportImport = await safeRead("media-export-import", async () => {
-    const [current, folderReady] = await Promise.all([currentExportImport(clientId), exportFolderReady(clientId)]);
-    return { current: current ? { id: current.id, status: current.status } : null, folderReady };
-  }, null);
-  return <MediaLibraryPanel clientId={clientId} items={library.data} folders={folders.data} projects={options.data} status={status} unavailable={library.unavailable} profile={profile.data} exportImport={exportImport.data} />;
 }
 
 // Onglet « Publications » (socle lot 1) : réglages du client, connexions OAuth, plateformes cochées, créneaux,

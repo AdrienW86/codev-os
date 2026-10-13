@@ -1,6 +1,7 @@
 "use client";
 import {useActionState} from "react";
 import {rescheduleAction,suspendClientAction,suspendDeliveryAction,type SupervisionActionState} from "@/app/(cockpit)/publications/supervision-actions";
+import {startOAuthAction,type ConnectionActionState} from "@/app/(cockpit)/publications/connection-actions";
 import {formatSlot} from "@/lib/publications/supervision-model";
 
 // Socle Publications, lot 7 : formulaires du tableau de supervision (une action explicite chacun, aucun envoi).
@@ -31,4 +32,11 @@ export function SuspendClientForm({clientId,clientName}:{clientId:string;clientN
  const [state,action,pending]=useActionState(suspendClientAction,{} as SupervisionActionState);
  return <form action={action} data-suspend-client="true"><input type="hidden" name="client_id" value={clientId}/>
   <button disabled={pending} className={button} aria-label={`Suspendre la préparation automatique de ${clientName}`}>{pending?"Suspension…":"Suspendre la préparation"}</button><Feedback state={state}/></form>;
+}
+// Lot 7 (mobile) : « Reconnecter » relance le parcours OAuth EXISTANT (startOAuthAction : état à usage unique, page de
+// consentement officielle, retour sur l'onglet Publications de la fiche client). Rien n'est publié.
+export function ReconnectForm({projectId,provider,label}:{projectId:string;provider:"meta"|"google_business_profile";label:string}){
+ const [state,action,pending]=useActionState(startOAuthAction,{} as ConnectionActionState);
+ return <form action={action} data-reconnect={provider}><input type="hidden" name="provider" value={provider}/><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="return_view" value="client"/>
+  <button disabled={pending} className={button}>{pending?"Redirection…":`Reconnecter ${label}`}</button><Feedback state={state}/></form>;
 }

@@ -107,6 +107,18 @@ export default async function DashboardPage() {
         ) : <p className="text-sm text-muted">Rien à traiter pour le moment.</p>}
       </section>
 
+      {/* Raccourci : piloter les publications depuis le téléphone (validations, erreurs, comptes, photos, agent). */}
+      {publications !== null && (
+        <Link href={publicationsToReview.length ? "/publications/supervision?view=review" : "/publications/supervision"} data-supervision-shortcut="dashboard"
+          className="mt-6 flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card hover:border-accent/40">
+          <span className="min-w-0">
+            <span className="block font-medium">Supervision des publications</span>
+            <span className="block text-sm text-muted">{publicationsToReview.length ? countLabel(publicationsToReview.length, "publication à valider", "publications à valider") : "Validations, erreurs, comptes, photos et agent"}</span>
+          </span>
+          <span aria-hidden="true" className="text-accent">→</span>
+        </Link>
+      )}
+
       {runs.length > 0 && (
         <div className="mt-12">
           <RecentActivity runs={runs} />

@@ -129,3 +129,7 @@ Tests ajoutés :
 - des compléments dans `tests/publications-supervision.test.mjs` ;
 - la section 5 de la suite SQL ;
 - les notifications des sections 2 et 3.
+
+## Assistant (phase 6)
+
+L’assistant lit cette supervision (comptes à reconnecter, clients à court de photos, créneaux de reprogrammation) et propose « Reprogrammer » via la même fonction `reschedulePublication`, après confirmation explicite. Voir [docs/assistant-publications.md](assistant-publications.md).

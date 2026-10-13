@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as zod from "zod";
 import { loadTs } from "./helpers/load-ts.mjs";
+import { publicationsModules } from "./helpers/assistant-publications.mjs";
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -17,10 +18,11 @@ const periods = loadTs("lib/integrations/google-ads/periods.ts");
 const dashboard = loadTs("lib/integrations/google-ads/dashboard.ts", { "./periods": periods });
 const scopes = loadTs("lib/integrations/google-ads/scope.ts", { "./periods": periods });
 const text = loadTs("lib/assistant/text.ts");
+const publications = publicationsModules(text);
 const adsIntents = loadTs("lib/assistant/ads-intents.ts", { "@/lib/assistant/text": text });
-const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods });
-const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents });
-const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents });
+const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods, ...publications.mocks });
+const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
+const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
 const views = loadTs("lib/assistant/views.ts", { zod });
 
 const adsContext = (query = "") => ({ clientId: clientA.id, clientName: clientA.name, view: "ads_campaigns", adsQuery: query });

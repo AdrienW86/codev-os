@@ -4,6 +4,7 @@ import type { ToolName } from "@/lib/assistant/tools";
 import { normalize } from "@/lib/assistant/text";
 import { hasAdsChange, parseAdsRequest } from "@/lib/assistant/ads-intents";
 import type { AssistantContext } from "@/lib/assistant/views";
+import { parsePublicationsIntent } from "@/lib/assistant/publications-intents";
 
 /** Appel d'outil, ou question de précision quand une information indispensable manque ou est ambiguë. */
 export type Intent = { tool: ToolName; input: Record<string, unknown> } | { clarify: string };
@@ -141,6 +142,11 @@ export function parseIntent(text: string, today: string, context: AssistantConte
   const task = parseTask(original, value, today);
   if (task) return task;
 
+  // Publications (préparation Agent v2, file à valider, photos, comptes, reprogrammation) : avant les lectures
+  // génériques (« à valider », « programme ») qui les capteraient sinon.
+  const publications = parsePublicationsIntent(original, value, today, context);
+  if (publications) return publications;
+
   // Google Ads en consultation : nouvelle vue, ou suite de la vue courante (« et sur 7 jours ? », « uniquement Local Services »).
   const ads = parseAdsRequest(original);
   const inAdsView = context.view === "ads_campaigns";
@@ -185,4 +191,4 @@ export function parseIntent(text: string, today: string, context: AssistantConte
   return null;
 }
 
-export const assistantHelp = "Je peux : afficher les campagnes Google Ads d’un client (période, statut, type, comparaison), résumer vos urgences, faire le point sur un client, afficher l’agenda du jour, lister ou générer un rapport, lancer ou planifier un contrôle des sites, une analyse SEO ou la veille Google Ads, lister les actions à valider, repérer les clients à surveiller et créer une tâche. Exemple : « Génère le rapport hebdomadaire pour Boulangerie Martin ».";
+export const assistantHelp = "Je peux : préparer des brouillons de publications (Agent Publications, après confirmation), lister les publications à valider, expliquer une photo écartée, lister les comptes à reconnecter ou les clients à court de photos, reprogrammer une publication, afficher les campagnes Google Ads d’un client (période, statut, type, comparaison), résumer vos urgences, faire le point sur un client, afficher l’agenda du jour, lister ou générer un rapport, lancer ou planifier un contrôle des sites, une analyse SEO ou la veille Google Ads, lister les actions à valider, repérer les clients à surveiller et créer une tâche. Exemple : « Génère le rapport hebdomadaire pour Boulangerie Martin ».";

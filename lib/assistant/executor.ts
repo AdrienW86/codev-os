@@ -23,6 +23,7 @@ import type { PrepareResult, ToolOutcome } from "@/lib/assistant/orchestrator";
 import { resolveClient } from "@/lib/assistant/clients";
 import { adsCampaignsTool, adsRecommendationsTool, prepareAdsWrite, runAdsWrite } from "@/lib/assistant/ads-tool";
 import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
+import { publicationsTools } from "@/lib/assistant/publications-deps";
 
 export { resolveClient };
 
@@ -48,6 +49,9 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
     case "ads_campaigns": return adsCampaignsTool(input, context);
     case "ads_recommendations": return adsRecommendationsTool(input, context);
     case "ads_prepare_report": case "ads_run_analysis": return runAdsWrite(actor, name, input);
+    // Publications (phase 6) : outils dédiés, requireAdmin à chaque appel ; aucun ne publie ni n'approuve.
+    case "publications_review_list": case "publications_photo_explain": case "publications_reconnect_list": case "publications_photo_shortage":
+    case "publications_prepare": case "publications_reschedule": return publicationsTools.execute(name, input, context);
     case "get_priorities": {
       const [actions, incidents, overdue, dueToday, reports] = await Promise.all([
         count(db().from("actions").select("id", { count: "exact", head: true }).eq("status", "pending_approval")),
@@ -217,6 +221,7 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
  */
 export async function prepareProposal(name: ToolName, input: Record<string, unknown>): Promise<PrepareResult> {
   if (name === "ads_prepare_report" || name === "ads_run_analysis") return prepareAdsWrite(input);
+  if (name === "publications_prepare" || name === "publications_reschedule") return publicationsTools.prepare(name, input);
   const next = { ...input };
   if (typeof input.client === "string") {
     const client = await resolveClient(input.client);

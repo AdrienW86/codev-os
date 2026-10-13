@@ -96,7 +96,7 @@ test("supervision read: an unreadable library is « illisible », never « trop 
 });
 
 // --- Rendu des composants et de la page (sans réseau ; actions serveur remplacées par des leurres) ---
-const Link = ({ href, children, scroll: _scroll, prefetch: _prefetch, ...rest }) => React.createElement("a", { href, ...rest }, children);
+const Link = ({ href, children, ...rest }) => { delete rest.scroll; delete rest.prefetch; return React.createElement("a", { href, ...rest }, children); };
 const action = async () => ({});
 const mocks = (extra = {}) => ({
   "next/link": { __esModule: true, default: Link },
@@ -111,7 +111,7 @@ const mocks = (extra = {}) => ({
 const photo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900'/>";
 const variant = (platform, label, extra = {}) => ({ platform, label, text: "Chantier terminé à Perpignan : toiture refaite en tuiles canal, zinguerie neuve et nettoyage complet. Devis gratuit sous 48 h.", title: null, cta: null, assetIds: [A(9)], media: { state: "ok", preview: photo }, ...extra });
 const reviewItem = (n, clientName, variants) => ({ variants, card: { publicationId: PUB(n), revisionId: REV(n), clientId: C, projectId: P, status: "pending_review", date: "2026-10-14", subject: `Toiture-refaite-sans-espaces-${"x".repeat(60)}`, clientName, projectName: "Site",
-  image: photo, variants: variants.map(({ media: _media, ...v }) => v), editorial: { title: "Toiture", angle: "Toiture", source: "Toiture", targetDate: "2026-10-14" }, rejection: null, versions: [], debug: null } });
+  image: photo, variants: variants.map(v => ({ platform: v.platform, label: v.label, text: v.text, title: v.title, cta: v.cta, assetIds: v.assetIds })), editorial: { title: "Toiture", angle: "Toiture", source: "Toiture", targetDate: "2026-10-14" }, rejection: null, versions: [], debug: null } });
 const items = () => [reviewItem(1, "Couverture Catalane", [variant("facebook", "Facebook"), variant("instagram", "Instagram"), variant("google_business_profile", "Google Business Profile", { title: "Toiture neuve", cta: "Demander un devis" })]),
   reviewItem(2, "JRenov", [variant("facebook", "Facebook", { assetIds: [], media: { state: "missing", preview: null } })])];
 

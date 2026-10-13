@@ -25,6 +25,18 @@ export async function storeThumbnail(db: ReturnType<typeof getSupabaseServerClie
   } catch { console.error("[whatsapp] Miniature non générée."); }
 }
 
+/**
+ * Photo déjà connue du client sous la même empreinte, hors du dossier cible ou purgée : retourne la ligne existante
+ * (doublon). Une copie vivante dans le dossier cible laisse le parcours habituel (contrôle Drive, reprise d'upload).
+ */
+export async function knownAsset(db: ReturnType<typeof getSupabaseServerClient>, clientId: string, folder: string, sha256: string) {
+  const { data, error } = await db.from("whatsapp_assets").select("id,drive_file_id,drive_folder_id,purged_at").eq("client_id", clientId).eq("sha256", sha256).not("imported_at", "is", null).limit(20);
+  if (error) throw Error("asset_unavailable");
+  const rows = data ?? [];
+  if (rows.some(row => !row.purged_at && row.drive_folder_id === folder)) return null;
+  return rows.find(row => !row.purged_at) ?? rows[0] ?? null;
+}
+
 // Un seul média par invocation : borne la mémoire et la durée, et permet plusieurs workers.
 export async function processOneMedia(actor: Actor) {
   if (!ingestionEnabled()) return "disabled";
@@ -38,6 +50,16 @@ export async function processOneMedia(actor: Actor) {
   let outcome: "imported" | "duplicate" | undefined;
   try {
     const media = await downloadWhatsApp(job.media_id, job.mime_type);
+    // Dédoublonnage à l'échelle du client, toutes origines confondues : une photo déjà présente dans sa photothèque
+    // depuis un autre dossier (dossier Drive de l'agent, export) ou purgée après un rejet humain n'est ni renvoyée dans
+    // Drive ni référencée une seconde fois. Le même dossier garde le contrôle Drive existant (fichier vérifié ou restauré).
+    const known = await knownAsset(db, job.client_id, job.drive_folder_id, media.sha256);
+    if (known) {
+      await writeAudit(actor, { action: "whatsapp.duplicate", resource_type: "whatsapp_inbox", resource_id: job.id, metadata: { client_id: job.client_id, drive_file_id: known.drive_file_id, media_kind: media.kind, scope: "client" } });
+      const { data: saved, error: saveError } = await db.from("whatsapp_inbox").update({ status: "duplicate", drive_file_id: known.drive_file_id, asset_id: known.id, error_code: null, lease: null, lease_until: null }).eq("id", job.id).eq("lease", lease).select("id");
+      if (saveError || !saved?.length) throw Error("lease_lost");
+      return "duplicate";
+    }
     const token = await importDriveToken();
     // Réserve un ID de fichier stable avant l'appel externe. Une reprise réutilise cet ID.
     const proposedId = await generateDriveId(token);

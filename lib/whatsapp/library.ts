@@ -10,20 +10,56 @@ import { adaptImage } from "@/lib/publications/media/transform";
 import { saveDraft, saveUnscheduledDraft, currentRevision } from "@/lib/publications/workspace";
 import type { PublicationPlatform } from "@/lib/publications/types";
 import { promptSafeCaption } from "@/lib/media-intelligence/model";
-import { captionPrompt, checkSelection, cleanSuggestion, draftFields } from "./library-model";
+import { captionPrompt, checkSelection, cleanSuggestion, draftFields, manualStatuses, statusLabels } from "./library-model";
 import { importDriveToken } from "./providers";
 import { assetOriginal } from "./originals";
 export { assetOriginal };
 import { THUMBNAIL_BUCKET } from "./service";
-import type { Asset, AssetAssessment, AssetUse, LibraryStatus } from "./types";
+import type { Asset, AssetAssessment, AssetDecision, LibraryStatus } from "./types";
+import { cleanCaption } from "./payload";
+import { LIBRARY_PAGE_SIZE, searchPayload, type LibraryFilters } from "./library-filters";
+import { listAssetUsageHistory, reuseState, type AssetUsage, type UsageHistoryDb } from "./usage-history";
 
 // Photothèque interne : lecture strictement filtrée par client, miniatures privées en URL signées courtes,
 // originaux relus depuis Drive par le serveur uniquement. Les appelants ont déjà vérifié requireAdmin().
 const db = () => getSupabaseServerClient();
 const THUMBNAIL_URL_TTL = 300;
-export type LibraryUse = AssetUse & { subject: string | null; status: string | null };
-export type LibraryAssessment = Pick<AssetAssessment, "verdict" | "business_relevance" | "publishability" | "sensitive" | "confidential" | "description" | "quality" | "quality_issues" | "manual_verdict">;
-export type LibraryItem = Asset & { thumbnailUrl: string | null; uses: LibraryUse[]; assessment: LibraryAssessment | null };
+const MISSING_RPC = ["PGRST202", "42883"];
+export type LibraryAssessment = Pick<AssetAssessment, "verdict" | "business_relevance" | "publishability" | "sensitive" | "confidential" | "description" | "quality" | "quality_issues" | "manual_verdict"> & Partial<Pick<AssetAssessment, "topics" | "reviewed_by" | "reviewed_at" | "analyzed_at">>;
+export type LibraryItem = Asset & { thumbnailUrl: string | null; history: AssetUsage[]; assessment: LibraryAssessment | null; decisions: AssetDecision[] };
+export type ReuseSettings = { allowed: boolean; afterDays: number };
+export type LibraryPage = { items: LibraryItem[]; total: number; searchable: boolean };
+
+/** Réglage de réemploi du client (Publications). Illisible ou absent : réemploi refusé (choix prudent, comme l'agent). */
+export async function clientReuseSettings(clientId: string): Promise<ReuseSettings> {
+  const { data, error } = await db().from("publication_client_settings").select("media_reuse_allowed,media_reuse_after_days").eq("client_id", clientId).maybeSingle();
+  if (error || !data) return { allowed: false, afterDays: 180 };
+  const days = Number(data.media_reuse_after_days);
+  return { allowed: data.media_reuse_allowed === true, afterDays: Number.isFinite(days) && days > 0 ? days : 180 };
+}
+
+/**
+ * Page de la photothèque filtrée et paginée par la base (RPC whatsapp_library_search) : statut, origine, service ou
+ * sujet, texte libre, période d'origine, déjà utilisée. Avant la migration des outils, repli sur la liste historique
+ * (filtre de statut seulement, 120 photos au plus).
+ */
+export async function searchClientLibrary(clientId: string, filters: LibraryFilters): Promise<LibraryPage> {
+  const search = await db().rpc("whatsapp_library_search", { p_client_id: clientId, p_filters: searchPayload(filters), p_limit: LIBRARY_PAGE_SIZE, p_offset: filters.page * LIBRARY_PAGE_SIZE });
+  if (search.error) {
+    if (!MISSING_RPC.includes(search.error.code ?? "")) throw Error("library_unavailable");
+    const legacy: Partial<Record<LibraryFilters["status"], LibraryStatus>> = { to_review: "to_review", validated: "validated", used: "used", quarantined: "quarantined", rejected: "rejected", archived: "archived" };
+    const items = await listClientLibrary(clientId, legacy[filters.status] ?? null);
+    return { items, total: items.length, searchable: false };
+  }
+  const rows = (search.data ?? []) as { asset_id: string; total: number }[];
+  const total = Number(rows[0]?.total ?? 0);
+  if (!rows.length) return { items: [], total, searchable: true };
+  const { data, error } = await db().from("whatsapp_assets").select("*").eq("client_id", clientId).in("id", rows.map(row => row.asset_id));
+  if (error) throw Error("library_unavailable");
+  const byId = new Map(((data ?? []) as Asset[]).map(asset => [asset.id, asset]));
+  const assets = rows.flatMap(row => { const asset = byId.get(row.asset_id); return asset && !asset.purged_at ? [asset] : []; });
+  return { items: await enrich(clientId, assets), total, searchable: true };
+}
 
 export async function listClientLibrary(clientId: string, status?: LibraryStatus | null): Promise<LibraryItem[]> {
   let query = db().from("whatsapp_assets").select("*").eq("client_id", clientId).not("imported_at", "is", null);
@@ -31,25 +67,51 @@ export async function listClientLibrary(clientId: string, status?: LibraryStatus
   query = status ? query.eq("library_status", status) : query.not("library_status", "in", "(archived,quarantined,rejected)");
   const { data, error } = await query.order("imported_at", { ascending: false }).limit(120);
   if (error) throw Error("library_unavailable");
-  const assets = ((data ?? []) as Asset[]).filter(asset => !asset.purged_at);
+  return enrich(clientId, ((data ?? []) as Asset[]).filter(asset => !asset.purged_at));
+}
+
+// Miniatures signées, historique d'utilisation, évaluation IA et décisions humaines des photos d'une page.
+async function enrich(clientId: string, assets: Asset[]): Promise<LibraryItem[]> {
   if (!assets.length) return [];
+  const ids = assets.map(asset => asset.id);
   const paths = assets.flatMap(asset => asset.thumbnail_path?.startsWith(`${clientId}/`) ? [asset.thumbnail_path] : []);
   const signed = paths.length ? await db().storage.from(THUMBNAIL_BUCKET).createSignedUrls(paths, THUMBNAIL_URL_TTL) : { data: [], error: null };
   const urls = new Map((signed.data ?? []).flatMap(item => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
-  const { data: uses, error: usesError } = await db().from("whatsapp_asset_uses").select("*").eq("client_id", clientId).in("asset_id", assets.map(asset => asset.id)).order("used_at", { ascending: false });
-  if (usesError) throw Error("library_unavailable");
-  const publicationIds = [...new Set((uses ?? []).map(use => use.publication_id))];
-  const { data: publications } = publicationIds.length ? await db().from("publications").select("id,subject,status").eq("client_id", clientId).in("id", publicationIds) : { data: [] };
-  const byPublication = new Map((publications ?? []).map(p => [p.id, p]));
-  // Évaluations IA : facultatives (migration non appliquée ou photo jamais analysée), jamais bloquantes.
-  const { data: assessed, error: assessedError } = await db().from("whatsapp_asset_assessments").select("asset_id,verdict,business_relevance,publishability,sensitive,confidential,description,quality,quality_issues,manual_verdict").eq("client_id", clientId).in("asset_id", assets.map(asset => asset.id));
-  const assessments = new Map(assessedError ? [] : ((assessed ?? []) as (LibraryAssessment & { asset_id: string })[]).map(({ asset_id, ...rest }) => [asset_id, rest]));
+  let history: Map<string, AssetUsage[]>;
+  try { history = await listAssetUsageHistory(db() as unknown as UsageHistoryDb, clientId, ids); } catch { throw Error("library_unavailable"); }
+  // Évaluations IA et décisions : facultatives (migration non appliquée ou photo jamais analysée), jamais bloquantes.
+  const [assessed, decided] = await Promise.all([
+    db().from("whatsapp_asset_assessments").select("asset_id,verdict,business_relevance,publishability,sensitive,confidential,description,quality,quality_issues,manual_verdict,topics,reviewed_by,reviewed_at,analyzed_at").eq("client_id", clientId).in("asset_id", ids),
+    db().from("whatsapp_asset_decisions").select("*").eq("client_id", clientId).in("asset_id", ids).order("created_at", { ascending: false }).limit(500),
+  ]);
+  const assessments = new Map(assessed.error ? [] : ((assessed.data ?? []) as (LibraryAssessment & { asset_id: string })[]).map(({ asset_id, ...rest }) => [asset_id, rest]));
+  const decisions = decided.error ? [] : (decided.data ?? []) as AssetDecision[];
   return assets.map(asset => ({
     ...asset,
     assessment: assessments.get(asset.id) ?? null,
     thumbnailUrl: asset.thumbnail_path ? urls.get(asset.thumbnail_path) ?? null : null,
-    uses: (uses ?? []).filter(use => use.asset_id === asset.id).map(use => ({ ...use, subject: byPublication.get(use.publication_id)?.subject ?? null, status: byPublication.get(use.publication_id)?.status ?? null })),
+    history: history.get(asset.id) ?? [],
+    decisions: decisions.filter(decision => decision.asset_id === asset.id).slice(0, 10),
   }));
+}
+
+/** Reclassement manuel d'une photo (administrateur, motif obligatoire), tracé et jamais écrasé par l'analyse automatique. */
+export async function reclassifyAsset(userId: string, clientId: string, assetId: string, status: (typeof manualStatuses)[number], reason: string): Promise<{ ok: boolean; message: string }> {
+  const { error } = await db().rpc("whatsapp_asset_reclassify", { p_client_id: clientId, p_asset_id: assetId, p_status: status, p_reason: reason, p_actor_id: userId });
+  if (!error) return { ok: true, message: `Photo reclassée « ${statusLabels[status]} ». La décision est enregistrée et ne sera pas modifiée par l’analyse automatique.` };
+  if (error.code === "22023") return { ok: false, message: "Indiquez un motif de 3 à 500 caractères et un statut valide." };
+  if (error.code === "55000") return { ok: false, message: "Photo introuvable, purgée ou déjà dans ce statut." };
+  if (MISSING_RPC.includes(error.code ?? "")) return { ok: false, message: "Reclassement indisponible : appliquez la migration des outils de la photothèque." };
+  return { ok: false, message: "Reclassement impossible. Réessayez." };
+}
+
+/** Légende d'une photo, modifiée par un administrateur (vide = effacée). Reste une donnée, jamais une consigne. */
+export async function saveAssetCaption(userId: string, clientId: string, assetId: string, caption: string): Promise<{ ok: boolean; message: string }> {
+  const clean = cleanCaption(caption) ?? "";
+  const { data, error } = await db().rpc("whatsapp_asset_caption_save", { p_client_id: clientId, p_asset_id: assetId, p_caption: clean, p_actor_id: userId });
+  if (!error) return data ? { ok: true, message: clean ? "Légende enregistrée." : "Légende effacée." } : { ok: false, message: "Photo introuvable ou purgée." };
+  if (MISSING_RPC.includes(error.code ?? "")) return { ok: false, message: "Édition indisponible : appliquez la migration des outils de la photothèque." };
+  return { ok: false, message: "Légende non enregistrée (3 000 caractères au plus)." };
 }
 
 // Décision humaine : passe par whatsapp_assets_review (verdict manuel, journal d'audit). Si la migration de la photothèque
@@ -110,6 +172,19 @@ export async function preparePublication(userId: string, input: PrepareInput): P
   const assets = await selectedAssets(input.clientId, input.assetIds);
   const check = checkSelection(input.clientId, input.assetIds, assets, input.allowReuse);
   if (!check.ok) return { message: check.message };
+  // Réemploi explicite : il respecte toujours le réglage du client (désactivé par défaut, délai minimal entre deux usages).
+  const reusedAssets = assets.filter(asset => asset.library_status === "used");
+  if (reusedAssets.length) {
+    const [settings, uses] = await Promise.all([clientReuseSettings(input.clientId), db().from("whatsapp_asset_uses").select("asset_id,used_at").eq("client_id", input.clientId).in("asset_id", reusedAssets.map(asset => asset.id))]);
+    if (uses.error) return { message: "Photothèque indisponible : réessayez." };
+    for (const asset of reusedAssets) {
+      const dates = ((uses.data ?? []) as { asset_id: string; used_at: string }[]).filter(use => use.asset_id === asset.id).map(use => ({ usedAt: use.used_at }));
+      const known = dates.length ? dates : Number.isFinite(Date.parse(asset.status_changed_at)) ? [{ usedAt: asset.status_changed_at }] : [];
+      const state = reuseState(known, settings, new Date());
+      if (state.reason === "reuse_disabled" || (!known.length && !settings.allowed)) return { message: "Le réemploi des photos est désactivé pour ce client (réglages Publications du client) : choisissez une photo jamais utilisée." };
+      if (state.reason === "too_recent") return { message: `Une photo a été utilisée trop récemment : réemploi possible à partir du ${new Date(state.reusableFrom!).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} (réglage du client).` };
+    }
+  }
   // Photo signalée confidentielle par l'analyse : utilisable seulement après une validation humaine postérieure.
   const assessments = await assessmentsFor(input.clientId, input.assetIds);
   if ([...assessments.values()].some(a => a.confidential && a.manual_verdict !== "relevant")) return { message: "Une photo a été signalée confidentielle par l’analyse : vérifiez-la puis validez-la à nouveau avant de l’utiliser." };
@@ -217,4 +292,14 @@ export async function clientFolders(clientId: string) {
   const { data, error } = await db().from("whatsapp_senders").select("drive_folder_id,enabled").eq("client_id", clientId);
   if (error) throw Error("library_unavailable");
   return [...new Set((data ?? []).map(row => row.drive_folder_id))];
+}
+
+/** Services et sujets proposés au filtre : prestations du profil média, puis thèmes les plus fréquents des évaluations. */
+export async function libraryServiceOptions(clientId: string, profileServices: string[]): Promise<string[]> {
+  const { data, error } = await db().from("whatsapp_asset_assessments").select("topics").eq("client_id", clientId).limit(1000);
+  const counts = new Map<string, number>();
+  for (const row of error ? [] : (data ?? []) as { topics: string[] | null }[]) for (const topic of row.topics ?? []) { const t = topic.trim(); if (t) counts.set(t, (counts.get(t) ?? 0) + 1); }
+  const topics = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topic]) => topic);
+  const seen = new Set<string>();
+  return [...profileServices, ...topics].filter(value => { const key = value.toLocaleLowerCase("fr"); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 40);
 }

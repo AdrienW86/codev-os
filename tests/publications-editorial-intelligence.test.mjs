@@ -339,3 +339,11 @@ test("garde-fous : aucun process.env, fetch ou URL dans les nouveaux modules ; m
   assert.match(sql, /revoke all on function public\.publication_editorial_justification_record\(uuid,jsonb,text\) from public,anon,authenticated/);
   assert.match(src("lib/publications/agent-v2/service.ts"), /publication_editorial_justification_record/);
 });
+
+test("photo de document : les mots ambigus (maquette papier, logo) ne suffisent pas, les écrans restent écartés par leur signal", () => {
+  assert.equal(photos.isDocumentPhoto({ description: "Maquettes papier d’un site web sur une table", topics: ["maquette"] }), false);
+  assert.equal(photos.isDocumentPhoto({ description: "Nouveau logo peint sur la vitrine" }), false);
+  assert.equal(photos.isDocumentPhoto({ description: "Photo d'une facture posée sur le bureau" }), true);
+  assert.equal(photos.isDocumentPhoto({ description: "Écran de statistiques", sensitive: ["screen"] }), true);
+  assert.equal(photos.isDocumentPhoto({ description: "Page web", quality_issues: ["screenshot"] }), true);
+});

@@ -156,13 +156,14 @@ test("personal data retention is opt-in and refuses short durations", async () =
   assert.deepEqual(json(await service.purgeExpiredPersonalData(new Date(), { WHATSAPP_RETENTION_DAYS: "365" })), { purged: 3 });
 });
 
-function prepareHarness({ failRegister = false, failDrive = false, failRevise = false, status = "validated" } = {}) {
+function prepareHarness({ failRegister = false, failDrive = false, failRevise = false, status = "validated", reuse = null } = {}) {
   const PUB = uuid(50), REV1 = uuid(51), REV2 = uuid(52), PROJECT = uuid(40);
   const stored = { client_id: CLIENT, drive_folder_id: "folder_client_a", md5: "c".repeat(32), mime_type: "image/jpeg", media_kind: "image", imported_at: "2026-10-12T08:00:00Z", received_at: "2026-10-12T08:00:00Z", created_at: "2026-10-12T08:00:00Z" };
   const fake = createFakeSupabase({
     whatsapp_assets: [{ ...stored, id: uuid(1), drive_file_id: "drive_file_aaaa1", library_status: status, caption: "Toiture refaite" }, { ...stored, id: uuid(2), client_id: OTHER, drive_file_id: "drive_file_bbbb2", library_status: "validated" }],
     projects: [{ id: PROJECT, client_id: CLIENT, type: "Réseaux sociaux" }],
     whatsapp_asset_uses: [],
+    publication_client_settings: reuse ? [{ client_id: CLIENT, ...reuse }] : [],
   }, { rpc: { publication_register_image: args => { if (failRegister) throw Error("refused"); state.registered.push(args); return null; }, publication_archive: args => { state.archived.push(args.p_publication_id); return "2026-10-12T09:00:00Z"; } } });
   const state = { drafts: [], unscheduled: [], registered: [], uploads: [], removed: [], audits: [], archived: [] };
   const fields = form => Object.fromEntries([...new Set(form.keys())].map(key => [key, form.getAll(key).length > 1 ? form.getAll(key) : form.get(key)]));
@@ -183,6 +184,9 @@ function prepareHarness({ failRegister = false, failDrive = false, failRevise = 
       currentRevision: async () => ({ revision_id: state.drafts.length ? REV2 : REV1, status: "draft" }),
     },
     "./library-model": model,
+    "./payload": payload,
+    "./library-filters": loadTs("lib/whatsapp/library-filters.ts"),
+    "./usage-history": loadTs("lib/whatsapp/usage-history.ts"),
     "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"),
     "./providers": providers,
     "./originals": { assetOriginal: async (asset, token) => providers.downloadDrive(token ?? await providers.importDriveToken(), asset.drive_file_id, asset.drive_folder_id, asset.md5, providers.maxImageBytes) },
@@ -250,7 +254,11 @@ test("a second submission with the same photos is refused instead of creating a 
   assert.equal([a, b].filter(r => r.id).length, 1);
   assert.match([a, b].find(r => !r.id).message, /déjà en cours d’utilisation/);
   assert.equal(race.state.unscheduled.length, 1);
-  const reuse = prepareHarness({ status: "used" });
+  // Réemploi explicite : seulement si le réglage du client l'autorise (désactivé par défaut).
+  const denied = prepareHarness({ status: "used" });
+  assert.match((await denied.library.preparePublication("user_admin", { ...input, allowReuse: true })).message, /réemploi des photos est désactivé/);
+  assert.equal(denied.state.unscheduled.length, 0);
+  const reuse = prepareHarness({ status: "used", reuse: { media_reuse_allowed: true, media_reuse_after_days: 30 } });
   const r = await reuse.library.preparePublication("user_admin", { ...input, allowReuse: true });
   assert.equal(r.id, reuse.PUB); assert.equal(reuse.fake.tables.whatsapp_asset_uses.length, 1);
 });

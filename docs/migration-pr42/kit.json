@@ -1,0 +1,5 @@
+{"pr":42,"file":"20261102000000_publications_editorial_intelligence.sql",
+ "requires":["whatsapp_export_import"],
+ "snapshot":["public.publication_agent_v2_runs"],
+ "post":[["justification éditoriale : colonne nullable, aucune ligne existante renseignée",
+  "not exists(select 1 from public.publication_agent_v2_runs where editorial_justification is not null)"]]}

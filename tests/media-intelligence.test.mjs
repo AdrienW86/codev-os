@@ -303,8 +303,8 @@ test("a photo flagged confidential cannot feed a draft until a human validates i
   assert.equal(h.fake.tables.whatsapp_assets[0].library_status, "validated", "aucune réservation");
 });
 
-function tickHarness(profiles) {
-  const fake = createFakeSupabase({ client_media_profiles: profiles, publication_agent_projects: [] }, { rpc: { whatsapp_rejected_purge_candidates: () => [] } });
+function tickHarness(profiles, folders = []) {
+  const fake = createFakeSupabase({ client_media_profiles: profiles, publication_agent_projects: folders }, { rpc: { whatsapp_rejected_purge_candidates: () => [] } });
   const service = load("lib/media-intelligence/service.ts", {
     "node:crypto": require("node:crypto"), sharp: () => ({ metadata: async () => ({}) }),
     "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
@@ -335,11 +335,11 @@ test("the tick syncs Drive with the Publications read-only provider, and skips o
   const provider = { list: async () => [], download: async () => new Uint8Array() };
   const classify = async id => { classified.push(id); return { analyzed: 0, quarantined: 0, failed: 0, stopped: null }; };
   const sync = async (id, limit, deps) => { synced.push([id, limit, deps.provider]); return { added: 2, skipped: 0, folders: 1 }; };
-  const h = tickHarness([{ client_id, ai_classification_enabled: true, updated_at: "2026-10-01T00:00:00Z", last_classified_at: null }]);
+  const h = tickHarness([{ client_id, ai_classification_enabled: true, updated_at: "2026-10-01T00:00:00Z", last_classified_at: null }], [{ client_id, rights_confirmed: true }]);
   const result = await h.service.runMediaIntelligenceTick(5, 8, { classify, sync, drive: () => provider });
   assert.equal(synced.length, 1); assert.equal(synced[0][1], 5, "synchro bornée"); assert.equal(synced[0][2], provider); assert.equal(result.driveAdded, 2);
   synced.length = 0;
-  const unconfigured = await tickHarness([{ client_id, ai_classification_enabled: true, updated_at: "2026-10-01T00:00:00Z", last_classified_at: null }]).service.runMediaIntelligenceTick(5, 8, { classify, sync });
+  const unconfigured = await tickHarness([{ client_id, ai_classification_enabled: true, updated_at: "2026-10-01T00:00:00Z", last_classified_at: null }], [{ client_id, rights_confirmed: true }]).service.runMediaIntelligenceTick(5, 8, { classify, sync });
   assert.equal(synced.length, 0); assert.equal(unconfigured.clients, 1); assert.equal(classified.length, 2, "le classement continue sans Drive");
 });
 
@@ -357,7 +357,7 @@ test("Drive sync ignores files known only under another client and imports them 
   });
   const file = id => ({ drive_file_id: id, mime_type: "image/jpeg", modified_at: "2026-10-10T08:00:00Z" });
   const provider = { list: async () => [file("file_known_mine"), file("file_known_other")], download: async id => { downloads.push(id); return new Uint8Array([1, 2, 3]); } };
-  assert.deepEqual(json(await service.syncDriveLibrary(CLIENT, 15, { provider })), { added: 1, skipped: 0, folders: 1 });
+  assert.deepEqual(json(await service.syncDriveLibrary(CLIENT, 15, { provider, backfill: null })), { added: 1, skipped: 0, folders: 1, duplicates: 0, failed: 0 });
   assert.deepEqual(downloads, ["file_known_other"]);
 });
 

@@ -100,8 +100,11 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
   const db = {
     rpc: async () => ({ data: [{ ...job }], error: null }),
     from: table => {
-      let operation, values; const filters = {};
+      let operation, values, limited = false; const filters = {};
       const query = {
+        // Dédoublonnage client (toutes origines) : même dossier ⇒ parcours habituel, contrôlé par uploadDrive.
+        not: () => query,
+        limit: () => { limited = true; return query; },
         upsert: v => { operation = "upsert"; values = v; return query; },
         select: () => query,
         update: v => { operation = "update"; values = v; return query; },
@@ -109,6 +112,7 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
         single: () => query,
         then: (resolve, reject) => Promise.resolve().then(() => {
           if (table === "whatsapp_assets") {
+            if (limited) return { data: state.asset ? [state.asset] : [], error: null };
             if (operation === "upsert") state.asset ??= { ...values };
             if (filters.client_id) assert.equal(filters.client_id, "client-a");
             if (filters.drive_folder_id) assert.equal(filters.drive_folder_id, "folder_client_a");

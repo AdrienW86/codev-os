@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { publicationPlatforms } from "@/lib/publications/types";
 import { MAX_PUBLICATION_MEDIA, manualStatuses } from "@/lib/whatsapp/library-model";
-import { preparePublication, setLibraryStatus } from "@/lib/whatsapp/library";
+import { preparePublication, reclassifyAsset, saveAssetCaption, setLibraryStatus } from "@/lib/whatsapp/library";
 import { classifyClientMedia, saveMediaProfile, syncDriveLibrary, type ClassifyResult } from "@/lib/media-intelligence/service";
 
 export type MediaLibraryState = { message?: string; ok?: boolean; publicationId?: string };
@@ -89,8 +89,9 @@ export async function mediaMaintenanceAction(_state: MediaProfileState, form: Fo
     if (form.get("intent") === "sync_drive") {
       const result = await syncDriveLibrary(clientId.data);
       revalidatePath(`/clients/${clientId.data}`);
-      return result.folders ? { message: `${result.added} photo(s) ajoutée(s) depuis Drive${result.skipped ? `, ${result.skipped} ignorée(s)` : ""}.`, ok: true }
-        : { message: "Aucun dossier Drive confirmé dans la configuration de l’agent Publications de ce client." };
+      const extra = [result.duplicates ? `${result.duplicates} déjà dans la photothèque` : "", result.failed ? `${result.failed} échec(s) de lecture` : ""].filter(Boolean);
+      return result.folders ? { message: `${result.added} photo(s) ajoutée(s) depuis Drive${extra.length ? ` (${extra.join(", ")})` : result.skipped ? `, ${result.skipped} ignorée(s)` : ""}.`, ok: true }
+        : { message: "Aucun dossier Drive autorisé : confirmez les droits du dossier de l’agent Publications ou d’une association WhatsApp de ce client." };
     }
     if (form.get("intent") === "analyze_new") {
       const result = await classifyClientMedia(clientId.data, { limit: 20 });
@@ -101,4 +102,33 @@ export async function mediaMaintenanceAction(_state: MediaProfileState, form: Fo
   } catch {
     return { message: "Photothèque indisponible. Vérifiez la migration de la photothèque intelligente et l’accès Drive." };
   }
+}
+
+export type MediaAssetState = { message?: string; ok?: boolean };
+const reclassify = z.object({ client_id: z.uuid(), asset_id: z.uuid(), status: z.enum(manualStatuses), reason: z.string().trim().min(3).max(500) });
+/** « Pourquoi écartée ? » : reclassement manuel d'une photo par un administrateur, motif obligatoire, audité. */
+export async function reclassifyAssetAction(_state: MediaAssetState, form: FormData): Promise<MediaAssetState> {
+  const { userId } = await requireAdmin();
+  if (await getActiveScenario()) return { message: "Indisponible en simulation." };
+  const parsed = reclassify.safeParse({ client_id: form.get("client_id"), asset_id: form.get("asset_id"), status: form.get("status"), reason: String(form.get("reason") ?? "") });
+  if (!parsed.success) return { message: "Choisissez un statut et indiquez un motif (3 à 500 caractères)." };
+  try {
+    const result = await reclassifyAsset(userId, parsed.data.client_id, parsed.data.asset_id, parsed.data.status, parsed.data.reason);
+    if (result.ok) revalidatePath(`/clients/${parsed.data.client_id}`);
+    return result;
+  } catch { return { message: "Reclassement impossible. Réessayez." }; }
+}
+
+const caption = z.object({ client_id: z.uuid(), asset_id: z.uuid(), caption: z.string().max(3000) });
+/** Légende d'une photo, modifiée par un administrateur (le texte reste une donnée, jamais une consigne). */
+export async function saveAssetCaptionAction(_state: MediaAssetState, form: FormData): Promise<MediaAssetState> {
+  const { userId } = await requireAdmin();
+  if (await getActiveScenario()) return { message: "Indisponible en simulation." };
+  const parsed = caption.safeParse({ client_id: form.get("client_id"), asset_id: form.get("asset_id"), caption: String(form.get("caption") ?? "") });
+  if (!parsed.success) return { message: "Légende trop longue (3 000 caractères au plus)." };
+  try {
+    const result = await saveAssetCaption(userId, parsed.data.client_id, parsed.data.asset_id, parsed.data.caption);
+    if (result.ok) revalidatePath(`/clients/${parsed.data.client_id}`);
+    return result;
+  } catch { return { message: "Légende non enregistrée. Réessayez." }; }
 }

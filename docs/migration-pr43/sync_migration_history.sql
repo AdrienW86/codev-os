@@ -1,0 +1,368 @@
+-- =========================================================================================================
+-- PR #43 : inscription de 20261103000000_media_library_tools.sql dans l'historique Supabase
+-- À exécuter APRÈS une application réussie de apply_sql_editor.sql, dans une nouvelle requête du SQL Editor.
+-- Convention de l'historique de ce projet : version = horodatage UTC de l'inscription, nom court (media_library_tools), texte dans statements.
+-- Refuse d'écrire si la migration n'est pas réellement en place (mêmes contrôles qu'après application) ou si elle est
+-- déjà inscrite. Le texte inscrit est le fichier du dépôt, transporté en base64 : un copier-coller qui change les fins
+-- de ligne (CRLF sous Windows) ou l'encodage ne peut pas l'altérer. Les corps de fonctions en base sont comparés à
+-- ceux du dépôt en ignorant seulement les fins de ligne. Une seule transaction : en cas d'anomalie, rien n'est écrit.
+-- Généré par scripts/migration-kit.mjs depuis supabase/migrations/20261103000000_media_library_tools.sql (md5 93b8a2033773f0fb807801c06c48d375, 16589 octets).
+-- =========================================================================================================
+begin;
+do $sync$
+declare
+ expected_md5 constant text := '93b8a2033773f0fb807801c06c48d375';
+ migration_text text := convert_from(decode('
+LS0gUGhvdG90aMOocXVlLCBvdXRpbHMgZGUgdHJhdmFpbCAoc3VpdGUgZGVzIGxvdHMgMiBldCAz
+KSA6IHJlY2hlcmNoZSBmaWx0csOpZSBldCBwYWdpbsOpZSBjw7R0w6kgc2VydmV1ciwgaGlzdG9y
+aXF1ZQotLSBkJ3V0aWxpc2F0aW9uIHLDqXV0aWxpc2FibGUsIGTDqWNpc2lvbnMgaHVtYWluZXMg
+dHJhY8OpZXMgKMKrIFBvdXJxdW9pIMOpY2FydMOpZSA/IMK7LCByZWNsYXNzZW1lbnQgbWFudWVs
+KSwgw6lkaXRpb24gZGUgbGEKLS0gbMOpZ2VuZGUsIG3DqW1vaXJlIGRlIGxhIHN5bmNocm9uaXNh
+dGlvbiBEcml2ZSAoZG91YmxvbnMgZXQgw6ljaGVjcyBub24gcmV0w6lsw6ljaGFyZ8OpcywgcmVw
+cmlzZSBkZXMgZG9zc2llcnMgdm9sdW1pbmV1eCkuCi0tIETDqXBlbmQgZGUgMjAyNjExMDEwMDAw
+MDBfd2hhdHNhcHBfZXhwb3J0X2ltcG9ydC5zcWwgKG9yZHJlIGRlIGZ1c2lvbikgZXQgZGVzIHLD
+qGdsZXMgZGUgbGEgc8OpbGVjdGlvbiDDqWRpdG9yaWFsZQotLSAoMjAyNjEwMjkwMDAwMDApIHF1
+J2VsbGUgbGl0IHNhbnMgbGVzIG1vZGlmaWVyLiBGb3J3YXJkLW9ubHksIGFkZGl0aXZlIDogYXVj
+dW5lIGxpZ25lIGV4aXN0YW50ZSBtb2RpZmnDqWUsIGF1Y3VuZQotLSBmb25jdGlvbiBleGlzdGFu
+dGUgcmVtcGxhY8OpZSwgcmllbiBuJ2VzdCBhY3RpdsOpLiBBdWN1biBmaWNoaWVyIG4nZXN0IGph
+bWFpcyBzdXBwcmltw6kgcGFyIGxhIGJhc2UuCgotLSAxLiBMw6lnZW5kZSDDqWRpdMOpZSBwYXIg
+dW4gYWRtaW5pc3RyYXRldXIgKGxlIHRleHRlIHJlbXBsYWNlIGxhIGzDqWdlbmRlIDsgc2V1bCBs
+ZSBmYWl0IGRlIGwnw6lkaXRpb24gZXN0IHRyYWPDqSkuCmFsdGVyIHRhYmxlIHB1YmxpYy53aGF0
+c2FwcF9hc3NldHMKICBhZGQgY29sdW1uIGNhcHRpb25fZWRpdGVkX2J5IHRleHQgY2hlY2sgKGNh
+cHRpb25fZWRpdGVkX2J5IGlzIG51bGwgb3IgY2FwdGlvbl9lZGl0ZWRfYnkgfiAnXnVzZXJfW2Et
+ekEtWjAtOV8tXXsxLDIwMH0kJyksCiAgYWRkIGNvbHVtbiBjYXB0aW9uX2VkaXRlZF9hdCB0aW1l
+c3RhbXB0eiwKICBhZGQgY29uc3RyYWludCB3aGF0c2FwcF9hc3NldHNfY2FwdGlvbl9lZGl0X3Bh
+aXIgY2hlY2sgKChjYXB0aW9uX2VkaXRlZF9ieSBpcyBudWxsKSA9IChjYXB0aW9uX2VkaXRlZF9h
+dCBpcyBudWxsKSk7Ci0tIETDqWRvdWJsb25uYWdlIHBhciBlbXByZWludGUgw6AgbCfDqWNoZWxs
+ZSBkdSBjbGllbnQgKHRvdXMgZG9zc2llcnMgZXQgdG91dGVzIG9yaWdpbmVzIGNvbmZvbmR1cyku
+CmNyZWF0ZSBpbmRleCB3aGF0c2FwcF9hc3NldHNfY2xpZW50X3NoYSBvbiBwdWJsaWMud2hhdHNh
+cHBfYXNzZXRzIChjbGllbnRfaWQsIHNoYTI1Nik7CgotLSAyLiBIaXN0b3JpcXVlIGRlcyBkw6lj
+aXNpb25zIGh1bWFpbmVzIChham91dCBzZXVsKSA6IHN0YXR1dCBwb3PDqSBwYXIgdW5lIHBlcnNv
+bm5lIChtb3RpZiBmYWN1bHRhdGlmLCBvYmxpZ2F0b2lyZSBwb3VyCi0tICAgIHVuIHJlY2xhc3Nl
+bWVudCksIGzDqWdlbmRlIMOpZGl0w6llLiBKYW1haXMgZGUgdGV4dGUgZGUgbMOpZ2VuZGUgbmkg
+ZGUgbnVtw6lybyBkYW5zIGNldHRlIHRhYmxlLgpjcmVhdGUgdGFibGUgcHVibGljLndoYXRzYXBw
+X2Fzc2V0X2RlY2lzaW9ucyAoCiAgaWQgdXVpZCBwcmltYXJ5IGtleSBkZWZhdWx0IGdlbl9yYW5k
+b21fdXVpZCgpLAogIGFzc2V0X2lkIHV1aWQgbm90IG51bGwsCiAgY2xpZW50X2lkIHV1aWQgbm90
+IG51bGwgcmVmZXJlbmNlcyBwdWJsaWMuY2xpZW50cyhpZCkgb24gZGVsZXRlIHJlc3RyaWN0LAog
+IGtpbmQgdGV4dCBub3QgbnVsbCBjaGVjayAoa2luZCBpbiAoJ3N0YXR1cycsJ3JlY2xhc3NpZnkn
+LCdjYXB0aW9uJykpLAogIGZyb21fc3RhdHVzIHRleHQgY2hlY2sgKGZyb21fc3RhdHVzIGlzIG51
+bGwgb3IgZnJvbV9zdGF0dXMgaW4gKCdyZWNlaXZlZCcsJ3RvX3JldmlldycsJ3ZhbGlkYXRlZCcs
+J3VzZWQnLCdhcmNoaXZlZCcsJ3F1YXJhbnRpbmVkJywncmVqZWN0ZWQnKSksCiAgdG9fc3RhdHVz
+IHRleHQgY2hlY2sgKHRvX3N0YXR1cyBpcyBudWxsIG9yIHRvX3N0YXR1cyBpbiAoJ3JlY2VpdmVk
+JywndG9fcmV2aWV3JywndmFsaWRhdGVkJywndXNlZCcsJ2FyY2hpdmVkJywncXVhcmFudGluZWQn
+LCdyZWplY3RlZCcpKSwKICByZWFzb24gdGV4dCBjaGVjayAocmVhc29uIGlzIG51bGwgb3IgKGxl
+bmd0aChidHJpbShyZWFzb24pKSBiZXR3ZWVuIDMgYW5kIDUwMCBhbmQgcmVhc29uICF+ICdbXHgw
+MC1ceDA5XHgwYi1ceDFmXScpKSwKICBhY3Rvcl9pZCB0ZXh0IG5vdCBudWxsIGNoZWNrIChhY3Rv
+cl9pZCB+ICdedXNlcl9bYS16QS1aMC05Xy1dezEsMjAwfSQnKSwKICBjcmVhdGVkX2F0IHRpbWVz
+dGFtcHR6IG5vdCBudWxsIGRlZmF1bHQgbm93KCksCiAgY2hlY2sgKGtpbmQ8PidyZWNsYXNzaWZ5
+JyBvciByZWFzb24gaXMgbm90IG51bGwpLAogIGZvcmVpZ24ga2V5IChhc3NldF9pZCwgY2xpZW50
+X2lkKSByZWZlcmVuY2VzIHB1YmxpYy53aGF0c2FwcF9hc3NldHMoaWQsIGNsaWVudF9pZCkgb24g
+ZGVsZXRlIHJlc3RyaWN0Cik7CmNyZWF0ZSBpbmRleCB3aGF0c2FwcF9hc3NldF9kZWNpc2lvbnNf
+YXNzZXQgb24gcHVibGljLndoYXRzYXBwX2Fzc2V0X2RlY2lzaW9ucyAoY2xpZW50X2lkLCBhc3Nl
+dF9pZCwgY3JlYXRlZF9hdCBkZXNjKTsKCi0tIFRvdXQgY2hhbmdlbWVudCBkZSBzdGF0dXQgcG9z
+w6kgcGFyIHVuZSBwZXJzb25uZSAod2hhdHNhcHBfYXNzZXRzX3JldmlldywgcHLDqXBhcmF0aW9u
+IGRlIHB1YmxpY2F0aW9uLCBhZ2VudCkgZXN0Ci0tIGhpc3Rvcmlzw6kuIExlIG1vdGlmIGV0IGxh
+IG5hdHVyZSDCqyByZWNsYXNzZW1lbnQgwrsgbmUgdmllbm5lbnQgcXVlIGRlIHdoYXRzYXBwX2Fz
+c2V0X3JlY2xhc3NpZnkgKHLDqWdsYWdlIGxvY2FsKS4KY3JlYXRlIGZ1bmN0aW9uIGNvZGV2X3By
+aXZhdGUud2hhdHNhcHBfYXNzZXRfZGVjaXNpb25fbG9nKCkgcmV0dXJucyB0cmlnZ2VyCmxhbmd1
+YWdlIHBscGdzcWwgc2VjdXJpdHkgaW52b2tlciBzZXQgc2VhcmNoX3BhdGggPSBwZ19jYXRhbG9n
+IGFzICQkCmRlY2xhcmUgcmVhc29uIHRleHQgOj0gbnVsbGlmKGN1cnJlbnRfc2V0dGluZygnY29k
+ZXYubWVkaWFfZGVjaXNpb25fcmVhc29uJywgdHJ1ZSksICcnKTsKYmVnaW4KICBpZiBuZXcubGli
+cmFyeV9zdGF0dXMgaXMgZGlzdGluY3QgZnJvbSBvbGQubGlicmFyeV9zdGF0dXMgYW5kIG5ldy5z
+dGF0dXNfY2hhbmdlZF9ieSB+ICdedXNlcl9bYS16QS1aMC05Xy1dezEsMjAwfSQnIHRoZW4KICAg
+IGluc2VydCBpbnRvIHB1YmxpYy53aGF0c2FwcF9hc3NldF9kZWNpc2lvbnMoYXNzZXRfaWQsIGNs
+aWVudF9pZCwga2luZCwgZnJvbV9zdGF0dXMsIHRvX3N0YXR1cywgcmVhc29uLCBhY3Rvcl9pZCkK
+ICAgIHZhbHVlcyAobmV3LmlkLCBuZXcuY2xpZW50X2lkLCBjYXNlIHdoZW4gcmVhc29uIGlzIG51
+bGwgdGhlbiAnc3RhdHVzJyBlbHNlICdyZWNsYXNzaWZ5JyBlbmQsIG9sZC5saWJyYXJ5X3N0YXR1
+cywgbmV3LmxpYnJhcnlfc3RhdHVzLCByZWFzb24sIG5ldy5zdGF0dXNfY2hhbmdlZF9ieSk7CiAg
+ZW5kIGlmOwogIHJldHVybiBuZXc7CmVuZCAkJDsKY3JlYXRlIHRyaWdnZXIgd2hhdHNhcHBfYXNz
+ZXRfZGVjaXNpb25fbG9nIGFmdGVyIHVwZGF0ZSBvZiBsaWJyYXJ5X3N0YXR1cyBvbiBwdWJsaWMu
+d2hhdHNhcHBfYXNzZXRzCiAgZm9yIGVhY2ggcm93IGV4ZWN1dGUgZnVuY3Rpb24gY29kZXZfcHJp
+dmF0ZS53aGF0c2FwcF9hc3NldF9kZWNpc2lvbl9sb2coKTsKCi0tIDMuIFJlY2xhc3NlbWVudCBt
+YW51ZWwgZCd1bmUgcGhvdG8gKGFkbWluaXN0cmF0ZXVyLCBtb3RpZiBvYmxpZ2F0b2lyZSkgOiBy
+w6l1dGlsaXNlIHdoYXRzYXBwX2Fzc2V0c19yZXZpZXcgKHZlcmRpY3QKLS0gICAgbWFudWVsLCBh
+bm51bGF0aW9uIGRlcyBkaWZmdXNpb25zIG5vbiBlbnZvecOpZXMgZW4gY2FzIGRlIHF1YXJhbnRh
+aW5lIG91IGRlIHJlamV0LCBhdWRpdCksIHB1aXMgdHJhY2UgbGUgbW90aWYuCi0tICAgIExlIHN0
+YXR1dCBwb3PDqSBwYXIgdW5lIHBlcnNvbm5lIG4nZXN0IGphbWFpcyBtb2RpZmnDqSBwYXIgdW5l
+IMOpdmFsdWF0aW9uIGF1dG9tYXRpcXVlIHVsdMOpcmlldXJlCi0tICAgICh3aGF0c2FwcF9hc3Nl
+dF9hc3Nlc3NtZW50X3JlY29yZCBuZSB0b3VjaGUgcXUnYXV4IHN0YXR1dHMgcG9zw6lzIHBhciBs
+ZSBzeXN0w6htZSkuCmNyZWF0ZSBmdW5jdGlvbiBwdWJsaWMud2hhdHNhcHBfYXNzZXRfcmVjbGFz
+c2lmeShwX2NsaWVudF9pZCB1dWlkLCBwX2Fzc2V0X2lkIHV1aWQsIHBfc3RhdHVzIHRleHQsIHBf
+cmVhc29uIHRleHQsIHBfYWN0b3JfaWQgdGV4dCkgcmV0dXJucyBqc29uYgpsYW5ndWFnZSBwbHBn
+c3FsIHNlY3VyaXR5IGludm9rZXIgc2V0IHNlYXJjaF9wYXRoID0gcGdfY2F0YWxvZyBhcyAkJApk
+ZWNsYXJlIGEgcHVibGljLndoYXRzYXBwX2Fzc2V0czsgbiBpbnRlZ2VyOyBjbGVhbiB0ZXh0IDo9
+IGJ0cmltKGNvYWxlc2NlKHBfcmVhc29uLCAnJykpOwpiZWdpbgogIGlmIHBfYWN0b3JfaWQgaXMg
+bnVsbCBvciBwX2FjdG9yX2lkICF+ICdedXNlcl9bYS16QS1aMC05Xy1dezEsMjAwfSQnIG9yIHBf
+c3RhdHVzIGlzIG51bGwKICAgIG9yIHBfc3RhdHVzIG5vdCBpbiAoJ3JlY2VpdmVkJywndG9fcmV2
+aWV3JywndmFsaWRhdGVkJywnYXJjaGl2ZWQnLCdxdWFyYW50aW5lZCcsJ3JlamVjdGVkJykKICAg
+IG9yIGxlbmd0aChjbGVhbikgbm90IGJldHdlZW4gMyBhbmQgNTAwIG9yIGNsZWFuIH4gJ1tceDAw
+LVx4MDlceDBiLVx4MWZdJyB0aGVuCiAgICByYWlzZSBleGNlcHRpb24gJ0ludmFsaWQgcmVjbGFz
+c2lmaWNhdGlvbicgdXNpbmcgZXJyY29kZSA9ICcyMjAyMyc7CiAgZW5kIGlmOwogIHNlbGVjdCAq
+IGludG8gYSBmcm9tIHB1YmxpYy53aGF0c2FwcF9hc3NldHMgd2hlcmUgaWQgPSBwX2Fzc2V0X2lk
+IGFuZCBjbGllbnRfaWQgPSBwX2NsaWVudF9pZCBmb3IgdXBkYXRlOwogIGlmIG5vdCBmb3VuZCBv
+ciBhLmltcG9ydGVkX2F0IGlzIG51bGwgb3IgYS5wdXJnZWRfYXQgaXMgbm90IG51bGwgdGhlbiBy
+YWlzZSBleGNlcHRpb24gJ0Fzc2V0IG5vdCByZXZpZXdhYmxlJyB1c2luZyBlcnJjb2RlID0gJzU1
+MDAwJzsgZW5kIGlmOwogIC0tIE3Dqm1lIHN0YXR1dCBkw6lqw6AgcG9zw6kgcGFyIHVuZSBwZXJz
+b25uZSA6IHJpZW4gw6AgcmVjbGFzc2VyLiBVbiBzdGF0dXQgcG9zw6kgcGFyIGwnYW5hbHlzZSBw
+ZXV0IMOqdHJlIGNvbmZpcm3DqS4KICBpZiBhLmxpYnJhcnlfc3RhdHVzID0gcF9zdGF0dXMgYW5k
+IGEuc3RhdHVzX2NoYW5nZWRfYnkgfiAnXnVzZXJfJyB0aGVuIHJhaXNlIGV4Y2VwdGlvbiAnU3Rh
+dHVzIHVuY2hhbmdlZCcgdXNpbmcgZXJyY29kZSA9ICc1NTAwMCc7IGVuZCBpZjsKICBwZXJmb3Jt
+IHNldF9jb25maWcoJ2NvZGV2Lm1lZGlhX2RlY2lzaW9uX3JlYXNvbicsIGNsZWFuLCB0cnVlKTsK
+ICBuIDo9IHB1YmxpYy53aGF0c2FwcF9hc3NldHNfcmV2aWV3KHBfY2xpZW50X2lkLCBhcnJheVtw
+X2Fzc2V0X2lkXSwgcF9zdGF0dXMsIHBfYWN0b3JfaWQpOwogIHBlcmZvcm0gc2V0X2NvbmZpZygn
+Y29kZXYubWVkaWFfZGVjaXNpb25fcmVhc29uJywgJycsIHRydWUpOwogIGlmIG4gPD4gMSB0aGVu
+IHJhaXNlIGV4Y2VwdGlvbiAnQXNzZXQgbm90IHJldmlld2FibGUnIHVzaW5nIGVycmNvZGUgPSAn
+NTUwMDAnOyBlbmQgaWY7CiAgLS0gQ29uZmlybWF0aW9uIGQndW4gc3RhdHV0IGF1dG9tYXRpcXVl
+IDogbGUgc3RhdHV0IG5lIGNoYW5nZSBwYXMsIGxlIGTDqWNsZW5jaGV1ciBuJ8OpY3JpdCByaWVu
+IDsgbGEgZMOpY2lzaW9uIGVzdCB0cmFjw6llIGljaS4KICBpZiBhLmxpYnJhcnlfc3RhdHVzID0g
+cF9zdGF0dXMgdGhlbgogICAgaW5zZXJ0IGludG8gcHVibGljLndoYXRzYXBwX2Fzc2V0X2RlY2lz
+aW9ucyhhc3NldF9pZCwgY2xpZW50X2lkLCBraW5kLCBmcm9tX3N0YXR1cywgdG9fc3RhdHVzLCBy
+ZWFzb24sIGFjdG9yX2lkKQogICAgdmFsdWVzIChwX2Fzc2V0X2lkLCBwX2NsaWVudF9pZCwgJ3Jl
+Y2xhc3NpZnknLCBhLmxpYnJhcnlfc3RhdHVzLCBwX3N0YXR1cywgY2xlYW4sIHBfYWN0b3JfaWQp
+OwogIGVuZCBpZjsKICBpbnNlcnQgaW50byBwdWJsaWMuYXVkaXRfbG9ncyhhY3Rpb24sIGFjdG9y
+X3R5cGUsIGFjdG9yX2lkLCByZXNvdXJjZV90eXBlLCByZXNvdXJjZV9pZCwgbWV0YWRhdGEpCiAg
+dmFsdWVzICgnd2hhdHNhcHAubGlicmFyeS5yZWNsYXNzaWZpZWQnLCAnYWRtaW4nLCBwX2FjdG9y
+X2lkLCAnY2xpZW50JywgcF9jbGllbnRfaWQsCiAgICBqc29uYl9idWlsZF9vYmplY3QoJ2Fzc2V0
+X2lkJywgcF9hc3NldF9pZCwgJ2Zyb21fc3RhdHVzJywgYS5saWJyYXJ5X3N0YXR1cywgJ3RvX3N0
+YXR1cycsIHBfc3RhdHVzLCAncmVhc29uX2xlbmd0aCcsIGxlbmd0aChjbGVhbikpKTsKICByZXR1
+cm4ganNvbmJfYnVpbGRfb2JqZWN0KCdhc3NldF9pZCcsIHBfYXNzZXRfaWQsICdmcm9tX3N0YXR1
+cycsIGEubGlicmFyeV9zdGF0dXMsICd0b19zdGF0dXMnLCBwX3N0YXR1cyk7CmVuZCAkJDsKCi0t
+IDQuIEzDqWdlbmRlIGQndW5lIHBob3RvLCDDqWRpdMOpZSBwYXIgdW4gYWRtaW5pc3RyYXRldXIg
+KHZpZGUgPSBlZmZhY8OpZSkuIExlIHRleHRlIHJlc3RlIHVuZSBkb25uw6llLCBqYW1haXMgdW5l
+IGNvbnNpZ25lLgpjcmVhdGUgZnVuY3Rpb24gcHVibGljLndoYXRzYXBwX2Fzc2V0X2NhcHRpb25f
+c2F2ZShwX2NsaWVudF9pZCB1dWlkLCBwX2Fzc2V0X2lkIHV1aWQsIHBfY2FwdGlvbiB0ZXh0LCBw
+X2FjdG9yX2lkIHRleHQpIHJldHVybnMgYm9vbGVhbgpsYW5ndWFnZSBwbHBnc3FsIHNlY3VyaXR5
+IGludm9rZXIgc2V0IHNlYXJjaF9wYXRoID0gcGdfY2F0YWxvZyBhcyAkJApkZWNsYXJlIGNsZWFu
+IHRleHQgOj0gbnVsbGlmKGJ0cmltKGNvYWxlc2NlKHBfY2FwdGlvbiwgJycpKSwgJycpOwpiZWdp
+bgogIGlmIHBfYWN0b3JfaWQgaXMgbnVsbCBvciBwX2FjdG9yX2lkICF+ICdedXNlcl9bYS16QS1a
+MC05Xy1dezEsMjAwfSQnIG9yIGxlbmd0aChjb2FsZXNjZShjbGVhbiwgJycpKSA+IDMwMDAKICAg
+IG9yIGNvYWxlc2NlKGNsZWFuLCAnJykgfiAnW1x4MDAtXHgwOFx4MGJceDBjXHgwZS1ceDFmXHg3
+Zl0nIHRoZW4KICAgIHJhaXNlIGV4Y2VwdGlvbiAnSW52YWxpZCBjYXB0aW9uJyB1c2luZyBlcnJj
+b2RlID0gJzIyMDIzJzsKICBlbmQgaWY7CiAgdXBkYXRlIHB1YmxpYy53aGF0c2FwcF9hc3NldHMg
+c2V0IGNhcHRpb24gPSBjbGVhbiwgY2FwdGlvbl9lZGl0ZWRfYnkgPSBwX2FjdG9yX2lkLCBjYXB0
+aW9uX2VkaXRlZF9hdCA9IG5vdygpCiAgd2hlcmUgaWQgPSBwX2Fzc2V0X2lkIGFuZCBjbGllbnRf
+aWQgPSBwX2NsaWVudF9pZCBhbmQgaW1wb3J0ZWRfYXQgaXMgbm90IG51bGwgYW5kIHB1cmdlZF9h
+dCBpcyBudWxsOwogIGlmIG5vdCBmb3VuZCB0aGVuIHJldHVybiBmYWxzZTsgZW5kIGlmOwogIGlu
+c2VydCBpbnRvIHB1YmxpYy53aGF0c2FwcF9hc3NldF9kZWNpc2lvbnMoYXNzZXRfaWQsIGNsaWVu
+dF9pZCwga2luZCwgYWN0b3JfaWQpIHZhbHVlcyAocF9hc3NldF9pZCwgcF9jbGllbnRfaWQsICdj
+YXB0aW9uJywgcF9hY3Rvcl9pZCk7CiAgaW5zZXJ0IGludG8gcHVibGljLmF1ZGl0X2xvZ3MoYWN0
+aW9uLCBhY3Rvcl90eXBlLCBhY3Rvcl9pZCwgcmVzb3VyY2VfdHlwZSwgcmVzb3VyY2VfaWQsIG1l
+dGFkYXRhKQogIHZhbHVlcyAoJ3doYXRzYXBwLmxpYnJhcnkuY2FwdGlvbl9lZGl0ZWQnLCAnYWRt
+aW4nLCBwX2FjdG9yX2lkLCAnY2xpZW50JywgcF9jbGllbnRfaWQsCiAgICBqc29uYl9idWlsZF9v
+YmplY3QoJ2Fzc2V0X2lkJywgcF9hc3NldF9pZCwgJ2xlbmd0aCcsIGxlbmd0aChjb2FsZXNjZShj
+bGVhbiwgJycpKSkpOwogIHJldHVybiB0cnVlOwplbmQgJCQ7CgotLSA1LiBIaXN0b3JpcXVlIGQn
+dXRpbGlzYXRpb24gKG1vZMOobGUgZGUgbGVjdHVyZSBwYXJ0YWfDqSkgOiBwdWJsaWNhdGlvbiwg
+cGxhdGVmb3JtZSwgZGF0ZSBkJ3V0aWxpc2F0aW9uLCDDqXRhdCBkZSBsYQotLSAgICBwdWJsaWNh
+dGlvbiBldCBkZSBzYSBkaWZmdXNpb24gc3VyIGNldHRlIHBsYXRlZm9ybWUuIFN0cmljdGVtZW50
+IGxpbWl0w6kgYXUgY2xpZW50IGRlbWFuZMOpLgpjcmVhdGUgZnVuY3Rpb24gcHVibGljLndoYXRz
+YXBwX2Fzc2V0X3VzYWdlX2hpc3RvcnkocF9jbGllbnRfaWQgdXVpZCwgcF9hc3NldF9pZHMgdXVp
+ZFtdKQpyZXR1cm5zIHRhYmxlKGFzc2V0X2lkIHV1aWQsIHB1YmxpY2F0aW9uX2lkIHV1aWQsIHBs
+YXRmb3JtIHRleHQsIHVzZWRfYXQgdGltZXN0YW1wdHosIHVzZWRfYnkgdGV4dCwgc3ViamVjdCB0
+ZXh0LAogIHB1YmxpY2F0aW9uX3N0YXR1cyB0ZXh0LCBhcmNoaXZlZCBib29sZWFuLCBkZWxpdmVy
+eV9zdGF0dXMgdGV4dCwgc2NoZWR1bGVkX2ZvciB0aW1lc3RhbXB0eiwgcHVibGlzaGVkX2F0IHRp
+bWVzdGFtcHR6KQpsYW5ndWFnZSBzcWwgc3RhYmxlIHNlY3VyaXR5IGludm9rZXIgc2V0IHNlYXJj
+aF9wYXRoID0gcGdfY2F0YWxvZyBhcyAkJAogIHNlbGVjdCB1LmFzc2V0X2lkLCB1LnB1YmxpY2F0
+aW9uX2lkLCB1LnBsYXRmb3JtLCB1LnVzZWRfYXQsIHUudXNlZF9ieSwgcC5zdWJqZWN0LCBwLnN0
+YXR1cywgcC5hcmNoaXZlZF9hdCBpcyBub3QgbnVsbCwKICAgIGQuc3RhdHVzLCBkLnNjaGVkdWxl
+ZF9mb3IsIGQucHVibGlzaGVkX2F0CiAgZnJvbSBwdWJsaWMud2hhdHNhcHBfYXNzZXRfdXNlcyB1
+CiAgam9pbiBwdWJsaWMucHVibGljYXRpb25zIHAgb24gcC5pZCA9IHUucHVibGljYXRpb25faWQg
+YW5kIHAuY2xpZW50X2lkID0gdS5jbGllbnRfaWQKICBsZWZ0IGpvaW4gbGF0ZXJhbCAoc2VsZWN0
+IHBkLnN0YXR1cywgcGQuc2NoZWR1bGVkX2ZvciwgcGQucHVibGlzaGVkX2F0IGZyb20gcHVibGlj
+LnB1YmxpY2F0aW9uX2RlbGl2ZXJpZXMgcGQKICAgIHdoZXJlIHBkLnB1YmxpY2F0aW9uX2lkID0g
+dS5wdWJsaWNhdGlvbl9pZCBhbmQgcGQuY2xpZW50X2lkID0gdS5jbGllbnRfaWQgYW5kIHBkLnBs
+YXRmb3JtID0gdS5wbGF0Zm9ybQogICAgb3JkZXIgYnkgcGQuY3JlYXRlZF9hdCBkZXNjIGxpbWl0
+IDEpIGQgb24gdHJ1ZQogIHdoZXJlIHUuY2xpZW50X2lkID0gcF9jbGllbnRfaWQgYW5kIHUuYXNz
+ZXRfaWQgPSBhbnkoY29hbGVzY2UocF9hc3NldF9pZHMsICd7fSc6OnV1aWRbXSkpCiAgICBhbmQg
+Y2FyZGluYWxpdHkoY29hbGVzY2UocF9hc3NldF9pZHMsICd7fSc6OnV1aWRbXSkpIDw9IDIwMAog
+IG9yZGVyIGJ5IHUudXNlZF9hdCBkZXNjLCB1LmlkOwokJDsKCi0tIDYuIFJlY2hlcmNoZSBkYW5z
+IGxhIHBob3RvdGjDqHF1ZSBkdSBjbGllbnQsIGZpbHRyw6llIGV0IHBhZ2luw6llIGPDtHTDqSBz
+ZXJ2ZXVyLiBWdWVzIGRlIHN0YXR1dCA6IGFjdGl2ZSAocGFyIGTDqWZhdXQgOgotLSAgICBuaSBh
+cmNoaXbDqWVzLCBuaSBxdWFyYW50YWluZSwgbmkgcmVqZXTDqWVzKSwgdG9fcmV2aWV3LCBwdWJs
+aXNoYWJsZSAocsOoZ2xlIHNlcnZldXIgZGUgbGEgc8OpbGVjdGlvbiDDqWRpdG9yaWFsZSksCi0t
+ICAgIHZhbGlkYXRlZCwgdXNlZCAoZMOpasOgIHV0aWxpc8OpZSksIHF1YXJhbnRpbmVkLCByZWpl
+Y3RlZCwgYXJjaGl2ZWQsIGFsbC4gT3JpZ2luZSwgc2VydmljZS9zdWpldCAodGjDqG1lcyBldAot
+LSAgICBkZXNjcmlwdGlvbiBkZSBsJ8OpdmFsdWF0aW9uLCBsw6lnZW5kZSksIHRleHRlIGxpYnJl
+ICh5IGNvbXByaXMgbGUgc3VqZXQgZGVzIHB1YmxpY2F0aW9ucyksIHDDqXJpb2RlIGQnb3JpZ2lu
+ZQotLSAgICAocHJpc2UgZGUgdnVlLCBzaW5vbiByw6ljZXB0aW9uLCBzaW5vbiBpbXBvcnQgOyBq
+b3VycyBkZSBQYXJpcyksIGTDqWrDoCB1dGlsaXPDqWUgb3VpL25vbi4gTGVzIHBob3RvcyBwdXJn
+w6llcyBuJ2FwcGFyYWlzc2VudCBqYW1haXMuCmNyZWF0ZSBmdW5jdGlvbiBjb2Rldl9wcml2YXRl
+Lm1lZGlhX2ZvbGQocF90ZXh0IHRleHQpIHJldHVybnMgdGV4dApsYW5ndWFnZSBzcWwgaW1tdXRh
+YmxlIHNlY3VyaXR5IGludm9rZXIgc2V0IHNlYXJjaF9wYXRoID0gcGdfY2F0YWxvZyBhcyAkJAog
+IHNlbGVjdCBsb3dlcih0cmFuc2xhdGUoY29hbGVzY2UocF90ZXh0LCAnJyksICfDoMOiw6TDocOj
+w6nDqMOqw6vDrcOsw67Dr8Ozw7LDtMO2w7XDusO5w7vDvMOnw7HDgMOCw4TDgcODw4nDiMOKw4vD
+jcOMw47Dj8OTw5LDlMOWw5XDmsOZw5vDnMOHw5EnLCAnYWFhYWFlZWVlaWlpaW9vb29vdXV1dWNu
+YWFhYWFlZWVlaWlpaW9vb29vdXV1dWNuJykpOwokJDsKY3JlYXRlIGZ1bmN0aW9uIHB1YmxpYy53
+aGF0c2FwcF9saWJyYXJ5X3NlYXJjaChwX2NsaWVudF9pZCB1dWlkLCBwX2ZpbHRlcnMganNvbmIs
+IHBfbGltaXQgaW50ZWdlciwgcF9vZmZzZXQgaW50ZWdlcikKcmV0dXJucyB0YWJsZShhc3NldF9p
+ZCB1dWlkLCB0b3RhbCBiaWdpbnQpCmxhbmd1YWdlIHBscGdzcWwgc3RhYmxlIHNlY3VyaXR5IGlu
+dm9rZXIgc2V0IHNlYXJjaF9wYXRoID0gcGdfY2F0YWxvZyBhcyAkJApkZWNsYXJlIGYganNvbmIg
+Oj0gY29hbGVzY2UocF9maWx0ZXJzLCAne30nOjpqc29uYik7IHZfc3RhdHVzIHRleHQ7IHZfb3Jp
+Z2luIHRleHQ7IHZfc2VydmljZSB0ZXh0OyB2X3EgdGV4dDsgdl91c2VkIHRleHQ7IHZfZnJvbSBk
+YXRlOyB2X3RvIGRhdGU7CmJlZ2luCiAgaWYganNvbmJfdHlwZW9mKGYpIDw+ICdvYmplY3QnIG9y
+IGV4aXN0cyhzZWxlY3QgMSBmcm9tIGpzb25iX29iamVjdF9rZXlzKGYpIGsgd2hlcmUgayBub3Qg
+aW4gKCdzdGF0dXMnLCdvcmlnaW4nLCdzZXJ2aWNlJywncScsJ3VzZWQnLCdmcm9tJywndG8nKSkg
+dGhlbgogICAgcmFpc2UgZXhjZXB0aW9uICdJbnZhbGlkIGZpbHRlcnMnIHVzaW5nIGVycmNvZGUg
+PSAnMjIwMjMnOwogIGVuZCBpZjsKICB2X3N0YXR1cyA6PSBjb2FsZXNjZShmLT4+J3N0YXR1cycs
+ICdhY3RpdmUnKTsgdl9vcmlnaW4gOj0gZi0+PidvcmlnaW4nOyB2X3VzZWQgOj0gZi0+Pid1c2Vk
+JzsKICB2X3NlcnZpY2UgOj0gbnVsbGlmKGNvZGV2X3ByaXZhdGUubWVkaWFfZm9sZChidHJpbShs
+ZWZ0KGYtPj4nc2VydmljZScsIDEyMCkpKSwgJycpOwogIHZfcSA6PSBudWxsaWYoY29kZXZfcHJp
+dmF0ZS5tZWRpYV9mb2xkKGJ0cmltKGxlZnQoZi0+PidxJywgMTIwKSkpLCAnJyk7CiAgaWYgdl9z
+dGF0dXMgbm90IGluICgnYWN0aXZlJywndG9fcmV2aWV3JywncHVibGlzaGFibGUnLCd2YWxpZGF0
+ZWQnLCd1c2VkJywncXVhcmFudGluZWQnLCdyZWplY3RlZCcsJ2FyY2hpdmVkJywnYWxsJykKICAg
+IG9yICh2X29yaWdpbiBpcyBub3QgbnVsbCBhbmQgdl9vcmlnaW4gbm90IGluICgnd2hhdHNhcHAn
+LCd3aGF0c2FwcF9leHBvcnQnLCdkcml2ZScpKSBvciAodl91c2VkIGlzIG5vdCBudWxsIGFuZCB2
+X3VzZWQgbm90IGluICgneWVzJywnbm8nKSkKICAgIG9yIChmID8gJ2Zyb20nIGFuZCBjb2FsZXNj
+ZShmLT4+J2Zyb20nLCAnJykgIX4gJ15cZHs0fS1cZHsyfS1cZHsyfSQnKSBvciAoZiA/ICd0bycg
+YW5kIGNvYWxlc2NlKGYtPj4ndG8nLCAnJykgIX4gJ15cZHs0fS1cZHsyfS1cZHsyfSQnKSB0aGVu
+CiAgICByYWlzZSBleGNlcHRpb24gJ0ludmFsaWQgZmlsdGVycycgdXNpbmcgZXJyY29kZSA9ICcy
+MjAyMyc7CiAgZW5kIGlmOwogIHZfZnJvbSA6PSAoZi0+Pidmcm9tJyk6OmRhdGU7IHZfdG8gOj0g
+KGYtPj4ndG8nKTo6ZGF0ZTsKICByZXR1cm4gcXVlcnkKICBzZWxlY3QgYS5pZCwgY291bnQoKikg
+b3ZlciAoKQogIGZyb20gcHVibGljLndoYXRzYXBwX2Fzc2V0cyBhCiAgbGVmdCBqb2luIHB1Ymxp
+Yy53aGF0c2FwcF9hc3NldF9hc3Nlc3NtZW50cyBzIG9uIHMuYXNzZXRfaWQgPSBhLmlkIGFuZCBz
+LmNsaWVudF9pZCA9IGEuY2xpZW50X2lkCiAgd2hlcmUgYS5jbGllbnRfaWQgPSBwX2NsaWVudF9p
+ZCBhbmQgYS5pbXBvcnRlZF9hdCBpcyBub3QgbnVsbCBhbmQgYS5wdXJnZWRfYXQgaXMgbnVsbAog
+ICAgYW5kIGNhc2Ugdl9zdGF0dXMKICAgICAgd2hlbiAnYWN0aXZlJyB0aGVuIGEubGlicmFyeV9z
+dGF0dXMgbm90IGluICgnYXJjaGl2ZWQnLCdxdWFyYW50aW5lZCcsJ3JlamVjdGVkJykKICAgICAg
+d2hlbiAndG9fcmV2aWV3JyB0aGVuIGEubGlicmFyeV9zdGF0dXMgaW4gKCdyZWNlaXZlZCcsJ3Rv
+X3JldmlldycpCiAgICAgIHdoZW4gJ3B1Ymxpc2hhYmxlJyB0aGVuIHB1YmxpY2F0aW9uc19wcml2
+YXRlLmxpYnJhcnlfYXNzZXRfcHVibGlzaGFibGUoYSkKICAgICAgd2hlbiAndXNlZCcgdGhlbiBh
+LmxpYnJhcnlfc3RhdHVzID0gJ3VzZWQnIG9yIGV4aXN0cyhzZWxlY3QgMSBmcm9tIHB1YmxpYy53
+aGF0c2FwcF9hc3NldF91c2VzIHUgd2hlcmUgdS5hc3NldF9pZCA9IGEuaWQgYW5kIHUuY2xpZW50
+X2lkID0gYS5jbGllbnRfaWQpCiAgICAgIHdoZW4gJ2FsbCcgdGhlbiB0cnVlCiAgICAgIGVsc2Ug
+YS5saWJyYXJ5X3N0YXR1cyA9IHZfc3RhdHVzIGVuZAogICAgYW5kICh2X29yaWdpbiBpcyBudWxs
+IG9yIGEub3JpZ2luID0gdl9vcmlnaW4pCiAgICBhbmQgKHZfdXNlZCBpcyBudWxsIG9yICh2X3Vz
+ZWQgPSAneWVzJykgPSBleGlzdHMoc2VsZWN0IDEgZnJvbSBwdWJsaWMud2hhdHNhcHBfYXNzZXRf
+dXNlcyB1IHdoZXJlIHUuYXNzZXRfaWQgPSBhLmlkIGFuZCB1LmNsaWVudF9pZCA9IGEuY2xpZW50
+X2lkKSkKICAgIGFuZCAodl9mcm9tIGlzIG51bGwgb3IgY29hbGVzY2UoYS5jYXB0dXJlZF9hdCwg
+YS5yZWNlaXZlZF9hdCwgYS5pbXBvcnRlZF9hdCkgPj0gdl9mcm9tOjp0aW1lc3RhbXAgYXQgdGlt
+ZSB6b25lICdFdXJvcGUvUGFyaXMnKQogICAgYW5kICh2X3RvIGlzIG51bGwgb3IgY29hbGVzY2Uo
+YS5jYXB0dXJlZF9hdCwgYS5yZWNlaXZlZF9hdCwgYS5pbXBvcnRlZF9hdCkgPCAodl90byArIDEp
+Ojp0aW1lc3RhbXAgYXQgdGltZSB6b25lICdFdXJvcGUvUGFyaXMnKQogICAgYW5kICh2X3NlcnZp
+Y2UgaXMgbnVsbCBvciBwb3NpdGlvbih2X3NlcnZpY2UgaW4gY29kZXZfcHJpdmF0ZS5tZWRpYV9m
+b2xkKGNvYWxlc2NlKGFycmF5X3RvX3N0cmluZyhzLnRvcGljcywgJyAnKSwgJycpIHx8ICcgJyB8
+fCBjb2FsZXNjZShzLmRlc2NyaXB0aW9uLCAnJykgfHwgJyAnIHx8IGNvYWxlc2NlKGEuY2FwdGlv
+biwgJycpKSkgPiAwKQogICAgYW5kICh2X3EgaXMgbnVsbCBvciBwb3NpdGlvbih2X3EgaW4gY29k
+ZXZfcHJpdmF0ZS5tZWRpYV9mb2xkKGNvYWxlc2NlKGFycmF5X3RvX3N0cmluZyhzLnRvcGljcywg
+JyAnKSwgJycpIHx8ICcgJyB8fCBjb2FsZXNjZShzLmRlc2NyaXB0aW9uLCAnJykgfHwgJyAnIHx8
+IGNvYWxlc2NlKGEuY2FwdGlvbiwgJycpKSkgPiAwCiAgICAgIG9yIGV4aXN0cyhzZWxlY3QgMSBm
+cm9tIHB1YmxpYy53aGF0c2FwcF9hc3NldF91c2VzIHUgam9pbiBwdWJsaWMucHVibGljYXRpb25z
+IHAgb24gcC5pZCA9IHUucHVibGljYXRpb25faWQgYW5kIHAuY2xpZW50X2lkID0gdS5jbGllbnRf
+aWQKICAgICAgICB3aGVyZSB1LmFzc2V0X2lkID0gYS5pZCBhbmQgdS5jbGllbnRfaWQgPSBhLmNs
+aWVudF9pZCBhbmQgcG9zaXRpb24odl9xIGluIGNvZGV2X3ByaXZhdGUubWVkaWFfZm9sZChwLnN1
+YmplY3QpKSA+IDApKQogIG9yZGVyIGJ5IGNvYWxlc2NlKGEuY2FwdHVyZWRfYXQsIGEucmVjZWl2
+ZWRfYXQsIGEuaW1wb3J0ZWRfYXQpIGRlc2MsIGEuaWQKICBsaW1pdCBsZWFzdChncmVhdGVzdChj
+b2FsZXNjZShwX2xpbWl0LCAyNCksIDEpLCA2MCkgb2Zmc2V0IGxlYXN0KGdyZWF0ZXN0KGNvYWxl
+c2NlKHBfb2Zmc2V0LCAwKSwgMCksIDEwMDAwKTsKZW5kICQkOwoKLS0gNy4gU3luY2hyb25pc2F0
+aW9uIGRlcyBkb3NzaWVycyBEcml2ZSA6IGZpY2hpZXJzIGTDqWrDoCBleGFtaW7DqXMgc2FucyBl
+bnRyw6llIHByb3ByZSAoZG91YmxvbiBkJ3VuZSBwaG90byBjb25udWUgZHUKLS0gICAgY2xpZW50
+LCDDqWNoZWMgZGUgbGVjdHVyZSkgcG91ciBuZSBwYXMgbGVzIHJldMOpbMOpY2hhcmdlciDDoCBj
+aGFxdWUgcGFzc2FnZSwgZXQgY3Vyc2V1ciBkZSByZXByaXNlIGRlcyBkb3NzaWVycyBkZQotLSAg
+ICBwbHVzIGRlIDEwMCBwaG90b3MgKHBhcmNvdXJzIGR1IHBsdXMgYW5jaWVuIGF1IHBsdXMgcsOp
+Y2VudCwgcmVjb21tZW5jw6kgw6AgbGEgZmluKS4KY3JlYXRlIHRhYmxlIHB1YmxpYy5jbGllbnRf
+bWVkaWFfZHJpdmVfZmlsZXMgKAogIGNsaWVudF9pZCB1dWlkIG5vdCBudWxsIHJlZmVyZW5jZXMg
+cHVibGljLmNsaWVudHMoaWQpIG9uIGRlbGV0ZSByZXN0cmljdCwKICBkcml2ZV9maWxlX2lkIHRl
+eHQgbm90IG51bGwgY2hlY2sgKGRyaXZlX2ZpbGVfaWQgfiAnXlthLXpBLVowLTlfLV17MTAsMjAw
+fSQnKSwKICBkcml2ZV9mb2xkZXJfaWQgdGV4dCBub3QgbnVsbCBjaGVjayAoZHJpdmVfZm9sZGVy
+X2lkIH4gJ15bYS16QS1aMC05Xy1dezEwLDIwMH0kJyksCiAgb3V0Y29tZSB0ZXh0IG5vdCBudWxs
+IGNoZWNrIChvdXRjb21lIGluICgnZHVwbGljYXRlJywnZmFpbGVkJykpLAogIGFzc2V0X2lkIHV1
+aWQsCiAgZmFpbHVyZXMgc21hbGxpbnQgbm90IG51bGwgZGVmYXVsdCAwIGNoZWNrIChmYWlsdXJl
+cyBiZXR3ZWVuIDAgYW5kIDEwMCksCiAgZXJyb3JfY29kZSB0ZXh0IGNoZWNrIChlcnJvcl9jb2Rl
+IGlzIG51bGwgb3IgZXJyb3JfY29kZSB+ICdeW0EtWmEtel8gXXsxLDYwfSQnKSwKICBmaXJzdF9z
+ZWVuX2F0IHRpbWVzdGFtcHR6IG5vdCBudWxsIGRlZmF1bHQgbm93KCksCiAgdXBkYXRlZF9hdCB0
+aW1lc3RhbXB0eiBub3QgbnVsbCBkZWZhdWx0IG5vdygpLAogIHByaW1hcnkga2V5IChjbGllbnRf
+aWQsIGRyaXZlX2ZpbGVfaWQpLAogIGNoZWNrIChvdXRjb21lIDw+ICdkdXBsaWNhdGUnIG9yIGFz
+c2V0X2lkIGlzIG5vdCBudWxsKSwKICBmb3JlaWduIGtleSAoYXNzZXRfaWQsIGNsaWVudF9pZCkg
+cmVmZXJlbmNlcyBwdWJsaWMud2hhdHNhcHBfYXNzZXRzKGlkLCBjbGllbnRfaWQpIG9uIGRlbGV0
+ZSByZXN0cmljdAopOwpjcmVhdGUgdGFibGUgcHVibGljLmNsaWVudF9tZWRpYV9kcml2ZV9zeW5j
+ICgKICBjbGllbnRfaWQgdXVpZCBub3QgbnVsbCByZWZlcmVuY2VzIHB1YmxpYy5jbGllbnRzKGlk
+KSBvbiBkZWxldGUgcmVzdHJpY3QsCiAgZHJpdmVfZm9sZGVyX2lkIHRleHQgbm90IG51bGwgY2hl
+Y2sgKGRyaXZlX2ZvbGRlcl9pZCB+ICdeW2EtekEtWjAtOV8tXXsxMCwyMDB9JCcpLAogIGJhY2tm
+aWxsX2FmdGVyIHRpbWVzdGFtcHR6LAogIGJhY2tmaWxsX2NvbXBsZXRlZF9hdCB0aW1lc3RhbXB0
+eiwKICBsYXN0X3N5bmNlZF9hdCB0aW1lc3RhbXB0eiwKICBwcmltYXJ5IGtleSAoY2xpZW50X2lk
+LCBkcml2ZV9mb2xkZXJfaWQpCik7CgotLSA4LiBEcm9pdHMgOiBzZXJ2aWNlX3JvbGUgdW5pcXVl
+bWVudCwgUkxTIHNhbnMgcG9saXRpcXVlIDsgaGlzdG9yaXF1ZSBkZXMgZMOpY2lzaW9ucyBlbiBh
+am91dCBzZXVsLgphbHRlciB0YWJsZSBwdWJsaWMud2hhdHNhcHBfYXNzZXRfZGVjaXNpb25zIGVu
+YWJsZSByb3cgbGV2ZWwgc2VjdXJpdHk7CmFsdGVyIHRhYmxlIHB1YmxpYy5jbGllbnRfbWVkaWFf
+ZHJpdmVfZmlsZXMgZW5hYmxlIHJvdyBsZXZlbCBzZWN1cml0eTsKYWx0ZXIgdGFibGUgcHVibGlj
+LmNsaWVudF9tZWRpYV9kcml2ZV9zeW5jIGVuYWJsZSByb3cgbGV2ZWwgc2VjdXJpdHk7CnJldm9r
+ZSBhbGwgb24gcHVibGljLndoYXRzYXBwX2Fzc2V0X2RlY2lzaW9ucywgcHVibGljLmNsaWVudF9t
+ZWRpYV9kcml2ZV9maWxlcywgcHVibGljLmNsaWVudF9tZWRpYV9kcml2ZV9zeW5jIGZyb20gcHVi
+bGljLCBhbm9uLCBhdXRoZW50aWNhdGVkLCBzZXJ2aWNlX3JvbGU7CmdyYW50IHNlbGVjdCwgaW5z
+ZXJ0IG9uIHB1YmxpYy53aGF0c2FwcF9hc3NldF9kZWNpc2lvbnMgdG8gc2VydmljZV9yb2xlOwpn
+cmFudCBzZWxlY3QsIGluc2VydCwgdXBkYXRlIG9uIHB1YmxpYy5jbGllbnRfbWVkaWFfZHJpdmVf
+ZmlsZXMsIHB1YmxpYy5jbGllbnRfbWVkaWFfZHJpdmVfc3luYyB0byBzZXJ2aWNlX3JvbGU7CnJl
+dm9rZSBhbGwgb24gZnVuY3Rpb24gY29kZXZfcHJpdmF0ZS53aGF0c2FwcF9hc3NldF9kZWNpc2lv
+bl9sb2coKSwgcHVibGljLndoYXRzYXBwX2Fzc2V0X3JlY2xhc3NpZnkodXVpZCx1dWlkLHRleHQs
+dGV4dCx0ZXh0KSwKICBwdWJsaWMud2hhdHNhcHBfYXNzZXRfY2FwdGlvbl9zYXZlKHV1aWQsdXVp
+ZCx0ZXh0LHRleHQpLCBwdWJsaWMud2hhdHNhcHBfYXNzZXRfdXNhZ2VfaGlzdG9yeSh1dWlkLHV1
+aWRbXSksIGNvZGV2X3ByaXZhdGUubWVkaWFfZm9sZCh0ZXh0KSwKICBwdWJsaWMud2hhdHNhcHBf
+bGlicmFyeV9zZWFyY2godXVpZCxqc29uYixpbnRlZ2VyLGludGVnZXIpIGZyb20gcHVibGljLCBh
+bm9uLCBhdXRoZW50aWNhdGVkOwpncmFudCBleGVjdXRlIG9uIGZ1bmN0aW9uIGNvZGV2X3ByaXZh
+dGUud2hhdHNhcHBfYXNzZXRfZGVjaXNpb25fbG9nKCksIHB1YmxpYy53aGF0c2FwcF9hc3NldF9y
+ZWNsYXNzaWZ5KHV1aWQsdXVpZCx0ZXh0LHRleHQsdGV4dCksCiAgcHVibGljLndoYXRzYXBwX2Fz
+c2V0X2NhcHRpb25fc2F2ZSh1dWlkLHV1aWQsdGV4dCx0ZXh0KSwgcHVibGljLndoYXRzYXBwX2Fz
+c2V0X3VzYWdlX2hpc3RvcnkodXVpZCx1dWlkW10pLCBjb2Rldl9wcml2YXRlLm1lZGlhX2ZvbGQo
+dGV4dCksCiAgcHVibGljLndoYXRzYXBwX2xpYnJhcnlfc2VhcmNoKHV1aWQsanNvbmIsaW50ZWdl
+cixpbnRlZ2VyKSB0byBzZXJ2aWNlX3JvbGU7Cm5vdGlmeSBwZ3JzdCwgJ3JlbG9hZCBzY2hlbWEn
+Owo=
+', 'base64'), 'UTF8');
+begin
+ if exists(select 1 from supabase_migrations.schema_migrations where (name='media_library_tools' or name ~ '^[0-9]{14}_media_library_tools$')) then
+  raise exception 'ARRET : la migration 20261103000000 est déjà inscrite dans l''historique'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('codev_private.media_fold(text)'))='0ebf38edb21dbab5dafb227dee1cf5e9',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.media_fold(text) : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('codev_private.media_fold(text)')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.media_fold(text) : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('codev_private.media_fold(text)'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('codev_private.media_fold(text)'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('codev_private.media_fold(text)'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('codev_private.media_fold(text)'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.media_fold(text) : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('codev_private.whatsapp_asset_decision_log()'))='f3e5ae6d9f11dcb0fa7bd5a7b162cf41',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.whatsapp_asset_decision_log() : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('codev_private.whatsapp_asset_decision_log()')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.whatsapp_asset_decision_log() : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('codev_private.whatsapp_asset_decision_log()'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('codev_private.whatsapp_asset_decision_log()'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('codev_private.whatsapp_asset_decision_log()'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('codev_private.whatsapp_asset_decision_log()'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction codev_private.whatsapp_asset_decision_log() : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)'))='8fbae5ec281ec18c08beaaa17aed05f5',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_caption_save(uuid,uuid,text,text) : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_caption_save(uuid,uuid,text,text) : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('public.whatsapp_asset_caption_save(uuid,uuid,text,text)'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_caption_save(uuid,uuid,text,text) : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)'))='e52659b644cbeefd2128a59c172b52a8',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_reclassify(uuid,uuid,text,text,text) : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_reclassify(uuid,uuid,text,text,text) : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('public.whatsapp_asset_reclassify(uuid,uuid,text,text,text)'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_reclassify(uuid,uuid,text,text,text) : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])'))='0c87e3343ca59fef24dfd0f6a3055436',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_usage_history(uuid,uuid[]) : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_usage_history(uuid,uuid[]) : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('public.whatsapp_asset_usage_history(uuid,uuid[])'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_asset_usage_history(uuid,uuid[]) : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select md5(replace(prosrc,E'\r\n',E'\n')) from pg_proc where oid=to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)'))='1d8145f912ff8554e5f3ea5393b4a849',false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_library_search(uuid,jsonb,integer,integer) : présente, code identique au dépôt'; end if;
+ if not (coalesce((select prosecdef=false and coalesce(array_to_string(proconfig,','),'')='search_path=pg_catalog' from pg_proc where oid=to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)')),false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_library_search(uuid,jsonb,integer,integer) : SECURITY INVOKER, search_path search_path=pg_catalog'; end if;
+ if not (coalesce(not has_function_privilege('public',to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)'),'EXECUTE') and not has_function_privilege('anon',to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)'),'EXECUTE')
+       and not has_function_privilege('authenticated',to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)'),'EXECUTE') and has_function_privilege('service_role',to_regprocedure('public.whatsapp_library_search(uuid,jsonb,integer,integer)'),'EXECUTE')=true,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'fonction public.whatsapp_library_search(uuid,jsonb,integer,integer) : EXECUTE interdit à public, anon et authenticated, accordé à service_role'; end if;
+ if not (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.client_media_drive_files')),false)=true) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.client_media_drive_files : présente, RLS active'; end if;
+ if not (coalesce(not (has_table_privilege('anon',to_regclass('public.client_media_drive_files'),'SELECT') or has_table_privilege('anon',to_regclass('public.client_media_drive_files'),'INSERT') or has_table_privilege('anon',to_regclass('public.client_media_drive_files'),'UPDATE') or has_table_privilege('anon',to_regclass('public.client_media_drive_files'),'DELETE')
+        or has_table_privilege('authenticated',to_regclass('public.client_media_drive_files'),'SELECT') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_files'),'INSERT') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_files'),'UPDATE') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_files'),'DELETE'))
+       and has_table_privilege('service_role',to_regclass('public.client_media_drive_files'),'SELECT')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_files'),'INSERT')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_files'),'UPDATE')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_files'),'DELETE')=false,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.client_media_drive_files : aucun droit pour anon et authenticated, service_role SELECT,INSERT,UPDATE'; end if;
+ if not (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.client_media_drive_sync')),false)=true) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.client_media_drive_sync : présente, RLS active'; end if;
+ if not (coalesce(not (has_table_privilege('anon',to_regclass('public.client_media_drive_sync'),'SELECT') or has_table_privilege('anon',to_regclass('public.client_media_drive_sync'),'INSERT') or has_table_privilege('anon',to_regclass('public.client_media_drive_sync'),'UPDATE') or has_table_privilege('anon',to_regclass('public.client_media_drive_sync'),'DELETE')
+        or has_table_privilege('authenticated',to_regclass('public.client_media_drive_sync'),'SELECT') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_sync'),'INSERT') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_sync'),'UPDATE') or has_table_privilege('authenticated',to_regclass('public.client_media_drive_sync'),'DELETE'))
+       and has_table_privilege('service_role',to_regclass('public.client_media_drive_sync'),'SELECT')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_sync'),'INSERT')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_sync'),'UPDATE')=true and has_table_privilege('service_role',to_regclass('public.client_media_drive_sync'),'DELETE')=false,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.client_media_drive_sync : aucun droit pour anon et authenticated, service_role SELECT,INSERT,UPDATE'; end if;
+ if not (coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.whatsapp_asset_decisions')),false)=true) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.whatsapp_asset_decisions : présente, RLS active'; end if;
+ if not (coalesce(not (has_table_privilege('anon',to_regclass('public.whatsapp_asset_decisions'),'SELECT') or has_table_privilege('anon',to_regclass('public.whatsapp_asset_decisions'),'INSERT') or has_table_privilege('anon',to_regclass('public.whatsapp_asset_decisions'),'UPDATE') or has_table_privilege('anon',to_regclass('public.whatsapp_asset_decisions'),'DELETE')
+        or has_table_privilege('authenticated',to_regclass('public.whatsapp_asset_decisions'),'SELECT') or has_table_privilege('authenticated',to_regclass('public.whatsapp_asset_decisions'),'INSERT') or has_table_privilege('authenticated',to_regclass('public.whatsapp_asset_decisions'),'UPDATE') or has_table_privilege('authenticated',to_regclass('public.whatsapp_asset_decisions'),'DELETE'))
+       and has_table_privilege('service_role',to_regclass('public.whatsapp_asset_decisions'),'SELECT')=true and has_table_privilege('service_role',to_regclass('public.whatsapp_asset_decisions'),'INSERT')=true and has_table_privilege('service_role',to_regclass('public.whatsapp_asset_decisions'),'UPDATE')=false and has_table_privilege('service_role',to_regclass('public.whatsapp_asset_decisions'),'DELETE')=false,false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'table public.whatsapp_asset_decisions : aucun droit pour anon et authenticated, service_role SELECT,INSERT'; end if;
+ if not (exists(select 1 from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where a.attrelid=to_regclass('public.whatsapp_assets') and a.attname='caption_edited_at' and not a.attisdropped
+        and format_type(a.atttypid,a.atttypmod)='timestamp with time zone' and a.attnotnull=false and coalesce(pg_get_expr(d.adbin,d.adrelid),'')='')) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'colonne public.whatsapp_assets.caption_edited_at : timestamp with time zone'; end if;
+ if not (exists(select 1 from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where a.attrelid=to_regclass('public.whatsapp_assets') and a.attname='caption_edited_by' and not a.attisdropped
+        and format_type(a.atttypid,a.atttypmod)='text' and a.attnotnull=false and coalesce(pg_get_expr(d.adbin,d.adrelid),'')='')) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'colonne public.whatsapp_assets.caption_edited_by : text'; end if;
+ if not (exists(select 1 from pg_index where indexrelid=to_regclass('public.whatsapp_asset_decisions_asset') and indrelid=to_regclass('public.whatsapp_asset_decisions') and indisvalid and indisunique=false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'index public.whatsapp_asset_decisions_asset sur public.whatsapp_asset_decisions : présent et valide'; end if;
+ if not (exists(select 1 from pg_index where indexrelid=to_regclass('public.whatsapp_assets_client_sha') and indrelid=to_regclass('public.whatsapp_assets') and indisvalid and indisunique=false)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'index public.whatsapp_assets_client_sha sur public.whatsapp_assets : présent et valide'; end if;
+ if not (exists(select 1 from pg_constraint where conrelid=to_regclass('public.whatsapp_assets') and conname='whatsapp_assets_caption_edit_pair' and contype='c' and convalidated)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'contrainte whatsapp_assets_caption_edit_pair sur public.whatsapp_assets : présente et validée'; end if;
+ if not (exists(select 1 from pg_trigger where tgrelid=to_regclass('public.whatsapp_assets') and tgname='whatsapp_asset_decision_log' and tgenabled='O' and tgfoid=to_regprocedure('codev_private.whatsapp_asset_decision_log()'))) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'déclencheur whatsapp_asset_decision_log sur public.whatsapp_assets : présent, actif, appelle codev_private.whatsapp_asset_decision_log()'; end if;
+ if not (not exists(select 1 from public.whatsapp_assets where caption_edited_at is not null) and not exists(select 1 from public.whatsapp_asset_decisions) and not exists(select 1 from public.client_media_drive_files) and not exists(select 1 from public.client_media_drive_sync)) then raise exception 'ARRET (migration non appliquée ou différente du dépôt) : %', 'photothèque : aucune ligne existante modifiée par la migration (aucune légende marquée éditée, aucune décision ni mémoire Drive)'; end if;
+ if md5(migration_text)<>expected_md5 then
+  raise exception 'ARRET : texte décodé inattendu (md5 %, % octets)', md5(migration_text), octet_length(migration_text); end if;
+ insert into supabase_migrations.schema_migrations(version, name, statements)
+ values (to_char(clock_timestamp() at time zone 'UTC', 'YYYYMMDDHH24MISS'), 'media_library_tools', array[migration_text]);
+ if (select md5(statements[1]) from supabase_migrations.schema_migrations where name='media_library_tools')<>expected_md5 then
+  raise exception 'ARRET : le texte inscrit ne correspond pas au fichier du dépôt'; end if;
+ raise notice 'Migration 20261103000000 inscrite dans l''historique.';
+end $sync$;
+commit;
+
+select version, name, md5(statements[1]) as md5_texte, octet_length(statements[1]) as octets
+  from supabase_migrations.schema_migrations order by version desc limit 3;

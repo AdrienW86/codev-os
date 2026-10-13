@@ -85,3 +85,10 @@ Aucune nouvelle variable d'environnement. L'agent utilise `OPENAI_API_KEY` comme
 - Le choix final de la photo reste celui du modèle parmi les candidates. Un humain relit et approuve chaque publication avant toute diffusion.
 - Le catalogue Drive historique (`publication_drive_media`) garde sa règle « jamais réutilisée ». Le réglage de réemploi ne s'applique qu'à la photothèque.
 - La préparation automatique planifiée et la diffusion relèvent du lot 6.
+
+## Suite : intelligence éditoriale (PR #42)
+
+L'historique éditorial complet du client (30 idées), la rotation des prestations, la diversité des accroches et des CTA,
+les lieux autorisés, la mémoire visuelle (doublons SHA-256, documents exclus), la justification éditoriale affichée dans
+le panneau et le read model de santé de la photothèque sont décrits dans
+[publications-editorial-intelligence.md](publications-editorial-intelligence.md).

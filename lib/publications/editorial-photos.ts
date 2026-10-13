@@ -6,10 +6,12 @@
 import {normalizeText,servicesIn} from './editorial-text';
 import type {AgentMediaCandidate} from './agent-v2/contract';
 
-// Éléments sensibles ou défauts qui signalent un document plutôt qu'une scène d'intervention.
+// Éléments sensibles ou défauts qui signalent un document plutôt qu'une scène d'intervention. Les mots ambigus
+// (« papier », « écran », « logo », « affiche », « rapport ») sont exclus : une maquette papier ou un logo peuvent être le
+// sujet même d'un client (agence web) ; les écrans restent écartés par le signal sensible « screen » ou « screenshot ».
 const DOCUMENT_SENSITIVE=['personal_document','invoice','screen','address'];
 const DOCUMENT_ISSUES=['screenshot','text_heavy'];
-const DOCUMENT_WORDS=/(?:^| )(facture|factures|devis|attestation|attestations|certificat|certificats|contrat|contrats|bon de commande|bon d intervention|bon de livraison|document|documents|formulaire|courrier|lettre|recu|ticket de caisse|capture d ecran|tarif|tarifs|grille tarifaire|fiche technique|fiche d intervention|rapport|papier|papiers|carte de visite|flyer|prospectus|affiche|logo|ecran|tableau de prix)(?= |$)/;
+const DOCUMENT_WORDS=/(?:^| )(facture|factures|devis|attestation|attestations|certificat|certificats|contrat|contrats|bon de commande|bon d intervention|bon de livraison|document|documents|formulaire|courrier|lettre|recu|ticket de caisse|capture d ecran|tarif|tarifs|grille tarifaire|fiche technique|fiche d intervention|carte de visite|flyer|prospectus|tableau de prix)(?= |$)/;
 export type PhotoSignal={description?:string|null;topics?:readonly string[];categories?:readonly string[];sensitive?:readonly string[];quality_issues?:readonly string[]};
 /** Photo de document ou administrative (jamais présentée comme une intervention, quel que soit son statut). */
 export function isDocumentPhoto(p:PhotoSignal|null|undefined):boolean{

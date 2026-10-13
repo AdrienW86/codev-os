@@ -5,6 +5,7 @@ import { getAcquisitionSnapshot } from "@/lib/acquisition/data";
 import { getAcquisitionConnectorReadiness } from "@/lib/acquisition/connectors";
 import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/model";
 import { AcquisitionWorkspaceTabs } from "@/components/acquisition/workspace-tabs";
+import { AcquisitionCreateForms } from "@/components/acquisition/create-forms";
 
 export const metadata: Metadata = { title: "Acquisition" };
 
@@ -27,6 +28,7 @@ export default async function AcquisitionPage() {
       <strong>Envois verrouillés par défaut.</strong> La prospection réelle et la découverte automatique restent désactivées jusqu'à la validation du fournisseur, des données et des mécanismes de sécurité.
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n'a été lancée.</p>}
     </div>
+    {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
     <AcquisitionWorkspaceTabs workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>

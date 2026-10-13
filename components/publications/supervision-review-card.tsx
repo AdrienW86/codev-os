@@ -20,8 +20,8 @@ export function SupervisionReviewCard({item}:{item:SupervisionReviewItem}){
   </header>
   {missing.length>0&&<p role="note" className="mt-2 rounded-lg border border-warning/50 bg-warning/10 p-2 text-xs text-warning">Photo manquante : {missing.join(', ')}.</p>}
   {mode==='edit'?<ReviewEditForm card={card} onCancel={()=>setMode('view')}/>:<>
-   {variants.length>1&&<div role="tablist" aria-label="Aperçu par plateforme" className="mt-3 flex gap-1 overflow-x-auto">{variants.map(v=><button key={v.platform} type="button" role="tab" aria-selected={v.platform===platform}
-    onClick={()=>setPlatform(v.platform)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs ${v.platform===platform?'border-accent bg-accent/10 font-semibold text-foreground':'border-border text-muted'}`}>{v.label}</button>)}</div>}
+   {variants.length>1&&<div role="tablist" aria-label="Aperçu par plateforme" className="mt-3 flex flex-wrap gap-1">{variants.map(v=><button key={v.platform} type="button" role="tab" aria-selected={v.platform===platform}
+    onClick={()=>setPlatform(v.platform)} className={`rounded-full border px-3 py-1.5 text-xs ${v.platform===platform?'border-accent bg-accent/10 font-semibold text-foreground':'border-border text-muted'}`}>{v.label}</button>)}</div>}
    {variants.map(v=><section key={v.platform} role="tabpanel" aria-label={`Aperçu ${v.label}`} hidden={v.platform!==platform} className="mt-3"><VariantPreview variant={v} accountName={card.clientName}/></section>)}
    {mode==='reject'?<ReviewRejectForm card={card} onCancel={()=>setMode('view')}/>:<div className="mt-3 flex flex-wrap items-start gap-2">
     <ReviewApproveForm card={card}/>

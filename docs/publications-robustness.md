@@ -18,7 +18,8 @@ S'appuie sur [publications-scheduled-flow.md](publications-scheduled-flow.md) (l
 | 4 | Les candidates bloquées (approbateur qui n'est plus l'administrateur, refus serveur) consommaient le plafond de 10 diffusions préparées par passage | 10 approbations obsolètes sur les créneaux les plus proches empêchaient la préparation des suivantes, qui ratait leur heure | Plafond sur les diffusions **préparées** seulement (les candidates restent bornées à 50 par passage) ; approbation inutilisable signalée **une fois** (`publication-approval-stale:<publication>:<révision>`, « Échec ou incertitude d'envoi », vers la fiche) |
 | 5 | La garde « jamais plus de 2 h de retard » se mesurait sur `run_at`, repoussé à chaque réessai automatique (1 min à 6 h, ou délai imposé par le fournisseur) | Un envoi dû à 9 h en échec temporaire pouvait partir à 11 h 30 ou plus tard sans aucun humain | Migration `20261106000000` : référence = heure due de la diffusion, ou dernière relance par un humain si elle est plus récente |
 | 6 | Un seul envoi par passage | Cadence de 15 min et tolérance de 2 h : au plus **8** diffusions dues au même créneau partaient à l'heure, les autres étaient bloquées « en retard » (20 clients à 9 h : 12 bloquées) | Avec l'échéance du passage : premier envoi libre (comme avant), puis jusqu'à 10 envois si leur pire cas tient dans le temps restant (Facebook et GBP 60 s, Instagram 300 s : Instagram n'est jamais qu'un premier envoi). Réservation `publication_job_claim_scheduled` : la tête de file n'est jamais doublée |
-| 7 | Purge des exports WhatsApp ordonnée par expiration, limitée à 20 | 20 imports dont la suppression échoue durablement bloquaient indéfiniment la purge (conservation 24 h) des suivants | Ordre par dernière tentative (`updated_at`, réécrit à chaque échec) : les échecs passent en fin de file |
+| 7 | Étape `automations` du passage sans échéance : jusqu'à 5 jobs de 60 s au pire | Le passage entier (300 s) pouvait y passer : l'envoi des publications dues et la préparation étaient sautés | `runTick({ jobDeadline })` / `processJobs(…, { deadline })` : un job réservé à la fois, seulement s'il peut finir dans les 120 premières secondes (`AUTOMATIONS_BUDGET_MS`, route) ; les autres restent en file sans tentative consommée |
+| 8 | Purge des exports WhatsApp ordonnée par expiration, limitée à 20 | 20 imports dont la suppression échoue durablement bloquaient indéfiniment la purge (conservation 24 h) des suivants | Ordre par dernière tentative (`updated_at`, réécrit à chaque échec) : les échecs passent en fin de file |
 
 Sans l'échéance (appel sans option), les fonctions gardent exactement leur comportement antérieur (1 envoi par passage,
 préparation sans échéance). La route `/api/internal/scheduler/tick` transmet l'échéance partagée (`maxDuration` moins 15 s).
@@ -29,6 +30,7 @@ préparation sans échéance). La route `/api/internal/scheduler/tick` transmet 
   nouveaux motifs `skipped.deadline`, `skipped.client_busy`, `skipped.rotation_unavailable` (compteurs du battement).
 - `processScheduledDuePublications(env, deps, { deadline?, clock? })` ; `DueRunDeps.run(workerId, { platforms? })`.
 - `runOnePublicationJob(worker, { …, maxLateSeconds, platforms? })` : avec `platforms`, RPC `publication_job_claim_scheduled`.
+- `runTick(worker, now, { jobDeadline? })`, `processJobs(actor, worker, limit, timeoutMs, { deadline?, clock? })` (`lib/scheduler/engine.ts`) ; résumé : `deferred: 1` quand des jobs attendent le passage suivant.
 - Constantes : `SEND_BUDGET_MS`, `MAX_SCHEDULED_DUE_WITH_DEADLINE` (registry), `PREPARATION_BUDGET_MS`, `MEDIA_FOLLOW_UP_BUDGET_MS` (scheduled).
 - Base : `public.publication_job_claim_scheduled(text,integer,integer,text[])` (invoker, `service_role`), `publication_job_claim_on_time` remplacée (même signature).
 - Notification : clé `publication-approval-stale:<publication>:<révision>` (catégorie `delivery_failed`).
@@ -48,6 +50,8 @@ préparation sans échéance). La route `/api/internal/scheduler/tick` transmet 
 | Base : 60 approbations, 20 clients | préparées en 6 passages ; reprise après 3 jours d'arrêt : 60 tâches bloquées par lots de 50 (2 appels), 0 tentative ; relancées par un humain : 60 envois, une tentative chacune |
 | Deux sessions PostgreSQL | la seconde réservation répond en ~15 ms sans attendre la première (SKIP LOCKED) et prend une autre tâche ; double préparation : la seconde attend le verrou puis reçoit la même diffusion |
 | Export WhatsApp de 600 photos (50 doublons) | 40 appels d'analyse de 15 photos, 69 appels d'import de 8, lectures par plages ≤ 64 Kio, ~10-50 ms par appel ; coupure Drive : une photo « en échec », ligne orpheline reprise par un import suivant, jamais deux lignes de photothèque |
+| Jobs d'automatisation de 50 s, budget de 120 s | 2 exécutés, 3 laissés en file sans tentative consommée (avant : 5 × 60 s = tout le passage) |
+| Job interrompu (deux sessions) | repris par un autre worker après le bail (tentative 2) ; l'ancien worker ne peut plus écrire |
 | Purge des exports, 20 suppressions en échec permanent | les 5 imports sains purgés au **2e passage** (avant : jamais) |
 
 ## Tests
@@ -55,11 +59,12 @@ préparation sans échéance). La route `/api/internal/scheduler/tick` transmet 
 - `tests/publications-load.test.mjs` (10 scénarios, sans base) : équité sur 20 clients, délais IA, échéance, interruption et passages
   simultanés, 120 approbations, créneaux manqués depuis plusieurs jours, capacité d'envoi, vrai moteur P10 et vrais publishers Meta /
   GBP face aux pannes et aux jetons expirés, gros export WhatsApp, purge. Six de ces scénarios échouent sans les correctifs.
+- `tests/publications-load-scheduler.test.mjs` : jobs d'automatisation bornés par l'échéance du passage.
 - `tests/publications-load-db.test.mjs` (PostgreSQL local, `PUBLICATIONS_SOCLE_TEST_DATABASE_URL`, base `publications_socle_test_load`) :
   chaîne complète des migrations, suites `supabase/tests/publications-load-1-delivery.sql` (222 vérifications) et
   `publications-load-2-whatsapp.sql` (rejeux de webhook, doublons de photos et d'archive, un import actif par client), puis
   **deux sessions psql réelles** : réservation des diffusions et des jobs (SKIP LOCKED), double préparation, rotation en
-  compare-and-set, webhook WhatsApp rejoué en parallèle, réservation de la file WhatsApp. Fixtures partagées :
+  compare-and-set, webhook WhatsApp rejoué en parallèle, réservation de la file WhatsApp, job interrompu repris après son bail. Fixtures partagées :
   `supabase/tests/publications-load-fixtures.sql`.
 - La suite P10 complète (`tests/publications-scheduled-flow-db.test.mjs`) reste verte après la migration.
 

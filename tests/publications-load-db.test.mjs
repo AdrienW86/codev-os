@@ -135,6 +135,18 @@ test('Publications load SQL suites + two-session concurrency proofs on the full 
   await a.query('commit;');
   assert.ok(qb.done&&qa&&qb.value&&qa!==qb.value,'two workers never claim the same WhatsApp media');
   assert.equal(await a.query("select count(*) from public.whatsapp_inbox where message_id='wamid.race';"),'1');
+  // 6. Job interrompu en cours d'étape (processus coupé) : bail expiré → repris par un autre worker au passage suivant ;
+  // l'ancien worker ne peut plus écrire son résultat (fencing par worker_id), une seule exécution comptée.
+  await a.query('reset role;');
+  await a.query("insert into public.jobs(run_type,idempotency_key,scheduled_for) values('publications.load','load:crash',now()-interval '1 minute');");
+  await a.query('set role service_role;');
+  const crashed=await a.query("select id from public.codev_claim_jobs('worker-crash',1,300);");
+  await a.query("reset role;");await a.query(`update public.jobs set lease_expires_at=now()-interval '1 second' where id='${crashed}';`);
+  await b.query('set role service_role;');
+  const resumed=await b.query("select id||':'||attempts from public.codev_claim_jobs('worker-resume',1,300);");
+  assert.equal(resumed,`${crashed}:2`,'the interrupted job is reclaimed (attempt 2)');
+  await a.query('set role service_role;');
+  assert.equal(await a.query(`with u as (update public.jobs set status='succeeded' where id='${crashed}' and worker_id='worker-crash' and status='running' returning 1) select count(*) from u;`),'0','the crashed worker can no longer complete it');
   assert.equal(a.errors.replace(/NOTICE.*\n?/g,''),'');assert.equal(b.errors.replace(/NOTICE.*\n?/g,''),'');
  }finally{await a.close();await b.close();}
  psql(environment('postgres'),`drop database if exists ${DATABASE};`);

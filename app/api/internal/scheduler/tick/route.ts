@@ -23,6 +23,7 @@ const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
   search_console: 60_000, whatsapp: 75_000, media_intelligence: 60_000, publication_preparation: 120_000,
 };
+const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
 
 async function handle(request: Request) {
@@ -49,7 +50,9 @@ async function handle(request: Request) {
   // Imports d'export WhatsApp, en premier : la conservation de 24 h des archives (conversation complète) ne doit jamais
   // dépendre des autres étapes. Archives expirées ou terminées supprimées, fichiers orphelins balayés ; les photos restent.
   const whatsappExports = await step("whatsapp_exports", () => purgeExportImports(), "Purge des exports WhatsApp différée.");
-  const summary = await step("automations", () => runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor) }), "Automatisations différées.");
+  // Jobs d'automatisation bornés (#47) : 5 jobs de 60 s au pire occuperaient tout le passage et feraient sauter l'envoi des
+  // publications dues ; un job ne démarre que s'il peut finir dans les AUTOMATIONS_BUDGET_MS premières secondes.
+  const summary = await step("automations", () => runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor), jobDeadline: Math.min(deadline, startedAt.getTime() + AUTOMATIONS_BUDGET_MS) }), "Automatisations différées.");
   // Publications (socle lot 6), avant les étapes lourdes pour tenir l'heure prévue : diffusions des publications
   // approuvées par un humain, puis un envoi dû au plus. Désactivé tant que PUBLICATIONS_SCHEDULED_DELIVERY ≠ « enabled ».
   const delivery = await step("publication_delivery_prepare", () => prepareApprovedDeliveries(process.env), "Diffusion des publications différée.");

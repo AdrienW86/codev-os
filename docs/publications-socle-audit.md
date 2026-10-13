@@ -70,3 +70,7 @@ SEO V2 (#28) n'est pas appliquée. Arrêt général actif, `publishing_enabled=f
 | --- | --- |
 | Tableau des publications, file de validation, tiroir d'édition | Existant |
 | Comptes à reconnecter, erreurs, photothèques pauvres, prochaines tâches agent, suspension par client | Absent |
+
+## Simulation du pipeline (PR #44)
+
+Une simulation administrateur rejoue tout le pipeline sur des clients fictifs (Paramètres → Simulation UX), sans base ni API de publication : voir [publications-simulation.md](publications-simulation.md).

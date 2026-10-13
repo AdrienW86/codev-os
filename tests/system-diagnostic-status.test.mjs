@@ -45,7 +45,7 @@ test("scheduler: only a real recent finished pass is operational", () => {
   const stale = m.classifyScheduler(true, beat({ startedAt: ago(48), finishedAt: ago(48), lastSuccessAt: ago(48) }), now);
   assert.equal(stale.status, "error"); assert.match(stale.evidence, /Aucun passage depuis 2 j/);
   assert.equal(m.classifyScheduler(true, beat({ startedAt: ago(2), finishedAt: null, lastSuccessAt: ago(3) }), now).status, "error", "started 2 h ago, never finished");
-  assert.equal(m.classifyScheduler(true, beat({ startedAt: new Date(now.getTime() - 60000).toISOString(), finishedAt: null, lastSuccessAt: ago(3) }), now).status, "operational", "running now, previous pass ok");
+  assert.equal(m.classifyScheduler(true, beat({ startedAt: new Date(now.getTime() - 60000).toISOString(), finishedAt: null, lastSuccessAt: ago(1) }), now).status, "operational", "running now, previous pass ok");
   assert.equal(m.classifyScheduler(true, beat({ startedAt: new Date(now.getTime() - 60000).toISOString(), finishedAt: null, lastSuccessAt: null }), now).status, "configured", "first pass running: no proof yet");
 });
 

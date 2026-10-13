@@ -429,7 +429,7 @@ test("tick: the export purge runs first and isolated, so an expired import is pu
   const mocks = {
     "next/server": { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
     "@/lib/scheduler/cron-auth": { checkCronAuthorization: () => ({ ok: true }) },
-    "@/lib/scheduler/heartbeat": { recordSchedulerHeartbeat: async () => { throw Error("heartbeat_down"); }, stepCounts: () => { throw Error("stepCounts_down"); } },
+    "@/lib/scheduler/heartbeat": { claimSchedulerRun: async () => "claimed", finishSchedulerRun: async () => { throw Error("heartbeat_down"); }, stepCounts: () => { throw Error("stepCounts_down"); } },
     "@/lib/whatsapp/export-import": { purgeExportImports: async () => { order.push("purgeExportImports"); return e.mod.purgeExportImports(e.deps); } },
   };
   // Transpilation locale du handler (process requis) ; toute autre dépendance serveur échoue.
@@ -444,4 +444,15 @@ test("tick: the export purge runs first and isolated, so an expired import is pu
   assert.ok(order.includes("runTick")); assert.equal(response.status, 500);
   const imp = e.fake.tables.whatsapp_export_imports[0];
   assert.equal(imp.status, "expired"); assert.ok(imp.purged_at); assert.deepEqual(e.log.purged, [[C, eid]]);
+  // Verrou du planificateur illisible : rien d'autre ne tourne, mais la purge (conservation 24 h) passe quand même.
+  const f = setup(); await analyzed(f); f.setNow(new Date("2026-10-13T09:00:00Z"));
+  order.length = 0;
+  mocks["@/lib/scheduler/heartbeat"] = { claimSchedulerRun: async () => { throw Error("heartbeat_down"); } };
+  mocks["@/lib/whatsapp/export-import"] = { purgeExportImports: async () => { order.push("purgeExportImports"); return f.mod.purgeExportImports(f.deps); } };
+  const exports2 = {};
+  vm.runInNewContext(code, { exports: exports2, console: { error() {}, log() {} }, process: { env: { CRON_SECRET: "x" } }, Error, Promise, Date, Object, JSON, Map, Set,
+    require: name => name === "node:crypto" ? { randomUUID } : mocks[name] ?? (name.startsWith("@/") ? mod : (() => { throw Error(`unexpected ${name}`); })()) });
+  const locked = await exports2.GET({ headers: { get: () => "Bearer x" } });
+  assert.deepEqual(order, ["purgeExportImports"], "only the purge, never an unlocked pass"); assert.equal(locked.status, 503);
+  assert.ok(f.fake.tables.whatsapp_export_imports[0].purged_at);
 });

@@ -76,7 +76,7 @@ Puis dans l’application :
 
 ## 5. Planificateur
 
-Voir [automation.md](automation.md). En bref : `CRON_SECRET` (32+ caractères aléatoires), puis un cron Vercel vers `/api/internal/scheduler/tick`. **Le cron n’est pas activé par ce lot** : l’exemple `vercel.json` est documenté, à ajouter volontairement.
+Voir [scheduler-cron.md](scheduler-cron.md). En bref : `vercel.json` déclare un cron Vercel chaque minute vers `/api/internal/scheduler/tick` (plan Pro) ; il ne fait rien tant que `CRON_SECRET` (32+ caractères aléatoires, Production, Sensitive) n’est pas ajouté dans Vercel.
 
 ## 6. Vérifications de sécurité avant mise en production
 

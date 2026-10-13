@@ -11,8 +11,11 @@ export const DIAGNOSTIC_STATUS_LABELS: Record<DiagnosticStatus, string> = {
 export type DiagnosticItem = { id: string; label: string; status: DiagnosticStatus; evidence: string; at: string | null };
 
 const HOUR = 3_600_000, DAY = 24 * HOUR;
-/** Fraîcheur d'un passage : le cron peut n'être que quotidien (plan Hobby), d'où 36 h. */
+/** Fraîcheur des files et traitements quotidiens (rapports, synchronisations) : 36 h. */
 export const FRESH_RUN_MS = 36 * HOUR;
+/** Fraîcheur d'un passage du planificateur : cron Vercel Pro chaque minute (vercel.json) ; 2 h sans passage terminé
+ * signalent un cron arrêté (marge pour les passages sautés par le verrou ou un redéploiement). */
+export const SCHEDULER_FRESH_MS = 2 * HOUR;
 /** Fenêtre de preuve des traitements moins fréquents (agents, IA, réception WhatsApp). */
 export const FRESH_ACTIVITY_MS = 7 * DAY;
 /** Un passage commencé et jamais terminé au-delà de cette durée est considéré interrompu (maxDuration 300 s). */
@@ -88,7 +91,7 @@ export function classifyScheduler(configured: boolean, heartbeat: HeartbeatInput
     return { ...base, status: "error", evidence: `Dernier passage en échec${failed.length ? ` : ${failed.join(", ")}` : ""}`, at: heartbeat.lastFailureAt };
   }
   if (!lastEnd) return { ...base, status: "configured", evidence: "Passage en cours, aucun passage terminé enregistré.", at: heartbeat.startedAt };
-  if (!isFresh(lastEnd, now, FRESH_RUN_MS)) return { ...base, status: "error", evidence: `Aucun passage depuis ${ageLabel(lastEnd, now)}`, at: lastEnd };
+  if (!isFresh(lastEnd, now, SCHEDULER_FRESH_MS)) return { ...base, status: "error", evidence: `Aucun passage depuis ${ageLabel(lastEnd, now)}`, at: lastEnd };
   return { ...base, status: "operational", evidence: "Dernier passage réussi", at: lastEnd };
 }
 export const STEP_LABELS: Record<string, string> = {
@@ -108,7 +111,7 @@ export function classifyStep(name: string, heartbeat: HeartbeatInput | null | "u
   if (step.status === "failed") return { ...base, status: "error", evidence: "En échec au dernier passage", at };
   if (step.status === "disabled") return { ...base, status: "disabled", evidence: "Désactivée au dernier passage (interrupteur)", at };
   if (step.status === "skipped") return { ...base, status: "configured", evidence: "Sautée faute de temps au dernier passage", at };
-  if (!isFresh(at, now, FRESH_RUN_MS)) return { ...base, status: "configured", evidence: `Réussie il y a ${ageLabel(at, now)} : trop ancien pour le prouver`, at };
+  if (!isFresh(at, now, SCHEDULER_FRESH_MS)) return { ...base, status: "configured", evidence: `Réussie il y a ${ageLabel(at, now)} : trop ancien pour le prouver`, at };
   return { ...base, status: "operational", evidence: `Réussie au dernier passage (${step.ms} ms)`, at };
 }
 

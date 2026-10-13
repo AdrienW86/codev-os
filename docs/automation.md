@@ -31,27 +31,11 @@ Types d’exécution (registre `lib/agents/registry.ts`) : `ads.report.prepare`,
 - `503` si `CRON_SECRET` est absent, `401` si l’en-tête est faux.
 - Chaque passage : rattache les agents globaux, met en file les automatisations échues, traite jusqu’à 5 jobs.
 
-### Activer Vercel Cron (manuel, non activé par ce lot)
+### Vercel Cron (chaque minute)
 
-1. Ajoutez `CRON_SECRET` dans les variables Vercel (Production). Vercel l’envoie automatiquement en `Authorization: Bearer …` aux crons.
-2. Ajoutez à la racine un `vercel.json` :
-
-```json
-{
-  "crons": [
-    { "path": "/api/internal/scheduler/tick", "schedule": "*/15 * * * *" }
-  ]
-}
-```
-
-3. Plan Hobby : un cron ne peut s’exécuter qu’une fois par jour ; utilisez `"0 6 * * *"` (06:00 UTC) ou passez au plan Pro pour une cadence de 15 minutes.
-4. Vérifiez dans **Paramètres → Observabilité** que « Dernier job planifié » se met à jour.
-
-Test manuel :
-
-```bash
-curl -i -H "Authorization: Bearer $CRON_SECRET" https://<domaine>/api/internal/scheduler/tick
-```
+`vercel.json` déclare le cron `* * * * *` sur cette route (Vercel Pro). Verrou d'un seul passage, reprise après
+interruption, garde-fous et **procédure d'activation** (ajout de `CRON_SECRET`, preuve dans `/settings/diagnostic`) :
+voir [scheduler-cron.md](scheduler-cron.md). Sans `CRON_SECRET`, chaque appel répond `503` sans rien exécuter.
 
 ## Interface
 
@@ -59,4 +43,4 @@ curl -i -H "Authorization: Bearer $CRON_SECRET" https://<domaine>/api/internal/s
 
 ## Rapports Ads récurrents
 
-La configuration par client met en file les préparations et échéances dans ce même moteur. Voir [ads-recurring-delivery.md](ads-recurring-delivery.md) pour les périodes closes, l’approbation, les réservations et la cadence minute nécessaire aux horaires choisis. Le cron quotidien Hobby ne garantit pas 18 h. Aucun déclencheur réel n’est activé par le code.
+La configuration par client met en file les préparations et échéances dans ce même moteur. Voir [ads-recurring-delivery.md](ads-recurring-delivery.md) pour les périodes closes, l’approbation, les réservations et la cadence minute nécessaire aux horaires choisis. Le cron chaque minute (Vercel Pro) tient ces horaires une fois `CRON_SECRET` configuré.

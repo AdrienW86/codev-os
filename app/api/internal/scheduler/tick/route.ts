@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { checkCronAuthorization } from "@/lib/scheduler/cron-auth";
 import { runTick } from "@/lib/scheduler/engine";
-import { recordSchedulerHeartbeat, stepCounts, type SchedulerStep, type SchedulerStepName } from "@/lib/scheduler/heartbeat";
+import { claimSchedulerRun, finishSchedulerRun, stepCounts, type SchedulerStep, type SchedulerStepName } from "@/lib/scheduler/heartbeat";
 import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
@@ -32,7 +32,16 @@ async function handle(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.status === 503 ? "scheduler_not_configured" : "unauthorized" }, { status: auth.status, headers });
   const startedAt = new Date(), deadline = startedAt.getTime() + maxDuration * 1000 - MARGIN_MS;
   const steps: Partial<Record<SchedulerStepName, SchedulerStep>> = {};
-  await recordSchedulerHeartbeat({ startedAt }).catch(() => false);
+  // Un seul passage à la fois (cron chaque minute, passage jusqu'à 300 s, livraisons Vercel parfois en double) :
+  // un passage déjà en cours fait sauter celui-ci sans rien exécuter ; un passage interrompu est repris après son bail.
+  const lock = await claimSchedulerRun(startedAt).catch(() => "unavailable" as const);
+  if (lock === "busy") return NextResponse.json({ ok: true, skipped: "running" }, { status: 200, headers });
+  if (lock === "unavailable") {
+    // Verrou illisible : aucun travail sans verrou, sauf la purge des exports WhatsApp (conservation légale de 24 h,
+    // idempotente) qui ne doit jamais dépendre du battement. Le passage suivant réessaie.
+    await purgeExportImports().catch(() => console.error("[scheduler] Purge des exports WhatsApp différée."));
+    return NextResponse.json({ ok: false, error: "scheduler_lock_unavailable" }, { status: 503, headers });
+  }
   // Chaque étape est isolée dans son propre try : un échec (ou un saut faute de temps) n'empêche jamais les suivantes.
   async function step<T>(name: SchedulerStepName, work: () => Promise<T>, label: string): Promise<T | { unavailable: true } | { skipped: "deadline" }> {
     const begin = Date.now();
@@ -68,7 +77,7 @@ async function handle(request: Request) {
   // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
   // Aucune préparation IA ne démarre sans le temps de son pire cas avant l'échéance du passage (#47).
   const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(new Date(), undefined, { deadline }), "Préparation des publications différée.");
-  await recordSchedulerHeartbeat({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
+  await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
   return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { delivery, due }, publicationPreparation, whatsappExports, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });

@@ -158,7 +158,8 @@ export const DAILY_PRESETS = [7, 30, 90] as const;
 export async function syncDueSearchConsole(now = new Date(), options: { budgetMs?: number; deps?: SearchConsoleDeps } = {}) {
   const summary = { synced: 0, failed: 0, pending: 0 };
   const deps = options.deps ?? productionSearchConsoleDeps();
-  if (!await searchConsoleAccess(deps)) return summary;
+  // Aucune connexion Google : étape « désactivée » au diagnostic, pas « réussie ».
+  if (!await searchConsoleAccess(deps)) return { ...summary, disabled: true as const };
   const started = Date.now(), budget = options.budgetMs ?? 90_000;
   const syncDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const { data, error } = await deps.db.from("client_connections").select("client_id,metadata,last_sync_at").eq("provider", SEARCH_CONSOLE_PROVIDER).not("client_id", "is", null).order("last_sync_at", { ascending: true, nullsFirst: true }).limit(200);

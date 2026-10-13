@@ -95,8 +95,8 @@ function serviceWith({open=batch,context,generator,rpc={},source='configured',pl
   rpc:async(name,args)=>{log.push([name,json(args)]);const fn=rpc[name];if(fn)return fn(args);
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:[uid(4,1),uid(4,2),uid(4,3)],editorial_group_id:uid(7,1)},error:null}:{data:null,error:null};}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
-  '../project-channels':{getPublicationProjectChannels:async()=>({source,channels:[],platforms,legacyAligned:true})},'./open-occurrences':{getOpenOccurrencesForAgent:async()=>{log.push('open');return open;}},
-  './context':{AgentV2ContextError:ContextError,buildAgentV2Context:context??(async(_p,b)=>({clientId:C,input:input({occurrences:b})}))},'./openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},
+  '../project-channels':{getPublicationProjectChannels:async()=>({source,channels:[],platforms,legacyAligned:true})},'./open-occurrences':{loadOpenOccurrences:async()=>{log.push('open');return open;}},
+  './context':{AgentV2ContextError:ContextError,loadAgentV2Context:context??(async(_p,b)=>({clientId:C,input:input({occurrences:b})}))},'./openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},
   // Media step (P8) doubled here; its own behaviour is covered by publications-agent-v2-media.test.mjs.
   './media':{attachAgentV2Media:async run=>{log.push(['attach_media',run]);return {state:'attached'};}},'./media-runs':{getAgentV2RunMedia:async()=>null},
   '../media/source':{driveMediaSource:()=>({fetchMedia:async()=>{throw Error('Drive must not be used in tests');}})},'../media/transform':{adaptImage:async()=>{throw Error('unused');}}});

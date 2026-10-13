@@ -36,7 +36,7 @@ export function createFakeSupabase(initial = {}, options = {}) {
       gte(column, value) { state.filters.push((row) => row[column] !== null && row[column] >= value); return api; },
       not(column, operator, value) { if (operator === "is") state.filters.push((row) => (row[column] ?? null) !== value); return api; },
       or() { return api; },
-      order(column, { ascending = true } = {}) { state.order.push([column, ascending]); return api; },
+      order(column, { ascending = true, nullsFirst } = {}) { state.order.push([column, ascending, nullsFirst ?? !ascending]); return api; },
       limit(count) { state.limit = count; return api; },
       range(from, to) { state.range = [from, to]; return api; },
       maybeSingle() { state.single = "maybe"; return api; },
@@ -50,7 +50,12 @@ export function createFakeSupabase(initial = {}, options = {}) {
 
     function finish(data) {
       let result = data;
-      for (const [column, ascending] of [...state.order].reverse()) result = [...result].sort((a, b) => (a[column] > b[column] ? 1 : a[column] < b[column] ? -1 : 0) * (ascending ? 1 : -1));
+      // PostgREST : nulls en dernier en ordre croissant (en premier en décroissant), sauf nullsFirst explicite.
+      const nullish = (value) => value === null || value === undefined;
+      for (const [column, ascending, nullsFirst] of [...state.order].reverse()) result = [...result].sort((a, b) => {
+        if (nullish(a[column]) || nullish(b[column])) return nullish(a[column]) === nullish(b[column]) ? 0 : (nullish(a[column]) ? -1 : 1) * (nullsFirst ? 1 : -1);
+        return (a[column] > b[column] ? 1 : a[column] < b[column] ? -1 : 0) * (ascending ? 1 : -1);
+      });
       if (state.range) result = result.slice(state.range[0], state.range[1] + 1);
       if (state.limit !== null) result = result.slice(0, state.limit);
       if (state.single === "maybe") {

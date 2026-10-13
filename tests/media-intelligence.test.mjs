@@ -223,7 +223,8 @@ test("service logs never include captions, file names or model output, and the t
   for (const line of service.split("\n").filter(l => /console\./.test(l))) assert.doesNotMatch(line, /caption|name|response|value/);
   assert.doesNotMatch(service, /publication_deliver|deliverPublication|publication_submit/);
   const tick = src("app/api/internal/scheduler/tick/route.ts");
-  assert.match(tick, /try \{ mediaIntelligence = await runMediaIntelligenceTick\(\); \} catch/);
+  // Étape isolée du tick (socle lot 6 : step() = try/catch par étape, échéance partagée, battement).
+  assert.match(tick, /mediaIntelligence = await step\("media_intelligence", \(\) => runMediaIntelligenceTick\(\)/);
 });
 
 test("library actions for analysis, profile and Drive sync authenticate first and never write in simulation", async () => {

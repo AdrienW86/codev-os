@@ -44,9 +44,10 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
 // checks (20 s timeout each) + 9 waits of 3 s + media_publish ≈ 290 s. 600 s keeps a margin (bound: 900 s).
 export const PRODUCTION_LEASE_SECONDS=600;
 // Explicit, single-job execution for a future worker. Fail closed: no vault → nothing runs.
-export async function runOnePublicationJobInProduction(workerId:string):Promise<ExecutionResult>{
+// maxLateSeconds: scheduler path only (never more late than the tolerance, see processScheduledDuePublications).
+export async function runOnePublicationJobInProduction(workerId:string,options:{maxLateSeconds?:number}={}):Promise<ExecutionResult>{
  const deps=productionOAuthDeps();if(!deps.vault)return {state:'idle'};
- return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS});
+ return runOnePublicationJob(workerId,{db:getSupabaseServerClient() as unknown as EngineDb,vault:deps.vault,publisher:registryPublisher(productionPublisherRegistry().publishers),leaseSeconds:PRODUCTION_LEASE_SECONDS,...options});
 }
 
 // Explicit admin trigger (Lot 4.3 P13): send the deliveries that are due now — prepared after the manual approval,
@@ -59,15 +60,33 @@ export type DueRunDeps={db:SettingsDb;run:(workerId:string)=>Promise<ExecutionRe
 export type DueRunSummary={ok:boolean;message:string;counts:{published:number;failed:number;uncertain:number;blocked:number;retry:number}};
 export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
  const {userId}=await requireAdmin();
+ return processDue('cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60),deps);
+}
+// Diffusion à l'heure prévue par le planificateur (socle lot 6). Désactivée tant que PUBLICATIONS_SCHEDULED_DELIVERY
+// ne vaut pas exactement « enabled » ; ensuite mêmes garde-fous que le bouton : arrêt d'urgence levé, publication
+// activée, et le moteur re-vérifie chaque interrupteur, l'approbation humaine et la disponibilité du canal.
+// Un seul envoi par passage : le pire cas Instagram (~290 s) tient dans la durée maximale du tick (300 s).
+// Jamais d'envoi planifié plus de SCHEDULED_LATE_TOLERANCE_SECONDS après l'heure due (cron ou drapeau revenu après
+// une coupure) : la tâche est bloquée en base (motif late_schedule, notifiée), un humain décide de la relancer.
+export const MAX_SCHEDULED_DUE_PER_TICK=1;
+export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
+export const SCHEDULED_DELIVERY_FLAG='PUBLICATIONS_SCHEDULED_DELIVERY';
+// L'environnement est lu par l'appelant (route du planificateur), jamais dans lib/publications.
+export function scheduledDeliveryEnabled(env:Record<string,string|undefined>):boolean{return env[SCHEDULED_DELIVERY_FLAG]==='enabled';}
+const scheduledRun=(workerId:string)=>runOnePublicationJobInProduction(workerId,{maxLateSeconds:SCHEDULED_LATE_TOLERANCE_SECONDS});
+export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun}):Promise<DueRunSummary|{disabled:true}>{
+ if(!scheduledDeliveryEnabled(env))return {disabled:true};
+ return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
+}
+async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN):Promise<DueRunSummary>{
  const counts={published:0,failed:0,uncertain:0,blocked:0,retry:0};
  const settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();
  const s=settings.data as {emergency_stop?:unknown;publishing_enabled?:unknown}|null;
  if(settings.error||!s)return {ok:false,message:'Réglages de publication illisibles : aucun envoi.',counts};
  if(s.emergency_stop!==false)return {ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts};
  if(s.publishing_enabled!==true)return {ok:false,message:'Publication désactivée dans les réglages : aucun envoi.',counts};
- const worker='cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60);
  let processed=0;
- for(let i=0;i<MAX_DUE_PER_RUN;i++){
+ for(let i=0;i<max;i++){
   let r:ExecutionResult;try{r=await deps.run(worker);}catch{log('process_due');break;}
   if(r.state==='idle')break;processed++;
   if(r.state==='completed'){const o=r.outcome;

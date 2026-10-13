@@ -176,7 +176,7 @@ function serviceWith({mediaRpc={},run={project_id:P,status:'completed',media_sta
   storage:{from:()=>({upload:async(p,b)=>{stored.set(p,b);return {error:null};},remove:async ps=>{for(const p of ps)stored.delete(p);return {error:null};}})}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
   '../project-channels':{getPublicationProjectChannels:async()=>({source:'configured',channels:[],platforms:['facebook','instagram','google_business_profile'],legacyAligned:true})},
-  './open-occurrences':{getOpenOccurrencesForAgent:async()=>batch},'./context':{AgentV2ContextError:class extends Error{},buildAgentV2Context:async()=>({clientId:C,input})},
+  './open-occurrences':{loadOpenOccurrences:async()=>batch},'./context':{AgentV2ContextError:class extends Error{},loadAgentV2Context:async()=>({clientId:C,input})},
   './openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},'./media-runs':{getAgentV2RunMedia:async id=>({id,media:{state:'attached',category:'Toiture',preview:'https://storage.local/signed?token=short'}})},
   '../media/source':{driveMediaSource:()=>{throw Error('Drive must not be used in tests');}}});
  const generator=mediaId=>({generate:async()=>{generations++;return {output:output(mediaId),usage:{input_tokens:10,output_tokens:10,estimated_cost_eur:.001,model:'m'}};}});

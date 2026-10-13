@@ -8,10 +8,11 @@ import * as jsx from 'react/jsx-runtime';
 import * as React from 'react';
 const native=createRequire(import.meta.url);
 export const root=resolve(new URL('../..',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));
-export function load(file,mocks={}){const cache=new Map();const find=base=>[base+'.ts',base+'.tsx'].find(p=>existsSync(p))??base;
+// globals (optional): extra names exposed to the module (e.g. a fake process for a route handler).
+export function load(file,mocks={},globals={}){const cache=new Map();const find=base=>[base+'.ts',base+'.tsx'].find(p=>existsSync(p))??base;
  function read(path){if(cache.has(path))return cache.get(path);const exports={};cache.set(path,exports);
   const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
-  vm.runInNewContext(code,{exports,Map,Set,Object,JSON,Number,Date,Math,Array,String,Boolean,Promise,Error,RegExp,Intl,Buffer,Uint8Array,FormData,URLSearchParams,URL,console,setTimeout,
+  vm.runInNewContext(code,{exports,Map,Set,Object,JSON,Number,Date,Math,Array,String,Boolean,Promise,Error,RegExp,Intl,Buffer,Uint8Array,FormData,URLSearchParams,URL,console,setTimeout,...globals,
    require:name=>{if(name in mocks)return mocks[name];if(name==='react/jsx-runtime')return jsx;if(name==='react')return React;if(name==='server-only')return {};
    if(name.startsWith('@/'))return read(find(resolve(root,name.slice(2))));if(name.startsWith('.'))return read(find(resolve(dirname(path),name)));return native(name);}});
   return exports;}

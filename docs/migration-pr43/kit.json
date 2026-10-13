@@ -1,0 +1,5 @@
+{"pr":43,"file":"20261103000000_media_library_tools.sql",
+ "requires":["whatsapp_export_import"],
+ "snapshot":["public.whatsapp_assets","public.whatsapp_asset_assessments","public.audit_logs"],
+ "post":[["photothèque : aucune ligne existante modifiée par la migration (aucune légende marquée éditée, aucune décision ni mémoire Drive)",
+  "not exists(select 1 from public.whatsapp_assets where caption_edited_at is not null) and not exists(select 1 from public.whatsapp_asset_decisions) and not exists(select 1 from public.client_media_drive_files) and not exists(select 1 from public.client_media_drive_sync)"]]}

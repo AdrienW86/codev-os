@@ -71,8 +71,15 @@ Avant la migration, la photothèque existante continue de fonctionner : la liste
 - `node --test tests/media-intelligence.test.mjs` couvre les règles de sûreté, la donnée non fiable, la validation du profil, le budget, la purge, les actions et l'exclusion des médias confidentiels.
 - `PUBLICATIONS_SOCLE_TEST_DATABASE_URL=… node --test tests/publications-socle-db.test.mjs` exécute `supabase/tests/publications-socle-2-media-intelligence.sql` : 95 vérifications sur une base locale reconstruite.
 
+## Suite : outils de la photothèque (PR #43)
+
+Recherche filtrée et paginée côté serveur, historique d'utilisation partagé, « Pourquoi écartée ? », reclassement
+manuel tracé, édition de la légende, dédoublonnage inter-origines et synchronisation Drive indépendante de l'analyse IA :
+voir `docs/media-library-tools.md`. La sélection automatique de l'analyse ne réévalue plus une photo dont le statut a
+été posé par une personne.
+
 ## Limites
 
 - Les vidéos ne sont pas classées.
 - La détection repose sur le modèle. Les règles de code garantissent qu'aucune photo n'est validée, publiée ni supprimée sur la seule décision de l'IA, mais un élément sensible non détecté reste possible : la validation humaine reste obligatoire.
-- La synchronisation Drive se limite aux images JPEG, PNG et WebP de 8 Mo au plus (les limites du lecteur Publications).
+- La synchronisation Drive se limite aux images JPEG, PNG et WebP de 8 Mo au plus (les limites du lecteur Publications). Depuis la PR #43, les dossiers de plus de 100 photos sont parcourus par un curseur de reprise.

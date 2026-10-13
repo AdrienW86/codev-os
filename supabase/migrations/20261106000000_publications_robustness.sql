@@ -1,5 +1,5 @@
 -- Socle Publications, phase 8 (#47) : robustesse et charge du pipeline planifié. Rien n'est activé : la diffusion
--- planifiée reste sous PUBLICATIONS_SCHEDULED_DELIVERY (vide par défaut) et sous les interrupteurs en base.
+-- planifiée reste sous son drapeau d'environnement (désactivé par défaut) et sous les interrupteurs en base.
 -- Aucune ligne existante modifiée, aucune table créée.
 
 -- 1. Garde de retard (2 h) appliquée aussi aux réessais automatiques. Avant : le retard se mesurait sur run_at, que

@@ -107,6 +107,8 @@ async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN,plat
    if(o==='published'||o==='simulated')counts.published++;else if(o==='uncertain')counts.uncertain++;
    else if(o==='retryable'||o==='rate_limit'||o==='provider_unavailable')counts.retry++;else if(o==='auth')counts.blocked++;else counts.failed++;}
   else if(r.state==='blocked')counts.blocked++;else if(r.state==='unconfirmed')counts.uncertain++;else counts.failed++;
+  // Planificateur avec échéance : une réservation refusée par la base (« stale ») arrête le passage, sans insister.
+  if(platformsFor&&r.state==='stale')break;
  }
  if(!processed)return {ok:true,message:'Aucune publication due pour le moment.',counts};
  return {ok:true,counts,message:`${processed} envoi(s) traité(s) : ${counts.published} publié(s), ${counts.retry} à réessayer, ${counts.blocked} bloqué(s), ${counts.failed} en échec, ${counts.uncertain} à vérifier.`};

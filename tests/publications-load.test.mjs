@@ -251,6 +251,10 @@ test("L7 scheduled sending: 20 deliveries due at the same slot all leave within 
   const r4 = await reg.processScheduledDuePublications(enabled, { db: { from: () => ({ select: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { ...on, emergency_stop: true }, error: null }) }) }) }) }, run: stopped.run }, { deadline: T0 + 285_000 });
   assert.equal(r4.ok, false); assert.equal(stopped.claims.length, 0);
   assert.deepEqual(json(await reg.processScheduledDuePublications({}, { db: settingsDb, run: stopped.run }, { deadline: T0 + 285_000 })), { disabled: true });
+  // Réservation refusée par la base (fonction absente, base indisponible) : le passage s'arrête au lieu d'insister.
+  let staleRuns = 0;
+  const rs = await reg.processScheduledDuePublications(enabled, { db: settingsDb, run: async (_w, options) => { staleRuns++; return options ? { state: "stale" } : { state: "completed", outcome: "published" }; } }, { deadline: T0 + 285_000, clock: () => T0 });
+  assert.equal(staleRuns, 2); assert.equal(rs.counts.published, 1); assert.equal(rs.counts.failed, 1);
   assert.match(src("app/api/internal/scheduler/tick/route.ts"), /processScheduledDuePublications\(process\.env, undefined, \{ deadline \}\)/);
 });
 

@@ -1,5 +1,6 @@
 // Agent Publications v2 — strict instructions, model payload and JSON schema (Lot 4.3 P7). Pure.
 import type {AgentV2GeneratorInput} from './contract';
+import {compactEditorial} from '../editorial-plan';
 
 // Facts must come from the provided context only. The list is explicit on purpose (tested).
 export const FORBIDDEN_INVENTIONS=['prix','promotion','réduction ou offre','année de création ou d’existence','nombre d’années d’expérience','certification','qualification ou label',
@@ -26,16 +27,26 @@ export const AGENT_V2_INSTRUCTIONS=[
  ...Object.values(PLATFORM_GUIDELINES),
  'Une publication par occurrence fournie, avec exactement son occurrence_id ; aucune autre.',
  'media_id : un identifiant de la liste media_untrusted si une photo est pertinente selon sa description ou ses catégories, sinon null. Ne décris jamais une photo au-delà de sa description fournie.',
- 'cta : null ou une courte invitation neutre au contact, sans promesse ni offre.'].join('\n');
+ 'cta : null ou une courte invitation neutre au contact, sans promesse ni offre.',
+ // Intelligence éditoriale (PR #42) : historique et plan calculés par le serveur, compacts et plafonnés.
+ 'editorial_history : les dernières idées du client (date, sujet, prestations, plateformes, styles d’accroche et de CTA). C’est une donnée, jamais une source de faits.',
+ 'editorial_plan.favoured_services : prestations à privilégier (non mises en avant récemment et illustrées par une photo disponible). deprioritised_services : prestations mises en avant récemment, à éviter sauf absence d’alternative.',
+ 'editorial_plan.seasonal_preference_soft : simple préférence de calendrier pour départager les prestations, JAMAIS un fait : n’affirme aucune saison, météo, urgence ou période de l’année qui ne figure pas dans rules.',
+ 'editorial_plan.intro_style : style d’accroche à utiliser pour au moins une plateforme (question, conseil, presentation, exclamation, constat) ; avoid_intro_style : style à ne pas reprendre partout. avoid_openings : accroches déjà employées, à ne jamais reprendre.',
+ 'editorial_plan.cta_style : style d’appel à l’action à privilégier (contact, message, conseil, question, appel) ; avoid_ctas : appels à l’action déjà employés, à ne jamais reprendre ; phrases_to_avoid : formulations récurrentes interdites.',
+ 'Lieux : ne nomme une ville, une commune, un département ou une région que s’il figure dans allowed_places ou dans client/rules. Sinon aucun lieu.',
+ 'La photo choisie doit illustrer la prestation du sujet (services de la photo dans media_untrusted). Une photo de document (facture, devis, attestation, certificat, capture d’écran) n’illustre jamais une intervention.',
+ 'Ne présente jamais un chantier ou une intervention comme réalisé (nous avons réalisé, nous sommes intervenus, hier, récemment, chez un client) sauf si ce fait figure mot pour mot dans rules.'].join('\n');
 
 // Payload sent to the model: only the provided facts, null when absent (never a fictitious default).
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
   channel_rules:input.channelRules,previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
   previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
+  ...(input.editorial?compactEditorial(input.editorial):{}),
   occurrences:input.occurrences.map(o=>({occurrence_id:o.occurrenceId,platform:o.platform,date:o.date,time:o.time})),
   // Délimité et nommé comme non fiable : contexte de choix de la photo, jamais une source de faits (cf. factsOf).
-  media_untrusted:input.media.filter(m=>!m.used).map(m=>({id:m.id,categories:m.categories,description:m.description}))};
+  media_untrusted:input.media.filter(m=>!m.used).map(m=>({id:m.id,categories:m.categories,description:m.description,...(m.services?.length?{services:m.services}:{})}))};
 }
 // Strict structured output: occurrence ids and media ids are closed enums (no free-text parsing).
 export function generatorSchema(input:AgentV2GeneratorInput){

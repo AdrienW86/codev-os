@@ -8,8 +8,11 @@ import {publicationChannelLock} from './project-channels';
 import {DELIVERY_COLUMNS,describeDeliveries} from './delivery/service';
 import type {DeliveryRow} from './delivery/model';
 import {buildPublicationDetail,deliveryLockMessage,type DetailDelivery,type PublicationDetailData} from './publication-detail';
+import {loadPublicationJustification} from './editorial-justification-read';
+import type {JustificationView} from './editorial-justification';
 
-export type DrawerLoad={state:'ok';detail:PublicationDetailData}|{state:'not_found'}|{state:'unavailable'};
+// justification (PR #42) : justification éditoriale de l'Agent v2, lecture seule ; absente si aucune.
+export type DrawerLoad={state:'ok';detail:PublicationDetailData&{justification?:JustificationView|null}}|{state:'not_found'}|{state:'unavailable'};
 type Root={client:{name:string}|null;project:{name:string}|null};
 
 // One publication only (never once per board row): getWorkspace plus the calendar slot and the delivery summary.
@@ -36,7 +39,8 @@ export async function loadPublicationDetail(id:string,options:{debug:boolean}):P
   const rows=(deliveries.data??[]) as unknown as (DeliveryRow&{publication_account_id:string;created_at:string})[];
   const views=await describeDeliveries([...rows].sort((a,b)=>b.created_at.localeCompare(a.created_at))).catch(()=>null);
   const live=(deliveries.data??[]).some(d=>(d as {status:string}).status!=='cancelled');
-  return {state:'ok',detail:{...detail,diffusion:views?{deliveries:views,canPrepare:p.status==='approved'&&!p.archived_at&&!live}:null}};
+  const justification=await loadPublicationJustification(id);
+  return {state:'ok',detail:{...detail,diffusion:views?{deliveries:views,canPrepare:p.status==='approved'&&!p.archived_at&&!live}:null,justification}};
  }catch{console.error('[publications] Lecture du panneau indisponible.');return {state:'unavailable'};}
 }
 

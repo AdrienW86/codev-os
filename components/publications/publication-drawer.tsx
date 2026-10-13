@@ -6,12 +6,14 @@ import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,s
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
 import {DeliverySection} from './delivery-section';
+import {AgentV2Justification} from './agent-v2-justification';
 import {DebugDetails} from '@/components/projects/debug-details';
 import {boardOriginLabels,boardStatusClasses,boardStatusLabels} from '@/lib/publications/board-query';
 import {formatDate} from '@/lib/format-date';
 import {platformLabels} from '@/lib/publications/editor';
 import type {DetailVariant,MediaState,PublicationDetailData} from '@/lib/publications/publication-detail';
 import type {DrawerLoad} from '@/lib/publications/drawer';
+import type {JustificationView} from '@/lib/publications/editorial-justification';
 import type {StagedMedia} from '@/lib/publications/workspace';
 
 const input='mt-1 block w-full rounded-lg border border-border bg-background p-2 text-sm';
@@ -46,7 +48,7 @@ function Header({detail}:{detail:PublicationDetailData}){
    {detail.archived&&<span data-archived="true" className="rounded-full border border-border px-2 py-0.5 text-muted">Archivée</span>}</p></div>;
 }
 
-function DrawerBody({detail}:{detail:PublicationDetailData}){
+function DrawerBody({detail}:{detail:PublicationDetailData&{justification?:JustificationView|null}}){
  const editable=!detail.readOnly&&detail.revisionId!==null&&detail.status!=='to_prepare';
  return <>
   {detail.readOnlyReason&&<p role="note" data-read-only="true" className="rounded-lg border border-border p-3 text-sm">{detail.readOnlyReason}</p>}
@@ -57,6 +59,7 @@ function DrawerBody({detail}:{detail:PublicationDetailData}){
    {detail.status==='rejected'&&!detail.readOnly&&detail.projectId&&<section className={section} data-regenerate="true"><h3 className="font-semibold">Régénérer</h3>
     <p className="mt-1 text-xs text-muted">Une seule publication, en tenant compte du motif du rejet. La nouvelle version sera soumise à votre validation.</p>
     <AgentPrepareForm projectId={detail.projectId} publicationId={detail.publicationId} regenerate/></section>}
+   {detail.justification&&<AgentV2Justification justification={detail.justification}/>}
    <History detail={detail}/></>}
   {detail.diffusion&&detail.status!=='to_prepare'&&<DeliverySection publicationId={detail.publicationId} diffusion={detail.diffusion}/>}
   <section className={section}><h3 className="mb-2 text-sm font-semibold">Tableau</h3><BoardVisibilityForm publicationId={detail.publicationId} hidden={detail.hidden}/></section>

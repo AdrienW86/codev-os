@@ -10,6 +10,7 @@ import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/publications/automation/scheduled";
 import { processScheduledDuePublications } from "@/lib/publications/delivery/registry";
+import { purgeExportImports } from "@/lib/whatsapp/export-import";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const maxDuration = 300;
 // moins, elle est sautée (« skipped ») plutôt que coupée par la plateforme. Marge pour répondre et écrire le battement.
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
-  automations: 0, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
+  whatsapp_exports: 0, automations: 0, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
   search_console: 60_000, whatsapp: 75_000, media_intelligence: 60_000, publication_preparation: 120_000,
 };
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -30,7 +31,7 @@ async function handle(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.status === 503 ? "scheduler_not_configured" : "unauthorized" }, { status: auth.status, headers });
   const startedAt = new Date(), deadline = startedAt.getTime() + maxDuration * 1000 - MARGIN_MS;
   const steps: Partial<Record<SchedulerStepName, SchedulerStep>> = {};
-  await recordSchedulerHeartbeat({ startedAt });
+  await recordSchedulerHeartbeat({ startedAt }).catch(() => false);
   // Chaque étape est isolée dans son propre try : un échec (ou un saut faute de temps) n'empêche jamais les suivantes.
   async function step<T>(name: SchedulerStepName, work: () => Promise<T>, label: string): Promise<T | { unavailable: true } | { skipped: "deadline" }> {
     const begin = Date.now();
@@ -45,6 +46,9 @@ async function handle(request: Request) {
       return { unavailable: true };
     }
   }
+  // Imports d'export WhatsApp, en premier : la conservation de 24 h des archives (conversation complète) ne doit jamais
+  // dépendre des autres étapes. Archives expirées ou terminées supprimées, fichiers orphelins balayés ; les photos restent.
+  const whatsappExports = await step("whatsapp_exports", () => purgeExportImports(), "Purge des exports WhatsApp différée.");
   const summary = await step("automations", () => runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor) }), "Automatisations différées.");
   // Publications (socle lot 6), avant les étapes lourdes pour tenir l'heure prévue : diffusions des publications
   // approuvées par un humain, puis un envoi dû au plus. Désactivé tant que PUBLICATIONS_SCHEDULED_DELIVERY ≠ « enabled ».
@@ -59,9 +63,9 @@ async function handle(request: Request) {
   const mediaIntelligence = await step("media_intelligence", () => runMediaIntelligenceTick(), "Classement de la photothèque différé.");
   // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
   const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(), "Préparation des publications différée.");
-  await recordSchedulerHeartbeat({ startedAt, finishedAt: new Date(), steps });
+  await recordSchedulerHeartbeat({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { delivery, due }, publicationPreparation, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { delivery, due }, publicationPreparation, whatsappExports, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

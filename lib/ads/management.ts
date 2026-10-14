@@ -25,7 +25,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if (request.confirm !== `CONFIRMER ${change.campaignId}`) throw new Error("Confirmation explicite requise.");
   if (process.env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") throw new Error("Écriture Google Ads non activée.");
   const env = process.env;
-  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN || !env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) {
     throw new Error("Identifiants Google Ads incomplets.");
   }
   // Verify target belongs to the selected customer, and do not touch Local Services.
@@ -34,12 +34,12 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
     refreshToken: env.GOOGLE_ADS_REFRESH_TOKEN,
   });
   const headers = {
-    Authorization: `Bearer ${token}`, "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    Authorization: `Bearer ${token}`, ...(env.GOOGLE_ADS_DEVELOPER_TOKEN ? { "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN } : {}),
     "Content-Type": "application/json", ...(manager ? { "login-customer-id": manager } : {}),
   };
   const query = `SELECT campaign.id, campaign.status, campaign.advertising_channel_type FROM campaign WHERE campaign.id = ${change.campaignId} AND campaign.status != 'REMOVED' LIMIT 1`;
   const found = await providerJson<{ results?: { campaign?: { id: string | number; status: string; advertisingChannelType: string } }[] }>(
-    "google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`,
+    "google-ads", `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
     { method: "POST", headers, body: JSON.stringify({ query }) },
   );
   const campaign = found.results?.[0]?.campaign;
@@ -49,7 +49,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if ("adGroupId" in change) {
     const groupQuery = `SELECT ad_group.id, ad_group.campaign FROM ad_group WHERE ad_group.id = ${change.adGroupId} LIMIT 1`;
     const group = await providerJson<{ results?: { adGroup?: { id: string | number; campaign: string } }[] }>(
-      "google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`,
+      "google-ads", `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
       { method: "POST", headers, body: JSON.stringify({ query: groupQuery }) },
     );
     const selected = group.results?.[0]?.adGroup;
@@ -66,7 +66,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
     let verified = false;
     if (change.kind === "campaign_pause" || change.kind === "campaign_enable") {
       const checked = await providerJson<{ results?: { campaign?: { status: string } }[] }>(
-        "google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`,
+        "google-ads", `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
         { method: "POST", headers, body: JSON.stringify({ query }) },
       );
       verified = checked.results?.[0]?.campaign?.status === (change.kind === "campaign_pause" ? "PAUSED" : "ENABLED");

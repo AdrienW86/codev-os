@@ -1,4 +1,4 @@
-# Photos WhatsApp → Drive (premier lot)
+# Médias WhatsApp → Drive et photothèque
 
 ## Parcours
 
@@ -6,15 +6,27 @@ Paramètres → Connexions → Photos WhatsApp → Configurer les photos (`/sett
 
 1. Créer un dossier Drive dédié depuis cette page, ou utiliser un dossier déjà autorisé à l’application d’import.
 2. Associer explicitement le numéro international de l’expéditeur au client et à ce dossier. Confirmer les droits d’utilisation des images et activer l’association. Pour modifier / mettre en pause, réenregistrer le même numéro avec les paramètres voulus.
-3. Envoyer une photo au **numéro de test API** configuré. Le webhook conserve seulement les identifiants techniques, le numéro de l’expéditeur et la date ; pas le texte, les légendes, les noms de contacts ou l’audio.
+3. Envoyer une photo ou une vidéo au **numéro de test API** configuré. Le webhook conserve les identifiants techniques, le numéro de l’expéditeur, la date et la **légende du média** (le « message associé », 3 000 caractères au plus). Les autres messages de la conversation, les noms de contacts, l’audio et les documents ne sont pas conservés.
 4. Les images sont traitées après l’acquittement du webhook, par petits lots. La page affiche les 100 dernières réceptions, le nombre de tentatives, le code d’erreur et un lien vers le fichier importé. « Traiter la prochaine photo » traite une image manuellement.
 5. Renseigner le même dossier dans la configuration Publications du projet concerné. L’agent Publications existant lit alors ces images via son connecteur de lecture, avec ses propres contrôles de droits / validation. Aucune publication automatique n’est ajoutée ici.
 
-Un expéditeur inconnu / en pause / sans droits reste en attente. Un changement d’association ne déplace pas les images déjà attribuées : les imports non terminés sur l’ancien périmètre restent bloqués jusqu’au rétablissement de l’association. Les originaux WhatsApp / Drive ne sont jamais supprimés.
+Un expéditeur inconnu / en pause / sans droits reste en attente. Les médias d’un numéro inconnu apparaissent dans « En attente d’affectation » : un administrateur choisit explicitement le client (parmi les couples client/dossier déjà associés avec droits confirmés) ou écarte le média. Rien n’est jamais attribué automatiquement à un client. Un changement d’association ne déplace pas les images déjà attribuées : les imports non terminés sur l’ancien périmètre restent bloqués jusqu’au rétablissement de l’association. Les originaux WhatsApp / Drive ne sont jamais supprimés.
+
+## Photothèque (fiche client → onglet « Photothèque »)
+
+Après import vérifié dans Drive, chaque fichier apparaît dans la photothèque du client : miniature privée (WebP 480 px dans le bucket privé `whatsapp-thumbnails`, URL signée 5 minutes), prévisualisation de l’original relu depuis Drive par le serveur (`/api/media-library/<client>/<média>`, administrateur uniquement, sans cache), date de réception, message WhatsApp, numéro masqué, liens vers le fichier et le dossier Drive, statut et historique d’utilisation.
+
+Statuts : reçu → à examiner → validé → utilisé → archivé. « Utilisé » est posé automatiquement lorsqu’un média est transmis à une publication ; un média déjà utilisé n’est réemployé qu’après confirmation explicite.
+
+« Préparer une publication » (photos validées, 4 au maximum, même client) crée un **brouillon non planifié** dans le circuit Publications existant : `saveUnscheduledDraft` (RPC `publication_save_unscheduled_draft`, migration `20261025000000_publications_unscheduled_drafts.sql`), qui ne réserve aucun des deux créneaux hebdomadaires ; une telle publication ne peut pas être diffusée tant qu’elle n’est liée à aucun créneau. Les originaux sont lus et adaptés avant la création : un échec Drive ne crée aucun brouillon, un échec ensuite archive le brouillon créé par cet appel et rend aux photos leur statut « validé ». Les photos sont réservées par une mise à jour conditionnelle, si bien qu’un double envoi ne crée pas deux brouillons. Puis : dérivés par plateforme (`adaptImage`) dans le stockage privé `publication-images` via `publication_register_image`, puis une révision (`saveDraft`) qui attache ces médias. Le brouillon se planifie ensuite depuis sa fiche Publications (« Planifier ce brouillon ») : un créneau ouvert du calendrier par plateforme (RPC `publication_schedule_draft`, migration `20261026000000_publications_schedule_drafts.sql`, qui dépend de `20261025000000`). Brouillon mono-plateforme : rattaché sur place, même publication et même historique. Brouillon multi-plateforme : une publication par plateforme sur son créneau, dans un groupe éditorial, avec texte, source et photos ; l’original est archivé et reste consultable. Planifier crée toujours une nouvelle révision à valider : une approbation antérieure ne vaut pas pour la date choisie. Le texte est celui saisi, sinon une suggestion IA si demandée (fournisseur existant `selectAIProvider`, uniquement la fiche client et les messages du client, consigne de ne rien inventer), sinon un texte « [À rédiger] ». La publication doit ensuite être relue, soumise et approuvée : aucune diffusion automatique. Les vidéos restent consultables mais ne sont pas encore transmises aux publications (le circuit Publications n’accepte que des images).
+
+Notifications : catégorie « Nouveaux médias WhatsApp » (au plus une par client et par heure, lien vers la photothèque) et une pour les médias en attente d’affectation. Le push reste désactivé tant que l’utilisateur ne l’active pas pour cette catégorie.
+
+Données personnelles : « Effacer les données de ce numéro » supprime l’association, écarte les médias non importés et efface numéro et messages (file et photothèque). La purge automatique des messages et numéros des imports terminés (et des médias archivés) s’active avec `WHATSAPP_RETENTION_DAYS` (30 à 3650). Les fichiers Drive ne sont jamais supprimés automatiquement.
 
 ## Configuration serveur
 
-La migration `20261016000001_whatsapp_drive_ingestion.sql` doit être appliquée après les migrations déjà présentes dans le dépôt. Créée avec la CLI, son horodatage a été placé après la migration Google Ads existante pour préserver l’ordre de déploiement. Elle ajoute trois tables et des fonctions avec RLS, accessibles uniquement à `service_role`. Aucune migration distante n’est appliquée par ce lot.
+Les migrations `20261016000001_whatsapp_drive_ingestion.sql` puis `20261023000000_whatsapp_media_library.sql` doivent être appliquées, dans cet ordre, **avant** le déploiement du code de la photothèque (le webhook écrit la colonne `caption` ; sans la seconde migration il répond 503 et Meta relivre). Créée avec la CLI, son horodatage a été placé après la migration Google Ads existante pour préserver l’ordre de déploiement. Elle ajoute trois tables et des fonctions avec RLS, accessibles uniquement à `service_role`. Aucune migration distante n’est appliquée par ce lot.
 
 Variables Vercel **serveur uniquement** (jamais `NEXT_PUBLIC_`, jamais à coller dans une conversation) :
 
@@ -29,11 +41,12 @@ Variables Vercel **serveur uniquement** (jamais `NEXT_PUBLIC_`, jamais à coller
 | `GOOGLE_DRIVE_IMPORT_CLIENT_ID` | Client OAuth Google de l’application d’import |
 | `GOOGLE_DRIVE_IMPORT_CLIENT_SECRET` | Secret OAuth correspondant |
 | `GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN` | Refresh token autorisé avec `https://www.googleapis.com/auth/drive.file` |
-| `CRON_SECRET` | Secret serveur du déclencheur de reprise, si un planning est installé |
+| `CRON_SECRET` | Secret serveur du planificateur existant (`/api/internal/scheduler/tick`), qui vide aussi la file WhatsApp |
+| `WHATSAPP_RETENTION_DAYS` | Facultatif : durée de conservation des messages et numéros (30 à 3650 jours) ; absent = pas de purge automatique |
 
 L’accès Drive d’import est **distinct** des variables `GOOGLE_DRIVE_*` du lecteur Publications. Un refresh token `drive.readonly` ne permet pas l’import. Autoriser `drive.file` avec les credentials OAuth propres à l’import (par exemple via OAuth Playground avec « Use your own OAuth credentials », accès offline). Ne pas demander l’accès à tout Drive. Avec `drive.file`, coller l’ID d’un dossier arbitraire ne lui donne pas accès : créer le dossier depuis l’écran ou autoriser explicitement un dossier existant via Google Picker avec cette même application. Le sélecteur Picker n’est pas implémenté dans ce lot.
 
-L’utilisateur Google du lecteur Publications doit également avoir accès au dossier créé. Les photos de ce lot sont JPEG/PNG/WebP, 8 Mo maximum et 40 millions de pixels maximum. Les vidéos, documents et stickers ne sont pas importés.
+L’utilisateur Google du lecteur Publications doit également avoir accès au dossier créé. Photos JPEG/PNG/WebP, 8 Mo et 40 millions de pixels maximum ; vidéos MP4/3GPP jusqu’à 16 Mo (limite Meta), conteneur vérifié (boîte `ftyp`) sans décodage. Documents, audio et stickers ne sont pas importés. Les dossiers sont créés privés : aucun partage public n’est ajouté par l’application.
 
 ## Meta : terminer le test
 
@@ -51,19 +64,25 @@ Ce test ne nécessite aucune migration / réinscription du numéro professionnel
 
 Le webhook répond 200 seulement après l’écriture durable du lot. Une signature incorrecte est refusée. Une indisponibilité du stockage donne 503 pour permettre une nouvelle livraison Meta. Les replays du même identifiant de message sont ignorés.
 
-Un traitement différé opportuniste est lancé après réception : au plus 10 images par invocation, avec une fenêtre de démarrage de 10 secondes. Il ne garantit pas de vider un lot de centaines d’images. Installer un déclencheur régulier pour vider la file et effectuer les reprises, ou utiliser le bouton manuel :
+Le planificateur existant (`/api/internal/scheduler/tick`) traite aussi la file : au plus 20 médias et 60 secondes par passage, puis la purge de conservation si elle est activée. Meta ne conserve les médias reçus par webhook que **7 jours** : un média non affecté ou en échec au-delà ne peut plus être téléchargé.
+
+Un traitement différé opportuniste est lancé après réception : au plus 10 médias par invocation, avec une fenêtre de démarrage de 10 secondes. Il ne garantit pas de vider un lot de centaines d’images. Installer un déclencheur régulier pour vider la file et effectuer les reprises, ou utiliser le bouton manuel :
 
 `GET` ou `POST /api/internal/whatsapp/process` avec `Authorization: Bearer <CRON_SECRET>`.
 
-Ce déclencheur applique les mêmes bornes. Aucun cron / fichier `vercel.json` n’est activé par ce lot. Adapter la fréquence à l’hébergement ; un passage quotidien est peu adapté à des centaines de photos. Ne pas considérer le traitement différé comme un worker permanent. Les médias doivent être traités rapidement tant qu’ils restent disponibles chez Meta ; aucune sauvegarde des images non associées n’est réalisée.
+Ce déclencheur applique les mêmes bornes. Aucun nouveau cron / fichier `vercel.json` n’est ajouté. Adapter la fréquence à l’hébergement ; un passage quotidien est peu adapté à des centaines de photos. Ne pas considérer le traitement différé comme un worker permanent. Les médias doivent être traités rapidement tant qu’ils restent disponibles chez Meta ; aucune sauvegarde des images non associées n’est réalisée.
 
 Une tâche possède un bail de 5 minutes, récupérable après expiration. Les erreurs attendent une reprise exponentielle ; après 5 tentatives, l’import passe en échec et peut être relancé explicitement. Un ID Drive est réservé avant upload ; une reprise contrôle le parent et le checksum MD5 du fichier avant de le réutiliser. Le SHA-256 local assure le dédoublonnage exact dans le périmètre **client + dossier**, uniquement pour les imports réalisés par ce connecteur. Les fichiers déjà présents avant l’installation ne sont pas indexés et ne sont donc pas dédoublonnés par ce lot. Deux clients peuvent conserver la même photo sans collision de périmètre.
+
+Depuis la PR #43 (`docs/media-library-tools.md`), le dédoublonnage exact s'applique à l'échelle du **client** pour toutes les arrivées : une photo déjà présente dans sa photothèque (dossier Drive de l'agent, export, autre dossier, photo purgée après rejet) est marquée « Doublon exact ignoré » et n'est pas renvoyée dans Drive.
 
 Les ressemblances visuelles, les variantes recompressées et la suppression de doublons historiques ne sont pas traitées. Une phase de revue des photos similaires sera nécessaire. Aucun effacement automatique n’est effectué.
 
 ## Validation
 
 Tests transport avec réponses simulées : signature, limites de lecture, isolation WABA/numéro, réponse retryable, host allowlist des médias / sessions Drive, validation du format et checksum, réconciliation d’un upload interrompu. SQL : replay, portée figée, droits, isolation des dossiers, récupération du bail, plafond de reprises, dédoublonnage par client et RLS.
+
+Photothèque : vidéo et légende, types ignorés, intégrité vidéo, limite photo, miniature, relecture Drive (parent + MD5), sélection (même client, validé, réemploi), consigne IA, brouillon « À rédiger », préparation de publication (dérivés, révision, historique, nettoyage en cas d’échec), notifications, authentification des actions et de la prévisualisation, conservation (`tests/whatsapp-library.test.mjs`). SQL : affectation explicite, refus inter-clients, notification horaire, effacement d’un numéro, purge trop courte refusée, historique d’utilisation inter-client refusé, RLS (`supabase/tests/whatsapp-media-library.sql`).
 
 Le SQL peut être exécuté sur une base PostgreSQL **locale jetable uniquement** via `CODEV_CORE_TEST_DATABASE_URL` et `node --test tests/whatsapp-db.test.mjs`. Le contrôle réalisé dans cette session utilise PostgreSQL WASM (PGlite), sur une seule connexion ; il ne prouve pas la concurrence multiworkers. Aucun appel réel à Meta ou Google Drive ni essai de production n’a été fait.
 
@@ -72,3 +91,23 @@ Références :
 - https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/webhooks/start/
 - https://developers.google.com/workspace/drive/api/guides/manage-uploads
 - https://developers.google.com/workspace/drive/api/guides/api-specific-auth
+
+## Diagnostic de l'accès Drive d'import
+
+Création de dossier et association d'un expéditeur affichent un message propre à la cause, suivi d'un code (« code oauth_invalid_grant »). Chaque échec écrit une ligne de journal serveur structurée, visible dans les logs Vercel de la fonction (la requête reste en HTTP 200 car c'est une Server Action) :
+
+`[whatsapp-drive] {"action":"whatsapp.folder.create","code":"oauth_invalid_grant","stage":"oauth","status":400,"variable":null}`
+
+Seuls l'action, le code, l'étape, le statut HTTP et le **nom** d'une variable manquante sont journalisés : jamais un token, un secret ni la réponse brute de Google (seuls les identifiants `error` / `reason` connus sont lus puis oubliés).
+
+| Code | Cause probable | Correction |
+| --- | --- | --- |
+| `config_missing` / `config_invalid` | Variable absente du runtime (ajoutée sans redéploiement, mauvais environnement Vercel) ou mal formée (Client ID ne finissant pas par `.apps.googleusercontent.com`, espace interne) | Corriger la variable nommée dans le message, puis redéployer |
+| `oauth_invalid_grant` | Refresh token révoqué, expiré (écran de consentement en mode « Test » : 7 jours) ou émis pour un autre client OAuth | Régénérer le refresh token avec ce client et `drive.file` |
+| `oauth_invalid_client` | Client ID / secret incorrects ou ne correspondant pas | Recopier les deux valeurs du même client |
+| `oauth_unauthorized_client` | Token émis par un autre client, ou type de client inadapté | Régénérer avec le client d'import |
+| `drive_scope_missing` / `drive_scope_too_broad` | Token sans `drive.file`, ou avec `drive` / `drive.readonly` | Régénérer avec `drive.file` uniquement |
+| `drive_api_disabled` | « Google Drive API » non activée dans le projet Google Cloud du client | L'activer, attendre quelques minutes |
+| `drive_permission`, `drive_storage_quota`, `drive_rate_limited` | Droits du compte, Drive plein, quota | Selon le message |
+| `provider_unavailable`, `provider_response` | Google indisponible ou réponse inattendue | Réessayer |
+| `audit_unavailable`, `database_unavailable` | Journal d'audit ou base indisponible (aucune action Drive faite) | Réessayer |

@@ -5,7 +5,7 @@ import type { ProviderId } from "@/lib/agents/registry";
 export type Env = Record<string, string | undefined>;
 
 export type ProviderRequirement = {
-  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech";
+  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech" | "credentials" | "google-drive-import" | "whatsapp-webhook" | "whatsapp-ingestion" | "push";
   label: string;
   /** Variables indispensables. */
   required: string[];
@@ -40,6 +40,11 @@ export const providerRequirements: ProviderRequirement[] = [
   { id: "meta", label: "Meta (Facebook & Instagram)", required: ["META_APP_ID", "META_APP_SECRET", "PUBLICATIONS_OAUTH_BASE_URL", "PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID"], description: "Publication sur les pages des clients (après validation).", setup: "Application Meta validée ; autorisation OAuth par projet.", docs: "docs/publications-meta-setup.md" },
   { id: "google-business-profile", label: "Google Business Profile", required: ["GOOGLE_BUSINESS_PROFILE_CLIENT_ID", "GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET", "PUBLICATIONS_OAUTH_BASE_URL", "PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID"], description: "Publications Google (après validation).", setup: "Client OAuth Google approuvé pour l’API Business Profile ; autorisation par projet.", docs: "docs/publications-oauth.md" },
   { id: "google-drive", label: "Google Drive", required: ["GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_DRIVE_CLIENT_SECRET", "GOOGLE_DRIVE_REFRESH_TOKEN"], description: "Photos des clients pour les publications.", setup: "Client OAuth Google avec accès en lecture au dossier des médias.", docs: "docs/publications-architecture.md" },
+  { id: "credentials", label: "Trousseau des identifiants de publication", required: ["PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID"], description: "Chiffrement des jetons OAuth Meta et Google Business Profile.", setup: "Clé de chiffrement et son identifiant (voir docs/publications-oauth.md) ; jamais affichée.", docs: "docs/publications-oauth.md" },
+  { id: "google-drive-import", label: "Google Drive (import des photos clients)", required: ["GOOGLE_DRIVE_IMPORT_CLIENT_ID", "GOOGLE_DRIVE_IMPORT_CLIENT_SECRET", "GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN"], description: "Dépôt des médias WhatsApp dans Drive (portée drive.file, distincte du Drive des publications).", setup: "Client OAuth d’import et refresh token avec la portée drive.file uniquement.", docs: "docs/whatsapp-drive.md" },
+  { id: "whatsapp-webhook", label: "WhatsApp (réception)", required: ["WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_BUSINESS_ACCOUNT_ID"], description: "Webhook Meta des photos et vidéos envoyées par les clients.", setup: "Jeton de vérification, secret de l’application Meta, numéro et compte WhatsApp Business.", docs: "docs/whatsapp-drive.md" },
+  { id: "whatsapp-ingestion", label: "WhatsApp (téléchargement des médias)", required: ["WHATSAPP_ACCESS_TOKEN"], description: "Téléchargement des médias reçus avant leur dépôt dans Drive. Actif seulement si WHATSAPP_INGESTION_ENABLED=true.", setup: "Jeton d’accès système WhatsApp Business ; puis WHATSAPP_INGESTION_ENABLED=true.", docs: "docs/whatsapp-drive.md" },
+  { id: "push", label: "Notifications push", required: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"], optional: ["PUSH_SENDING_ENABLED"], description: "Notifications web push de l’administrateur. Désactivées tant que PUSH_SENDING_ENABLED ≠ true.", setup: "Paire de clés VAPID et adresse de contact ; puis PUSH_SENDING_ENABLED=true.", docs: "docs/notifications-pwa.md" },
   { id: "email", label: "E-mail (Resend)", required: ["RESEND_API_KEY", "EMAIL_FROM"], optional: ["EMAIL_SENDING_ENABLED"], description: "Envoi des rapports approuvés. Désactivé tant que EMAIL_SENDING_ENABLED ≠ true.", setup: "Clé Resend, domaine d’envoi vérifié, adresse EMAIL_FROM ; puis EMAIL_SENDING_ENABLED=true.", docs: "docs/integrations.md#email" },
   { id: "rss", label: "Flux de veille", required: [], description: "Flux publics de la veille tech & IA.", setup: "Aucune configuration ; sources définies dans lib/news/sources.ts.", docs: "docs/integrations.md#veille" },
   { id: "internal", label: "Interne", required: [], description: "Traitements internes à CODE-V OS.", setup: "—", docs: "docs/architecture.md" },
@@ -80,4 +85,20 @@ export function connectionState(requirement: ProviderRequirement, env: Env = pro
   if (status.state === "configured") return lastError ? "attention" : "ok";
   const names = [...requirement.required, ...(requirement.anyOf?.flat() ?? [])];
   return names.some((name) => present(env, name)) ? "attention" : "todo";
+}
+
+/**
+ * Interrupteurs serveur : uniquement « activé » ou « désactivé » (valeur exacte attendue), jamais la valeur lue.
+ * Aucun n'est activé par défaut. PUBLICATIONS_SCHEDULED_DELIVERY suit scheduledDeliveryEnabled (lib/publications/delivery/registry.ts).
+ */
+export type FeatureFlag = { id: "publications-scheduled-delivery" | "whatsapp-ingestion" | "push-sending" | "email-sending"; label: string; variable: string; enabledValue: string; description: string };
+export const featureFlags: FeatureFlag[] = [
+  { id: "publications-scheduled-delivery", label: "Diffusion automatique des publications", variable: "PUBLICATIONS_SCHEDULED_DELIVERY", enabledValue: "enabled", description: "Envoi à l’heure prévue par le planificateur des publications approuvées par un humain." },
+  { id: "whatsapp-ingestion", label: "Réception des médias WhatsApp", variable: "WHATSAPP_INGESTION_ENABLED", enabledValue: "true", description: "Réception et dépôt dans Drive des médias envoyés par les clients." },
+  { id: "push-sending", label: "Diffusion des notifications push", variable: "PUSH_SENDING_ENABLED", enabledValue: "true", description: "Notifications web push vers l’appareil de l’administrateur." },
+  { id: "email-sending", label: "Expédition des e-mails", variable: "EMAIL_SENDING_ENABLED", enabledValue: "true", description: "Envoi des rapports approuvés par e-mail." },
+];
+export function isFlagEnabled(id: FeatureFlag["id"], env: Env = process.env) {
+  const flag = featureFlags.find((item) => item.id === id);
+  return flag ? env[flag.variable] === flag.enabledValue : false;
 }

@@ -1,8 +1,8 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
-import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient } from "./types";
+import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic } from "./types";
 
 export class GoogleAdsError extends Error {
   constructor(public readonly kind: "configuration" | "authentication" | "access" | "quota" | "unavailable" | "response", public readonly requestId: string | null = null) {
@@ -25,6 +25,15 @@ export function normalizeMetrics(input: Record<string, unknown> = {}): AdsMetric
   return { impressions: numeric(input.impressions), clicks: numeric(input.clicks), cost, conversions, conversionValue: numeric(input.conversionsValue), ctr: numeric(input.ctr), averageCpc: cpc === null ? null : cpc / 1_000_000, costPerConversion: cost !== null && conversions !== null && conversions > 0 ? cost / conversions : null };
 }
 function text(value: unknown): string | null { return typeof value === "string" && value.length <= 1000 ? value : null; }
+/** Google Ads returns Unix epoch for "never received". Never present it as a real event. */
+export function actualConversionTimestamp(value: unknown): string | null {
+  const date = text(value);
+  if (!date) return null;
+  const parsed = Date.parse(date.replace(" ", "T"));
+  if (!Number.isFinite(parsed) || parsed < Date.UTC(2000, 0, 1)) return null;
+  return date;
+}
+
 
 // Only these three read operations are public. OAuth credentials and raw transport stay private.
 class RestGoogleAdsReadClient implements GoogleAdsReadClient {
@@ -79,6 +88,24 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       console.error("[google-ads]", { type: mapped.kind, requestId: mapped.requestId, customerId, operation: "search" });
       throw mapped;
     }
+  }
+
+  async getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]> {
+    const rows = await this.#search(customerId, conversionActionsQuery, managerId);
+    return rows.flatMap((row) => {
+      const action = row.conversionAction;
+      if (!action || !/^\d+$/.test(String(action.id))) return [];
+      return [{
+        id: String(action.id), name: text(action.name) ?? "Action sans nom",
+        type: text(action.type) ?? "UNKNOWN", category: text(action.category) ?? "UNKNOWN",
+        status: text(action.status) ?? "UNKNOWN",
+        primary: typeof action.primaryForGoal === "boolean" ? action.primaryForGoal : null,
+        countingType: text(action.countingType) ?? "UNKNOWN", tagSnippets: null,
+        allConversions: numeric(row.metrics?.allConversions),
+        lastConversionDate: text(row.metrics?.conversionLastConversionDate),
+        lastTagReceivedAt: actualConversionTimestamp(row.metrics?.conversionLastReceivedRequestDateTime),
+      }];
+    });
   }
 
   async getAccountSummary(customerId: string, managerId?: string): Promise<AdsAccount> {

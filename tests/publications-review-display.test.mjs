@@ -39,6 +39,7 @@ async function render(current) {
   '@/lib/publications/actor-label':load('lib/publications/actor-label.ts'),'@/lib/projects/data':{listProjects:async()=>[]},'@/lib/clients/data':{listClients:async()=>[]},'@/lib/publications/editor':{platformLabels:{facebook:'Facebook',instagram:'Instagram'}},
   '@/components/publications/workflow-forms':{PublicationReviewForm:()=>null,PublicationUploadForm:()=>null},
   '@/components/publications/agent-forms':{AgentPrepareForm:()=>null},
+  '@/lib/publications/draft-scheduling':{getDraftSchedulingOptions:async()=>null},'@/lib/publications/board-query':{boardOriginLabels:{agent:'Agent',manual:'Manuel',planning:'Planning'}},'@/components/publications/schedule-draft-form':{ScheduleDraftForm:()=>null},
   '@/components/ui/primitives':{Panel:primitive,Badge:primitive,PageHeading:()=>null},'@/lib/format-date':{formatDate:()=> '05 oct. 2026'},
  });
  return renderToStaticMarkup(await page.default({params:Promise.resolve({id:'pub'})}));

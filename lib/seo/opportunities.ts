@@ -374,22 +374,7 @@ export function detectOpportunities(input: DetectionInput): DetectedOpportunity[
       evidence: {},
     });
   }
-  // Pages qui ne reçoivent plus aucun clic alors qu'elles en avaient.
-  const pagesNowKeys = new Set(input.pages.map((row) => row.keys[0]));
-  for (const priorRow of input.previousPages) {
-    const url = priorRow.keys[0];
-    if (!url || priorRow.clicks < 20 || pagesNowKeys.has(url)) continue;
-    const previous = metricsOf(priorRow);
-    drafts.push({
-      fingerprint: opportunityFingerprint("declining_page", url, url), category: "declining_page", keyword: pathOf(url), keywords: [pathOf(url)], targetUrl: url, targetStatus: "existing",
-      intent: "unknown", intentBasis: "page absente de la période actuelle", source: "search_console", verified: true,
-      metrics: { clicks: 0, impressions: 0, ctr: null, position: null }, previous, potentialClicks: null, relevance: 2, trend: "severe_down", actionKind: "investigate",
-      factors: [`Clics ${previous.clicks} → 0`, "Page absente des résultats sur la période"],
-      rationale: `${pathOf(url)} ne reçoit plus aucune impression sur ${periodNote} (${previous.clicks} clics auparavant).`,
-      recommendedAction: "Vérifier en priorité l’indexation, le code HTTP, les redirections et la balise canonique avant toute modification éditoriale.",
-      evidence: {},
-    });
-  }
+  // Une page absente de la réponse Search Console (limitée / paginée) n'est pas une page à zéro clic : aucune chute déduite sans observation actuelle.
 
   // D. Sujets absents (analyse hebdomadaire) : prestations réelles et zones renseignées non couvertes.
   if (input.depth === "weekly") drafts.push(...contentGaps(input));

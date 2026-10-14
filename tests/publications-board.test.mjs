@@ -309,5 +309,5 @@ test('video audit: the current backend stores images only, so the UI never claim
 
 test('the global calendar offers the same Tableau / Calendrier switch',()=>{
  const {PublicationsNav}=component();const b=renderToStaticMarkup(jsx.jsx(PublicationsNav,{current:'board'})),c=renderToStaticMarkup(jsx.jsx(PublicationsNav,{current:'calendar'}));
- assert.match(b,/href="\/publications" aria-current="page"/);assert.match(c,/href="\/publications\/calendar" aria-current="page"/);
+ assert.match(b,/href="\/publications" aria-current="page"/);assert.match(b,/href="\/publications\/supervision"/);assert.match(c,/href="\/publications\/calendar" aria-current="page"/);
  assert.match(src('app/(cockpit)/publications/calendar/page.tsx'),/<PublicationsNav current="calendar"\/>/);});

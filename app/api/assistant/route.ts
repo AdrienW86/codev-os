@@ -9,6 +9,11 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
+import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission, resolveTopPrioritiesCommand } from "@/lib/assistant/operational-navigation";
+import { resolveClient } from "@/lib/assistant/clients";
+import { readSeoEvidence } from "@/lib/assistant/seo-evidence";
+import { topClientPriorities } from "@/lib/assistant/client-priorities";
+import { readLiveAdsPriorities } from "@/lib/assistant/live-ads-priorities";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -56,6 +61,110 @@ export async function POST(request: Request) {
       return NextResponse.json(reply, { headers });
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
+    const latest = parsed.data.messages.at(-1);
+    const priorityClient = latest?.role === "user" ? resolveTopPrioritiesCommand(latest.content) : null;
+    if (priorityClient && !simulation) {
+      const client = await resolveClient(priorityClient);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
+      // Always evaluate the live read-only Ads analysis, even when the recommendation
+      // register contains older pending entries. The two are different evidence sources.
+      const [actionsResult, adsResult, seoResult] = await Promise.allSettled([
+        topClientPriorities(client.id),
+        executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }),
+        readSeoEvidence(client.id),
+      ]);
+      const registered = actionsResult.status === "fulfilled" ? actionsResult.value : [];
+      const live = adsResult.status === "fulfilled" && adsResult.value.ok && adsResult.value.view?.type === "ads_recommendations"
+        ? await readLiveAdsPriorities(client.id, adsResult.value.view.result.runId) : [];
+      const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unrated: 5 };
+      const actions = [...live.filter((item) => item.priority !== "low"), ...registered.filter((item) => !live.some((fresh) => fresh.title.toLowerCase() === item.title.toLowerCase()))]
+        .sort((a, b) => (rank[a.priority] ?? 5) - (rank[b.priority] ?? 5)).slice(0, 3);
+      const ads = adsResult.status === "fulfilled" ? adsResult.value : null;
+      const seo = seoResult.status === "fulfilled" ? seoResult.value : null;
+      const seoStatus = seo?.lastRun
+        ? `Dernière analyse SEO enregistrée : ${seo.lastRun.status} (${seo.lastRun.at.slice(0, 10)}).`
+        : "Aucune analyse SEO récente vérifiable dans cet historique.";
+      const registryStatus = actions.length
+        ? `${actions.length} action(s) vérifiée(s), issues du diagnostic et des recommandations enregistrées.`
+        : "Aucune recommandation Ads ou SEO en attente dans le registre.";
+      const adsStatus = ads?.ok
+        ? "Diagnostic Google Ads disponible dans l’analyse détaillée."
+        : `Diagnostic Google Ads indisponible : ${ads?.text ?? "lecture impossible"}.`;
+      return NextResponse.json({
+        reply: `${client.name} : ${registryStatus} ${adsStatus} ${seoStatus}${actions.length ? "" : " Pas assez de signaux vérifiés pour proposer trois actions prioritaires."}`,
+        links: [...actions.map((x) => ({ label: x.title, href: x.href })),
+          ...(ads?.links ?? []),
+          { label: "Campagnes Google Ads", href: `/advertising?client=${client.id}` },
+          { label: "Recommandations du client", href: `/recommendations?clientId=${client.id}` }].slice(0, 8),
+        source: "rules", context: { clientId: client.id, clientName: client.name },
+        ...(ads?.view ? { view: ads.view } : {}),
+        mission: { actions, steps: [
+          { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
+          { agent: "priorities", status: actionsResult.status === "fulfilled" ? "completed" : "failed" },
+        ] },
+      }, { headers });
+    }
+    const missionClient = latest?.role === "user" ? resolveAdsSeoMission(latest.content) : null;
+    if (missionClient && !simulation) {
+      const client = await resolveClient(missionClient);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
+      const seoEvidence = await readSeoEvidence(client.id).catch(() => null);
+      const seoFacts = seoEvidence?.recommendations ?? [];
+      const seoSummary = seoEvidence?.lastRun
+        ? `Dernière exécution SEO : ${seoEvidence.lastRun.status} (${seoEvidence.lastRun.at.slice(0, 10)}). ${seoEvidence.lastRun.summary ?? ""}`
+        : "Aucune exécution SEO enregistrée.";
+      const actionPlan = seoFacts.slice(0, 8).map((r) => ({
+        title: r.title, source: "seo" as const,
+        priority: (["critical", "high", "medium", "low", "info"].includes(r.severity) ? r.severity : "unrated") as "critical" | "high" | "medium" | "low" | "info" | "unrated",
+        date: r.createdAt, href: r.href,
+      }));
+      const priorityLinks = seoFacts.slice(0, 3).map((r) => ({ label: `SEO : ${r.title}`, href: r.href }));
+      const ads = await executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
+      const seo = await proposeFromView("run_check", { check: "seo.analyze", client: client.name }, deps);
+      const links = [...priorityLinks, ...(ads?.links ?? []), ...(seo.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
+      return NextResponse.json({
+        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo.reply}`, seoSummary, seoFacts.length ? `${seoFacts.length} recommandation(s) SEO existante(s), triées par gravité. Ces résultats ne proviennent pas nécessairement de cette mission.` : "Aucune recommandation SEO en attente enregistrée."].join(" "),
+        links, source: "rules", context: { clientId: client.id, clientName: client.name },
+        ...(ads?.view ? { view: ads.view } : {}),
+        ...(seo.proposal ? { proposal: seo.proposal } : {}),
+        mission: { actions: actionPlan, steps: [
+          { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
+          { agent: "seo", status: seo.proposal ? "awaiting_approval" : "failed" },
+        ] },
+      }, { headers });
+    }
+    const campaignCommand = latest?.role === "user" ? resolveCampaignCommand(latest.content) : null;
+    if (campaignCommand && !simulation) {
+      const tool = campaignCommand.analyze ? "ads_recommendations" : "ads_campaigns";
+      const result = await executeTool(actor, tool, { client: campaignCommand.client, campaigns: [campaignCommand.campaign], status: "all" }, context);
+      if (!result.ok) return NextResponse.json({ reply: result.text, links: result.links ?? [], source: "rules" }, { headers });
+      const view = result.view;
+      const href = view?.type === "ads_campaigns" ? `/advertising?client=${view.clientId}&${new URLSearchParams(result.context?.adsQuery ?? "").toString()}` : view?.link?.href;
+      return NextResponse.json({
+        reply: result.text, links: result.links ?? [], view: result.view, context: result.context, source: "rules",
+        ...(href ? { navigation: { destination: "campaign", href } } : {}),
+      }, { headers });
+    }
+    if (latest?.role === "user" && isDirectorBriefing(latest.content) && !simulation) {
+      const names = ["get_priorities", "clients_attention", "list_pending_actions"] as const;
+      const results = await Promise.allSettled(names.map((name) => executeTool(actor, name, {}, context)));
+      const outputs = results.map((outcome, index) => ({ name: names[index], result: outcome.status === "fulfilled" ? outcome.value : null }));
+      const lines = outputs.map(({ name, result }) => result?.ok ? result.text : `${name} : indisponible`);
+      const links = outputs.flatMap(({ result }) => result?.links ?? []).slice(0, 8);
+      return NextResponse.json({ reply: lines.join(" "), links, source: "rules", mission: { steps: outputs.map(({ name, result }) => ({ agent: name, status: result?.ok ? "completed" : "failed" })) } }, { headers });
+    }
+    const clientTarget = latest?.role === "user" ? resolveClientNavigation(latest.content) : null;
+    if (clientTarget) {
+      const client = await resolveClient(clientTarget);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Voir les clients", href: "/clients" }], source: "rules" }, { headers });
+      const href = `/clients/${client.id}`;
+      return NextResponse.json({ reply: `J’ouvre la fiche de ${client.name}.`, links: [{ label: client.name, href }], navigation: { destination: "client", href }, context: { clientId: client.id, clientName: client.name }, source: "rules" }, { headers });
+    }
+    const destination = latest?.role === "user" ? resolveExplicitNavigation(latest.content) : null;
+    if (destination) return NextResponse.json({
+      reply: `J’ouvre ${destination.label}.`, links: [{ label: destination.label, href: destination.href }],
+      navigation: { destination: destination.destination, href: destination.href }, source: "rules",
+    }, { headers });
     return NextResponse.json(await respond(parsed.data.messages, deps), { headers });
   } catch {
     console.error("[assistant] Requête interrompue.");

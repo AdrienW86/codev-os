@@ -100,7 +100,7 @@ test("Google Ads anomalies: spend without conversion, CPA spike, cost spike; pau
   assert.deepEqual(plain(ads.summarize([c("1", 10, 2), c("2", 20.555, 1)])), { impressions: 2000, clicks: 100, cost: 30.56, conversions: 3, cpa: 10.19, campaigns: 2 });
 });
 
-test("SEO analysis: drops, disappeared pages, striking-distance queries, low CTR", () => {
+test("SEO analysis: drops (never inferred from missing rows), striking-distance queries, low CTR", () => {
   const row = (key, clicks, impressions = 1000, position = 3, ctr = clicks / impressions) => ({ keys: [key], clicks, impressions, ctr, position });
   const findings = opportunities.detectOpportunities({
     period: { start: "2026-09-01", end: "2026-09-28" }, previousPeriod: { start: "2026-08-04", end: "2026-08-31" },
@@ -109,8 +109,8 @@ test("SEO analysis: drops, disappeared pages, striking-distance queries, low CTR
     context: { brandTerms: [], services: [], areas: [], exclusions: [] }, depth: "daily",
   });
   const kinds = findings.map((item) => `${item.category}:${item.keyword}`).sort();
-  assert.deepEqual(plain(kinds), ["declining_page:/a", "declining_page:/gone", "low_ctr:boulangerie", "striking_distance:devis boulangerie"]);
-  assert.equal(findings.find((item) => item.keyword === "/gone").priority !== undefined, true);
+  assert.deepEqual(plain(kinds), ["declining_page:/a", "low_ctr:boulangerie", "striking_distance:devis boulangerie"]);
+  assert.equal(findings.some((item) => item.keyword === "/gone"), false, "a page missing from a truncated Search Console response is not a drop");
   assert.equal(seo.totals([]).position, null);
 });
 

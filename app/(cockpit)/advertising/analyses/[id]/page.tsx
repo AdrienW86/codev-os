@@ -18,6 +18,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
     <Panel className="space-y-4 p-5">
       <p className="font-medium">{meta.engine === "ai" ? "Analyse IA personnalisée" : meta.engine === "deterministic_fallback" ? "IA indisponible — repli déterministe explicite" : "Règles déterministes, sans IA"} · {run.status}</p>
       {typeof meta.provider === "string" && <p className="text-sm text-muted">Fournisseur / modèle : {meta.provider} / {String(meta.model)}</p>}
+      {meta.engine === "deterministic_fallback" && <p className="rounded-lg border border-warning/30 p-3 text-sm">Diagnostic technique IA : <code>{typeof meta.fallback_code === "string" ? meta.fallback_code : "non disponible pour cette analyse antérieure"}</code>. Lancez une nouvelle analyse pour actualiser ce diagnostic.</p>}
       <p>{run.summary}</p>
       <p className="whitespace-pre-wrap text-sm leading-7">{typeof meta.analysis_text === "string" ? meta.analysis_text : "Aucun résultat enregistré pour ce run."}</p>
     </Panel>

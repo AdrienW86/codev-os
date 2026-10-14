@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as zod from "zod";
 import { loadTs } from "./helpers/load-ts.mjs";
+import { publicationsModules } from "./helpers/assistant-publications.mjs";
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -17,10 +18,11 @@ const periods = loadTs("lib/integrations/google-ads/periods.ts");
 const dashboard = loadTs("lib/integrations/google-ads/dashboard.ts", { "./periods": periods });
 const scopes = loadTs("lib/integrations/google-ads/scope.ts", { "./periods": periods });
 const text = loadTs("lib/assistant/text.ts");
+const publications = publicationsModules(text);
 const adsIntents = loadTs("lib/assistant/ads-intents.ts", { "@/lib/assistant/text": text });
-const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods });
-const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents });
-const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents });
+const tools = loadTs("lib/assistant/tools.ts", { zod, "@/lib/integrations/google-ads/periods": periods, ...publications.mocks });
+const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": text, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
+const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
 const views = loadTs("lib/assistant/views.ts", { zod });
 
 const adsContext = (query = "") => ({ clientId: clientA.id, clientName: clientA.name, view: "ads_campaigns", adsQuery: query });
@@ -80,7 +82,7 @@ test("follow-ups reuse the server-validated context and return the server view a
 test("write guards: Google Ads changes and bare confirmations execute nothing, typed or dictated", async () => {
   for (const via of ["text", "voice"]) {
     const { calls, deps: d } = deps({ via, provider: { id: "openai", model: "m", complete: async () => { throw new Error("must not be called"); } } });
-    assert.match((await orchestrator.respond(user("Mets en pause la campagne Search"), d)).reply, /lecture seule/);
+    assert.match((await orchestrator.respond(user("Mets en pause la campagne Search"), d)).reply, /écritures réelles restent désactivées/);
     const confirm = plain(await orchestrator.respond([{ role: "assistant", content: "Je propose : créer la tâche." }, { role: "user", content: "oui" }], d));
     assert.match(confirm.reply, /bouton « Confirmer »/);
     assert.equal(confirm.keepProposal, true);
@@ -112,7 +114,7 @@ test("AI mode: the model picks a tool and parameters with the current context; t
   const { calls, deps: d } = deps({ provider, context: adsContext("ads_types=SEARCH") });
   const reply = plain(await orchestrator.respond(user("et sur 7 jours ?"), d));
   assert.match(systems[0], /Vue courante : campagnes Google Ads de Protection Nuisibles \(filtres : ads_types=SEARCH\)/);
-  assert.match(systems[0], /LECTURE SEULE/);
+  assert.match(systems[0], /écritures réelles restent désactivées/);
   assert.deepEqual(calls[0].slice(0, 2), ["ads_campaigns", { period: "last_7" }]);
   assert.equal(reply.view.type, "metrics"); // vue produite par l'outil serveur
   assert.equal(typeof reply.reply, "string"); // le texte du modèle reste du texte (rendu échappé par React)

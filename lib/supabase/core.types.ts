@@ -63,7 +63,11 @@ export type SiteCheckRow = { id: string; client_id: string; url: string; checked
 export type MetricSnapshotRow = { id: string; client_id: string | null; provider: string; metric_key: string; period_start: string; period_end: string; data: Json; fetched_at: string };
 export type NewsItemRow = { id: string; source_id: string; source_name: string; title: string; url: string; category: "IA" | "Développement" | "SEO" | "Ads" | "Web"; summary: string; published_at: string | null; score: number; dedupe_key: string; fetched_at: string };
 
+// Battement du planificateur (socle Publications lot 6) : une ligne par nom, service_role uniquement.
+export type SchedulerHeartbeatRow = { name: string; started_at: string; finished_at: string | null; ok: boolean; steps: Json; last_success_at: string | null; last_failure_at: string | null; updated_at: string };
+
 export type CoreTables = {
+  scheduler_heartbeats: Table<SchedulerHeartbeatRow, Pick<SchedulerHeartbeatRow, "name" | "started_at"> & Partial<Omit<SchedulerHeartbeatRow, "name" | "started_at">>, Partial<Omit<SchedulerHeartbeatRow, "name">>>;
   automations: Table<AutomationRow, AutomationInsert>;
   jobs: Table<JobRow, JobInsert, Partial<Omit<JobRow, "id" | "idempotency_key" | "created_at">>>;
   reports: Table<ReportRow & { scope?: Json }, ReportInsert>;

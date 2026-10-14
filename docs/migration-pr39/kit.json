@@ -1,0 +1,6 @@
+{"pr":39,"file":"20261030000000_publications_scheduled_flow.sql",
+ "requires":["publications_editorial_selection"],
+ "snapshot":["public.admin_notifications","public.admin_notification_preferences"],
+ "exclude":{"public.admin_notification_preferences":["categories"]},
+ "postData":[["préférences de notification : seule la catégorie publication_review est ajoutée, les autres choix sont conservés",
+  "not exists(select 1 from pg_temp._kit_snap_public_admin_notification_preferences s left join public.admin_notification_preferences p on p.user_id=s.user_id where p.user_id is null or p.categories is distinct from (case when 'publication_review'=any(s.categories) then s.categories else array_append(s.categories,'publication_review') end))"]]}

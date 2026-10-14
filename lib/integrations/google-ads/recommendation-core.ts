@@ -1,5 +1,7 @@
 import "server-only";
 import { selectAIProvider } from "@/lib/ai/providers";
+import { ProviderError } from "@/lib/providers/errors";
+import { buildAdsFindings } from "./findings";
 import { analyzeAdsWithAI, ANALYSIS_LIMITATIONS } from "./ai-analysis";
 import type { AdsInstructionSnapshot } from "./business-context";
 import type { CampaignRow } from "./dashboard";
@@ -10,10 +12,16 @@ export async function analyzeRecommendation(rows: CampaignRow[], scope: StoredAd
   const started = performance.now();
   let ai: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = null;
   let fallback = false;
+  let fallbackCode: string | null = null;
   const provider = mode === "ai" ? selectAIProvider() : null;
   if (mode === "ai") {
     try { if (!provider) throw new Error("unavailable"); ai = await analyzeAdsWithAI(provider, rows, scope, instructions); }
-    catch { fallback = true; }
+    catch (error) { fallback = true;
+      const kind = error instanceof Error ? error.name : "unknown";
+      const reason = error instanceof Error && /Sortie IA structurée absente/.test(error.message) ? "tool_response_missing" : error instanceof Error && kind === "ZodError" ? "structured_validation" : kind === "ProviderError" ? "provider_failure" : kind === "TimeoutError" ? "timeout" : "analysis_failure";
+      fallbackCode = error instanceof ProviderError ? `provider_${error.kind}${error.code ? `_${error.code}` : ""}` : reason;
+      console.error("[google-ads-ai] fallback", { provider: provider?.id ?? "none", model: provider?.model ?? "none", reason: fallbackCode });
+    }
   }
   const signals = rows.filter(row => !row.localServices && row.metrics.cost !== null && row.metrics.cost > 0 && row.metrics.conversions === 0);
   const money = new Intl.NumberFormat("fr-FR", { style: "currency", currency: scope.currency });
@@ -23,7 +31,9 @@ export async function analyzeRecommendation(rows: CampaignRow[], scope: StoredAd
     const group = rows.filter(row => row.localServices === localServices);
     return !group.length ? [] : [localServices ? "Local Services — faits" : "Search et autres campagnes hors Local Services — faits", ...group.map(row => `${row.name} (ID ${row.id}) : dépenses ${row.metrics.cost === null ? "indisponibles" : money.format(row.metrics.cost)}, clics ${number(row.metrics.clicks)}, impressions ${number(row.metrics.impressions)}, conversions ${number(row.metrics.conversions)}. Mesures distinctes des leads Local Services.`)];
   });
-  const personalized = ai ? `${instructions.business ? "" : "Contexte commercial non renseigné : recommandations limitées aux instructions disponibles.\n"}${ai.text}` : null;
-  const text = personalized ?? [fallback ? "IA indisponible : repli déterministe explicite, sans personnalisation." : "Analyse déterministe, sans IA ni utilisation des instructions client.", `Période : ${scope.start} → ${scope.end} (${scope.timezone}).`, ...facts, "Recommandations", ...deterministic, !signals.length ? "Aucun signal de dépenses sans conversion hors Local Services." : "", "Local Services : aucun verdict fondé sur les conversions Search.", ...ANALYSIS_LIMITATIONS].filter(Boolean).join("\n");
-  return { text, engine: ai ? "ai" : fallback ? "deterministic_fallback" : "deterministic", ai, aiMs: Math.round(performance.now() - started), provider: provider?.id ?? null, model: provider?.model ?? null };
+  const findings = buildAdsFindings(rows, scope);
+  const findingsText = findings.length ? ["", "Contrôles prioritaires fondés sur les données", ...findings.slice(0, 12).map(item => `• ${item.priority === "high" ? "Haute" : item.priority === "medium" ? "Moyenne" : "Information"} · ${item.title} : ${item.detail} Action proposée : ${item.nextStep}`)].join("\n") : "\nAucun contrôle prioritaire supplémentaire détecté sur ces métriques.";
+  const personalized = ai ? `${instructions.business ? "" : "Contexte commercial non renseigné : recommandations limitées aux instructions disponibles.\n"}${ai.text}${findingsText}` : null;
+  const text = personalized ?? [fallback ? "IA indisponible : repli déterministe explicite, sans personnalisation." : "Analyse déterministe, sans IA ni utilisation des instructions client.", `Période : ${scope.start} → ${scope.end} (${scope.timezone}).`, ...facts, "Recommandations", ...deterministic, !signals.length ? "Aucun signal de dépenses sans conversion hors Local Services." : "", "Local Services : aucun verdict fondé sur les conversions Search.", findingsText, ...ANALYSIS_LIMITATIONS].filter(Boolean).join("\n");
+  return { text, engine: ai ? "ai" : fallback ? "deterministic_fallback" : "deterministic", fallbackCode, ai, aiMs: Math.round(performance.now() - started), provider: provider?.id ?? null, model: provider?.model ?? null };
 }

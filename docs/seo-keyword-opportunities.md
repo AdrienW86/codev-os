@@ -17,7 +17,7 @@ Période analysée : 28 jours se terminant 3 jours avant aujourd’hui (données
 | --- | --- | --- |
 | `striking_distance` | position 4 à 10, ≥ 30 impressions, intention pertinente | renforcer la page |
 | `page_two` | position 11 à 20, ≥ 60 impressions, intérêt commercial ou dynamique favorable | enrichir le contenu |
-| `declining_page` | clics −30 % (≥ 20 auparavant) ou position −3 places ; page disparue | diagnostiquer avant de modifier |
+| `declining_page` | clics −30 % (≥ 20 auparavant) ou position −3 places, uniquement sur une page observée dans la période (une page absente d’une réponse Search Console limitée n’est pas comptée comme une chute) | diagnostiquer avant de modifier |
 | `low_ctr` | position ≤ 10, ≥ 150 impressions, CTR < 50 % du CTR de référence pour la position et l’intention | title et meta description |
 | `emerging_query` | requête nouvelle (≥ 20 impressions) ou impressions ×2, hors marque | vérifier la couverture, suivre |
 | `cannibalization` | ≥ 2 pages avec ≥ 15 % des impressions chacune ; **vérifier l’intention avant toute consolidation** | consolider ou différencier |
@@ -28,7 +28,7 @@ Intention estimée par règles lisibles (marque, zone renseignée, termes transa
 
 Analyse quotidienne : Search Console seulement. Analyse hebdomadaire (et lancement manuel) : en plus, lecture des pages du site dans GitHub (title, H1, description), sujets manquants, PageSpeed, pages vues Vercel Analytics en contexte.
 
-## Données (migration `20261023000000_seo_keyword_opportunities.sql`, additive)
+## Données (migration `20261109000000_seo_keyword_opportunities.sql`, additive)
 
 - `seo_opportunity_analyses` : historique des analyses ; une seule analyse planifiée par client, profondeur et jour.
 - `seo_keyword_opportunities` : une ligne par client et empreinte (dédupliquée d’une analyse à l’autre), statuts `detected → to_review → approved → in_progress → done`, ou `dismissed` (raison obligatoire). Un déclencheur impose les transitions. Elle **référence** la recommandation existante (`recommendation_id`).
@@ -36,6 +36,8 @@ Analyse quotidienne : Search Console seulement. Analyse hebdomadaire (et lanceme
 - RLS active, aucun droit pour `anon` / `authenticated`, pas de suppression par le rôle service.
 
 Tests : `supabase/tests/seo-opportunities.sql` (rejoué sur le schéma de production par `tests/seo-opportunities-db.test.mjs`).
+
+Avant tout déploiement SQL : suivre [supabase-migration-reconciliation.md](supabase-migration-reconciliation.md). Les versions distantes ne correspondent pas toujours aux préfixes des fichiers ; vérifier l'historique et rejouer la migration sur une copie isolée avant toute application.
 
 ## Recommandations et cycle de vie
 

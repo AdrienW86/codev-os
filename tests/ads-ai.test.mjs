@@ -12,7 +12,7 @@ const metrics = { cost: 80, conversions: 0, clicks: 10, impressions: 200, ctr: .
 const rows = [{ id: "123", name: "Search", type: "SEARCH", status: "ENABLED", metrics, hasActivity: true, localServices: false, budget: { amount: 10, shared: false, period: "DAILY" }, subType: null, previous: null }, { id: "456", name: "LSA", type: "LOCAL_SERVICES", status: "ENABLED", metrics: { ...metrics, conversions: null }, hasActivity: true, localServices: true, budget: { amount: null, shared: null, period: null }, subType: null, previous: null }];
 const scope = { start: "2026-09-01", end: "2026-09-07", days: 7, status: "enabled", types: [], campaignIds: ["123", "456"], accountId: "1234567890", currency: "EUR", timezone: "Europe/Paris", campaignNames: { 123: "Search", 456: "LSA" } };
 const snapshot = { global: "Respecter les objectifs.", client: "Prioriser la zone client.", business: { ...business.EMPTY_ADS_CONTEXT, objectives: "Prospects utiles", areas: "Zone test", advertisingMonthlyBudget: 500 } };
-const valid = () => ({ factIds: ["campaign:123:cost"], hypotheses: [{ kind: "tracking_incomplete", campaignIds: ["123"], explanation: "Le suivi pourrait être incomplet." }], recommendations: [{ action: "verify_tracking", campaignIds: ["123"], evidenceIds: ["campaign:123:cost", "campaign:123:conversions"], rationale: "Vérifier le suivi avant de conclure sur la qualité commerciale." }] });
+const valid = () => ({ factIds: ["campaign:123:cost"], hypotheses: [{ kind: "tracking_incomplete", campaignIds: ["123"], explanation: "Le suivi pourrait être incomplet." }], recommendations: [{ action: "verify_tracking", priority: "high", campaignIds: ["123"], evidenceIds: ["campaign:123:cost", "campaign:123:conversions"], rationale: "Vérifier le suivi avant de conclure sur la qualité commerciale." }] });
 
 test("AI output only cites provided facts and campaign scope, and never merges Search with Local Services", () => {
   const evidence = ai.analysisEvidence(rows, scope);
@@ -34,6 +34,7 @@ test("one bounded AI call uses existing provider, instructions and a non-executa
   const result = await ai.analyzeAdsWithAI(provider, rows, scope, snapshot);
   assert.equal(calls, 1);
   assert.equal(request.tools.length, 1); assert.equal(request.tools[0].strict, true);
+  assert.equal(request.toolChoice, "required", "the model must return the structured analysis tool");
   assert.ok(request.signal instanceof AbortSignal);
   const data = JSON.parse(request.messages[0].content);
   assert.equal(data.instructions.business.advertisingMonthlyBudget, 500);
@@ -68,8 +69,9 @@ function runSetup({ failure = false, unavailable = false, simulation = false, mo
     "./tracking-store": { readCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "./tracking": { loadCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai,
-    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai }, { performance }),
+    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai, "./findings": { buildAdsFindings: () => [] }, "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, context: snapshot.business }) },
+    "./findings": { buildAdsFindings: () => [] },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => { released++; } }), saveAdsAnalysisMetadata: async (_id, _client, _agent, value) => { metadata = value; } },
   }, { performance });
   return { run: () => service.runGoogleAdsAnalysis(agentId, clientId, { scope: { start: scope.start, end: scope.end, status: scope.status, types: scope.types, campaignIds: scope.campaignIds }, mode }), get: () => ({ metadata, recommendations, released, calls }) };

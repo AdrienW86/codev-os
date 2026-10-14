@@ -1,0 +1,5 @@
+{"pr":41,"file":"20261101000000_whatsapp_export_import.sql",
+ "requires":["media_library_intelligence","publications_supervision"],
+ "snapshot":["public.whatsapp_assets"],
+ "post":[["stockage : aucune politique sur storage.objects ne mentionne le bucket whatsapp-exports (accès serveur uniquement)",
+  "not exists(select 1 from pg_policies where schemaname='storage' and (coalesce(qual,'')||coalesce(with_check,'')) like '%whatsapp-exports%')"]]}

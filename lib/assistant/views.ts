@@ -22,9 +22,14 @@ export const isSafeHref = (href: unknown): href is string => typeof href === "st
 export const contextSchema = z.object({
   clientId: z.string().uuid().optional(),
   clientName: z.string().trim().min(1).max(120).optional(),
-  view: z.enum(["ads_campaigns"]).optional(),
+  view: z.enum(["ads_campaigns", "publications_list", "publication_photos"]).optional(),
   /** Filtres du tableau de bord sérialisés (même format que l'URL de l'onglet Campagnes). */
   adsQuery: z.string().max(2000).optional(),
+  // Publications (phase 6) : publication ouverte, photo affichée et éléments numérotés de la dernière liste
+  // (« la 2 », « la photo 3 »). De simples identifiants, revérifiés en base avant toute lecture ou proposition.
+  publicationId: z.string().uuid().optional(),
+  assetId: z.string().uuid().optional(),
+  items: z.array(z.string().uuid()).max(10).optional(),
 }).strict();
 export type AssistantContext = z.infer<typeof contextSchema>;
 

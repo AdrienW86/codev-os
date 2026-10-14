@@ -4,20 +4,28 @@
 // contexte (client, vue, filtres), dernière vue structurée, proposition en attente, dictée.
 // Toutes les données viennent du serveur (/api/assistant) ; le navigateur ne fait que les afficher.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { speak, stopSpeaking, useVoice } from "@/components/assistant/use-voice";
 import { postAssistant } from "@/lib/assistant/client-api";
 import { writeFilters, type DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import type { AssistantContext, AssistantView, ViewLink } from "@/lib/assistant/views";
 
 export type Proposal = { tool: string; input: Record<string, unknown>; summary: string; heard?: string };
-export type Reply = { keepProposal?: boolean; reply?: string; links?: ViewLink[]; proposal?: Proposal; view?: AssistantView; context?: AssistantContext; degraded?: boolean; degradedReason?: string; error?: string };
+export type DirectorMission = { actions?: { title: string; source: "seo" | "ads"; priority: "critical" | "high" | "medium" | "low" | "info" | "unrated"; date?: string; href: string; origin?: "diagnostic"; detail?: string; evidence?: string[] }[]; steps: { agent: string; status: "completed" | "failed" | "awaiting_approval" | "launched" }[] };
+export type Reply = { mission?: DirectorMission; navigation?: { destination: string; href: string }; keepProposal?: boolean; reply?: string; links?: ViewLink[]; proposal?: Proposal; view?: AssistantView; context?: AssistantContext; degraded?: boolean; degradedReason?: string; error?: string };
 export type Turn = { role: "user" | "assistant"; content: string; links?: ViewLink[]; via?: "voice" };
 
 const failure = "L’assistant est momentanément indisponible. Réessayez dans un instant.";
 
-export function useAssistant() {
+/**
+ * initialContext : contexte de départ facultatif, par exemple la publication ouverte (`{ publicationId }`) pour
+ * « Reprogramme cette publication… » depuis une fiche ou le hub de supervision. Simple donnée, revalidée par le serveur.
+ */
+export function useAssistant(initialContext: AssistantContext = {}) {
+  const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [mission, setMission] = useState<DirectorMission | null>(null);
   const [pending, setPending] = useState(false);
   /** Une nouvelle demande remplacera la vue : l'ancien résultat est masqué pendant ce temps (pas pour une proposition). */
   const [refreshing, setRefreshing] = useState(false);
@@ -36,7 +44,7 @@ export function useAssistant() {
   const [speaking, setSpeaking] = useState(false);
   const request = useRef<AbortController | null>(null);
   const playback = useRef<AbortController | null>(null);
-  const context = useRef<AssistantContext>({});
+  const context = useRef<AssistantContext>(initialContext);
   /** Élément qui a déclenché la demande (hors panneau) : le focus y revient à la fermeture, même s'il a été désactivé entre-temps. */
   const trigger = useRef<HTMLElement | null>(null);
   const rememberTrigger = () => {
@@ -62,10 +70,13 @@ export function useAssistant() {
     const text = data.reply ?? failure;
     setTurns((current) => [...current, { role: "assistant" as const, content: text, links: data.links }].slice(-12));
     setProposal(data.proposal ?? null);
+    setMission(data.mission ?? null);
     if (data.context) context.current = data.context;
-    if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(true); }
+    // Destination calculée côté serveur via une liste de routes autorisées.
+    if (data.navigation?.href) router.push(data.navigation.href);
+    if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(!data.mission); }
     setNotice(data.degraded ? `IA indisponible${data.degradedReason ? ` (${data.degradedReason})` : ""} : réponse en mode simplifié.` : "");
-  }, []);
+  }, [router]);
 
   const readReply = useCallback(async (text: string, signal?: AbortSignal) => {
     if (!voiceOutputRef.current) return true;
@@ -187,7 +198,7 @@ export function useAssistant() {
   }, [stopVoice]);
 
   return {
-    turns, proposal, pending, refreshing, latency, latencyMs, synthesisMs, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,
+    turns, proposal, mission, pending, refreshing, latency, latencyMs, synthesisMs, notice, setNotice, view, viewVersion, open, setOpen, failed, voice, voiceOutput,
     speaking, stopVoice, toggleContinuous, trigger, rememberTrigger, send, retry, confirm, cancelProposal, proposeFromView, syncAdsFilters, toggleVoiceOutput,
   };
 }

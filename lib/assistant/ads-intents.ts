@@ -83,7 +83,7 @@ export function isAdsMutationRequest(text: string) {
   return ads && verb && notTask && !/^(et )?(montre|affiche|voir|quelles?)\b/.test(value) && !/\b(en pause|actives?)\s*\??$/.test(value);
 }
 
-export const ADS_READ_ONLY_REPLY = "Les modifications Google Ads (pause, budget, enchères, campagnes) ne sont pas disponibles : l’intégration est en lecture seule. Je peux afficher les campagnes, changer la période, filtrer ou comparer, préparer un rapport ou lancer l’analyse.";
+export const ADS_READ_ONLY_REPLY = "Je peux analyser les campagnes et proposer des recommandations. Pour préparer certaines modifications (pause, réactivation, mots-clés), ouvrez « Modifications » dans Google Ads : /advertising/manage. Les écritures réelles restent désactivées par défaut et les budgets/enchères ne sont pas modifiables depuis cette interface.";
 
 /** « oui », « confirme », « vas-y »… : jamais une confirmation d'écriture (bouton obligatoire). */
 export function isBareConfirmation(text: string) {

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { processImageBatch } from "@/lib/whatsapp/service";
+import { processMediaBatch } from "@/lib/whatsapp/service";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export async function POST(request: Request) {
@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const actual = Buffer.from(request.headers.get("authorization") ?? "");
   const expected = Buffer.from(`Bearer ${secret ?? ""}`);
   if (!secret || expected.length !== actual.length || !timingSafeEqual(expected, actual)) return new Response("Refusé", { status: 401 });
-  try { return Response.json(await processImageBatch({ kind: "system", worker: "whatsapp-import" }), { headers: { "Cache-Control": "no-store" } }); }
+  try { return Response.json(await processMediaBatch({ kind: "system", worker: "whatsapp-import" }), { headers: { "Cache-Control": "no-store" } }); }
   catch { return Response.json({ status: "unavailable" }, { status: 503 }); }
 }
 

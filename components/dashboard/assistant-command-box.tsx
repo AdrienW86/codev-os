@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useAssistant, type AssistantSession, type Turn } from "@/components/assistant/use-assistant";
 import { ResultDialog } from "@/components/assistant/result-dialog";
+import { MissionSummary } from "@/components/assistant/mission-summary";
 import { ProposalCard, ResultView, SafeLink } from "@/components/assistant/result-view";
 
 export type AssistantSuggestion = { label: string; href: string; icon: IconName };
@@ -56,6 +57,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
           Ouvrir le résultat : {view.title}
         </button>
       )}
+      {session.mission && !open && <MissionSummary mission={session.mission} />}
       {!open && proposalCard && <div className="mb-4">{proposalCard}</div>}
 
       <Composer id={inputId} describedBy={statusId} session={session} placeholder="Ex. « Campagnes Google Ads de Protection Nuisibles sur 7 jours »" />
@@ -86,6 +88,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
               <p id={`${statusId}-panel`} role="status" aria-live="polite" className="min-h-4 text-xs text-muted">{status}</p>
             </div>
           }>
+          {session.mission && <MissionSummary mission={session.mission} />}
           {lastReply && <p aria-live="polite" className="mb-4 rounded-xl bg-surface-raised/60 px-3 py-2 text-sm leading-6">{lastReply.content}</p>}
           {session.failed && (
             <div role="alert" className="mb-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
@@ -123,7 +126,6 @@ function TurnItem({ turn }: { turn: Turn }) {
 function Composer({ id, describedBy, session, placeholder, compact = false, label = "Votre demande à l’assistant" }: { id: string; describedBy: string; session: AssistantSession; placeholder: string; compact?: boolean; label?: string }) {
   const [value, setValue] = useState("");
   const { pending, voice, voiceOutput } = session;
-  const recording = voice.state === "recording";
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!value.trim() || pending) return;
@@ -138,9 +140,9 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
         <input id={id} name="prompt" type="text" autoComplete="off" maxLength={2000} value={value} onChange={(event) => setValue(event.target.value)} disabled={pending} placeholder={placeholder}
           className="min-h-12 w-full min-w-0 flex-1 bg-transparent px-3 text-base text-foreground placeholder:text-muted/70 focus:outline-none sm:text-sm" />
         <div className={compact ? "flex items-center gap-2" : "grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 sm:flex"}>
-          <button type="button" onClick={voice.toggle} disabled={voice.continuous || !["idle", "recording"].includes(voice.state) || pending || session.speaking} aria-pressed={recording}
-            aria-label={recording ? "Arrêter la dictée et envoyer" : "Dicter avec le micro"}
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${recording ? "animate-pulse border-danger/60 bg-danger/10 text-danger" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
+          <button type="button" onClick={session.toggleContinuous} disabled={pending || session.speaking || (!voice.continuous && voice.state !== "idle")} aria-pressed={voice.continuous}
+            aria-label={voice.continuous ? "Arrêter la conversation vocale" : "Démarrer la conversation vocale continue"}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${voice.continuous ? "animate-pulse border-danger/60 bg-danger/10 text-danger" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
             <Icon name="mic" />
           </button>
           <button type="submit" disabled={pending || !value.trim()} aria-label={compact ? "Envoyer" : undefined} className="flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent-strong px-3 text-sm font-semibold whitespace-nowrap text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:px-4">
@@ -151,7 +153,7 @@ function Composer({ id, describedBy, session, placeholder, compact = false, labe
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <button type="button" onClick={session.toggleVoiceOutput} aria-pressed={voiceOutput} className="min-h-11 rounded-lg border border-border px-3">Réponses vocales : {voiceOutput ? "oui" : "non"}</button>
-        <button type="button" onClick={session.toggleContinuous} disabled={pending && !voice.continuous} aria-pressed={voice.continuous} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-60">{voice.continuous ? "Arrêter la voix continue" : "Activer la voix continue"}</button>
+        <button type="button" onClick={session.toggleContinuous} disabled={pending && !voice.continuous} aria-pressed={voice.continuous} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-60">{voice.continuous ? "Conversation vocale active" : "Mode conversation vocale"}</button>
         {(voice.state !== "idle" || session.speaking) && <button type="button" onClick={session.stopVoice} className="min-h-11 rounded-lg border border-danger/50 px-3 text-danger">Arrêter la voix</button>}
         <span className="text-muted">Écoute au premier plan uniquement. Toute modification exige le bouton Confirmer.</span>
       </div>

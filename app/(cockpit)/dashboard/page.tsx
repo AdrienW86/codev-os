@@ -2,7 +2,6 @@ import { requireAdmin } from "@/lib/require-admin";
 import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AssistantCommandBox } from "@/components/dashboard/assistant-command-box";
 import { AttentionCard } from "@/components/dashboard/attention-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { TechNews } from "@/components/dashboard/tech-news";
@@ -91,9 +90,7 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Bonjour {name}</h1>
         <p className="mt-3 text-base text-muted">Que voulez-vous faire aujourd’hui ?</p>
       </div>
-      <div className="mx-auto mt-8 max-w-3xl text-left">
-        <AssistantCommandBox />
-      </div>
+      <p className="mx-auto mt-8 max-w-3xl text-center text-sm text-muted">Le directeur IA reste accessible en bas à droite sur chaque écran.</p>
 
       <section className="mt-14" aria-labelledby="attention-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -106,6 +103,18 @@ export default async function DashboardPage() {
           </div>
         ) : <p className="text-sm text-muted">Rien à traiter pour le moment.</p>}
       </section>
+
+      {/* Raccourci : piloter les publications depuis le téléphone (validations, erreurs, comptes, photos, agent). */}
+      {publications !== null && (
+        <Link href={publicationsToReview.length ? "/publications/supervision?view=review" : "/publications/supervision"} data-supervision-shortcut="dashboard"
+          className="mt-6 flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card hover:border-accent/40">
+          <span className="min-w-0">
+            <span className="block font-medium">Supervision des publications</span>
+            <span className="block text-sm text-muted">{publicationsToReview.length ? countLabel(publicationsToReview.length, "publication à valider", "publications à valider") : "Validations, erreurs, comptes, photos et agent"}</span>
+          </span>
+          <span aria-hidden="true" className="text-accent">→</span>
+        </Link>
+      )}
 
       {runs.length > 0 && (
         <div className="mt-12">

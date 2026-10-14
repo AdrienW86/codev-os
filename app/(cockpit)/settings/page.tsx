@@ -84,7 +84,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
 
       {tab === "system" && (scenario
         ? <EmptyState icon="dashboard" title="Observabilité indisponible en simulation." description="Cette vue lit uniquement les données réelles (jobs, exécutions, erreurs). Quittez la simulation pour la consulter." />
-        : <Observability health={health.data} unavailable={health.unavailable} />)}
+        : <><p className="mb-4 text-sm"><Link href="/settings/diagnostic" className="text-accent hover:underline">Ouvrir le diagnostic technique</Link> <span className="text-muted">· planificateur, Agent Publications, import WhatsApp, connexions, diffusions et variables.</span></p>
+          <Observability health={health.data} unavailable={health.unavailable} /></>)}
 
       {tab === "simulation" && (
         <Panel className="max-w-3xl p-6">

@@ -40,7 +40,7 @@ test("SEO opportunities migration replays on the production schema and passes ev
 });
 
 test("SEO opportunities migration is additive: no drop, no alter of an existing object", () => {
-  const sql = read("supabase/migrations/20261023000000_seo_keyword_opportunities.sql").replace(/--.*$/gm, "");
+  const sql = read("supabase/migrations/20261109000000_seo_keyword_opportunities.sql").replace(/--.*$/gm, "");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column|constraint|function|index|trigger|schema)\b/i);
   assert.doesNotMatch(sql, /\balter\s+table\s+public\.(?!seo_)/i);
   assert.doesNotMatch(sql, /\b(delete\s+from|truncate|update)\s+public\./i);

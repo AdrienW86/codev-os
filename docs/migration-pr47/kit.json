@@ -1,0 +1,3 @@
+{"pr":47,"file":"20261106000000_publications_robustness.sql",
+ "requires":["media_library_tools"],
+ "snapshot":["public.publication_jobs"]}

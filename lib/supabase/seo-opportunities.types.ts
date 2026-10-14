@@ -1,4 +1,4 @@
-// Types des tables de l'Agent SEO V2 (migration 20261023000000_seo_keyword_opportunities.sql).
+// Types des tables de l'Agent SEO V2 (migration 20261109000000_seo_keyword_opportunities.sql).
 import type { Json } from "@/lib/supabase/database.types";
 import type { ActionKind, DataSource, Level, OpportunityCategory, SearchIntent, TargetStatus } from "@/lib/seo/opportunities";
 

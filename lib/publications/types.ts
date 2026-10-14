@@ -23,6 +23,9 @@ export type PublicationSettings = Updated & {
 export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
+  auto_prepare_enabled: boolean; prepare_lead_days: number; media_reuse_allowed: boolean; media_reuse_after_days: number; require_human_approval: boolean;
+  // Socle lot 6 : rotation de la préparation automatique (écrit par le planificateur uniquement).
+  last_auto_prepared_at: string | null;
 };
 // Legacy rows (connection_id null) keep the historical statuses and credential model; connection-backed rows
 // (Lot 4.3 P9) use active | unavailable | revoked | disabled and never carry a credential.
@@ -36,7 +39,7 @@ export type Publication = Updated & {
   creation_origin: "manual" | "system" | "agent";
   target_date: string | null;
   project_id: string | null;
-  client_id: string; editorial_week: string; slot: 1 | 2; subject: string;
+  client_id: string; editorial_week: string; slot: 1 | 2 | null; subject: string;
   status: PublicationStatus; current_revision_id: string | null;
   // Lot 4.3 P4-a bindings (NULL on every legacy multi-variant publication; set once, never changed).
   editorial_group_id?: string | null; occurrence_id?: string | null; platform?: PublicationPlatform | null;
@@ -116,12 +119,16 @@ export type PublicationChannelOccurrenceRow = Updated & {
 // Agent v2 run (Lot 4.3 P7) and its media step (P8). Written only through the publication_agent_v2_* RPCs.
 export type PublicationAgentV2RunRow = {
   id: string; agent_run_id: string; agent_id: string; client_id: string; project_id: string; status: "processing" | "completed" | "failed";
-  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; editorial_group_id: string | null; publication_ids: string[];
+  occurrence_ids: string[]; considered_count: number; selected_media_id: string | null; selected_library_asset_id: string | null; editorial_group_id: string | null; publication_ids: string[];
   reserved_cost_eur: number; estimated_cost_eur: number; input_tokens: number; output_tokens: number; model: string; error_code: string | null;
   created_at: string; completed_at: string | null; lease_until: string;
   media_status: "none" | "pending" | "attached" | "needs_media"; media_error_code: string | null; media_attempts: number;
   media_lease_until: string | null; media_attached_at: string | null;
+  // PR #42 : justification éditoriale (posée une fois pendant la préparation, immuable ensuite).
+  editorial_justification?: Json | null;
 };
+// Socle lot 6 : préparation planifiée dont l'étape média ou la soumission reste à reprendre (sans IA).
+export type PublicationScheduledRunRow = { run_id: string; client_id: string; state: "open" | "done" | "gave_up"; created_at: string; updated_at: string };
 // Lot 4.3 P11-a: encrypted credential store (server role only; ciphertext as PostgreSQL hex bytea) and OAuth states.
 export type PublicationCredentialSecretRow = { reference: string; provider: "meta" | "google_business_profile"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
 export type PublicationOAuthStateRow = { id: string; state_hash: string; provider: "meta" | "google_business_profile"; client_id: string; project_id: string | null; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
@@ -143,7 +150,8 @@ export type PublicationTables = {
   publication_calendar_slots: Table<CalendarSlot, "cadence_id" | "client_id" | "project_id" | "editorial_week" | "slot" | "local_date" | "local_time" | "timezone" | "scheduled_for" | "platforms", "publication_id">;
   publication_planning_jobs: Table<PlanningJob, "type" | "client_id" | "project_id" | "idempotency_key", "status" | "attempts" | "run_after" | "last_error">;
   publication_settings: Table<PublicationSettings, never, "generation_enabled" | "automation_enabled" | "publishing_enabled" | "emergency_stop">;
-  publication_client_settings: Table<PublicationClientSettings, "client_id", "timezone" | "generation_enabled" | "publishing_enabled" | "editorial_brief" | "weekly_slots">;
+  publication_client_settings: Table<PublicationClientSettings, "client_id", "timezone" | "generation_enabled" | "publishing_enabled" | "editorial_brief" | "weekly_slots" | "last_auto_prepared_at">;
+  publication_scheduled_runs: Table<PublicationScheduledRunRow, "run_id" | "client_id", "state" | "updated_at">;
   publication_accounts: Table<PublicationAccount, "client_id" | "platform", "external_account_id" | "status" | "enabled" | "credential_reference" | "metadata">;
   publications: Table<Publication, "client_id" | "editorial_week" | "slot" | "subject", "status" | "current_revision_id", [{
     foreignKeyName: "publications_client_id_fkey"; columns: ["client_id"]; isOneToOne: false;
@@ -166,6 +174,7 @@ export type PublicationFunctions = {
   publication_agent_v2_media_claim:{Args:{p_run_id:string;p_actor_id:string};Returns:Json};
   publication_agent_v2_media_attach:{Args:{p_run_id:string;p_attempt:number;p_original_hash:string;p_assets:Json;p_actor_id:string};Returns:Json};
   publication_agent_v2_media_fail:{Args:{p_run_id:string;p_attempt:number;p_error_code:string;p_actor_id:string};Returns:Json};
+  publication_editorial_justification_record:{Args:{p_run_id:string;p_justification:Json;p_actor_id:string};Returns:Json};
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
@@ -178,7 +187,10 @@ export type PublicationFunctions = {
   publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
   publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
+  publication_reschedule:{Args:{p_publication_id:string;p_expected_revision_id:string;p_occurrence_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};
+  publication_job_claim_on_time:{Args:{p_worker_id:string;p_lease_seconds:number;p_max_late_seconds:number};Returns:Json};
+  publication_scheduled_delivery_candidates:{Args:{p_late_before:string;p_limit:number};Returns:{publication_id:string;revision_id:string;scheduled_for:string;state:"ready"|"missed"|"photo_unpublishable"}[]};
   publication_job_context:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:Json};
   publication_job_dispatch:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number};Returns:boolean};
   publication_job_complete:{Args:{p_job_id:string;p_worker_id:string;p_attempt:number;p_outcome:Json};Returns:Json};
@@ -201,6 +213,10 @@ export type PublicationFunctions = {
   publication_save_cadence: {Args:{p_project_id:string;p_config:Json;p_actor_id:string};Returns:string};
   publication_ensure_calendar: {Args:{p_project_id:string;p_start_week:string;p_placeholders:boolean;p_actor_id:string};Returns:Json};
   publication_save_draft: {Args:{p_publication_id:string|null;p_expected_revision_id:string|null;p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_target_date:string|null;p_week:string|null;p_slot:number|null;p_variants:Json;p_actor_id:string};Returns:string};
+  publication_client_settings_save: {Args:{p_client_id:string;p_settings:Json;p_actor_id:string};Returns:string};
+  publication_client_project_ensure: {Args:{p_client_id:string;p_actor_id:string};Returns:Json};
+  publication_schedule_draft: {Args:{p_publication_id:string;p_expected_revision_id:string;p_assignments:Json;p_actor_id:string};Returns:Json};
+  publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_review_manual: {Args:{p_publication_id:string;p_revision_id:string;p_decision:string;p_reason:string|null;p_actor_id:string};Returns:undefined};
   publication_register_image: {Args:{p_publication_id:string;p_revision_id:string;p_asset_id:string;p_path:string;p_hash:string;p_mime:string;p_provenance:string;p_actor_id:string};Returns:undefined};

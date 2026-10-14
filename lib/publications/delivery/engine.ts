@@ -67,10 +67,17 @@ export async function executeClaimedPublicationJob(claim:Claim,workerId:string,d
  return {state:'completed',deliveryStatus:String((done.data as {delivery_status?:unknown}).delivery_status??''),outcome:outcome.result};
 }
 // Claims and executes at most one due job. Local / test use only (explicit dependencies, no scheduler).
-export async function runOnePublicationJob(workerId:string,deps:EngineDeps&{leaseSeconds?:number}):Promise<ExecutionResult>{
+// maxLateSeconds (scheduler only, socle lot 6): jobs due for longer are blocked (late_schedule) instead of sent.
+// platforms (scheduler only, #47, with maxLateSeconds): the job at the head of the queue is claimed only if its platform
+// is listed (send fits in the time left in the tick); otherwise nothing is claimed and it stays first for the next tick.
+export async function runOnePublicationJob(workerId:string,deps:EngineDeps&{leaseSeconds?:number;maxLateSeconds?:number;platforms?:readonly PublicationPlatform[]}):Promise<ExecutionResult>{
  if(!/^[a-zA-Z0-9_.:-]{1,100}$/.test(workerId))throw Error('Invalid worker id');
  const lease=Math.min(Math.max(deps.leaseSeconds??120,30),900);
- const claimed=await settle(()=>deps.db.rpc('publication_job_claim',{p_worker_id:workerId,p_lease_seconds:lease}),{data:null,error:{code:'network'}});
+ const late=deps.maxLateSeconds===undefined?null:Math.min(Math.max(Math.trunc(deps.maxLateSeconds),60),86400);
+ if(deps.platforms&&!deps.platforms.length)return {state:'idle'};
+ const claimed=await settle(()=>late===null?deps.db.rpc('publication_job_claim',{p_worker_id:workerId,p_lease_seconds:lease})
+  :deps.platforms?deps.db.rpc('publication_job_claim_scheduled',{p_worker_id:workerId,p_lease_seconds:lease,p_max_late_seconds:late,p_platforms:[...deps.platforms]})
+  :deps.db.rpc('publication_job_claim_on_time',{p_worker_id:workerId,p_lease_seconds:lease,p_max_late_seconds:late}),{data:null,error:{code:'network'}});
  if(claimed.error){log('claim');return {state:'stale'};}
  if(!claimed.data)return {state:'idle'};
  return executeClaimedPublicationJob(claimed.data as Claim,workerId,deps);

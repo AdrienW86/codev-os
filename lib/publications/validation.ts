@@ -3,6 +3,20 @@ import { publicationPlatforms, type ManualVariantInput, type ManualPublicationIn
 export function isPublicationUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
+// Dossier Drive des Publications : identifiant seul ou lien collé depuis Drive (…/drive/folders/<id>, …/drive/u/0/folders/<id>,
+// …/open?id=<id>). L'identifiant extrait passe la même validation que l'identifiant saisi ; tout autre hôte est refusé.
+const DRIVE_FOLDER_ID = /^[a-zA-Z0-9_-]{10,200}$/;
+export function driveFolderIdFrom(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw || raw.length > 500) return null;
+  if (DRIVE_FOLDER_ID.test(raw)) return raw;
+  let url: URL;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.protocol !== "https:" || url.hostname !== "drive.google.com" || url.username || url.password || url.port) return null;
+  const folder = url.pathname.match(/^\/drive\/(?:u\/\d{1,2}\/)?folders\/([^/]+)\/?$/)?.[1] ?? (url.pathname === "/open" ? url.searchParams.get("id") : null);
+  return folder && DRIVE_FOLDER_ID.test(folder) ? folder : null;
+}
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

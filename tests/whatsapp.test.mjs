@@ -16,16 +16,16 @@ test("WhatsApp signature covers exact raw bytes, rejects missing, malformed and 
 test("WhatsApp isolates WABA and phone, discards conversation contents and other message types", () => {
   const value = fixture();
   value.entry[0].changes[0].value.messages.push({ type: "text", text: { body: "private" } });
-  const images = payload.incomingImages(value, "123", "456");
+  const images = payload.incomingMedia(value, "123", "456");
   assert.equal(images.length, 1);
   assert.equal(images[0].media_id, "789");
   assert.equal(JSON.stringify(images).includes("private"), false);
-  assert.equal(payload.incomingImages(value, "other", "456").length, 0);
-  assert.equal(payload.incomingImages(value, "123", "other").length, 0);
+  assert.equal(payload.incomingMedia(value, "other", "456").length, 0);
+  assert.equal(payload.incomingMedia(value, "123", "other").length, 0);
 });
 test("invalid image prevents silent acknowledgement; international phones and folders are strict", () => {
   const value = fixture(); value.entry[0].changes[0].value.messages[0].from = "123";
-  assert.throws(() => payload.incomingImages(value, "123", "456"));
+  assert.throws(() => payload.incomingMedia(value, "123", "456"));
   assert.equal(payload.folderSchema.safeParse("folder' or true").success, false);
   assert.equal(payload.phoneSchema.safeParse("33612345678").success, true);
 });
@@ -34,7 +34,7 @@ test("stream limit works without content-length", async () => {
   await assert.rejects(() => payload.boundedBytes({ body: stream }, 5), /body_too_large/);
 });
 function route(env, service = {}) {
-  return loadTs("app/api/webhooks/whatsapp/route.ts", { "next/server": { after: () => {} }, "@/lib/whatsapp/payload": payload, "@/lib/whatsapp/service": { ingestionEnabled: () => true, enqueueImages: async () => {}, ...service } }, { Response, process: { env } });
+  return loadTs("app/api/webhooks/whatsapp/route.ts", { "next/server": { after: () => {} }, "@/lib/whatsapp/payload": payload, "@/lib/whatsapp/service": { ingestionEnabled: () => true, enqueueMedia: async () => {}, ...service } }, { Response, process: { env } });
 }
 const env = { WHATSAPP_APP_SECRET: "dummy-secret", WHATSAPP_VERIFY_TOKEN: "verify", WHATSAPP_PHONE_NUMBER_ID: "456", WHATSAPP_BUSINESS_ACCOUNT_ID: "123" };
 test("webhook verification succeeds only with matching token and mode", async () => {
@@ -47,13 +47,13 @@ test("webhook only acknowledges durable enqueue, returns retryable failure on un
   const signature = "sha256=" + createHmac("sha256", env.WHATSAPP_APP_SECRET).update(body).digest("hex");
   const request = () => new Request("https://example.test/api/webhooks/whatsapp", { method: "POST", body, headers: { "x-hub-signature-256": signature } });
   let captured;
-  assert.equal((await route(env, { enqueueImages: async images => { captured = images; } }).POST(request())).status, 200);
+  assert.equal((await route(env, { enqueueMedia: async images => { captured = images; } }).POST(request())).status, 200);
   assert.equal(captured.length, 1);
-  assert.equal((await route(env, { enqueueImages: async () => { throw Error("database private details"); } }).POST(request())).status, 503);
+  assert.equal((await route(env, { enqueueMedia: async () => { throw Error("database private details"); } }).POST(request())).status, 503);
   assert.equal((await route(env).POST(new Request("https://example.test", { method: "POST", body }))).status, 401);
   assert.equal((await route(env, { ingestionEnabled: () => false }).POST(request())).status, 503);
 });
-const makeProviders = (fetchImpl) => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
+const makeProviders = (fetchImpl) => loadTs("lib/whatsapp/providers.ts", { "./payload": payload, "./drive-errors": loadTs("lib/whatsapp/drive-errors.ts"), sharp: { default: require("sharp") } }, { fetch: fetchImpl, Response, Blob, process: { env: { WHATSAPP_ACCESS_TOKEN: "dummy-access-token", WHATSAPP_PHONE_NUMBER_ID: "456" } } });
 test("media download validates byte hash and actual image format", async () => {
   const bytes = await require("sharp")({ create: { width: 5, height: 5, channels: 3, background: "red" } }).jpeg().toBuffer();
   let calls = 0;
@@ -100,8 +100,11 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
   const db = {
     rpc: async () => ({ data: [{ ...job }], error: null }),
     from: table => {
-      let operation, values; const filters = {};
+      let operation, values, limited = false; const filters = {};
       const query = {
+        // Dédoublonnage client (toutes origines) : même dossier ⇒ parcours habituel, contrôlé par uploadDrive.
+        not: () => query,
+        limit: () => { limited = true; return query; },
         upsert: v => { operation = "upsert"; values = v; return query; },
         select: () => query,
         update: v => { operation = "update"; values = v; return query; },
@@ -109,6 +112,7 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
         single: () => query,
         then: (resolve, reject) => Promise.resolve().then(() => {
           if (table === "whatsapp_assets") {
+            if (limited) return { data: state.asset ? [state.asset] : [], error: null };
             if (operation === "upsert") state.asset ??= { ...values };
             if (filters.client_id) assert.equal(filters.client_id, "client-a");
             if (filters.drive_folder_id) assert.equal(filters.drive_folder_id, "folder_client_a");
@@ -124,7 +128,8 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
   };
   const providers = {
     newLease: () => "lease-1",
-    downloadWhatsApp: async () => ({ bytes: new Uint8Array(1), mime: "image/jpeg", sha256: "a".repeat(64), md5: "b".repeat(32) }),
+    downloadWhatsApp: async () => ({ bytes: new Uint8Array(1), mime: "image/jpeg", sha256: "a".repeat(64), md5: "b".repeat(32), kind: "image", width: 1, height: 1 }),
+    thumbnail: async () => null,
     importDriveToken: async () => "dummy-token",
     generateDriveId: async () => `drive_file_${++state.proposed}`,
     uploadDrive: async (_token, id, folder) => {
@@ -145,33 +150,33 @@ function workerHarness({ failUpload = false, failAuditOnce = false, denyLease = 
 }
 test("worker reserves exact hash per client and folder and imports using stable ID", async () => {
   const h = workerHarness();
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "imported");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "imported");
   assert.equal(h.state.asset.client_id, "client-a");
   assert.equal(h.state.updates[0].status, "imported");
   assert.equal(h.state.updates[0].drive_file_id, "drive_file_1");
   assert.equal(h.state.audits[0].action, "whatsapp.imported");
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "duplicate");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "duplicate");
   assert.equal(h.state.asset.drive_file_id, "drive_file_1");
 });
 test("upload success followed by audit failure is safely reconciled on retry", async () => {
   const h = workerHarness({ failAuditOnce: true });
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "retry");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "retry");
   assert.equal(h.state.updates[0].status, "pending");
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "duplicate");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "duplicate");
   assert.equal(h.state.asset.drive_file_id, "drive_file_1");
 });
 test("provider outage retries with bounded attempt limit and safe code", async () => {
   const h = workerHarness({ failUpload: true });
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "retry");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "retry");
   assert.equal(h.state.updates[0].error_code, "provider_unavailable");
   assert.ok(new Date(h.state.updates[0].retry_at).getTime() > Date.now());
   h.job.attempts = 5;
-  await h.service.processOneImage({ kind: "system", worker: "test" });
+  await h.service.processOneMedia({ kind: "system", worker: "test" });
   assert.equal(h.state.updates[1].status, "failed");
 });
 test("stale worker cannot complete or modify a replacement lease", async () => {
   const h = workerHarness({ denyLease: true });
-  assert.equal(await h.service.processOneImage({ kind: "system", worker: "test" }), "retry");
+  assert.equal(await h.service.processOneMedia({ kind: "system", worker: "test" }), "retry");
   assert.equal(h.state.updates.length, 0);
 });
 test("WhatsApp actions authenticate before DB or providers; simulation never writes", async () => {
@@ -183,10 +188,11 @@ test("WhatsApp actions authenticate before DB or providers; simulation never wri
     "@/lib/supabase/server": { getSupabaseServerClient: () => { calls++; throw Error("unexpected DB"); } },
     "@/lib/core/audit": { writeAudit: () => { calls++; } },
     "@/lib/whatsapp/payload": payload,
-    "@/lib/whatsapp/providers": {},
-    "@/lib/whatsapp/service": { processOneImage: () => { calls++; } },
+    "@/lib/whatsapp/providers": { ImportFailure: class extends Error {} },
+    "@/lib/whatsapp/drive-errors": loadTs("lib/whatsapp/drive-errors.ts"),
+    "@/lib/whatsapp/service": { processOneMedia: () => { calls++; } },
   });
-  for (const name of ["saveSender", "retryImport", "createFolder", "runImport"]) {
+  for (const name of ["saveSender", "retryImport", "createFolder", "runImport", "assignMedia", "dismissMedia", "forgetSender"]) {
     const args = name === "runImport" ? [] : [{}, new FormData()];
     await assert.rejects(() => load(true, false)[name](...args), /denied/);
     assert.match((await load(false, true)[name](...args)).message, /simulation/i);
@@ -195,7 +201,7 @@ test("WhatsApp actions authenticate before DB or providers; simulation never wri
 });
 test("scheduled worker verifies CRON_SECRET before touching the queue", async () => {
   let calls = 0;
-  const r = loadTs("app/api/internal/whatsapp/process/route.ts", { "@/lib/whatsapp/service": { processImageBatch: async () => { calls++; return { processed: 1, status: "idle" }; } } }, { Response, process: { env: { CRON_SECRET: "dummy-cron" } } });
+  const r = loadTs("app/api/internal/whatsapp/process/route.ts", { "@/lib/whatsapp/service": { processMediaBatch: async () => { calls++; return { processed: 1, status: "idle" }; } } }, { Response, process: { env: { CRON_SECRET: "dummy-cron" } } });
   for (const authorization of [null, "Bearer wrong", "Bearer "]) {
     const response = await r.POST(new Request("https://example.test", { method: "POST", headers: authorization ? { authorization } : {} }));
     assert.equal(response.status, 401);
@@ -205,9 +211,9 @@ test("scheduled worker verifies CRON_SECRET before touching the queue", async ()
   assert.equal(response.status, 200); assert.equal(calls, 1);
 });
 test("Drive import refuses a read-only token and overly broad Drive scopes", async () => {
-  const credentials = { GOOGLE_DRIVE_IMPORT_CLIENT_ID: "dummy-client-id", GOOGLE_DRIVE_IMPORT_CLIENT_SECRET: "dummy-client-secret", GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN: "dummy-refresh-token" };
+  const credentials = { GOOGLE_DRIVE_IMPORT_CLIENT_ID: "dummy-client-id.apps.googleusercontent.com", GOOGLE_DRIVE_IMPORT_CLIENT_SECRET: "dummy-client-secret", GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN: "dummy-refresh-token" };
   for (const scope of ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive"]) {
-    const p = loadTs("lib/whatsapp/providers.ts", { "./payload": payload, sharp: { default: require("sharp") } }, { Response, Blob, process: { env: credentials }, fetch: async () => Response.json({ access_token: "dummy-access-token", token_type: "Bearer", scope }) });
+    const p = loadTs("lib/whatsapp/providers.ts", { "./payload": payload, "./drive-errors": loadTs("lib/whatsapp/drive-errors.ts"), sharp: { default: require("sharp") } }, { Response, Blob, process: { env: credentials }, fetch: async () => Response.json({ access_token: "dummy-access-token", token_type: "Bearer", scope }) });
     await assert.rejects(() => p.importDriveToken(), /drive_scope/);
   }
 });

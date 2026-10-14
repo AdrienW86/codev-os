@@ -18,7 +18,9 @@ export type CampaignDashboardRaw = {
   accountTotals: AdsMetrics; accountPrevious: AdsMetrics | null;
   leads: { available: true; total: number; byType: Record<string, number>; charged: number | null } | { available: false; reason: string } | null;
 };
+export type ConversionActionDiagnostic = { id: string; name: string; category: string; type: string; status: string; primary: boolean | null; countingType: string; tagSnippets: number | null; allConversions: number | null; lastConversionDate: string | null; lastTagReceivedAt: string | null };
 export interface GoogleAdsReadClient {
+  getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]>;
   getAccountSummary(customerId: string, managerId?: string): Promise<AdsAccount>;
   getCampaignPerformance(account: AdsAccount, period: AdsPeriod, managerId?: string): Promise<{ campaigns: AdsCampaign[]; totals: AdsMetrics }>;
   /** Lecture seule : inventaire, métriques par campagne, total du compte, leads Local Services (facultatifs). */

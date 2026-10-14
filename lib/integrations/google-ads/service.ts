@@ -21,6 +21,7 @@ import { loadCampaignTracking } from "./tracking";
 import { selectAIProvider } from "@/lib/ai/providers";
 import { analyzeAdsWithAI } from "./ai-analysis";
 import { analyzeRecommendation } from "./recommendation-core";
+import { buildAdsFindings } from "./findings";
 import { getAdsBusinessContext } from "./context-service";
 import { reserveAdsAnalysis, saveAdsAnalysisMetadata } from "./analysis-state";
 import type { AdsInstructionSnapshot } from "./business-context";
@@ -190,7 +191,8 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     const aiFailed = analyzed.engine === "deterministic_fallback";
     metadata.engine = analyzed.engine;
     metadata.ai_ms = analyzed.aiMs;
-    if (aiFailed) metadata.fallback_reason = "IA indisponible ou sortie structurée refusée. Repli déterministe explicite.";
+    if (aiResult) metadata.validation = aiResult.validation;
+    if (aiFailed) { metadata.fallback_reason = "IA indisponible ou sortie structurée refusée. Repli déterministe explicite."; metadata.fallback_code = analyzed.fallbackCode ?? "unknown"; }
     let recommendationId: string | undefined;
     if (aiResult?.output.recommendations.length) {
       const reason = aiResult.text.length > 4000 ? `${aiResult.text.slice(0, 3700)}\nAnalyse complète enregistrée avec le run ${runId}.` : aiResult.text;
@@ -210,6 +212,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       recommendationId = created.recommendation.id;
       await audit("google_ads.recommendation_created", clientId, connectionId, { run_id: runId, recommendation_id: recommendationId });
     }
+    metadata.findings = buildAdsFindings(selected, scope);
     metadata.analysis_text = analyzed.text;
     metadata.data_fetched_at = dataFetchedAt;
     if (aiResult) { metadata.analysis = aiResult.output; metadata.evidence = aiResult.evidence; }

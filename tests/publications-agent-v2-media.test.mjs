@@ -176,7 +176,7 @@ function serviceWith({mediaRpc={},run={project_id:P,status:'completed',media_sta
   storage:{from:()=>({upload:async(p,b)=>{stored.set(p,b);return {error:null};},remove:async ps=>{for(const p of ps)stored.delete(p);return {error:null};}})}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
   '../project-channels':{getPublicationProjectChannels:async()=>({source:'configured',channels:[],platforms:['facebook','instagram','google_business_profile'],legacyAligned:true})},
-  './open-occurrences':{getOpenOccurrencesForAgent:async()=>batch},'./context':{AgentV2ContextError:class extends Error{},buildAgentV2Context:async()=>({clientId:C,input})},
+  './open-occurrences':{loadOpenOccurrences:async()=>batch},'./context':{AgentV2ContextError:class extends Error{},loadAgentV2Context:async()=>({clientId:C,input})},
   './openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},'./media-runs':{getAgentV2RunMedia:async id=>({id,media:{state:'attached',category:'Toiture',preview:'https://storage.local/signed?token=short'}})},
   '../media/source':{driveMediaSource:()=>{throw Error('Drive must not be used in tests');}}});
  const generator=mediaId=>({generate:async()=>{generations++;return {output:output(mediaId),usage:{input_tokens:10,output_tokens:10,estimated_cost_eur:.001,model:'m'}};}});
@@ -192,7 +192,7 @@ test('service: drafts + media attached → "3 brouillons créés avec média", s
  const order=s.log.filter(x=>Array.isArray(x)&&String(x[0]).startsWith('publication_agent_v2')).map(x=>x[0]);
  assert.deepEqual(order,['publication_agent_v2_begin','publication_agent_v2_finish','publication_agent_v2_media_claim','publication_agent_v2_media_attach'],'drafts created before any media I/O');
  const none=serviceWith();const n=await none.m.prepareNextPublications(P,{allowRealAI:false,generator:none.generator(null),now});
- assert.equal(n.message,'3 brouillons créés sans média. Média requis avant validation : ajoutez une photo à chaque brouillon.');assert.deepEqual(json(n.media),{state:'none',category:null,preview:null});
+ assert.equal(n.message,'3 brouillons créés sans média. Média requis avant validation : ajoutez une photo à chaque brouillon. Photo manquante signalée : ajoutez des photos à la photothèque du client.');assert.deepEqual(json(n.media),{state:'none',category:null,preview:null});
  assert.ok(!none.log.some(x=>Array.isArray(x)&&/media_(claim|attach|fail)/.test(x[0])),'no media step without a selected media');});
 
 test('service: media failure keeps the drafts and is never a full success; retry = media step only, no second generation, no duplicate',async()=>{

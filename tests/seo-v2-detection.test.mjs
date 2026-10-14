@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadTs } from "./helpers/load-ts.mjs";
 const engine = loadTs("lib/seo/opportunities.ts");
+const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const period = { start: "2026-09-12", end: "2026-10-09" };
 const previousPeriod = { start: "2026-08-15", end: "2026-09-11" };

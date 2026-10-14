@@ -4,7 +4,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/require-admin";
 import { listClients } from "@/lib/clients/data";
 import { getGoogleAdsConnection, loadCampaignDashboard, ANALYSIS_ENGINE_NOTE } from "@/lib/integrations/google-ads/service";
-import { parseFilters, writeFilters } from "@/lib/integrations/google-ads/dashboard";
+import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
 import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
 import { AdsClientSwitcher } from "@/components/google-ads/client-switcher";
 import { PageHeading, Panel } from "@/components/ui/primitives";
@@ -28,7 +28,6 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   const client = clients.find((item) => item.id === search.client);
   const filters = parseFilters(search);
   // Le changement de client conserve la période, mais jamais les identifiants des campagnes de l'ancien compte.
-  const preserved = writeFilters(new URLSearchParams(), { ...filters, campaigns: [], includeUntracked: false });
   let connection = null;
   let connectionError = false;
   if (client) try { connection = await getGoogleAdsConnection(client.id); } catch { connectionError = true; }

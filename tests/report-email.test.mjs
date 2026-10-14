@@ -15,6 +15,8 @@ function setup({ denied = false, failure = null } = {}) {
     "./version-storage": { requireReportVersionStorage: async () => {} },
     "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": {},
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/providers/errors": errors,
+    "@/lib/vercel-analytics/sync": { syncVercelAnalytics: async () => ({ ok: true }) },
+    "@/lib/integrations/search-console/model": { addDays: () => "", dayCount: () => 0, normalizeProperty: () => null },
     "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },
   });
   return { service, sent, finished };

@@ -11,7 +11,7 @@ import { writeFilters, type DashboardFilters } from "@/lib/integrations/google-a
 import type { AssistantContext, AssistantView, ViewLink } from "@/lib/assistant/views";
 
 export type Proposal = { tool: string; input: Record<string, unknown>; summary: string; heard?: string };
-export type DirectorMission = { steps: { agent: string; status: "completed" | "failed" | "awaiting_approval" | "launched" }[] };
+export type DirectorMission = { actions?: { title: string; source: "seo" | "ads"; priority: "critical" | "high" | "medium" | "low" | "info" | "unrated"; date?: string; href: string }[]; steps: { agent: string; status: "completed" | "failed" | "awaiting_approval" | "launched" }[] };
 export type Reply = { mission?: DirectorMission; navigation?: { destination: string; href: string }; keepProposal?: boolean; reply?: string; links?: ViewLink[]; proposal?: Proposal; view?: AssistantView; context?: AssistantContext; degraded?: boolean; degradedReason?: string; error?: string };
 export type Turn = { role: "user" | "assistant"; content: string; links?: ViewLink[]; via?: "voice" };
 

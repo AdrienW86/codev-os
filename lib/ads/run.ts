@@ -44,9 +44,14 @@ export const monitorAdsRun: RunHandler = async ({ job, agent, actor, now, runId 
   for (const anomaly of anomalies) {
     const incident = await openIncident(actor, { clientId: job.client_id, agentId: agent.id, source: "ads", severity: anomaly.severity, title: `${anomaly.campaign} : ${anomaly.rule === "spend_without_conversions" ? "dépenses sans conversion" : anomaly.rule === "cpa_spike" ? "coût par conversion en hausse" : "dépenses en forte hausse"}`, fingerprint: `ads:${job.client_id}:${anomaly.campaignId}:${anomaly.rule}`, details: { detail: anomaly.detail, period: current } });
     if (!incident.created) continue;
-    const recommendation = await recordRecommendation(actor, { agentId: agent.id, clientId: job.client_id, title: `Revoir la campagne « ${anomaly.campaign} »`, reason: `${anomaly.detail} Vérifiez les termes de recherche, les enchères et le suivi des conversions.`, severity: anomaly.severity, payload: { campaign_id: anomaly.campaignId, rule: anomaly.rule, incident_id: incident.id } });
+    const proposed = anomaly.rule === "spend_without_conversions"
+      ? { check: "Vérifier les conversions principales (appels/formulaires), le déclenchement des balises et les termes de recherche.", expected: "Fiabiliser le suivi avant une optimisation des mots-clés ou des enchères." }
+      : anomaly.rule === "cpa_spike"
+        ? { check: "Comparer les requêtes, appareils, zones, taux de conversion et changements récents avant d'ajuster les enchères.", expected: "Identifier la source de la hausse du coût par conversion sans couper les prospects qualifiés." }
+        : { check: "Comparer le volume et les CPC, les requêtes non pertinentes et les changements de ciblage ou de budget.", expected: "Déterminer la cause des dépenses supplémentaires avant toute exclusion ou réduction." };
+    const recommendation = await recordRecommendation(actor, { agentId: agent.id, clientId: job.client_id, title: `Revoir la campagne « ${anomaly.campaign} »`, reason: `${anomaly.detail} ${proposed.check} Proposition sans exécution automatique ; vérifier la qualité réelle des leads.`, severity: anomaly.severity, payload: { campaign_id: anomaly.campaignId, rule: anomaly.rule, incident_id: incident.id } });
     await supabase.from("incidents").update({ recommendation_id: recommendation.id }).eq("id", incident.id);
-    await prepareAction(actor, { recommendationId: recommendation.id, type: "ads.optimization", parameters: { campaign: anomaly.campaign, change: "Analyser les termes de recherche, exclure les requêtes non pertinentes et ajuster les enchères.", expected_effect: "Réduire le coût par conversion." }, incidentId: incident.id });
+    await prepareAction(actor, { recommendationId: recommendation.id, type: "ads.optimization", parameters: { campaign: anomaly.campaign, change: proposed.check, expected_effect: proposed.expected }, incidentId: incident.id });
   }
   return { status: "succeeded", summary: `${totals.campaigns} campagne(s) hors Local Services analysée(s) : ${totals.cost.toFixed(2)} € dépensés, ${totals.conversions} conversion(s), ${anomalies.length} anomalie(s).`, data: { anomalies: anomalies.length } };
 };

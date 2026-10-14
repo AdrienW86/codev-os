@@ -70,7 +70,7 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
   }
   const seen = new Set<string>();
   const operations = change.keywords.map(({ text, matchType }) => {
-    if (typeof text !== "string") throw new Error("Texte de mot-clé invalide.");
+    if (typeof text !== "string" || /[\r\n]/.test(text)) throw new Error("Texte de mot-clé invalide.");
     const normalized = text.trim().replace(/\s+/g, " ");
     if (!KEYWORD.test(normalized) || !["EXACT", "PHRASE"].includes(matchType)) {
       throw new Error("Mot-clé négatif invalide.");

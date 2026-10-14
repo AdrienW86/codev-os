@@ -1,4 +1,6 @@
 import "server-only";
+import { requireAdmin } from "@/lib/require-admin";
+import { getActiveScenario } from "@/lib/simulation/server";
 import { googleAccessToken, providerJson } from "@/lib/providers/api";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
@@ -10,6 +12,8 @@ const customer = /^\d{10}$/;
 type Request = { clientId: string; change: AdsChange; confirm?: string; dryRun?: boolean };
 
 export async function manageClientAds(actor: Actor & { kind: "admin" }, request: Request) {
+  const { userId } = await requireAdmin();
+  if (actor.kind !== "admin" || actor.userId !== userId) throw new Error("Administrateur non autorisé.");
   const { clientId, change } = request;
   if (!uuid.test(clientId)) throw new Error("Client invalide.");
   const db = getSupabaseServerClient();
@@ -22,6 +26,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   const manager = (connection.metadata as { manager_customer_id?: string } | null)?.manager_customer_id?.replace(/-/g, "") ?? null;
   const preview = prepareAdsChange(change);
   if (request.dryRun !== false) return { executed: false, preview };
+  if (await getActiveScenario()) throw new Error("Écritures Google Ads interdites en simulation.");
   if (request.confirm !== `CONFIRMER ${change.campaignId}`) throw new Error("Confirmation explicite requise.");
   if (process.env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") throw new Error("Écriture Google Ads non activée.");
   const env = process.env;

@@ -55,3 +55,19 @@ export function resolveClientNavigation(message: string): string | null {
   const name = match?.[1]?.trim();
   return name && name.length <= 120 && !/[\/\\<>]/.test(name) ? name : null;
 }
+
+/** Explicitly scoped campaign commands, not generic analysis requests. */
+export function resolveCampaignCommand(message: string): { campaign: string; client: string; analyze: boolean } | null {
+  const normalized = message.trim().replace(/[.!?]+$/g, "").replace(/\s+/g, " ");
+  const match = /^(ouvre|affiche|montre|analyse|analyser|verifie|vérifie)\s+(?:moi\s+)?(?:la\s+)?campagne\s+(.+?)\s+(?:de|du client|pour)\s+(.+)$/i.exec(normalized);
+  if (!match) return null;
+  const campaign = match[2].trim(), client = match[3].trim();
+  if (!campaign || !client || campaign.length > 120 || client.length > 120 || /[<>\\/]/.test(campaign + client)) return null;
+  return { campaign, client, analyze: /^(analyse|analyser|verifie|vérifie)$/i.test(match[1]) };
+}
+
+/** Read-only coordinated executive briefing; no external writes. */
+export function isDirectorBriefing(message: string): boolean {
+  const cleaned = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.!?]+$/g, "").trim();
+  return /^(?:fais|prepare|donne|affiche|montre)(?: moi)? (?:un |le |mon )?(?:bilan global|briefing operationnel|point sur les priorites)$/.test(cleaned);
+}

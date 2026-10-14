@@ -28,6 +28,9 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if (request.dryRun !== false) return { executed: false, preview };
   if (await getActiveScenario()) throw new Error("Écritures Google Ads interdites en simulation.");
   if (request.confirm !== `CONFIRMER ${change.campaignId}`) throw new Error("Confirmation explicite requise.");
+  // A typed confirmation is not a durable single-use authorization. Keep all remote writes
+  // disabled until a persisted, transactionally claimed approval is wired to this request.
+  throw new Error("Écriture suspendue : validation à usage unique non implémentée.");
   if (process.env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") throw new Error("Écriture Google Ads non activée.");
   const env = process.env;
   if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) {

@@ -1,3 +1,5 @@
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+
 // Conversion PURE d'une analyse Google Ads enregistrée en propositions de diagnostic.
 // Aucun texte libre n'est pris pour une preuve et aucune action n'est exécutée.
 export type LiveAdsPriority = {
@@ -105,4 +107,15 @@ export function extractLiveAdsPriorities(metadata: unknown, runId: string, fetch
     seen.add(key);
     return true;
   }).slice(0, 3);
+}
+
+
+/** Server-only lookup restricted to this client and completed run. */
+export async function readLiveAdsPriorities(clientId: string, runId: string): Promise<LiveAdsPriority[]> {
+  if (!/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(clientId)) return [];
+  const { data, error } = await getSupabaseServerClient().from("agent_runs")
+    .select("metadata,status,started_at")
+    .eq("id", runId).eq("client_id", clientId).eq("status", "completed").maybeSingle();
+  if (error || !data) return [];
+  return extractLiveAdsPriorities(data.metadata, runId, data.started_at);
 }

@@ -17,6 +17,8 @@ type Env = Record<string, string | undefined>;
 export type AdsChange =
   | { kind: "campaign_pause"; customerId: string; campaignId: string }
   | { kind: "campaign_enable"; customerId: string; campaignId: string }
+  | { kind: "ad_pause" | "ad_enable"; customerId: string; campaignId: string; adGroupId: string; adId: string }
+  | { kind: "call_asset_pause" | "call_asset_enable"; customerId: string; campaignId: string; assetId: string }
   | { kind: "keyword_add"; customerId: string; campaignId: string; adGroupId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] }
   | { kind: "keyword_pause"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
   | { kind: "keyword_enable"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
@@ -40,6 +42,20 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
         updateMask: "status",
       }],
     };
+  }
+  if (change.kind === "ad_pause" || change.kind === "ad_enable") {
+    if (!RESOURCE_ID.test(change.adGroupId) || !RESOURCE_ID.test(change.adId)) throw new Error("Annonce invalide.");
+    return { resource: "adGroupAds", operations: [{ update: {
+      resourceName: `customers/${change.customerId}/adGroupAds/${change.adGroupId}~${change.adId}`,
+      status: change.kind === "ad_pause" ? "PAUSED" : "ENABLED",
+    }, updateMask: "status" }] };
+  }
+  if (change.kind === "call_asset_pause" || change.kind === "call_asset_enable") {
+    if (!RESOURCE_ID.test(change.assetId)) throw new Error("Composant Appel invalide.");
+    return { resource: "campaignAssets", operations: [{ update: {
+      resourceName: `customers/${change.customerId}/campaignAssets/${change.campaignId}~${change.assetId}~CALL`,
+      status: change.kind === "call_asset_pause" ? "PAUSED" : "ENABLED",
+    }, updateMask: "status" }] };
   }
   if (change.kind === "keyword_pause" || change.kind === "keyword_enable") {
     if (!RESOURCE_ID.test(change.adGroupId) || !RESOURCE_ID.test(change.criterionId)) throw new Error("Identifiant de mot-clé invalide.");

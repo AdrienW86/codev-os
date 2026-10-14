@@ -25,6 +25,15 @@ export function normalizeMetrics(input: Record<string, unknown> = {}): AdsMetric
   return { impressions: numeric(input.impressions), clicks: numeric(input.clicks), cost, conversions, conversionValue: numeric(input.conversionsValue), ctr: numeric(input.ctr), averageCpc: cpc === null ? null : cpc / 1_000_000, costPerConversion: cost !== null && conversions !== null && conversions > 0 ? cost / conversions : null };
 }
 function text(value: unknown): string | null { return typeof value === "string" && value.length <= 1000 ? value : null; }
+/** Google Ads returns Unix epoch for "never received". Never present it as a real event. */
+export function actualConversionTimestamp(value: unknown): string | null {
+  const date = text(value);
+  if (!date) return null;
+  const parsed = Date.parse(date.replace(" ", "T"));
+  if (!Number.isFinite(parsed) || parsed < Date.UTC(2000, 0, 1)) return null;
+  return date;
+}
+
 
 // Only these three read operations are public. OAuth credentials and raw transport stay private.
 class RestGoogleAdsReadClient implements GoogleAdsReadClient {
@@ -94,7 +103,7 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
         countingType: text(action.countingType) ?? "UNKNOWN", tagSnippets: null,
         allConversions: numeric(row.metrics?.allConversions),
         lastConversionDate: text(row.metrics?.conversionLastConversionDate),
-        lastTagReceivedAt: text(row.metrics?.conversionLastReceivedRequestDateTime),
+        lastTagReceivedAt: actualConversionTimestamp(row.metrics?.conversionLastReceivedRequestDateTime),
       }];
     });
   }

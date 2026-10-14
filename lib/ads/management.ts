@@ -71,8 +71,23 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
       );
       verified = checked.results?.[0]?.campaign?.status === (change.kind === "campaign_pause" ? "PAUSED" : "ENABLED");
     }
-    // Keywords and negatives require a separate adGroupCriterion/campaignCriterion readback.
-    // Until implemented, report unverified rather than returning a false success.
+    if (change.kind === "keyword_pause" || change.kind === "keyword_enable") {
+      const criterionQuery = `SELECT ad_group_criterion.criterion_id, ad_group_criterion.status
+        FROM ad_group_criterion WHERE ad_group.id = ${change.adGroupId}
+        AND ad_group_criterion.criterion_id = ${change.criterionId} LIMIT 1`;
+      const checked = await providerJson<{ results?: { adGroupCriterion?: { criterionId?: string | number; status?: string } }[] }>(
+        "google-ads", `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
+        { method: "POST", headers, body: JSON.stringify({ query: criterionQuery }) },
+      );
+      const criterion = checked.results?.[0]?.adGroupCriterion;
+      verified = String(criterion?.criterionId ?? "") === change.criterionId &&
+        criterion?.status === (change.kind === "keyword_pause" ? "PAUSED" : "ENABLED");
+    }
+    if (change.kind === "keyword_add" || change.kind === "negative_keyword_add") {
+      // The mutation receipt only means accepted by the API. Never claim a readback
+      // of newly-created criteria until their resource names have been queried.
+      verified = false;
+    }
     await writeAudit(actor, { action: "ads.change.executed", resource_type: "client", resource_id: clientId,
       metadata: { account, campaignId: change.campaignId, kind: change.kind, verified } });
     return { executed: true, verified, preview, result: result.response };

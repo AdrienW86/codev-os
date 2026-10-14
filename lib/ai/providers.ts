@@ -52,7 +52,7 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
     async ping(signal) {
       await providerJson("anthropic", `https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`, { fetchImpl, signal, timeoutMs: 10_000, headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } });
     },
-    async complete({ system, messages, tools, toolResults = [], signal }) {
+    async complete({ system, messages, tools, toolChoice = "auto", toolResults = [], signal }) {
       const pending = toolResults.length ? [
         { role: "assistant", content: toolResults.map(({ call }) => ({ type: "tool_use", id: call.id, name: call.name, input: call.arguments ?? {} })) },
         { role: "user", content: toolResults.map(({ call, result }) => ({ type: "tool_result", tool_use_id: call.id, content: result })) },

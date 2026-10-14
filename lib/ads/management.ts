@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { executeApprovedAdsChange, prepareAdsChange, type AdsChange } from "@/lib/ads/write-foundation";
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const customer = /^\d{10}$/;
 type Request = { clientId: string; change: AdsChange; confirm?: string; dryRun?: boolean };
 

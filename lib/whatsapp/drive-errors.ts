@@ -8,7 +8,7 @@ export type ImportVariable = (typeof importVariables)[number];
 export const driveErrorCodes = [
   "config_missing", "config_invalid",
   "oauth_invalid_grant", "oauth_invalid_client", "oauth_unauthorized_client", "oauth_rejected",
-  "drive_scope_missing", "drive_scope_too_broad",
+  "drive_scope_missing", "drive_scope_readonly", "drive_scope_too_broad",
   "drive_api_disabled", "drive_permission", "drive_rate_limited", "drive_storage_quota", "drive_not_found", "drive_rejected",
   "drive_folder", "drive_folder_create", "provider_unavailable", "provider_response",
   "client_not_found", "database_unavailable", "audit_unavailable", "unexpected",
@@ -62,6 +62,7 @@ const messages: Record<DriveErrorCode, string> = {
   oauth_unauthorized_client: "Ce client OAuth n’est pas autorisé à utiliser ce refresh token (unauthorized_client) : le token a été émis par un autre client, ou le type de client ne permet pas l’accès hors ligne.",
   oauth_rejected: "Google a refusé l’échange du refresh token d’import. Régénérez le refresh token avec le client OAuth d’import et la portée drive.file.",
   drive_scope_missing: "Le refresh token d’import n’a pas la portée https://www.googleapis.com/auth/drive.file. Régénérez-le en cochant cette portée.",
+  drive_scope_readonly: "Le jeton d’import est limité à la lecture de Google Drive. L’import WhatsApp exige un refresh token distinct avec la portée drive.file uniquement ; renseignez GOOGLE_DRIVE_IMPORT_CLIENT_ID, GOOGLE_DRIVE_IMPORT_CLIENT_SECRET et GOOGLE_DRIVE_IMPORT_REFRESH_TOKEN, sans modifier le connecteur Publications.",
   drive_scope_too_broad: "Le refresh token d’import donne un accès Drive plus large que drive.file (lecture seule ou Drive complet) : il est refusé par sécurité. Régénérez-le avec drive.file uniquement.",
   drive_api_disabled: "L’API Google Drive n’est pas activée dans le projet Google Cloud du client OAuth d’import. Activez « Google Drive API » puis réessayez après quelques minutes.",
   drive_permission: "Google Drive refuse l’opération pour ce compte : vérifiez que le compte autorisé peut créer des fichiers dans son Drive.",

@@ -25,15 +25,15 @@ export default async function AcquisitionPage() {
       ].map((k)=><div key={k.name} className="rounded-xl border border-border bg-surface p-5"><p className="text-sm text-muted">{k.name}</p><p className="mt-2 text-3xl font-semibold">{k.value}</p></div>)}
     </div>
     <div role="status" className="rounded-xl border border-border-strong bg-surface-raised p-4 text-sm">
-      <strong>Envois verrouillés par défaut.</strong> La prospection réelle et la découverte automatique restent désactivées jusqu'à la validation du fournisseur, des données et des mécanismes de sécurité.
-      {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n'a été lancée.</p>}
+      <strong>Envois verrouillés par défaut.</strong> La prospection réelle et la découverte automatique restent désactivées jusqu&apos;à la validation du fournisseur, des données et des mécanismes de sécurité.
+      {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
     <AcquisitionWorkspaceTabs workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>
         <div className="p-5"><h2 className="text-lg font-semibold">Connecteurs — branchements à réaliser</h2>
-          <p className="mt-1 text-sm text-muted">La présence d'une variable ne prouve pas qu'une connexion fonctionne. Aucun test réseau ni e-mail envoyé.</p>
+          <p className="mt-1 text-sm text-muted">La présence d&apos;une variable ne prouve pas qu&apos;une connexion fonctionne. Aucun test réseau ni e-mail envoyé.</p>
           <div className="mt-4 space-y-3">{connectors.map(c=><div key={c.id} className="rounded-lg border border-border p-3">
             <div className="flex justify-between gap-2"><h3 className="font-medium">{c.label}</h3><span className="text-xs text-muted">{c.configured?"Configuration détectée":"À brancher"}</span></div>
             <p className="mt-1 text-xs text-muted">{c.purpose} — {c.detail}</p>
@@ -41,7 +41,7 @@ export default async function AcquisitionPage() {
         </div>
       </Panel>
       <Panel>
-        <div className="p-5"><h2 className="text-lg font-semibold">Stratégies de ciblage</h2><p className="mt-1 text-sm text-muted">Chaque message doit s'appuyer sur une preuve vérifiée et une relation avec l'activité professionnelle.</p>
+        <div className="p-5"><h2 className="text-lg font-semibold">Stratégies de ciblage</h2><p className="mt-1 text-sm text-muted">Chaque message doit s&apos;appuyer sur une preuve vérifiée et une relation avec l&apos;activité professionnelle.</p>
           <div className="mt-4 space-y-3">{ACQUISITION_CATEGORIES.map(c=><div key={c.id} className="border-b border-border pb-3 last:border-0">
             <h3 className="text-sm font-medium">{c.label}</h3><p className="text-xs text-muted">{c.description}</p>
             <span className="text-xs text-muted">{snapshot.prospects.filter(p=>p.category===c.id).length} prospect(s)</span>

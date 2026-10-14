@@ -31,6 +31,12 @@ Types d’exécution (registre `lib/agents/registry.ts`) : `ads.report.prepare`,
 - `503` si `CRON_SECRET` est absent, `401` si l’en-tête est faux.
 - Chaque passage : rattache les agents globaux, met en file les automatisations échues, traite jusqu’à 5 jobs.
 
+### Protection contre les passages concurrents
+
+La route du planificateur acquiert maintenant un verrou atomique dans `scheduler_heartbeats` avant d'exécuter les tâches, même si elle est déclenchée manuellement. Un second appel simultané renvoie `200` avec `skipped: running` et ne réexécute pas les jobs. Un passage interrompu est récupérable après 330 secondes ; la fin de l'ancien worker ne peut plus écraser le nouveau battement (fencing sur `started_at`). Si la base ne permet pas d'obtenir le verrou, la route renvoie `503 scheduler_lock_unavailable` et ne lance aucun job (seule la purge idempotente des archives temporaires WhatsApp reste autorisée).
+
+**Ce changement ne crée pas de cron Vercel et n'active aucun envoi** : le déclenchement reste à configurer explicitement, avec le secret serveur et les garde-fous Publications existants. Tests isolés : `tests/scheduler-single-flight.test.mjs`.
+
 ### Activer Vercel Cron (manuel, non activé par ce lot)
 
 1. Ajoutez `CRON_SECRET` dans les variables Vercel (Production). Vercel l’envoie automatiquement en `Authorization: Bearer …` aux crons.

@@ -429,7 +429,7 @@ test("tick: the export purge runs first and isolated, so an expired import is pu
   const mocks = {
     "next/server": { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
     "@/lib/scheduler/cron-auth": { checkCronAuthorization: () => ({ ok: true }) },
-    "@/lib/scheduler/heartbeat": { recordSchedulerHeartbeat: async () => { throw Error("heartbeat_down"); }, stepCounts: () => { throw Error("stepCounts_down"); } },
+    "@/lib/scheduler/heartbeat": { claimSchedulerRun: async () => "claimed", finishSchedulerRun: async () => { throw Error("heartbeat_down"); }, stepCounts: () => { throw Error("stepCounts_down"); } },
     "@/lib/whatsapp/export-import": { purgeExportImports: async () => { order.push("purgeExportImports"); return e.mod.purgeExportImports(e.deps); } },
   };
   // Transpilation locale du handler (process requis) ; toute autre dépendance serveur échoue.

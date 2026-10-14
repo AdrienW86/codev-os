@@ -14,8 +14,11 @@ export type SchedulerStepStatus = "ok" | "failed" | "skipped" | "disabled";
 export type SchedulerStep = { status: SchedulerStepStatus; ms: number; counts?: Record<string, number> };
 export type SchedulerHeartbeat = { name: string; startedAt: string; finishedAt: string | null; ok: boolean; steps: Record<string, SchedulerStep>; lastSuccessAt: string | null; lastFailureAt: string | null };
 
+type Returning = PromiseLike<{ data: unknown; error: unknown }>;
+type Filter = { eq(column: string, value: string): Filter; is(column: string, value: null): Filter; not(column: string, operator: "is", value: null): Filter; lt(column: string, value: string): Filter; select(columns: string): Returning };
 type HeartbeatDb = { from(table: "scheduler_heartbeats"): {
-  upsert(row: Record<string, unknown>, options: { onConflict: string }): PromiseLike<{ error: unknown }>;
+  upsert(row: Record<string, unknown>, options: { onConflict: string; ignoreDuplicates?: boolean }): PromiseLike<{ error: unknown }> & { select(columns: string): Returning };
+  update(row: Record<string, unknown>): Filter;
   select(columns: string): { eq(column: string, value: string): { maybeSingle(): PromiseLike<{ data: unknown; error: unknown }> } };
 } };
 const productionDb = () => getSupabaseServerClient() as unknown as HeartbeatDb;
@@ -46,6 +49,60 @@ function sanitize(steps: Record<string, SchedulerStep>): Record<string, Schedule
     out[name] = step.counts ? { status: step.status, ms, counts: stepCounts(step.counts) } : { status: step.status, ms };
   }
   return out;
+}
+
+/** Bail d'un passage : au-delà de maxDuration (300 s, coupure par la plateforme) plus une marge, un passage jamais
+ * terminé est considéré interrompu et le passage suivant reprend la main. */
+export const SCHEDULER_LEASE_MS = 330_000;
+const hasRow = (data: unknown) => Array.isArray(data) && data.length > 0;
+
+/**
+ * Verrou du planificateur porté par la ligne de battement (aucune table ni migration supplémentaire) : un seul passage
+ * à la fois. Compare-and-set atomique côté base : la ligne est prise si le passage précédent est terminé
+ * (finished_at renseigné) ou interrompu (commencé depuis plus de leaseMs). Le gagnant écrit started_at = son début,
+ * finished_at = null : c'est aussi le battement « passage en cours » lu par le diagnostic.
+ * Retourne "claimed", "busy" (un autre passage est en cours) ou "unavailable" (base illisible : on ne lance rien).
+ */
+export async function claimSchedulerRun(startedAt: Date, options: { name?: string; leaseMs?: number } = {}, db: HeartbeatDb = productionDb()): Promise<"claimed" | "busy" | "unavailable"> {
+  const name = options.name ?? SCHEDULER_HEARTBEAT;
+  if (!KEY.test(name)) return "unavailable";
+  const started = startedAt.toISOString();
+  const row = { name, started_at: started, finished_at: null, updated_at: started };
+  try {
+    // Toute première exécution : insertion si la ligne n'existe pas encore (ON CONFLICT DO NOTHING).
+    const first = await db.from("scheduler_heartbeats").upsert(row, { onConflict: "name", ignoreDuplicates: true }).select("name");
+    if (first.error) throw new Error("heartbeat");
+    if (hasRow(first.data)) return "claimed";
+    const table = () => db.from("scheduler_heartbeats");
+    const done = await table().update(row).eq("name", name).not("finished_at", "is", null).select("name");
+    if (done.error) throw new Error("heartbeat");
+    if (hasRow(done.data)) return "claimed";
+    const stale = new Date(startedAt.getTime() - (options.leaseMs ?? SCHEDULER_LEASE_MS)).toISOString();
+    const resumed = await table().update(row).eq("name", name).is("finished_at", null).lt("started_at", stale).select("name");
+    if (resumed.error) throw new Error("heartbeat");
+    if (hasRow(resumed.data)) { console.error("[scheduler] Passage précédent interrompu : reprise."); return "claimed"; }
+    return "busy";
+  } catch { console.error("[scheduler] Verrou du planificateur indisponible."); return "unavailable"; }
+}
+
+/**
+ * Fin d'un passage verrouillé : écrite seulement si la ligne porte encore son started_at (fencing). Un passage
+ * interrompu puis dépassé par une reprise ne peut ni libérer le verrou du suivant ni écraser son battement.
+ */
+export async function finishSchedulerRun(input: { name?: string; startedAt: Date; finishedAt: Date; steps: Record<string, SchedulerStep> }, db: HeartbeatDb = productionDb()): Promise<boolean> {
+  const name = input.name ?? SCHEDULER_HEARTBEAT;
+  if (!KEY.test(name)) return false;
+  const now = input.finishedAt.toISOString();
+  const steps = sanitize(input.steps);
+  const ok = !Object.values(steps).some((step) => step.status === "failed");
+  try {
+    const { data, error } = await db.from("scheduler_heartbeats")
+      .update({ finished_at: now, updated_at: now, ok, steps: steps as unknown as Json, [ok ? "last_success_at" : "last_failure_at"]: now })
+      .eq("name", name).eq("started_at", input.startedAt.toISOString()).is("finished_at", null).select("name");
+    if (error) throw new Error("heartbeat");
+    if (!hasRow(data)) { console.error("[scheduler] Battement non enregistré : passage repris par un autre."); return false; }
+    return true;
+  } catch { console.error("[scheduler] Battement non enregistré."); return false; }
 }
 
 /** Début (finishedAt absent : passage en cours) ou fin d'un passage. Retourne false si rien n'a été écrit. */

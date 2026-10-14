@@ -34,6 +34,7 @@ test("one bounded AI call uses existing provider, instructions and a non-executa
   const result = await ai.analyzeAdsWithAI(provider, rows, scope, snapshot);
   assert.equal(calls, 1);
   assert.equal(request.tools.length, 1); assert.equal(request.tools[0].strict, true);
+  assert.equal(request.toolChoice, "required", "the model must return the structured analysis tool");
   assert.ok(request.signal instanceof AbortSignal);
   const data = JSON.parse(request.messages[0].content);
   assert.equal(data.instructions.business.advertisingMonthlyBudget, 500);

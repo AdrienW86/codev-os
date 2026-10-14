@@ -82,7 +82,7 @@ test("follow-ups reuse the server-validated context and return the server view a
 test("write guards: Google Ads changes and bare confirmations execute nothing, typed or dictated", async () => {
   for (const via of ["text", "voice"]) {
     const { calls, deps: d } = deps({ via, provider: { id: "openai", model: "m", complete: async () => { throw new Error("must not be called"); } } });
-    assert.match((await orchestrator.respond(user("Mets en pause la campagne Search"), d)).reply, /lecture seule/);
+    assert.match((await orchestrator.respond(user("Mets en pause la campagne Search"), d)).reply, /écritures réelles restent désactivées/);
     const confirm = plain(await orchestrator.respond([{ role: "assistant", content: "Je propose : créer la tâche." }, { role: "user", content: "oui" }], d));
     assert.match(confirm.reply, /bouton « Confirmer »/);
     assert.equal(confirm.keepProposal, true);

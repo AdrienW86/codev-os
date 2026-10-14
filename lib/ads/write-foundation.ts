@@ -87,7 +87,7 @@ export async function executeApprovedAdsChange(
   if (env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") {
     throw new Error("Écriture Google Ads désactivée.");
   }
-  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN || !env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) {
     throw new Error("Connexion Google Ads incomplète.");
   }
   const manager = options.managerId ?? env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? null;
@@ -99,13 +99,13 @@ export async function executeApprovedAdsChange(
   }, options.fetchImpl);
   const response = await providerJson<unknown>(
     "google-ads",
-    `https://googleads.googleapis.com/v21/customers/${change.customerId}/${preview.resource}:mutate`,
+    `https://googleads.googleapis.com/v25/customers/${change.customerId}/${preview.resource}:mutate`,
     {
       method: "POST",
       fetchImpl: options.fetchImpl,
       headers: {
         Authorization: `Bearer ${token}`,
-        "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN,
+        ...(env.GOOGLE_ADS_DEVELOPER_TOKEN ? { "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN } : {}),
         "Content-Type": "application/json",
         ...(manager ? { "login-customer-id": manager } : {}),
       },

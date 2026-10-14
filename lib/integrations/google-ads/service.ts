@@ -21,6 +21,7 @@ import { loadCampaignTracking } from "./tracking";
 import { selectAIProvider } from "@/lib/ai/providers";
 import { analyzeAdsWithAI } from "./ai-analysis";
 import { analyzeRecommendation } from "./recommendation-core";
+import { buildAdsFindings } from "./findings";
 import { getAdsBusinessContext } from "./context-service";
 import { reserveAdsAnalysis, saveAdsAnalysisMetadata } from "./analysis-state";
 import type { AdsInstructionSnapshot } from "./business-context";
@@ -210,6 +211,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       recommendationId = created.recommendation.id;
       await audit("google_ads.recommendation_created", clientId, connectionId, { run_id: runId, recommendation_id: recommendationId });
     }
+    metadata.findings = buildAdsFindings(selected, scope);
     metadata.analysis_text = analyzed.text;
     metadata.data_fetched_at = dataFetchedAt;
     if (aiResult) { metadata.analysis = aiResult.output; metadata.evidence = aiResult.evidence; }

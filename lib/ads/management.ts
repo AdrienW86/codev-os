@@ -86,6 +86,13 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
       throw new Error("Groupe d'annonces extérieur à la campagne sélectionnée.");
     }
   }
+  if (change.kind === "ad_pause" || change.kind === "ad_enable") {
+    const q = `SELECT ad_group_ad.ad.id FROM ad_group_ad WHERE ad_group.id = ${change.adGroupId} AND ad_group_ad.ad.id = ${change.adId} LIMIT 1`;
+    const check = await providerJson<{ results?: { adGroupAd?: { ad?: { id?: string | number } } }[] }>("google-ads",
+      `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
+      { method: "POST", headers, body: JSON.stringify({ query: q }) });
+    if (String(check.results?.[0]?.adGroupAd?.ad?.id ?? "") !== change.adId) throw new Error("Annonce étrangère à la campagne.");
+  }
   // Append an audit record before the external side effect. Fail closed if audit unavailable.
   await writeAudit(actor, { action: "ads.change.requested", resource_type: "client", resource_id: clientId,
     metadata: { account, campaignId: change.campaignId, kind: change.kind, preview } });

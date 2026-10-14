@@ -190,7 +190,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     const aiFailed = analyzed.engine === "deterministic_fallback";
     metadata.engine = analyzed.engine;
     metadata.ai_ms = analyzed.aiMs;
-    if (aiFailed) metadata.fallback_reason = "IA indisponible ou sortie structurée refusée. Repli déterministe explicite.";
+    if (aiFailed) { metadata.fallback_reason = "IA indisponible ou sortie structurée refusée. Repli déterministe explicite."; metadata.fallback_code = analyzed.fallbackCode ?? "unknown"; }
     let recommendationId: string | undefined;
     if (aiResult?.output.recommendations.length) {
       const reason = aiResult.text.length > 4000 ? `${aiResult.text.slice(0, 3700)}\nAnalyse complète enregistrée avec le run ${runId}.` : aiResult.text;

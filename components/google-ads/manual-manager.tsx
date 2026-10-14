@@ -41,7 +41,7 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
     finally { setBusy(false); }
   };
   return <section className="space-y-4 rounded-xl border border-border p-5">
-    <p className="text-sm text-muted">Le mode aperçu n'effectue aucune modification. Les écritures réelles sont désactivées par défaut, et les budgets ne sont jamais modifiables ici.</p>
+    <p className="text-sm text-muted">Le mode aperçu n&apos;effectue aucune modification. Les écritures réelles sont désactivées par défaut, et les budgets ne sont jamais modifiables ici.</p>
     <label className="block text-sm">Client
       <select className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={clientId} onChange={(e) => { setClientId(e.target.value); setPreview(null); setApprovalId(""); }}>
         <option value="">Sélectionner</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.account}</option>)}

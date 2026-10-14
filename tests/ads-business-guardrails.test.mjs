@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadTs } from "./helpers/load-ts.mjs";
 const { validateAdsAIOutput } = loadTs("lib/integrations/google-ads/ai-analysis.ts", {
-  "@/lib/integrations/google-ads/dashboard": { groupByType: () => [], typeLabel: () => "Search" },
+  "./dashboard": { groupByType: () => [], typeLabel: () => "Search" },
 });
 const rows = [{id:"123",type:"SEARCH",localServices:false,hasActivity:true,metrics:{cost:124.25,conversions:0,clicks:14}}];
 const evidence = [

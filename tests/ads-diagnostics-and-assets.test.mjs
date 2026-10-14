@@ -25,7 +25,7 @@ test("rejected ads and ineligible call assets produce bounded actionable diagnos
   assert.ok(issues.every(issue => issue.recommendation.length > 0));
 });
 test("healthy campaign is not declared proven to generate leads", () => {
-  assert.deepEqual(buildDiagnosticIssues(baseline()), []);
+  assert.deepEqual(Array.from(buildDiagnosticIssues(baseline())), []);
 });
 const writes = loadTs("lib/ads/write-foundation.ts", { "@/lib/providers/api": {} });
 test("ad and call asset updates use separate whitelisted resources", () => {

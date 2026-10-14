@@ -26,7 +26,7 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
       </select>
     </div>
     {active && <div className="flex flex-wrap gap-3 border-b border-border px-4 py-3 text-xs text-muted">
-      <span>Arrêt d'urgence : <strong>{active.emergency_stop?"ACTIF":"inactif"}</strong></span>
+      <span>Arrêt d&apos;urgence : <strong>{active.emergency_stop?"ACTIF":"inactif"}</strong></span>
       <span>Découverte : {active.discovery_enabled?"activée":"désactivée"}</span>
       <span>Expédition : {active.sending_enabled?"activée":"désactivée"}</span>
       <span>Quota : {active.daily_send_limit}/jour</span>

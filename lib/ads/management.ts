@@ -62,14 +62,17 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
     metadata: { account, campaignId: change.campaignId, kind: change.kind, preview } });
   try {
     const result = await executeApprovedAdsChange(change, { approved: true, dryRun: false, managerId: manager });
-    // Note: campaignCriterion changes need their own readback in the next integration lot.
-    const verified = change.kind === "negative_keyword_add" ? false : await (async () => {
+    // Read back only the resource actually mutated; never misreport another resource's status.
+    let verified = false;
+    if (change.kind === "campaign_pause" || change.kind === "campaign_enable") {
       const checked = await providerJson<{ results?: { campaign?: { status: string } }[] }>(
         "google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`,
         { method: "POST", headers, body: JSON.stringify({ query }) },
       );
-      return checked.results?.[0]?.campaign?.status === (change.kind === "campaign_pause" ? "PAUSED" : "ENABLED");
-    })();
+      verified = checked.results?.[0]?.campaign?.status === (change.kind === "campaign_pause" ? "PAUSED" : "ENABLED");
+    }
+    // Keywords and negatives require a separate adGroupCriterion/campaignCriterion readback.
+    // Until implemented, report unverified rather than returning a false success.
     await writeAudit(actor, { action: "ads.change.executed", resource_type: "client", resource_id: clientId,
       metadata: { account, campaignId: change.campaignId, kind: change.kind, verified } });
     return { executed: true, verified, preview, result: result.response };

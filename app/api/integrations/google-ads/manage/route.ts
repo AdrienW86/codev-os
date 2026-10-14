@@ -18,7 +18,7 @@ const change = z.discriminatedUnion("kind", [
   }).strict(),
 ]);
 const input = z.object({
-  clientId: z.uuid(), change, dryRun: z.boolean().optional(), confirm: z.string().max(80).optional(),
+  clientId: z.uuid(), change, dryRun: z.boolean().optional(), confirm: z.string().max(80).optional(), approvalId: z.uuid().optional(),
 }).strict();
 
 export async function POST(request: Request) {

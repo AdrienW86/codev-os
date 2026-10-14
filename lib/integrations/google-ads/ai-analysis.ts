@@ -87,6 +87,25 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
     signal: AbortSignal.timeout(25_000),
   });
   if (response.toolCalls.length !== 1 || response.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
-  const output = validateAdsAIOutput(response.toolCalls[0].arguments, rows, evidence);
+  let output: AdsAIOutput;
+  try {
+    output = validateAdsAIOutput(response.toolCalls[0].arguments, rows, evidence);
+  } catch (error) {
+    // OpenAI strict mode guarantees the JSON shape, not domain rules (IDs, cited evidence,
+    // numeric claims in free text). Retry once with bounded, non-sensitive validation hints.
+    const hint = error instanceof z.ZodError
+      ? error.issues.slice(0, 4).map((issue) => `${issue.path.join(".") || "root"}:${issue.code}`).join(",")
+      : "invalid_evidence_or_campaign_scope";
+    console.warn("[google-ads-ai] structured output rejected", { hint });
+    const corrected = await provider.complete({
+      system: "Corrige uniquement la structure de l'analyse précédente. Appelle ads_analysis_result une seule fois. Les champs explication et rationale ne doivent contenir AUCUN chiffre, pourcentage, montant, identifiant ou balise HTML : cite des evidenceIds existants à la place. Les campaignIds doivent provenir exclusivement de la liste fournie et chaque evidenceId doit appartenir à la même campagne, sauf la preuve scope. Ne mélange jamais Search et Local Services dans une recommandation. Tous les champs sont obligatoires. Réponds en français. Aucune modification Google Ads.",
+      messages: [{ role: "user", content: JSON.stringify({ allowedCampaignIds: campaignIds, allowedEvidenceIds: proofIds, firstOutput: response.toolCalls[0].arguments, validationHint: hint }) }],
+      tools: [{ name: "ads_analysis_result", description: "Retour structuré corrigé, sans exécution.", parameters, strict: true }],
+      toolChoice: "required",
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (corrected.toolCalls.length !== 1 || corrected.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
+    output = validateAdsAIOutput(corrected.toolCalls[0].arguments, rows, evidence);
+  }
   return { output, evidence, text: formatAdsAIOutput(output, evidence) };
 }

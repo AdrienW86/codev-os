@@ -69,6 +69,11 @@ export async function POST(request: Request) {
       const seoSummary = seoEvidence?.lastRun
         ? `Dernière exécution SEO : ${seoEvidence.lastRun.status} (${seoEvidence.lastRun.at.slice(0, 10)}). ${seoEvidence.lastRun.summary ?? ""}`
         : "Aucune exécution SEO enregistrée.";
+      const actionPlan = seoFacts.slice(0, 8).map((r) => ({
+        title: r.title, source: "seo" as const,
+        priority: (["critical", "high", "medium", "low", "info"].includes(r.severity) ? r.severity : "unrated") as "critical" | "high" | "medium" | "low" | "info" | "unrated",
+        date: r.createdAt, href: r.href,
+      }));
       const priorityLinks = seoFacts.slice(0, 3).map((r) => ({ label: `SEO : ${r.title}`, href: r.href }));
       const ads = await executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
       const seo = await proposeFromView("run_check", { check: "seo.analyze", client: client.name }, deps);
@@ -78,7 +83,7 @@ export async function POST(request: Request) {
         links, source: "rules", context: { clientId: client.id, clientName: client.name },
         ...(ads?.view ? { view: ads.view } : {}),
         ...(seo.proposal ? { proposal: seo.proposal } : {}),
-        mission: { steps: [
+        mission: { actions: actionPlan, steps: [
           { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
           { agent: "seo", status: seo.proposal ? "awaiting_approval" : "failed" },
         ] },

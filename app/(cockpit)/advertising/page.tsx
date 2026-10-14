@@ -40,7 +40,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   return <>
     <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports. Gestion des modifications dans une interface séparée, désactivée par défaut." />
     <nav aria-label="Sections Google Ads" className="mb-5 flex flex-wrap items-center gap-2">
-      <span aria-current="page" className="rounded-full bg-accent/10 px-4 py-2 text-sm font-medium text-accent">Vue d'ensemble</span>
+      <span aria-current="page" className="rounded-full bg-accent/10 px-4 py-2 text-sm font-medium text-accent">Vue d&apos;ensemble</span>
       <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/advertising/keywords${client ? `?client=${client.id}` : ""}`}>Mots-clés & dépenses</Link>
       <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/advertising/manage${client ? `?client=${client.id}` : ""}`}>Modifications</Link>
       <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/recommendations${client ? `?client=${client.id}` : ""}`}>Recommandations</Link>

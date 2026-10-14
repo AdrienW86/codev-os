@@ -192,6 +192,13 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
         </details>
       </fieldset>
 
+      <section aria-label="Alertes rapides" className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Campagnes visibles</p><p className="mt-2 text-xl font-semibold">{selected.length}</p><p className="mt-1 text-xs text-muted">Selon les filtres actifs</p></div>
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Dépenses sans conversion enregistrée</p>
+          <p className="mt-2 text-xl font-semibold">{selected.filter((row) => row.metrics.cost !== null && row.metrics.cost >= 50 && row.metrics.conversions === 0).length}</p>
+          <p className="mt-1 text-xs text-muted">Campagnes avec au moins 50 € dépensés et 0 conversion mesurée sur la période. Vérifier le suivi avant de conclure à l'absence de prospects.</p></div>
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Campagnes actuellement en pause</p><p className="mt-2 text-xl font-semibold">{data.campaigns.filter((row) => row.status === "PAUSED").length}</p><p className="mt-1 text-xs text-muted">Sur l'ensemble du compte, indépendamment du filtre actuel</p></div>
+      </section>
       <section aria-label="Vue rapide des performances" className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h3 className="font-semibold">Vue d’ensemble</h3><p className="text-xs text-muted">Données réelles du périmètre sélectionné · {selected.length} campagne(s)</p></div>

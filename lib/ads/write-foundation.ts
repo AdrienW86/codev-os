@@ -65,6 +65,7 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
     }] };
   }
   if (change.kind === "keyword_add" && !RESOURCE_ID.test(change.adGroupId)) throw new Error("Groupe d'annonces invalide.");
+  if (!("keywords" in change)) throw new Error("Opération de mots-clés invalide.");
   if (!Array.isArray(change.keywords) || change.keywords.length === 0 || change.keywords.length > MAX_NEGATIVES) {
     throw new Error("Nombre de mots-clés négatifs invalide.");
   }

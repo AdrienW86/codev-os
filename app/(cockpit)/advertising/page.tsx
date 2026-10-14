@@ -6,6 +6,7 @@ import { listClients } from "@/lib/clients/data";
 import { getGoogleAdsConnection, loadCampaignDashboard, ANALYSIS_ENGINE_NOTE } from "@/lib/integrations/google-ads/service";
 import { parseFilters, writeFilters } from "@/lib/integrations/google-ads/dashboard";
 import { CampaignDashboard } from "@/components/google-ads/campaign-dashboard";
+import { AdsClientSwitcher } from "@/components/google-ads/client-switcher";
 import { PageHeading, Panel } from "@/components/ui/primitives";
 import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction } from "../clients/[id]/google-ads-actions";
 import { getActiveScenario } from "@/lib/simulation/server";
@@ -39,15 +40,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
     <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports. Gestion des modifications dans une interface séparée, désactivée par défaut." />
     <p className="mb-4 text-sm"><Link className="text-accent" href={`/advertising/manage${client ? `?client=${client.id}` : ""}`}>Gérer les campagnes et mots-clés →</Link></p>
     <Panel className="mb-6 p-4">
-      <form action="/advertising" className="flex flex-wrap items-end gap-3">
-        {Array.from(preserved.entries()).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-        <label className="min-w-0 flex-1 text-sm">Client
-          <select name="client" defaultValue={client?.id ?? ""} className="mt-2 block min-h-12 w-full rounded-lg border border-border bg-background px-3">
-            <option value="">Choisir un client</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </label>
-        <button className="min-h-12 rounded-lg border border-border px-4 text-sm">Afficher</button>
-      </form>
+      <AdsClientSwitcher clients={clients.map((item) => ({ id: item.id, name: item.name }))} selected={client?.id ?? ""} />
       {client && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span>Compte associé : {connection?.external_account_id ?? "aucun"}{connection?.metadata.account_name ? ` · ${connection.metadata.account_name}` : ""}</span><Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Connexion et agents</Link><Link href={`/reports?client=${client.id}`} className="text-accent">Rapports du client</Link></div>}
     </Panel>
     {!clients.length ? <p>Aucun client enregistré. <Link href="/clients/new" className="text-accent">Créer un client</Link></p>

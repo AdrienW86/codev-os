@@ -33,4 +33,4 @@ export function localServicesLeadsQuery(period: AdsPeriod) {
 }
 
 /** Inventaire read-only des objectifs de conversion du compte. */
-export const conversionActionsQuery = "SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status, conversion_action.primary_for_goal, conversion_action.counting_type FROM conversion_action WHERE conversion_action.status != 'REMOVED'";
+export const conversionActionsQuery = "SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status, conversion_action.primary_for_goal, conversion_action.counting_type, metrics.all_conversions, metrics.conversion_last_conversion_date, metrics.conversion_last_received_request_date_time FROM conversion_action WHERE conversion_action.status != 'REMOVED'";

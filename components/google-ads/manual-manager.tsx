@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 type ClientOption = { id: string; name: string; account: string };
-type Preview = { executed?: boolean; verified?: boolean; preview?: unknown; error?: string };
+type Preview = { executed?: boolean; verified?: boolean; preview?: unknown; error?: string; approvalId?: string; requiresApproval?: boolean };
 
 export function AdsManualManager({ clients, initialClient }: { clients: ClientOption[]; initialClient: string }) {
   const [clientId, setClientId] = useState(initialClient);
@@ -15,6 +15,7 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [approvalId, setApprovalId] = useState("");
   const client = clients.find((item) => item.id === clientId);
   const execute = async (dryRun: boolean) => {
     if (!client || !/^\d+$/.test(campaignId)) { setPreview({ error: "Sélectionnez un client et saisissez l'ID numérique d'une campagne." }); return; }
@@ -26,23 +27,23 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
         : { kind, customerId: client.account, campaignId, ...(["keyword_pause", "keyword_enable"].includes(kind) ? { adGroupId, criterionId } : {}) };
       const response = await fetch("/api/integrations/google-ads/manage", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, change, dryRun, ...(dryRun ? {} : { confirm }) }),
+        body: JSON.stringify({ clientId, change, dryRun, ...(dryRun ? {} : { confirm, ...(approvalId ? { approvalId } : {}) }) }),
       });
       const result = await response.json() as Preview;
       if (!response.ok) setPreview({ error: result.error ?? "Opération refusée." });
-      else setPreview(result);
+      else { setPreview(result); if (!dryRun && "approvalId" in result && typeof result.approvalId === "string") setApprovalId(result.approvalId); else if (!dryRun) setApprovalId(""); }
     } catch { setPreview({ error: "Connexion indisponible." }); }
     finally { setBusy(false); }
   };
   return <section className="space-y-4 rounded-xl border border-border p-5">
     <p className="text-sm text-muted">Le mode aperçu n'effectue aucune modification. Les écritures réelles sont désactivées par défaut, et les budgets ne sont jamais modifiables ici.</p>
     <label className="block text-sm">Client
-      <select className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={clientId} onChange={(e) => { setClientId(e.target.value); setPreview(null); }}>
+      <select className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={clientId} onChange={(e) => { setClientId(e.target.value); setPreview(null); setApprovalId(""); }}>
         <option value="">Sélectionner</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.account}</option>)}
       </select>
     </label>
     <label className="block text-sm">Identifiant Google Ads de la campagne
-      <input className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={campaignId} onChange={(e) => { setCampaignId(e.target.value); setPreview(null); }} placeholder="Ex. 24338541496" inputMode="numeric" />
+      <input className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={campaignId} onChange={(e) => { setCampaignId(e.target.value); setPreview(null); setApprovalId(""); }} placeholder="Ex. 24338541496" inputMode="numeric" />
     </label>
     <label className="block text-sm">Opération
       <select className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={kind} onChange={(e) => { setKind(e.target.value); setPreview(null); }}>
@@ -69,7 +70,7 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
       <label className="mt-3 block text-sm">Saisissez exactement : CONFIRMER {campaignId || "[ID CAMPAGNE]"}
         <input className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </label>
-      <button type="button" disabled={busy || confirm !== `CONFIRMER ${campaignId}`} onClick={() => execute(false)} className="mt-3 min-h-11 rounded-lg border border-border px-4">Exécuter sur Google Ads</button>
+      <button type="button" disabled={busy || confirm !== `CONFIRMER ${campaignId}`} onClick={() => execute(false)} className="mt-3 min-h-11 rounded-lg border border-border px-4">{approvalId ? "Confirmer et exécuter" : "Créer une approbation à usage unique"}</button>
     </details>
   </section>;
 }

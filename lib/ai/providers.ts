@@ -22,7 +22,7 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
     async ping(signal) {
       await providerJson("openai", `https://api.openai.com/v1/models/${encodeURIComponent(model)}`, { fetchImpl, signal, timeoutMs: 10_000, headers: { Authorization: `Bearer ${apiKey}` } });
     },
-    async complete({ system, messages, tools, toolResults = [], signal }) {
+    async complete({ system, messages, tools, toolChoice = "auto", toolResults = [], signal }) {
       const pending = toolResults.length ? [
         { role: "assistant", content: null, tool_calls: toolResults.map(({ call }) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments ?? {}) } })) },
         ...toolResults.map(({ call, result }) => ({ role: "tool", tool_call_id: call.id, content: result })),
@@ -35,7 +35,7 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
           model, max_completion_tokens: isOpenAIReasoningModel(model) ? MAX_TOKENS * 4 : MAX_TOKENS,
           ...(isOpenAIReasoningModel(model) ? {} : { temperature: 0.2 }),
           messages: [{ role: "system", content: system }, ...messages, ...pending],
-          ...(tools.length ? { tools: tools.map((tool) => ({ type: "function", function: tool })), tool_choice: "auto", parallel_tool_calls: false } : {}),
+          ...(tools.length ? { tools: tools.map((tool) => ({ type: "function", function: tool })), tool_choice: toolChoice, parallel_tool_calls: false } : {}),
         }),
       });
       const message = data.choices?.[0]?.message;
@@ -63,7 +63,7 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
         body: JSON.stringify({
           model, max_tokens: MAX_TOKENS, temperature: 0.2, system,
           messages: [...messages, ...pending],
-          ...(tools.length ? { tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters })) } : {}),
+          ...(tools.length ? { tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters })), tool_choice: toolChoice === "required" ? { type: "any" } : { type: "auto" } } : {}),
         }),
       });
       if (!Array.isArray(data.content)) throw new ProviderError("anthropic", "malformed");

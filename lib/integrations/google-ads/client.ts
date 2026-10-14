@@ -85,7 +85,7 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
     const rows = await this.#search(customerId, conversionActionsQuery, managerId);
     return rows.flatMap((row) => {
       const action = row.conversionAction;
-      if (!action || !/^\\d+$/.test(String(action.id))) return [];
+      if (!action || !/^\d+$/.test(String(action.id))) return [];
       return [{
         id: String(action.id), name: text(action.name) ?? "Action sans nom",
         type: text(action.type) ?? "UNKNOWN", category: text(action.category) ?? "UNKNOWN",

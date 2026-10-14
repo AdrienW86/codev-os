@@ -8,6 +8,10 @@ const id = z.string().regex(/^\d+$/);
 const change = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("campaign_pause"), customerId: z.string().regex(/^\d{10}$/), campaignId: id }).strict(),
   z.object({ kind: z.literal("campaign_enable"), customerId: z.string().regex(/^\d{10}$/), campaignId: id }).strict(),
+  z.object({ kind: z.literal("ad_pause"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, adGroupId: id, adId: id }).strict(),
+  z.object({ kind: z.literal("ad_enable"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, adGroupId: id, adId: id }).strict(),
+  z.object({ kind: z.literal("call_asset_pause"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, assetId: id }).strict(),
+  z.object({ kind: z.literal("call_asset_enable"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, assetId: id }).strict(),
   z.object({ kind: z.literal("keyword_pause"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, adGroupId: id, criterionId: id }).strict(),
   z.object({ kind: z.literal("keyword_enable"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, adGroupId: id, criterionId: id }).strict(),
   z.object({ kind: z.literal("keyword_add"), customerId: z.string().regex(/^\d{10}$/), campaignId: id, adGroupId: id,

@@ -37,52 +37,12 @@ export function previewNegativeKeyword(input: NegativeKeywordProposal) {
   };
 }
 
-/** Internal write primitive: caller MUST persist and verify a one-time admin approval first. */
-export async function applyApprovedNegativeKeyword(input: ApprovedNegativeKeyword) {
+/**
+ * Writes are intentionally unavailable until the one-time approval workflow,
+ * account binding, transactional claim, audit and post-write verification exist.
+ */
+export async function applyApprovedNegativeKeyword(_input: ApprovedNegativeKeyword): Promise<never> {
   await requireAdmin();
   if (await getActiveScenario()) throw new Error("Modifications Google Ads interdites en simulation.");
-  if (process.env.GOOGLE_ADS_MUTATIONS_ENABLED !== "true") throw new Error("Écriture Google Ads désactivée.");
-  // Fail closed until the database-backed approval-consumption flow is implemented.
-  // Merely having a Clerk admin session is NOT proof of approval for this exact write.
-  throw new Error("Écritures Google Ads indisponibles : approbation à usage unique non implémentée.");
-  const proposal = validateNegativeKeyword(input);
-  const id = process.env.GOOGLE_ADS_CLIENT_ID;
-  const secret = process.env.GOOGLE_ADS_CLIENT_SECRET;
-  const refresh = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  if (!id || !secret || !refresh) throw new Error("OAuth Google Ads non configuré.");
-
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15000),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: id, client_secret: secret, refresh_token: refresh, grant_type: "refresh_token" }),
-  });
-  if (!tokenResponse.ok) throw new Error("Autorisation Google Ads indisponible.");
-  const tokenBody: unknown = await tokenResponse.json();
-  if (!tokenBody || typeof tokenBody !== "object" || !("access_token" in tokenBody) || typeof tokenBody.access_token !== "string") {
-    throw new Error("Jeton OAuth Google Ads invalide.");
-  }
-  const response = await fetch(`https://googleads.googleapis.com/v25/customers/${proposal.customerId}/googleAds:mutate`, {
-    method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
-    headers: {
-      Authorization: `Bearer ${tokenBody.access_token}`,
-      "Content-Type": "application/json",
-      ...(proposal.managerId ? { "login-customer-id": proposal.managerId } : {}),
-    },
-    body: JSON.stringify({
-      mutateOperations: [{
-        campaignCriterionOperation: {
-          create: {
-            campaign: `customers/${proposal.customerId}/campaigns/${proposal.campaignId}`,
-            negative: true,
-            keyword: { text: proposal.text, matchType: proposal.matchType },
-          },
-        },
-      }],
-      partialFailure: false,
-      validateOnly: false,
-    }),
-  });
-  if (!response.ok) throw new Error("Échec de modification Google Ads : vérifiez les autorisations et le mot-clé.");
-  const result: unknown = await response.json();
-  return { applied: true as const, result };
+  throw new Error("Écritures Google Ads désactivées : approbation sécurisée non implémentée.");
 }

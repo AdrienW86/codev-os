@@ -93,6 +93,14 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
       { method: "POST", headers, body: JSON.stringify({ query: q }) });
     if (String(check.results?.[0]?.adGroupAd?.ad?.id ?? "") !== change.adId) throw new Error("Annonce étrangère à la campagne.");
   }
+  if (change.kind === "call_asset_pause" || change.kind === "call_asset_enable") {
+    const q = `SELECT campaign_asset.resource_name FROM campaign_asset WHERE campaign.id = ${change.campaignId} AND asset.id = ${change.assetId} AND campaign_asset.field_type = 'CALL' LIMIT 1`;
+    const check = await providerJson<{ results?: { campaignAsset?: { resourceName?: string } }[] }>("google-ads",
+      `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
+      { method: "POST", headers, body: JSON.stringify({ query: q }) });
+    if (check.results?.[0]?.campaignAsset?.resourceName !== `customers/${account}/campaignAssets/${change.campaignId}~${change.assetId}~CALL`)
+      throw new Error("Composant Appel étranger à la campagne.");
+  }
   // Append an audit record before the external side effect. Fail closed if audit unavailable.
   await writeAudit(actor, { action: "ads.change.requested", resource_type: "client", resource_id: clientId,
     metadata: { account, campaignId: change.campaignId, kind: change.kind, preview } });

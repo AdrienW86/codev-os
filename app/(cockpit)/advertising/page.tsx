@@ -12,6 +12,7 @@ import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAd
 import { getActiveScenario } from "@/lib/simulation/server";
 import { saveTrackedCampaignsAction } from "./actions";
 import { getAdsBusinessContext } from "@/lib/integrations/google-ads/context-service";
+import { getClientConversionDiagnostics } from "@/lib/integrations/google-ads/conversion-diagnostics";
 import { listAgentsForClient } from "@/lib/agents/data";
 import { ClientAgentAssignments } from "@/components/agents/client-agent-assignments";
 import { AdsBusinessContextEditor } from "@/components/google-ads/business-context-editor";
@@ -33,6 +34,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   if (client) try { connection = await getGoogleAdsConnection(client.id); } catch { connectionError = true; }
   const initial = client && connection?.status === "connected" ? await loadCampaignDashboard(client.id, filters) : null;
   const business = client ? await getAdsBusinessContext(client.id).catch(() => ({ available: false, revision: 0, context: null })) : null;
+  const conversionDiagnostics = client && connection?.status === "connected" ? await getClientConversionDiagnostics(client.id) : null;
   const analyses = client ? await listClientAdsAnalyses(client.id).catch(() => null) : [];
   const assignments = client ? await listAgentsForClient(client.id).then((items) => items.filter((item) => item.agent?.agent_type === "google-ads")).catch(() => null) : [];
   return <>
@@ -53,6 +55,21 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
       : <CampaignDashboard key={client.id} clientId={client.id} agentClientName={client.name} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
     {client && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Rapports récurrents · configuration avancée</summary><div className="mt-4"><RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} /></div></details>}
+    {client && conversionDiagnostics && <details className="mt-6 rounded-xl border border-border p-4">
+      <summary className="cursor-pointer font-medium">Diagnostic des conversions Google Ads</summary>
+      <div className="mt-3 space-y-3 text-sm">
+        {!conversionDiagnostics.ok ? <p role="status">{conversionDiagnostics.message}</p> : <>
+          <p className="text-muted">Actions visibles dans le compte connecté (lecture seule).</p>
+          {conversionDiagnostics.warning && <p className="text-muted">{conversionDiagnostics.warning}</p>}
+          {!conversionDiagnostics.actions.length ? <p>Aucune action renvoyée par ce compte.</p> : <ul className="space-y-2">
+            {conversionDiagnostics.actions.map((action) => <li key={action.id} className="rounded-lg border border-border p-3">
+              <p className="font-medium">{action.name}</p>
+              <p className="mt-1 text-xs text-muted">ID {action.id} · {action.category} · {action.type} · {action.status} · {action.primary === null ? "Principal : indisponible" : action.primary ? "Principale" : "Secondaire"} · Comptage : {action.countingType}</p>
+            </li>)}
+          </ul>}
+        </>}
+      </div>
+    </details>}
     {client && business && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Contexte commercial de l’agent</summary><div className="mt-4"><AdsBusinessContextEditor key={client.id} clientId={client.id} initial={business} /></div></details>}
     {client && <Panel className="mt-6 p-4"><h2 className="font-medium">Dernières analyses du client</h2>
       {analyses === null ? <p role="alert" className="mt-3 text-sm">Historique indisponible. Rechargez la page.</p> : !analyses.length ? <p className="mt-3 text-sm text-muted">Aucune analyse enregistrée.</p> : <ul className="mt-3 space-y-3">{analyses.map((run) => <li key={run.id} className="text-sm"><Link href={`/advertising/analyses/${run.id}`} className="block min-h-11 py-2 text-accent">{new Date(run.started_at).toLocaleString("fr-FR")} · {run.status === "completed" ? "Terminée" : run.status === "failed" ? "Échouée" : "En cours"}<span className="mt-1 block text-muted">{run.summary ?? "Consulter le périmètre et les instructions enregistrés"}</span></Link></li>)}</ul>}

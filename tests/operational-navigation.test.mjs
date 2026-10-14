@@ -49,7 +49,7 @@ test("mission Ads + SEO exige un client et les deux domaines", () => {
 });
 
 test("trois priorités exigent un client explicite", () => {
-  assert.equal(resolveTopPrioritiesCommand("Directeur, quelles sont les trois actions les plus importantes pour développer l'activité de Jrenov"), null);
+  assert.equal(resolveTopPrioritiesCommand("Directeur, quelles sont les trois actions les plus importantes pour développer l'activité de Jrenov"), "jrenov");
   assert.equal(resolveTopPrioritiesCommand("trois priorités pour Jrenov"), "jrenov");
   assert.equal(resolveTopPrioritiesCommand("analyse les campagnes de Jrenov"), null);
 });

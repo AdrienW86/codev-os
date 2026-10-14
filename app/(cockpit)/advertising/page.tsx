@@ -65,7 +65,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
             {conversionDiagnostics.actions.map((action) => <li key={action.id} className="rounded-lg border border-border p-3">
               <p className="font-medium">{action.name}</p>
               <p className="mt-1 text-xs text-muted">ID {action.id} · {action.category} · {action.type} · {action.status} · {action.primary === null ? "Principal : indisponible" : action.primary ? "Principale" : "Secondaire"} · Comptage : {action.countingType}</p>
-              <p className="mt-1 text-xs text-muted">Dernière balise reçue par Google : {action.lastTagReceivedAt ?? "non renseignée"} · Dernière conversion attribuée : {action.lastConversionDate ?? "non renseignée"} · Toutes conversions (compte) : {action.allConversions ?? "indisponible"}</p>
+              <p className="mt-1 text-xs text-muted">Dernière balise reçue par Google : {action.lastTagReceivedAt ?? "aucune réception connue"} · Dernière conversion attribuée : {action.lastConversionDate ?? "non renseignée"} · Conversions attribuées (selon Google Ads) : {action.allConversions ?? "indisponible"}</p>
             </li>)}
           </ul>}
         </>}

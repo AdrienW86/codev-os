@@ -37,18 +37,23 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   const assignments = client ? await listAgentsForClient(client.id).then((items) => items.filter((item) => item.agent?.agent_type === "google-ads")).catch(() => null) : [];
   return <>
     <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports. Gestion des modifications dans une interface séparée, désactivée par défaut." />
-    <p className="mb-4 text-sm"><Link className="text-accent" href={`/advertising/manage${client ? `?client=${client.id}` : ""}`}>Gérer les campagnes et mots-clés →</Link></p>
-    <Panel className="mb-6 p-4">
+    <nav aria-label="Sections Google Ads" className="mb-5 flex flex-wrap items-center gap-2">
+      <span aria-current="page" className="rounded-full bg-accent/10 px-4 py-2 text-sm font-medium text-accent">Vue d'ensemble</span>
+      <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/advertising/keywords${client ? `?client=${client.id}` : ""}`}>Mots-clés & dépenses</Link>
+      <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/advertising/manage${client ? `?client=${client.id}` : ""}`}>Modifications</Link>
+      <Link className="rounded-full border border-border px-4 py-2 text-sm hover:bg-surface-raised" href={`/recommendations${client ? `?client=${client.id}` : ""}`}>Recommandations</Link>
+    </nav>
+    <Panel className="mb-5 p-4">
       <AdsClientSwitcher clients={clients.map((item) => ({ id: item.id, name: item.name }))} selected={client?.id ?? ""} />
-      {client && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span>Compte associé : {connection?.external_account_id ?? "aucun"}{connection?.metadata.account_name ? ` · ${connection.metadata.account_name}` : ""}</span><Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Connexion et agents</Link><Link href={`/reports?client=${client.id}`} className="text-accent">Rapports du client</Link></div>}
+      {client && <details className="mt-3 text-sm"><summary className="cursor-pointer text-muted">Paramètres du compte</summary><div className="mt-3 flex flex-wrap gap-3"><span>Compte : {connection?.external_account_id ?? "aucun"}</span><Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Connexions</Link><Link href={`/reports?client=${client.id}`} className="text-accent">Rapports</Link></div></details>}
     </Panel>
     {!clients.length ? <p>Aucun client enregistré. <Link href="/clients/new" className="text-accent">Créer un client</Link></p>
       : !client ? <p role={search.client ? "alert" : "status"}>{search.client ? "Client introuvable. Choisissez un client de votre portefeuille." : "Choisissez un client pour consulter son compte publicitaire."}</p>
       : connectionError ? <p role="alert">Connexion indisponible. Rechargez la page pour réessayer.</p>
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
       : <CampaignDashboard key={client.id} clientId={client.id} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
-    {client && <RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} />}
-    {client && business && <div className="mt-6"><AdsBusinessContextEditor key={client.id} clientId={client.id} initial={business} /></div>}
+    {client && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Rapports récurrents · configuration avancée</summary><div className="mt-4"><RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} /></div></details>}
+    {client && business && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Contexte commercial de l’agent</summary><div className="mt-4"><AdsBusinessContextEditor key={client.id} clientId={client.id} initial={business} /></div></details>}
     {client && <Panel className="mt-6 p-4"><h2 className="font-medium">Dernières analyses du client</h2>
       {analyses === null ? <p role="alert" className="mt-3 text-sm">Historique indisponible. Rechargez la page.</p> : !analyses.length ? <p className="mt-3 text-sm text-muted">Aucune analyse enregistrée.</p> : <ul className="mt-3 space-y-3">{analyses.map((run) => <li key={run.id} className="text-sm"><Link href={`/advertising/analyses/${run.id}`} className="block min-h-11 py-2 text-accent">{new Date(run.started_at).toLocaleString("fr-FR")} · {run.status === "completed" ? "Terminée" : run.status === "failed" ? "Échouée" : "En cours"}<span className="mt-1 block text-muted">{run.summary ?? "Consulter le périmètre et les instructions enregistrés"}</span></Link></li>)}</ul>}
     </Panel>}

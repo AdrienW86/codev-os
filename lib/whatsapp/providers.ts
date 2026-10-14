@@ -95,6 +95,7 @@ function importCredential(name: ImportVariable) {
   return value;
 }
 const driveFileScope = "https://www.googleapis.com/auth/drive.file";
+const readOnlyDriveScopes = new Set(["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.metadata.readonly"]);
 export async function importDriveToken() {
   const clientId = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_ID");
   const clientSecret = importCredential("GOOGLE_DRIVE_IMPORT_CLIENT_SECRET");
@@ -105,8 +106,13 @@ export async function importDriveToken() {
   }), "oauth"), "oauth");
   const scopes = data.scope.split(" ");
   if (data.token_type.toLowerCase() !== "bearer") throw new ImportFailure("provider_response", { stage: "oauth" });
-  if (scopes.some(scope => scope.startsWith("https://www.googleapis.com/auth/drive") && scope !== driveFileScope)) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
-  if (!scopes.includes(driveFileScope)) throw new ImportFailure("drive_scope_missing", { stage: "oauth" });
+  const driveScopes = scopes.filter(scope => scope.startsWith("https://www.googleapis.com/auth/drive"));
+  if (!driveScopes.includes(driveFileScope)) {
+    if (driveScopes.length && driveScopes.every(scope => readOnlyDriveScopes.has(scope))) throw new ImportFailure("drive_scope_readonly", { stage: "oauth" });
+    if (driveScopes.length) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
+    throw new ImportFailure("drive_scope_missing", { stage: "oauth" });
+  }
+  if (driveScopes.some(scope => scope !== driveFileScope)) throw new ImportFailure("drive_scope_too_broad", { stage: "oauth" });
   return data.access_token;
 }
 export async function checkFolder(token: string, folder: string) {

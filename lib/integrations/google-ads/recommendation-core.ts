@@ -13,7 +13,11 @@ export async function analyzeRecommendation(rows: CampaignRow[], scope: StoredAd
   const provider = mode === "ai" ? selectAIProvider() : null;
   if (mode === "ai") {
     try { if (!provider) throw new Error("unavailable"); ai = await analyzeAdsWithAI(provider, rows, scope, instructions); }
-    catch { fallback = true; }
+    catch (error) { fallback = true;
+      const kind = error instanceof Error ? error.name : "unknown";
+      const reason = error instanceof Error && /Sortie IA structurée absente/.test(error.message) ? "tool_response_missing" : error instanceof Error && kind === "ZodError" ? "structured_validation" : kind === "ProviderError" ? "provider_failure" : kind === "TimeoutError" ? "timeout" : "analysis_failure";
+      console.error("[google-ads-ai] fallback", { provider: provider?.id ?? "none", model: provider?.model ?? "none", reason });
+    }
   }
   const signals = rows.filter(row => !row.localServices && row.metrics.cost !== null && row.metrics.cost > 0 && row.metrics.conversions === 0);
   const money = new Intl.NumberFormat("fr-FR", { style: "currency", currency: scope.currency });

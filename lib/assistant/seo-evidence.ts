@@ -16,9 +16,9 @@ export async function readSeoEvidence(clientId: string): Promise<SeoEvidence> {
   if (!agent) return { lastRun: null, recommendations: [] };
   const db = getSupabaseServerClient();
   const [run, recs] = await Promise.all([
-    db.from("agent_runs").select("status,completed_at,created_at,summary")
+    db.from("agent_runs").select("status,started_at,completed_at,summary")
       .eq("agent_id", agent.id).eq("client_id", clientId)
-      .order("created_at", { ascending: false }).limit(1),
+      .order("started_at", { ascending: false }).limit(1),
     db.from("recommendations").select("id,title,severity,reason,created_at")
       .eq("agent_id", agent.id).eq("client_id", clientId).eq("status", "pending")
       .order("created_at", { ascending: false }).limit(10),
@@ -27,9 +27,9 @@ export async function readSeoEvidence(clientId: string): Promise<SeoEvidence> {
   const latest = run.data?.[0];
   const priorities: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
   return {
-    lastRun: latest ? { status: latest.status, at: latest.completed_at ?? latest.created_at, summary: latest.summary } : null,
+    lastRun: latest ? { status: latest.status, at: latest.completed_at ?? latest.started_at, summary: latest.summary } : null,
     recommendations: (recs.data ?? []).map((r) => ({
-      id: r.id, title: r.title, severity: r.severity, reason: r.reason,
+      id: r.id, title: r.title, severity: r.severity, reason: r.reason ?? "",
       createdAt: r.created_at, href: `/recommendations/${r.id}`,
     })).sort((a,b) => (priorities[a.severity] ?? 5) - (priorities[b.severity] ?? 5)),
   };

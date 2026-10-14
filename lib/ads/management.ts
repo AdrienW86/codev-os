@@ -46,6 +46,17 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if (!campaign || String(campaign.id) !== change.campaignId || campaign.advertisingChannelType === "LOCAL_SERVICES") {
     throw new Error("Campagne non autorisée ou introuvable.");
   }
+  if ("adGroupId" in change) {
+    const groupQuery = `SELECT ad_group.id, ad_group.campaign FROM ad_group WHERE ad_group.id = ${change.adGroupId} LIMIT 1`;
+    const group = await providerJson<{ results?: { adGroup?: { id: string | number; campaign: string } }[] }>(
+      "google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`,
+      { method: "POST", headers, body: JSON.stringify({ query: groupQuery }) },
+    );
+    const selected = group.results?.[0]?.adGroup;
+    if (!selected || String(selected.id) !== change.adGroupId || selected.campaign !== `customers/${account}/campaigns/${change.campaignId}`) {
+      throw new Error("Groupe d'annonces extérieur à la campagne sélectionnée.");
+    }
+  }
   // Append an audit record before the external side effect. Fail closed if audit unavailable.
   await writeAudit(actor, { action: "ads.change.requested", resource_type: "client", resource_id: clientId,
     metadata: { account, campaignId: change.campaignId, kind: change.kind, preview } });

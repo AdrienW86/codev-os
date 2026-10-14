@@ -19,7 +19,6 @@ export async function getClientKeywordSpend(clientId: string, period: { start: s
   const manager = linked.metadata.manager_customer_id?.replace(/-/g, "") ?? process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, "");
   if (!/^\d{10}$/.test(account) || (manager && !/^\d{10}$/.test(manager))) throw new Error("Compte Google Ads invalide.");
   const env = process.env;
-  if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) throw new Error("Jeton développeur Google Ads manquant.");
   const token = await googleAccessToken("google-ads", {
     clientId: env.GOOGLE_ADS_CLIENT_ID, clientSecret: env.GOOGLE_ADS_CLIENT_SECRET,
     refreshToken: env.GOOGLE_ADS_REFRESH_TOKEN,
@@ -36,9 +35,8 @@ export async function getClientKeywordSpend(clientId: string, period: { start: s
     adGroup?: { id?: string };
     adGroupCriterion?: { criterionId?: string; keyword?: { text?: string; matchType?: string }; status?: string };
     metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number };
-  }> }>("google-ads", `https://googleads.googleapis.com/v21/customers/${account}/googleAds:search`, {
-    method: "POST", headers: { Authorization: `Bearer ${token}`, "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      "Content-Type": "application/json", ...(manager ? { "login-customer-id": manager } : {}) },
+  }> }>("google-ads", `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(manager ? { "login-customer-id": manager } : {}) },
     body: JSON.stringify({ query }),
   });
   const rows = json.results ?? [];

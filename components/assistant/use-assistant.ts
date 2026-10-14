@@ -74,7 +74,7 @@ export function useAssistant(initialContext: AssistantContext = {}) {
     if (data.context) context.current = data.context;
     // Destination calculée côté serveur via une liste de routes autorisées.
     if (data.navigation?.href) router.push(data.navigation.href);
-    if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(true); }
+    if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(!data.mission); }
     setNotice(data.degraded ? `IA indisponible${data.degradedReason ? ` (${data.degradedReason})` : ""} : réponse en mode simplifié.` : "");
   }, [router]);
 

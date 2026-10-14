@@ -77,25 +77,21 @@ export async function POST(request: Request) {
       const live = adsResult.status === "fulfilled" && adsResult.value.ok && adsResult.value.view?.type === "ads_recommendations"
         ? await readLiveAdsPriorities(client.id, adsResult.value.view.result.runId) : [];
       const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unrated: 5 };
-      const actions = [...live, ...registered.filter((item) => !live.some((fresh) => fresh.title.toLowerCase() === item.title.toLowerCase()))]
+      const actions = [...live.filter((item) => item.priority !== "low"), ...registered.filter((item) => !live.some((fresh) => fresh.title.toLowerCase() === item.title.toLowerCase()))]
         .sort((a, b) => (rank[a.priority] ?? 5) - (rank[b.priority] ?? 5)).slice(0, 3);
       const ads = adsResult.status === "fulfilled" ? adsResult.value : null;
       const seo = seoResult.status === "fulfilled" ? seoResult.value : null;
       const seoStatus = seo?.lastRun
         ? `Dernière analyse SEO enregistrée : ${seo.lastRun.status} (${seo.lastRun.at.slice(0, 10)}).`
         : "Aucune analyse SEO récente vérifiable dans cet historique.";
-      const adsReport = ads?.view?.type === "ads_recommendations" && ads.ok ? ads.view.result.text.trim() : "";
-      // Excerpt is taken from the real analysis. It is not mistaken for a
-      // ranked recommendation, an estimated outcome, or a completed SEO run.
-      const adsExcerpt = adsReport ? adsReport.slice(0, 1000) : "";
       const registryStatus = actions.length
         ? `${actions.length} action(s) vérifiée(s), issues du diagnostic et des recommandations enregistrées.`
         : "Aucune recommandation Ads ou SEO en attente dans le registre.";
       const adsStatus = ads?.ok
-        ? `Diagnostic Google Ads disponible${adsExcerpt ? ` : ${adsExcerpt}` : " dans le détail lié"}.`
+        ? "Diagnostic Google Ads disponible dans l’analyse détaillée."
         : `Diagnostic Google Ads indisponible : ${ads?.text ?? "lecture impossible"}.`;
       return NextResponse.json({
-        reply: `${client.name} — ${registryStatus} ${adsStatus} ${seoStatus} ${actions.length ? "Les priorités enregistrées sont affichées avec leurs preuves." : "Je ne transforme pas des constats non structurés en fausses priorités ; consultez l'analyse détaillée pour les opportunités détectées."}`,
+        reply: `${client.name} : ${registryStatus} ${adsStatus} ${seoStatus}${actions.length ? "" : " Pas assez de signaux vérifiés pour proposer trois actions prioritaires."}`,
         links: [...actions.map((x) => ({ label: x.title, href: x.href })),
           ...(ads?.links ?? []),
           { label: "Campagnes Google Ads", href: `/advertising?client=${client.id}` },

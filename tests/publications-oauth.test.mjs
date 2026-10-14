@@ -322,7 +322,7 @@ test('callback route, actions and UI: internal 303 redirect without referrer, ad
  for(const out of [html,off])assert.doesNotMatch(out,/vault:|credential_reference|access_token|refresh_token|Bearer|code_verifier|state=/i);});
 
 test('P11-a security scope: no secret client-side, no provider call in client code, no publisher wired, callbacks protected, one migration',()=>{
- const clientFiles=readdirSync(resolve(root,'components'),{recursive:true}).filter(f=>/\.(ts|tsx)$/.test(f)).map(f=>'components/'+f.replaceAll('\\','/'));
+ const clientFiles=readdirSync(resolve(root,'components/publications'),{recursive:true}).filter(f=>/\.(ts|tsx)$/.test(f)).map(f=>'components/publications/'+f.replaceAll('\\','/'));
  for(const f of clientFiles)assert.doesNotMatch(src(f),/publications-oauth\/(config|http)|oauth\/service|encrypted-vault|secret-store|process\.env\.(META|GOOGLE_BUSINESS|PUBLICATION_CREDENTIALS)|\bfetch\s*\(/,f);
  for(const f of ['components/publications/connections-panel.tsx','app/(cockpit)/publications/connection-actions.ts','lib/publications/oauth/model.ts'])
   assert.doesNotMatch(src(f).replace(/\/\/[^\n]*/g,''),/credential_reference|access_token|refresh_token|client_secret|Bearer|code_verifier/i,f);

@@ -33,7 +33,7 @@ test("negative keyword rejects untrusted account, campaign, and keyword", () => 
     { campaignId: "123/../../" },
     { text: "" },
     { text: "a".repeat(81) },
-    { text: "test\\nother" },
+    { text: "test" + String.fromCharCode(10) + "other" },
     { matchType: "BROAD" },
   ]) assert.throws(() => exports.validateNegativeKeyword({ ...valid, ...wrong }));
 });

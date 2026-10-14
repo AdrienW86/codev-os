@@ -6,7 +6,7 @@ create table if not exists public.ads_change_approvals (
  campaign_id text not null check (campaign_id ~ '^[0-9]+$'),
  actor_id text not null check (length(actor_id) between 1 and 256),
  operation_sha256 text not null check (operation_sha256 ~ '^[a-f0-9]{64}$'),
- operation_kind text not null check (operation_kind in ('campaign_pause','campaign_enable','keyword_add','keyword_pause','keyword_enable','negative_keyword_add')),
+ operation_kind text not null check (operation_kind in ('campaign_pause','campaign_enable','keyword_add','keyword_pause','keyword_enable','negative_keyword_add','ad_pause','ad_enable','call_asset_pause','call_asset_enable')),
  status text not null default 'pending' check (status in ('pending','executing','succeeded','failed','uncertain','expired')),
  expires_at timestamptz not null default now() + interval '15 minutes',
  claimed_at timestamptz,

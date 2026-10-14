@@ -127,6 +127,23 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
       verified = String(criterion?.criterionId ?? "") === change.criterionId &&
         criterion?.status === (change.kind === "keyword_pause" ? "PAUSED" : "ENABLED");
     }
+    if (change.kind === "ad_pause" || change.kind === "ad_enable") {
+      const q = `SELECT ad_group_ad.ad.id, ad_group_ad.status FROM ad_group_ad WHERE ad_group.id = ${change.adGroupId} AND ad_group_ad.ad.id = ${change.adId} LIMIT 1`;
+      const readback = await providerJson<{ results?: { adGroupAd?: { ad?: { id?: string | number }; status?: string } }[] }>("google-ads",
+        `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
+        { method: "POST", headers, body: JSON.stringify({ query: q }) });
+      const ad = readback.results?.[0]?.adGroupAd;
+      verified = String(ad?.ad?.id ?? "") === change.adId && ad?.status === (change.kind === "ad_pause" ? "PAUSED" : "ENABLED");
+    }
+    if (change.kind === "call_asset_pause" || change.kind === "call_asset_enable") {
+      const q = `SELECT campaign_asset.resource_name, campaign_asset.status FROM campaign_asset WHERE campaign.id = ${change.campaignId} AND asset.id = ${change.assetId} AND campaign_asset.field_type = 'CALL' LIMIT 1`;
+      const readback = await providerJson<{ results?: { campaignAsset?: { resourceName?: string; status?: string } }[] }>("google-ads",
+        `https://googleads.googleapis.com/v25/customers/${account}/googleAds:search`,
+        { method: "POST", headers, body: JSON.stringify({ query: q }) });
+      const asset = readback.results?.[0]?.campaignAsset;
+      verified = asset?.resourceName === `customers/${account}/campaignAssets/${change.campaignId}~${change.assetId}~CALL` &&
+        asset?.status === (change.kind === "call_asset_pause" ? "PAUSED" : "ENABLED");
+    }
     if (change.kind === "keyword_add" || change.kind === "negative_keyword_add") {
       // The mutation receipt only means accepted by the API. Never claim a readback
       // of newly-created criteria until their resource names have been queried.

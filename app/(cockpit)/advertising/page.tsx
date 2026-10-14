@@ -1,4 +1,5 @@
 import { RecurringReportsPanel } from "@/components/reports/recurring-panel";
+import { getSchedulerHeartbeat } from "@/lib/scheduler/heartbeat";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/require-admin";
@@ -36,6 +37,7 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   const business = client ? await getAdsBusinessContext(client.id).catch(() => ({ available: false, revision: 0, context: null })) : null;
   const conversionDiagnostics = client && connection?.status === "connected" ? await getClientConversionDiagnostics(client.id) : null;
   const analyses = client ? await listClientAdsAnalyses(client.id).catch(() => null) : [];
+  const schedulerHeartbeat = client ? await getSchedulerHeartbeat().catch(() => "unavailable" as const) : null;
   const assignments = client ? await listAgentsForClient(client.id).then((items) => items.filter((item) => item.agent?.agent_type === "google-ads")).catch(() => null) : [];
   return <>
     <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports. Gestion des modifications dans une interface séparée, désactivée par défaut." />
@@ -54,7 +56,12 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
       : connectionError ? <p role="alert">Connexion indisponible. Rechargez la page pour réessayer.</p>
       : !initial ? <p role="status">Aucun compte Google Ads connecté et vérifié. <Link href={`/clients/${client.id}?tab=agents`} className="text-accent">Configurer la connexion</Link></p>
       : <CampaignDashboard key={client.id} clientId={client.id} agentClientName={client.name} initial={initial} initialFilters={filters} load={loadGoogleAdsDashboardAction} prepareReport={prepareGoogleAdsReportAction} runAnalysis={runGoogleAdsScopeAnalysisAction} runAIAnalysis={runGoogleAdsScopeAIAnalysisAction} analysisNote={ANALYSIS_ENGINE_NOTE} saveTracking={saveTrackedCampaignsAction} />}
-    {client && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Rapports récurrents · configuration avancée</summary><div className="mt-4"><RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} /></div></details>}
+    {client && <details className="mt-6 rounded-xl border border-border p-4"><summary className="cursor-pointer font-medium">Rapports récurrents · configuration avancée</summary><div className="mt-4">
+      {schedulerHeartbeat === "unavailable" ? <p role="status" className="mb-4 text-sm text-warning">État du planificateur indisponible. Vérifiez <Link href="/settings/diagnostic" className="underline">l’observabilité</Link> avant de compter sur les rapports programmés.</p>
+      : !schedulerHeartbeat ? <p role="status" className="mb-4 text-sm text-warning">Aucun passage du planificateur enregistré : la préparation et l’envoi automatiques ne sont pas confirmés. Vérifiez le <Link href="/settings/diagnostic" className="underline">diagnostic du planificateur</Link>.</p>
+      : <p className="mb-4 text-sm text-muted">Planificateur — dernier passage réussi : {schedulerHeartbeat.lastSuccessAt ? new Date(schedulerHeartbeat.lastSuccessAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }) : "aucun succès enregistré"}. <Link href="/settings/diagnostic" className="underline">Voir le diagnostic</Link>.</p>}
+      <RecurringReportsPanel clientId={client.id} campaigns={initial?.ok ? initial.data.campaigns : []} />
+    </div></details>}
     {client && conversionDiagnostics && <details className="mt-6 rounded-xl border border-border p-4">
       <summary className="cursor-pointer font-medium">Diagnostic des conversions Google Ads</summary>
       <div className="mt-3 space-y-3 text-sm">

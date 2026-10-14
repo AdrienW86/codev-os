@@ -210,6 +210,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       recommendationId = created.recommendation.id;
       await audit("google_ads.recommendation_created", clientId, connectionId, { run_id: runId, recommendation_id: recommendationId });
     }
+    metadata.findings = buildAdsFindings(selected, scope);
     metadata.analysis_text = analyzed.text;
     metadata.data_fetched_at = dataFetchedAt;
     if (aiResult) { metadata.analysis = aiResult.output; metadata.evidence = aiResult.evidence; }

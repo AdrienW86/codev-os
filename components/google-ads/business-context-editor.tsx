@@ -21,8 +21,8 @@ export function AdsBusinessContextEditor({ clientId, initial }: { clientId: stri
     catch { setMessage("Contexte non enregistré. Rechargez la page."); }
     finally { busy.current = false; setPending(false); }
   }
-  return <details className="mb-6 rounded-xl border border-border bg-surface p-4">
-    <summary className="min-h-10 cursor-pointer font-medium">Contexte commercial du client</summary>
+  return <section aria-label="Formulaire de contexte commercial" className="rounded-xl bg-surface">
+    <h3 className="font-medium">Informations commerciales du client</h3>
     {!initial.available ? <p className="mt-3 text-sm text-warning">Contexte indisponible : migration 20261018000000 requise.</p> : <form onSubmit={submit} className="mt-4 space-y-4">
       <p className="text-sm text-muted">Ces informations guident l’analyse IA. Le budget publicitaire est distinct du budget de fonctionnement de l’agent.</p>
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
@@ -34,5 +34,5 @@ export function AdsBusinessContextEditor({ clientId, initial }: { clientId: stri
       <button disabled={pending} className="min-h-11 rounded-lg border border-border px-4 text-sm">{pending ? "Enregistrement…" : "Enregistrer le contexte commercial"}</button>
       {message && <p role="status" className="text-sm">{message}</p>}
     </form>}
-  </details>;
+  </section>;
 }

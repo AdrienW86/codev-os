@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadTs } from "./helpers/load-ts.mjs";
 
-const { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing } = loadTs("lib/assistant/operational-navigation.ts");
+const { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission } = loadTs("lib/assistant/operational-navigation.ts");
 
 test("navigation explicite vers les écrans autorisés", () => {
   assert.equal(resolveExplicitNavigation("Ouvre les campagnes Google Ads")?.href, "/advertising");
@@ -40,4 +40,10 @@ test("le briefing est explicitement demandé", () => {
   assert.equal(isDirectorBriefing("Fais-moi un bilan global"), true);
   assert.equal(isDirectorBriefing("Prépare le briefing opérationnel"), true);
   assert.equal(isDirectorBriefing("Prépare les publications"), false);
+});
+
+test("mission Ads + SEO exige un client et les deux domaines", () => {
+  assert.equal(resolveAdsSeoMission("Analyse les campagnes Google Ads et le référencement de Jrenov"), "jrenov");
+  assert.equal(resolveAdsSeoMission("Analyse les campagnes Google Ads de Jrenov"), null);
+  assert.equal(resolveAdsSeoMission("Analyse le référencement de Jrenov"), null);
 });

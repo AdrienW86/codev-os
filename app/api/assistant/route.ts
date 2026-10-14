@@ -9,7 +9,7 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
-import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing } from "@/lib/assistant/operational-navigation";
+import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission } from "@/lib/assistant/operational-navigation";
 import { resolveClient } from "@/lib/assistant/clients";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +59,24 @@ export async function POST(request: Request) {
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
     const latest = parsed.data.messages.at(-1);
+    const missionClient = latest?.role === "user" ? resolveAdsSeoMission(latest.content) : null;
+    if (missionClient && !simulation) {
+      const client = await resolveClient(missionClient);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
+      const ads = await executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
+      const seo = await proposeFromView("run_check", { check: "seo.analyze", client: client.name }, deps);
+      const links = [...(ads?.links ?? []), ...(seo.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
+      return NextResponse.json({
+        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo.reply}`].join(" "),
+        links, source: "rules", context: { clientId: client.id, clientName: client.name },
+        ...(ads?.view ? { view: ads.view } : {}),
+        ...(seo.proposal ? { proposal: seo.proposal } : {}),
+        mission: { steps: [
+          { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
+          { agent: "seo", status: seo.proposal ? "awaiting_approval" : "failed" },
+        ] },
+      }, { headers });
+    }
     const campaignCommand = latest?.role === "user" ? resolveCampaignCommand(latest.content) : null;
     if (campaignCommand && !simulation) {
       const tool = campaignCommand.analyze ? "ads_recommendations" : "ads_campaigns";

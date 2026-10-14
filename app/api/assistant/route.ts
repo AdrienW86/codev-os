@@ -9,9 +9,10 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
-import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission } from "@/lib/assistant/operational-navigation";
+import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission, resolveTopPrioritiesCommand } from "@/lib/assistant/operational-navigation";
 import { resolveClient } from "@/lib/assistant/clients";
 import { readSeoEvidence } from "@/lib/assistant/seo-evidence";
+import { topClientPriorities } from "@/lib/assistant/client-priorities";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -60,6 +61,18 @@ export async function POST(request: Request) {
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
     const latest = parsed.data.messages.at(-1);
+    const priorityClient = latest?.role === "user" ? resolveTopPrioritiesCommand(latest.content) : null;
+    if (priorityClient && !simulation) {
+      const client = await resolveClient(priorityClient);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
+      const actions = await topClientPriorities(client.id);
+      return NextResponse.json({
+        reply: actions.length ? `${client.name} : ${actions.length} recommandation(s) enregistrée(s), classée(s) par gravité puis date. Aucun impact financier estimé.` : `${client.name} : aucune recommandation Ads ou SEO en attente enregistrée ; un nouveau diagnostic est nécessaire pour établir des priorités.`,
+        links: [...actions.map((x) => ({ label: x.title, href: x.href })), { label: "Toutes les recommandations", href: `/recommendations?clientId=${client.id}` }],
+        source: "rules", context: { clientId: client.id, clientName: client.name },
+        mission: { actions, steps: [{ agent: "priorities", status: "completed" }] },
+      }, { headers });
+    }
     const missionClient = latest?.role === "user" ? resolveAdsSeoMission(latest.content) : null;
     if (missionClient && !simulation) {
       const client = await resolveClient(missionClient);

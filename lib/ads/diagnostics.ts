@@ -65,7 +65,7 @@ export async function getClientAdsDiagnostics(clientId: string, campaignId: stri
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json",
     ...(env.GOOGLE_ADS_DEVELOPER_TOKEN ? { "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN } : {}),
     ...(manager ? { "login-customer-id": manager } : {}) };
-  const query = async <T>(gaql: string): Promise<T[]> => {
+  const query = async <T,>(gaql: string): Promise<T[]> => {
     const rows: T[] = [];
     let pageToken: string | undefined;
     for (let n = 0; n < 10; n++) {

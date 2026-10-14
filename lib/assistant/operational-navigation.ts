@@ -71,3 +71,12 @@ export function isDirectorBriefing(message: string): boolean {
   const cleaned = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/-/g, " ").replace(/[.!?]+$/g, "").trim();
   return /^(?:fais|prepare|donne|affiche|montre)(?: moi)? (?:un |le |mon )?(?:bilan global|briefing operationnel|point sur les priorites)$/.test(cleaned);
 }
+
+
+/** Mission Ads + SEO explicitement demandée pour un client nommé. */
+export function resolveAdsSeoMission(message: string): string | null {
+  const clean = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+  const match = /^(?:analyse|analyser|verifie|fais (?:un |le )?bilan (?:des? )?)\s+(?:les? )?(?:campagnes? (?:google ads|ads)|google ads|publicite)\s+et\s+(?:le |du |la )?(?:referencement|seo)\s+(?:de|du client|pour)\s+(.+?)(?:,?\s+(?:identifie les opportunites|propose les optimisations|affiche moi les recommandations).*)?$/.exec(clean);
+  const name = match?.[1]?.trim();
+  return name && name.length <= 120 && !/[\/\\<>]/.test(name) ? name : null;
+}

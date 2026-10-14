@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { adsChangeFingerprint } from "./approval-protocol";
 import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
@@ -31,7 +32,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if (request.confirm !== `CONFIRMER ${change.campaignId}`) throw new Error("Confirmation explicite requise.");
   if (process.env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") throw new Error("Écriture Google Ads non activée.");
   const hash = adsChangeFingerprint(change);
-  const approvalDb = db as unknown as { from: (table: string) => any; rpc: (name: string, args: Record<string, string>) => Promise<{data: unknown; error: unknown}> };
+  const approvalDb = db as unknown as SupabaseClient;
   if (!request.approvalId) {
     const { data, error: approvalError } = await approvalDb.from("ads_change_approvals").insert({
       client_id: clientId, account_id: account, campaign_id: change.campaignId,

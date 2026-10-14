@@ -192,6 +192,41 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
         </details>
       </fieldset>
 
+      <section aria-label="Alertes rapides" className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Campagnes visibles</p><p className="mt-2 text-xl font-semibold">{selected.length}</p><p className="mt-1 text-xs text-muted">Selon les filtres actifs</p></div>
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Dépenses sans conversion enregistrée</p>
+          <p className="mt-2 text-xl font-semibold">{selected.filter((row) => row.metrics.cost !== null && row.metrics.cost >= 50 && row.metrics.conversions === 0).length}</p>
+          <p className="mt-1 text-xs text-muted">Campagnes avec au moins 50 € dépensés et 0 conversion mesurée sur la période. Vérifier le suivi avant de conclure à l'absence de prospects.</p></div>
+        <div className="rounded-xl border border-border p-4"><p className="text-xs text-muted">Campagnes actuellement en pause</p><p className="mt-2 text-xl font-semibold">{data.campaigns.filter((row) => row.status === "PAUSED").length}</p><p className="mt-1 text-xs text-muted">Sur l'ensemble du compte, indépendamment du filtre actuel</p></div>
+      </section>
+      <section aria-label="Vue rapide des performances" className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-semibold">Vue d’ensemble</h3><p className="text-xs text-muted">Données réelles du périmètre sélectionné · {selected.length} campagne(s)</p></div>
+          <span className="rounded-full border border-border px-3 py-1 text-xs text-muted">{filters.status === "enabled" ? "Actives" : filters.status === "paused" ? "En pause" : "Tous les statuts"}</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {(["cost", "clicks", "conversions", "costPerConversion"] as const).map((key) => <div key={key} className="rounded-xl border border-border bg-background p-4">
+            <p className="text-xs text-muted">{metricLabels[key]}</p>
+            <p className="mt-2 text-xl font-semibold tabular-nums sm:text-2xl">{fmt.value(key, totals.metrics[key])}</p>
+            {previousTotals && <p className="mt-1 text-xs text-muted">Précédent : {fmt.value(key, previousTotals.metrics[key])}</p>}
+          </div>)}
+        </div>
+        <div className="mt-5">
+          <h4 className="text-sm font-semibold">Répartition des dépenses par campagne</h4>
+          {(() => {
+            const entries = selected.filter((row) => row.metrics.cost !== null).sort((a, b) => (b.metrics.cost ?? 0) - (a.metrics.cost ?? 0)).slice(0, 8);
+            const max = Math.max(0, ...entries.map((row) => row.metrics.cost ?? 0));
+            return entries.length && max > 0 ? <div className="mt-3 space-y-3">{entries.map((row) => <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 text-xs">
+              <div className="min-w-0"><div className="mb-1 flex items-center justify-between gap-2"><span className="truncate">{row.name}</span><span className="shrink-0 text-muted">{row.status === "ENABLED" ? "Active" : row.status === "PAUSED" ? "Pause" : row.status}</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-raised"><div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, ((row.metrics.cost ?? 0) / max) * 100))}%` }} /></div>
+              </div>
+              <span className="text-right font-medium tabular-nums">{fmt.value("cost", row.metrics.cost)}</span>
+            </div>)}</div> : <p className="mt-2 text-sm text-muted">Aucune dépense exploitable sur ce périmètre.</p>;
+          })()}
+          <p className="mt-3 text-xs text-muted">Comparaison des montants sur la période sélectionnée, et non évolution quotidienne. Les campagnes en pause peuvent avoir dépensé auparavant.</p>
+        </div>
+      </section>
+
       <section aria-label="Totaux du périmètre filtré">
         <h3 className="mb-2 text-sm font-semibold">Total filtré <span className="font-normal text-muted">({selected.length} campagne{selected.length > 1 ? "s" : ""})</span></h3>
         <MetricGrid metrics={totals.metrics} previous={previousTotals?.metrics ?? null} fmt={fmt} incomplete={totals.incomplete} />

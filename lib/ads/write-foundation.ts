@@ -49,11 +49,12 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
     }] };
   }
   if (change.kind === "keyword_add" && !RESOURCE_ID.test(change.adGroupId)) throw new Error("Groupe d'annonces invalide.");
-  if (change.keywords.length === 0 || change.keywords.length > MAX_NEGATIVES) {
+  if (!Array.isArray(change.keywords) || change.keywords.length === 0 || change.keywords.length > MAX_NEGATIVES) {
     throw new Error("Nombre de mots-clés négatifs invalide.");
   }
   const seen = new Set<string>();
   const operations = change.keywords.map(({ text, matchType }) => {
+    if (typeof text !== "string") throw new Error("Texte de mot-clé invalide.");
     const normalized = text.trim().replace(/\s+/g, " ");
     if (!KEYWORD.test(normalized) || !["EXACT", "PHRASE"].includes(matchType)) {
       throw new Error("Mot-clé négatif invalide.");

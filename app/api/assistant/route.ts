@@ -87,7 +87,6 @@ export async function POST(request: Request) {
           ...(ads?.view ? { view: ads.view } : {}),
           mission: { actions: [], steps: [
             { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
-            { agent: "seo", status: seo?.lastRun ? "completed" : "failed" },
           ] },
         }, { headers });
       }

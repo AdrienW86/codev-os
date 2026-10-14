@@ -80,3 +80,13 @@ export function resolveAdsSeoMission(message: string): string | null {
   const name = match?.[1]?.trim();
   return name && name.length <= 120 && !/[\/\\<>]/.test(name) ? name : null;
 }
+
+
+/** The client's top three recorded Ads/SEO recommendations, explicitly requested. */
+export function resolveTopPrioritiesCommand(message: string): string | null {
+  const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[’']/g, " ").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+  const match = /^(?:directeur\s+)?(?:quelles?\s+sont\s+)?(?:les\s+)?(?:trois|3)\s+(?:actions|priorites|recommandations)\s+(?:les\s+plus\s+importantes?\s+)?(?:pour\s+(?:developper\s+l\s+activite\s+de\s+|le\s+client\s+)?|de\s+)(.+)$/.exec(normalized);
+  const client = match?.[1]?.trim();
+  return client && client.length <= 120 && !/[\/\\<>]/.test(client) ? client : null;
+}

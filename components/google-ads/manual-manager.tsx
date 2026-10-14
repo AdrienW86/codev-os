@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { AdsDiagnosticsPanel } from "./ads-diagnostics-panel";
 
 type ClientOption = { id: string; name: string; account: string };
 type Preview = { executed?: boolean; verified?: boolean; preview?: unknown; error?: string; approvalId?: string; requiresApproval?: boolean };
@@ -64,7 +65,8 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
     {preview && <div className="rounded-lg border border-border p-3 text-sm" role="status">
       {preview.error ? <p role="alert">{preview.error}</p> : <><p>{preview.executed ? "Opération envoyée à Google Ads" : "Aperçu uniquement : aucune modification effectuée"}</p><pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(preview.preview, null, 2)}</pre>{preview.executed && <p>Vérification du statut : {preview.verified ? "confirmée" : "non confirmée"}</p>}</>}
     </div>}
-    <p className="text-sm text-muted">À venir : annonces, composants, conversions, enchères et budgets (contrôles spécifiques requis).</p>
+    <AdsDiagnosticsPanel key={clientId + ":" + campaignId} clientId={clientId} campaignId={campaignId} />
+    <p className="text-sm text-muted">Les diagnostics sont en lecture seule. L’édition des annonces, composants, conversions et budgets nécessite des opérations validées distinctes.</p>
     <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm font-medium">Exécution réelle — confirmation renforcée</summary>
       <p className="mt-2 text-sm text-muted">Accessible uniquement lorsque le module sécurisé a été activé côté serveur. Vérifiez le périmètre avant toute opération.</p>
       <label className="mt-3 block text-sm">Saisissez exactement : CONFIRMER {campaignId || "[ID CAMPAGNE]"}

@@ -36,7 +36,8 @@ export default async function AdvertisingPage({ searchParams }: { searchParams: 
   const analyses = client ? await listClientAdsAnalyses(client.id).catch(() => null) : [];
   const assignments = client ? await listAgentsForClient(client.id).then((items) => items.filter((item) => item.agent?.agent_type === "google-ads")).catch(() => null) : [];
   return <>
-    <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports par client. Google Ads reste en lecture seule." />
+    <PageHeading eyebrow="Google Ads" title="Campagnes publicitaires" description="Campagnes suivies, analyses et rapports. Gestion des modifications dans une interface séparée, désactivée par défaut." />
+    <p className="mb-4 text-sm"><Link className="text-accent" href={`/advertising/manage${client ? `?client=${client.id}` : ""}`}>Gérer les campagnes et mots-clés →</Link></p>
     <Panel className="mb-6 p-4">
       <form action="/advertising" className="flex flex-wrap items-end gap-3">
         {Array.from(preserved.entries()).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}

@@ -31,3 +31,6 @@ export function localServicesLeadsQuery(period: AdsPeriod) {
   validatePeriod(period);
   return `SELECT local_services_lead.lead_type, local_services_lead.lead_status, local_services_lead.lead_charged, local_services_lead.creation_date_time FROM local_services_lead WHERE local_services_lead.creation_date_time >= '${period.start} 00:00:00' AND local_services_lead.creation_date_time <= '${period.end} 23:59:59'`;
 }
+
+/** Inventaire read-only des objectifs de conversion du compte. */
+export const conversionActionsQuery = "SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status, conversion_action.primary_for_goal, conversion_action.counting_type FROM conversion_action WHERE conversion_action.status != 'REMOVED'";

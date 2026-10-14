@@ -17,6 +17,49 @@ const outputSchema = z.strictObject({
   recommendations: z.array(z.strictObject({ action: z.enum(actions), priority: z.enum(["high", "medium", "low"]), campaignIds: ids, evidenceIds, rationale: narrative })).max(5),
 });
 export type AdsAIOutput = z.infer<typeof outputSchema>;
+
+/**
+ * Limited, deterministic recovery of presentation-only fields.
+ * An AI narrative containing amounts, identifiers or markup is replaced with a
+ * pre-approved neutral instruction. We NEVER repair campaign IDs, priorities,
+ * evidence IDs, action types or other business-critical fields.
+ * The result must still pass validateAdsAIOutput (including proof ownership).
+ */
+export function recoverAdsAINarratives(input: unknown): {
+  candidate: unknown; repairs: number; addedScopeFact: boolean;
+} {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { candidate: input, repairs: 0, addedScopeFact: false };
+  }
+  const raw = input as Record<string, unknown>;
+  let repairs = 0;
+  const repair = (items: unknown, field: "rationale" | "explanation", replacement: string): unknown => {
+    if (!Array.isArray(items)) return items;
+    return items.map((item: unknown) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+      const row = item as Record<string, unknown>;
+      const value = row[field];
+      // Missing/invalid types are structural errors, not license to invent content.
+      if (typeof value !== "string" || !value.trim() || narrative.safeParse(value).success) return item;
+      repairs += 1;
+      return { ...row, [field]: replacement };
+    });
+  };
+  // A true fact available for every scoped analysis. This does not invent an
+  // observation, but allows a valid zero-specific-findings analysis.
+  const addedScopeFact = Array.isArray(raw.factIds) && raw.factIds.length === 0;
+  return {
+    candidate: {
+      ...raw,
+      ...(addedScopeFact ? { factIds: ["scope"] } : {}),
+      hypotheses: repair(raw.hypotheses, "explanation", "Vérifier cette hypothèse à partir des preuves disponibles."),
+      recommendations: repair(raw.recommendations, "rationale", "Examiner les preuves associées avant de décider d'une modification."),
+    },
+    repairs,
+    addedScopeFact,
+  };
+}
+
 export type Evidence = { id: string; campaignId: string | null; type: string | null; metric: string; value: number | null; text: string };
 
 const metricLabels: Record<string, string> = { cost: "dépenses", clicks: "clics", impressions: "impressions", conversions: "conversions enregistrées", costPerConversion: "coût par conversion", conversionValue: "valeur des conversions déclarée, distincte du chiffre d’affaires" };
@@ -88,8 +131,11 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
   });
   if (response.toolCalls.length !== 1 || response.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
   let output: AdsAIOutput;
+  const firstRecovery = recoverAdsAINarratives(response.toolCalls[0].arguments);
+  let recovery = firstRecovery;
+  let retryUsed = false;
   try {
-    output = validateAdsAIOutput(response.toolCalls[0].arguments, rows, evidence);
+    output = validateAdsAIOutput(firstRecovery.candidate, rows, evidence);
   } catch (error) {
     // OpenAI strict mode guarantees the JSON shape, not domain rules (IDs, cited evidence,
     // numeric claims in free text). Retry once with bounded, non-sensitive validation hints.
@@ -105,7 +151,9 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
       signal: AbortSignal.timeout(25_000),
     });
     if (corrected.toolCalls.length !== 1 || corrected.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
-    output = validateAdsAIOutput(corrected.toolCalls[0].arguments, rows, evidence);
+    retryUsed = true;
+    recovery = recoverAdsAINarratives(corrected.toolCalls[0].arguments);
+    output = validateAdsAIOutput(recovery.candidate, rows, evidence);
   }
-  return { output, evidence, text: formatAdsAIOutput(output, evidence) };
+  return { output, evidence, text: formatAdsAIOutput(output, evidence), validation: { repairedNarratives: recovery.repairs, scopeFactAdded: recovery.addedScopeFact, retryUsed } };
 }

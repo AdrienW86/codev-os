@@ -8,7 +8,7 @@ export function adsChangeFingerprint(change: AdsChange) {
   for (const key of keys) {
     const value = change[key as keyof AdsChange];
     canonical[key] = key === "keywords" && Array.isArray(value)
-      ? value.map(item => ({ text: item.text.trim().replace(/\\s+/g, " "), matchType: item.matchType }))
+      ? value.map(item => ({ text: item.text.trim().replace(/\s+/g, " "), matchType: item.matchType }))
       : value;
   }
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");

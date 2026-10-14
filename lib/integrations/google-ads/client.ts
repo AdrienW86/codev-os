@@ -1,8 +1,8 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
-import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient } from "./types";
+import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic } from "./types";
 
 export class GoogleAdsError extends Error {
   constructor(public readonly kind: "configuration" | "authentication" | "access" | "quota" | "unavailable" | "response", public readonly requestId: string | null = null) {
@@ -79,6 +79,21 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       console.error("[google-ads]", { type: mapped.kind, requestId: mapped.requestId, customerId, operation: "search" });
       throw mapped;
     }
+  }
+
+  async getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]> {
+    const rows = await this.#search(customerId, conversionActionsQuery, managerId);
+    return rows.flatMap((row) => {
+      const action = row.conversionAction;
+      if (!action || !/^\d+$/.test(String(action.id))) return [];
+      return [{
+        id: String(action.id), name: text(action.name) ?? "Action sans nom",
+        type: text(action.type) ?? "UNKNOWN", category: text(action.category) ?? "UNKNOWN",
+        status: text(action.status) ?? "UNKNOWN",
+        primary: typeof action.primaryForGoal === "boolean" ? action.primaryForGoal : null,
+        countingType: text(action.countingType) ?? "UNKNOWN", tagSnippets: null,
+      }];
+    });
   }
 
   async getAccountSummary(customerId: string, managerId?: string): Promise<AdsAccount> {

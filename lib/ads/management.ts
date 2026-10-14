@@ -1,4 +1,5 @@
 import "server-only";
+import { adsChangeFingerprint } from "./approval-protocol";
 import { requireAdmin } from "@/lib/require-admin";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { googleAccessToken, providerJson } from "@/lib/providers/api";
@@ -9,7 +10,7 @@ import { executeApprovedAdsChange, prepareAdsChange, type AdsChange } from "@/li
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const customer = /^\d{10}$/;
-type Request = { clientId: string; change: AdsChange; confirm?: string; dryRun?: boolean };
+type Request = { clientId: string; change: AdsChange; confirm?: string; dryRun?: boolean; approvalId?: string };
 
 export async function manageClientAds(actor: Actor & { kind: "admin" }, request: Request) {
   const { userId } = await requireAdmin();
@@ -28,10 +29,29 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   if (request.dryRun !== false) return { executed: false, preview };
   if (await getActiveScenario()) throw new Error("Écritures Google Ads interdites en simulation.");
   if (request.confirm !== `CONFIRMER ${change.campaignId}`) throw new Error("Confirmation explicite requise.");
-  // A typed confirmation is not a durable single-use authorization. Keep all remote writes
-  // disabled until a persisted, transactionally claimed approval is wired to this request.
-  throw new Error("Écriture suspendue : validation à usage unique non implémentée.");
   if (process.env.CODEV_GOOGLE_ADS_WRITES_ENABLED !== "true") throw new Error("Écriture Google Ads non activée.");
+  const hash = adsChangeFingerprint(change);
+  const approvalDb = db as unknown as { from: (table: string) => any; rpc: (name: string, args: Record<string, string>) => Promise<{data: unknown; error: unknown}> };
+  if (!request.approvalId) {
+    const { data, error: approvalError } = await approvalDb.from("ads_change_approvals").insert({
+      client_id: clientId, account_id: account, campaign_id: change.campaignId,
+      actor_id: userId, operation_kind: change.kind, operation_sha256: hash,
+    }).select("id").single();
+    if (approvalError || !data) throw new Error("Approbation indisponible : migration Supabase à vérifier.");
+    return { executed: false, requiresApproval: true, approvalId: data.id, preview };
+  }
+  if (!uuid.test(request.approvalId)) throw new Error("Approbation invalide.");
+  const { data: claimed, error: claimError } = await approvalDb.rpc("codev_claim_ads_change", {
+    p_id: request.approvalId, p_client_id: clientId, p_account_id: account,
+    p_campaign_id: change.campaignId, p_actor_id: userId, p_operation_sha256: hash,
+  });
+  if (claimError || claimed !== true) throw new Error("Approbation expirée ou déjà consommée.");
+  const complete = async (status: "succeeded" | "uncertain") => {
+    const { error } = await approvalDb.from("ads_change_approvals").update({
+      status, completed_at: new Date().toISOString(),
+    }).eq("id", request.approvalId).eq("status", "executing");
+    if (error) console.error("[ads] approval status update failed");
+  };
   const env = process.env;
   if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) {
     throw new Error("Identifiants Google Ads incomplets.");
@@ -98,8 +118,10 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
     }
     await writeAudit(actor, { action: "ads.change.executed", resource_type: "client", resource_id: clientId,
       metadata: { account, campaignId: change.campaignId, kind: change.kind, verified } });
+    await complete("succeeded");
     return { executed: true, verified, preview, result: result.response };
   } catch (failure) {
+    await complete("uncertain");
     await writeAudit(actor, { action: "ads.change.failed", resource_type: "client", resource_id: clientId,
       metadata: { account, campaignId: change.campaignId, kind: change.kind } });
     throw failure;

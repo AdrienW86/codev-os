@@ -66,8 +66,33 @@ export async function POST(request: Request) {
       const client = await resolveClient(priorityClient);
       if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
       const actions = await topClientPriorities(client.id);
+      if (!actions.length) {
+        // No persisted pending recommendations is NOT the same as no opportunities.
+        // Reuse the existing scoped, read-only Ads analysis rather than claiming a diagnosis.
+        const ads = await executeTool(actor, "ads_recommendations",
+          { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
+        const seo = await readSeoEvidence(client.id).catch(() => null);
+        const seoStatus = seo?.lastRun
+          ? `Dernière analyse SEO enregistrée : ${seo.lastRun.status} (${seo.lastRun.at.slice(0, 10)}).`
+          : "Aucune analyse SEO enregistrée dans cet historique.";
+        const adsSummary = ads?.ok
+          ? `Analyse Google Ads réalisée : ${ads.text} Consultez les constats et les preuves dans le détail.`
+          : `Analyse Google Ads non disponible : ${ads?.text ?? "erreur de lecture"}.`;
+        return NextResponse.json({
+          reply: `${client.name} : aucune recommandation Ads ou SEO en attente dans le registre. ${adsSummary} ${seoStatus} Je ne peux pas classer trois actions fiables sans recommandations vérifiées dans le registre ; la liste vide n'est pas un diagnostic de performance.`,
+          links: [...(ads?.links ?? []),
+            { label: "Campagnes Google Ads", href: `/advertising?client=${client.id}` },
+            { label: "Recommandations du client", href: `/recommendations?clientId=${client.id}` }],
+          source: "rules", context: { clientId: client.id, clientName: client.name },
+          ...(ads?.view ? { view: ads.view } : {}),
+          mission: { actions: [], steps: [
+            { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
+            { agent: "seo", status: seo?.lastRun ? "completed" : "failed" },
+          ] },
+        }, { headers });
+      }
       return NextResponse.json({
-        reply: actions.length ? `${client.name} : ${actions.length} recommandation(s) enregistrée(s), classée(s) par gravité puis date. Aucun impact financier estimé.` : `${client.name} : aucune recommandation Ads ou SEO en attente enregistrée ; un nouveau diagnostic est nécessaire pour établir des priorités.`,
+        reply: `${client.name} : ${actions.length} recommandation(s) enregistrée(s), classée(s) par gravité puis date. Aucun impact financier estimé.`,
         links: [...actions.map((x) => ({ label: x.title, href: x.href })), { label: "Toutes les recommandations", href: `/recommendations?clientId=${client.id}` }],
         source: "rules", context: { clientId: client.id, clientName: client.name },
         mission: { actions, steps: [{ agent: "priorities", status: "completed" }] },

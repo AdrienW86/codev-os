@@ -14,7 +14,7 @@ vm.runInNewContext(compiled, {
     if (name === "server-only") return {};
     if (name === "@/lib/require-admin") return { requireAdmin: async () => { calls.push("admin"); } };
     if (name === "@/lib/simulation/server") return { getActiveScenario: async () => null };
-    if (name === "./validation") return { normalizeCustomerId: x => typeof x === "string" && /^\\d{10}$/.test(x) ? x : null };
+    if (name === "./validation") return { normalizeCustomerId: x => typeof x === "string" && /^\d{10}$/.test(x) ? x : null };
     throw new Error("Unexpected import " + name);
   },
 });

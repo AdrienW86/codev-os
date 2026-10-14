@@ -68,6 +68,6 @@ export function resolveCampaignCommand(message: string): { campaign: string; cli
 
 /** Read-only coordinated executive briefing; no external writes. */
 export function isDirectorBriefing(message: string): boolean {
-  const cleaned = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.!?]+$/g, "").trim();
+  const cleaned = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/-/g, " ").replace(/[.!?]+$/g, "").trim();
   return /^(?:fais|prepare|donne|affiche|montre)(?: moi)? (?:un |le |mon )?(?:bilan global|briefing operationnel|point sur les priorites)$/.test(cleaned);
 }

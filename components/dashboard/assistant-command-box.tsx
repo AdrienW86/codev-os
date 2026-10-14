@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useAssistant, type AssistantSession, type Turn } from "@/components/assistant/use-assistant";
 import { ResultDialog } from "@/components/assistant/result-dialog";
+import { MissionSummary } from "@/components/assistant/mission-summary";
 import { ProposalCard, ResultView, SafeLink } from "@/components/assistant/result-view";
 
 export type AssistantSuggestion = { label: string; href: string; icon: IconName };
@@ -56,6 +57,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
           Ouvrir le résultat : {view.title}
         </button>
       )}
+      {session.mission && !open && <MissionSummary mission={session.mission} />}
       {!open && proposalCard && <div className="mb-4">{proposalCard}</div>}
 
       <Composer id={inputId} describedBy={statusId} session={session} placeholder="Ex. « Campagnes Google Ads de Protection Nuisibles sur 7 jours »" />
@@ -86,6 +88,7 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
               <p id={`${statusId}-panel`} role="status" aria-live="polite" className="min-h-4 text-xs text-muted">{status}</p>
             </div>
           }>
+          {session.mission && <MissionSummary mission={session.mission} />}
           {lastReply && <p aria-live="polite" className="mb-4 rounded-xl bg-surface-raised/60 px-3 py-2 text-sm leading-6">{lastReply.content}</p>}
           {session.failed && (
             <div role="alert" className="mb-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">

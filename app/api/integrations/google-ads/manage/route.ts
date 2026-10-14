@@ -8,6 +8,11 @@ const id = z.string().regex(/^\d+$/);
 const change = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("campaign_pause"), customerId: z.string().regex(/^\d{10}$/), campaignId: id }).strict(),
   z.object({ kind: z.literal("campaign_enable"), customerId: z.string().regex(/^\d{10}$/), campaignId: id }).strict(),
+  z.object({ kind: z.literal("keyword_pause"), customerId: z.string().regex(/^\\d{10}$/), campaignId: id, adGroupId: id, criterionId: id }).strict(),
+  z.object({ kind: z.literal("keyword_enable"), customerId: z.string().regex(/^\\d{10}$/), campaignId: id, adGroupId: id, criterionId: id }).strict(),
+  z.object({ kind: z.literal("keyword_add"), customerId: z.string().regex(/^\\d{10}$/), campaignId: id, adGroupId: id,
+    keywords: z.array(z.object({ text: z.string().trim().min(1).max(80), matchType: z.enum(["EXACT", "PHRASE"]) }).strict()).min(1).max(25),
+  }).strict(),
   z.object({ kind: z.literal("negative_keyword_add"), customerId: z.string().regex(/^\d{10}$/), campaignId: id,
     keywords: z.array(z.object({ text: z.string().trim().min(1).max(80), matchType: z.enum(["EXACT", "PHRASE"]) }).strict()).min(1).max(25),
   }).strict(),

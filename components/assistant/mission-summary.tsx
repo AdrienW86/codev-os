@@ -3,7 +3,7 @@
 import type { DirectorMission } from "@/components/assistant/use-assistant";
 
 const labels: Record<string, string> = {
-  "google-ads": "Google Ads", seo: "Référencement SEO",
+  "google-ads": "Google Ads", seo: "Référencement SEO", priorities: "Priorités Ads + SEO",
   get_priorities: "Priorités", clients_attention: "Clients à surveiller", list_pending_actions: "Validations",
 };
 const statuses: Record<DirectorMission["steps"][number]["status"], string> = {

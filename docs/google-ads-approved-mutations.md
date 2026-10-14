@@ -6,7 +6,7 @@ Cette branche prépare l'écriture de mots-clés négatifs dans la campagne sél
 - `approved-mutations.ts` : validation stricte de la proposition, aperçu, appel API ciblé.
 - **Non connecté à l'interface** et **aucun changement de campagne déclenché**.
 - `GOOGLE_ADS_MUTATIONS_ENABLED` est désactivé par défaut.
-- La propriété `approvedByAdmin` est une garde technique, **pas une preuve d'approbation persistée**. Ne pas exposer cette fonction à l'agent ou à une server action avant d'ajouter une approbation serveur liée à l'opération, à l'acteur, au client et à un nonce à usage unique.
+- La fonction d'exécution **refuse systématiquement les mutations** tant que l'approbation persistée à usage unique n'est pas implémentée. Le champ `approvalId` est un emplacement réservé, pas une autorisation valide. Ne pas exposer cette fonction à l'agent ou à une server action avant vérification transactionnelle de l'approbation.
 - Vérifier que le compte OAuth Google Ads est autorisé en écriture avant essai, sans retirer les garde-fous de lecture du reste du système.
 - Ne pas activer le flag en production avant tests, audit durable, antifraude/anti-rejeu, vérification du compte lié et retour d'état après écriture.
 

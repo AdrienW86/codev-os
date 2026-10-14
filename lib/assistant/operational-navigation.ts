@@ -1,0 +1,46 @@
+/**
+ * Navigation explicite du directeur opérationnel.
+ * Aucun chemin ni paramètre arbitraire n'est accepté depuis une sortie de modèle.
+ * Les demandes d'analyse et d'exécution restent traitées par l'orchestrateur existant.
+ */
+export const operationalDestinations = {
+  dashboard: { href: "/dashboard", label: "l'accueil" },
+  clients: { href: "/clients", label: "les clients" },
+  analytics: { href: "/analytics", label: "les données et performances" },
+  advertising: { href: "/advertising", label: "les campagnes publicitaires" },
+  agenda: { href: "/agenda", label: "l'agenda" },
+  work: { href: "/work", label: "le travail" },
+  publications: { href: "/publications", label: "les publications" },
+  acquisition: { href: "/acquisition", label: "l'acquisition" },
+  reports: { href: "/reports", label: "les rapports" },
+  agents: { href: "/agents", label: "les agents" },
+  settings: { href: "/settings", label: "les paramètres" },
+} as const;
+
+export type OperationalDestination = keyof typeof operationalDestinations;
+
+const targets: { destination: OperationalDestination; expressions: RegExp[] }[] = [
+  { destination: "dashboard", expressions: [/^(?:accueil|tableau de bord|dashboard)$/] },
+  { destination: "clients", expressions: [/^(?:clients?|liste des clients?)$/] },
+  { destination: "analytics", expressions: [/^(?:statistiques|statistiques generales|donnees et performances|performances|analytics)$/] },
+  { destination: "advertising", expressions: [/^(?:campagnes?(?: publicitaires?| google ads)?|google ads|publicite(?:s)?)$/] },
+  { destination: "agenda", expressions: [/^(?:agenda|calendrier)$/] },
+  { destination: "work", expressions: [/^(?:travail|taches?|mes taches|actions a valider)$/] },
+  { destination: "publications", expressions: [/^(?:publications?|posts?|reseaux sociaux)$/] },
+  { destination: "acquisition", expressions: [/^(?:acquisition|prospection)$/] },
+  { destination: "reports", expressions: [/^(?:rapports?|comptes rendus)$/] },
+  { destination: "agents", expressions: [/^(?:agents?|mes agents)$/] },
+  { destination: "settings", expressions: [/^(?:parametres|reglages|configuration)$/] },
+];
+
+export function resolveExplicitNavigation(message: string) {
+  const normalized = message
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[’']/g, " ").replace(/-/g, " ").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+  // Le verbe explicite et une cible exacte empêchent de détourner les demandes métier.
+  const match = /^(?:ouvre|ouvrir|affiche|afficher|montre|montrer|va sur|vas sur|navigue vers|emmene moi sur|amene moi sur)\s+(?:(?:moi|nous)\s+)?(?:la page\s+|l ecran\s+|le module\s+|la rubrique\s+|l onglet\s+)?(?:des?\s+|les?\s+|l\s+)?(.+)$/.exec(normalized);
+  if (!match) return null;
+  const target = match[1];
+  const found = targets.find(({ expressions }) => expressions.some((expression) => expression.test(target)));
+  return found ? { destination: found.destination, ...operationalDestinations[found.destination] } : null;
+}

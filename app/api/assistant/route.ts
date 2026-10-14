@@ -9,6 +9,7 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
+import { resolveExplicitNavigation } from "@/lib/assistant/operational-navigation";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -56,6 +57,12 @@ export async function POST(request: Request) {
       return NextResponse.json(reply, { headers });
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
+    const latest = parsed.data.messages.at(-1);
+    const destination = latest?.role === "user" ? resolveExplicitNavigation(latest.content) : null;
+    if (destination) return NextResponse.json({
+      reply: `J’ouvre ${destination.label}.`, links: [{ label: destination.label, href: destination.href }],
+      navigation: { destination: destination.destination, href: destination.href }, source: "rules",
+    }, { headers });
     return NextResponse.json(await respond(parsed.data.messages, deps), { headers });
   } catch {
     console.error("[assistant] Requête interrompue.");

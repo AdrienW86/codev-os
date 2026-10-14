@@ -4,13 +4,14 @@
 // contexte (client, vue, filtres), dernière vue structurée, proposition en attente, dictée.
 // Toutes les données viennent du serveur (/api/assistant) ; le navigateur ne fait que les afficher.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { speak, stopSpeaking, useVoice } from "@/components/assistant/use-voice";
 import { postAssistant } from "@/lib/assistant/client-api";
 import { writeFilters, type DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import type { AssistantContext, AssistantView, ViewLink } from "@/lib/assistant/views";
 
 export type Proposal = { tool: string; input: Record<string, unknown>; summary: string; heard?: string };
-export type Reply = { keepProposal?: boolean; reply?: string; links?: ViewLink[]; proposal?: Proposal; view?: AssistantView; context?: AssistantContext; degraded?: boolean; degradedReason?: string; error?: string };
+export type Reply = { navigation?: { destination: string; href: string }; keepProposal?: boolean; reply?: string; links?: ViewLink[]; proposal?: Proposal; view?: AssistantView; context?: AssistantContext; degraded?: boolean; degradedReason?: string; error?: string };
 export type Turn = { role: "user" | "assistant"; content: string; links?: ViewLink[]; via?: "voice" };
 
 const failure = "L’assistant est momentanément indisponible. Réessayez dans un instant.";
@@ -20,6 +21,7 @@ const failure = "L’assistant est momentanément indisponible. Réessayez dans 
  * « Reprogramme cette publication… » depuis une fiche ou le hub de supervision. Simple donnée, revalidée par le serveur.
  */
 export function useAssistant(initialContext: AssistantContext = {}) {
+  const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [pending, setPending] = useState(false);
@@ -67,9 +69,11 @@ export function useAssistant(initialContext: AssistantContext = {}) {
     setTurns((current) => [...current, { role: "assistant" as const, content: text, links: data.links }].slice(-12));
     setProposal(data.proposal ?? null);
     if (data.context) context.current = data.context;
+    // Destination calculée côté serveur via une liste de routes autorisées.
+    if (data.navigation?.href) router.push(data.navigation.href);
     if (data.view) { setView(data.view); setViewVersion((value) => value + 1); setOpen(true); }
     setNotice(data.degraded ? `IA indisponible${data.degradedReason ? ` (${data.degradedReason})` : ""} : réponse en mode simplifié.` : "");
-  }, []);
+  }, [router]);
 
   const readReply = useCallback(async (text: string, signal?: AbortSignal) => {
     if (!voiceOutputRef.current) return true;

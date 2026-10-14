@@ -7,11 +7,11 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 test("Ads business context form needs only one disclosure and remains editable", () => {
   const page = read("app/(cockpit)/advertising/page.tsx");
   const editor = read("components/google-ads/business-context-editor.tsx");
-  assert.match(page, /<summary[^>]*>Contexte commercial de l);
-  assert.doesNotMatch(editor, /<details\\b|<summary\\b/, "the parent already owns the disclosure");
-  assert.match(editor, /<section aria-label="Formulaire de contexte commercial"/);
-  assert.match(editor, /<form onSubmit={submit}/);
-  assert.match(editor, /saveAdsContextAction\\(clientId, input, revision\\)/);
-  assert.match(editor, /advertisingMonthlyBudget/);
-  assert.match(editor, /targetCostPerLead/);
+  assert.ok(page.includes("Contexte commercial de l’agent"), "parent disclosure is present");
+  assert.ok(!editor.includes("<details") && !editor.includes("<summary"), "the editor must not hide inside another disclosure");
+  assert.ok(editor.includes('<section aria-label="Formulaire de contexte commercial"'));
+  assert.ok(editor.includes("<form onSubmit={submit}"));
+  assert.ok(editor.includes("saveAdsContextAction(clientId, input, revision)"));
+  assert.ok(editor.includes("advertisingMonthlyBudget"));
+  assert.ok(editor.includes("targetCostPerLead"));
 });

@@ -53,6 +53,7 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
     }).eq("id", request.approvalId).eq("status", "executing");
     if (error) console.error("[ads] approval status update failed");
   };
+  try {
   const env = process.env;
   if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) {
     throw new Error("Identifiants Google Ads incomplets.");
@@ -104,7 +105,6 @@ export async function manageClientAds(actor: Actor & { kind: "admin" }, request:
   // Append an audit record before the external side effect. Fail closed if audit unavailable.
   await writeAudit(actor, { action: "ads.change.requested", resource_type: "client", resource_id: clientId,
     metadata: { account, campaignId: change.campaignId, kind: change.kind, preview } });
-  try {
     const result = await executeApprovedAdsChange(change, { approved: true, dryRun: false, managerId: manager });
     // Read back only the resource actually mutated; never misreport another resource's status.
     let verified = false;

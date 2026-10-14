@@ -55,7 +55,7 @@ export function AdsManualManager({ clients, initialClient }: { clients: ClientOp
       <label className="block text-sm">Correspondance
         <select className="mt-2 block w-full rounded-lg border border-border bg-background p-3" value={matchType} onChange={(e) => setMatchType(e.target.value as "EXACT" | "PHRASE")}><option value="EXACT">Exacte</option><option value="PHRASE">Expression</option></select>
       </label>
-      <label className="block text-sm">Mots-clés négatifs (un par ligne, 25 maximum)
+      <label className="block text-sm">{kind === "keyword_add" ? "Mots-clés à ajouter" : "Mots-clés à exclure"} (un par ligne, 25 maximum)
         <textarea className="mt-2 block w-full rounded-lg border border-border bg-background p-3" rows={5} value={keywords} onChange={(e) => { setKeywords(e.target.value); setPreview(null); }} />
       </label>
     </>}

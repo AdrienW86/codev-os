@@ -25,14 +25,14 @@ export function MissionSummary({ mission }: { mission: DirectorMission }) {
       </ol>
       {mission.actions && mission.actions.length > 0 && (
         <div className="mt-4 border-t border-border pt-3">
-          <h4 className="mb-2 text-xs font-semibold text-muted">Actions proposées · données vérifiables</h4>
+          <h4 className="mb-2 text-xs font-semibold text-muted">Priorités et preuves</h4>
           <ol className="space-y-3">
             {mission.actions.map((action) => (
               <li key={action.href} className="text-sm">
                 <a href={action.href} className="font-medium text-accent hover:underline">{action.title}</a>
                 {action.detail && <p className="mt-1 text-xs text-muted">{action.detail}</p>}
                 {action.evidence && action.evidence.length > 0 && <p className="mt-1 text-xs text-muted">Preuves : {action.evidence.join(" · ")}</p>}
-                <p className="mt-1 text-xs text-muted">{action.origin === "diagnostic" ? "Nouveau diagnostic · " : "Recommandation enregistrée · "}{action.source === "seo" ? "SEO" : "Google Ads"} · {action.priority === "unrated" ? "Priorité non évaluée" : action.priority} {action.date ? "· " + action.date.slice(0, 10) : ""}</p>
+                <p className="mt-1 text-xs text-muted">{action.origin === "diagnostic" ? "Nouveau diagnostic · " : "Recommandation enregistrée · "}{action.source === "seo" ? "SEO" : "Google Ads"} · {({critical:"Critique", high:"Haute",medium:"Moyenne",low:"Information",info:"Information",unrated:"Non évaluée"} as Record<string,string>)[action.priority]} {action.date ? "· " + action.date.slice(0, 10) : ""}</p>
               </li>
             ))}
           </ol>

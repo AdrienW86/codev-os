@@ -84,10 +84,6 @@ export async function POST(request: Request) {
       const seoStatus = seo?.lastRun
         ? `Dernière analyse SEO enregistrée : ${seo.lastRun.status} (${seo.lastRun.at.slice(0, 10)}).`
         : "Aucune analyse SEO récente vérifiable dans cet historique.";
-      const adsReport = ads?.view?.type === "ads_recommendations" && ads.ok ? ads.view.result.text.trim() : "";
-      // Excerpt is taken from the real analysis. It is not mistaken for a
-      // ranked recommendation, an estimated outcome, or a completed SEO run.
-      
       const registryStatus = actions.length
         ? `${actions.length} action(s) vérifiée(s), issues du diagnostic et des recommandations enregistrées.`
         : "Aucune recommandation Ads ou SEO en attente dans le registre.";

@@ -92,6 +92,9 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
         status: text(action.status) ?? "UNKNOWN",
         primary: typeof action.primaryForGoal === "boolean" ? action.primaryForGoal : null,
         countingType: text(action.countingType) ?? "UNKNOWN", tagSnippets: null,
+        allConversions: numeric(row.metrics?.allConversions),
+        lastConversionDate: text(row.metrics?.conversionLastConversionDate),
+        lastTagReceivedAt: text(row.metrics?.conversionLastReceivedRequestDateTime),
       }];
     });
   }

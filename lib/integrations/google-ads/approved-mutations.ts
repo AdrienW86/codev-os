@@ -15,7 +15,8 @@ export type NegativeKeywordProposal = {
   managerId?: string;
 };
 export type ApprovedNegativeKeyword = NegativeKeywordProposal & {
-  approvedByAdmin: true;
+  /** Server-issued reference to a consumed one-time authorization, never a client boolean. */
+  approvalId: string;
 };
 
 export function validateNegativeKeyword(input: NegativeKeywordProposal) {
@@ -41,7 +42,9 @@ export async function applyApprovedNegativeKeyword(input: ApprovedNegativeKeywor
   await requireAdmin();
   if (await getActiveScenario()) throw new Error("Modifications Google Ads interdites en simulation.");
   if (process.env.GOOGLE_ADS_MUTATIONS_ENABLED !== "true") throw new Error("Écriture Google Ads désactivée.");
-  if (input.approvedByAdmin !== true) throw new Error("Approbation requise.");
+  // Fail closed until the database-backed approval-consumption flow is implemented.
+  // Merely having a Clerk admin session is NOT proof of approval for this exact write.
+  throw new Error("Écritures Google Ads indisponibles : approbation à usage unique non implémentée.");
   const proposal = validateNegativeKeyword(input);
   const id = process.env.GOOGLE_ADS_CLIENT_ID;
   const secret = process.env.GOOGLE_ADS_CLIENT_SECRET;

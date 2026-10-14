@@ -9,7 +9,7 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
-import { resolveExplicitNavigation, resolveClientNavigation } from "@/lib/assistant/operational-navigation";
+import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing } from "@/lib/assistant/operational-navigation";
 import { resolveClient } from "@/lib/assistant/clients";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +59,26 @@ export async function POST(request: Request) {
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
     const latest = parsed.data.messages.at(-1);
+    const campaignCommand = latest?.role === "user" ? resolveCampaignCommand(latest.content) : null;
+    if (campaignCommand && !simulation) {
+      const tool = campaignCommand.analyze ? "ads_recommendations" : "ads_campaigns";
+      const result = await executeTool(actor, tool, { client: campaignCommand.client, campaigns: [campaignCommand.campaign], status: "all" }, context);
+      if (!result.ok) return NextResponse.json({ reply: result.text, links: result.links ?? [], source: "rules" }, { headers });
+      const view = result.view;
+      const href = view?.type === "ads_campaigns" ? `/advertising?client=${view.clientId}&${new URLSearchParams(result.context?.adsQuery ?? "").toString()}` : view?.link?.href;
+      return NextResponse.json({
+        reply: result.text, links: result.links ?? [], view: result.view, context: result.context, source: "rules",
+        ...(href ? { navigation: { destination: "campaign", href } } : {}),
+      }, { headers });
+    }
+    if (latest?.role === "user" && isDirectorBriefing(latest.content) && !simulation) {
+      const names = ["get_priorities", "clients_attention", "list_pending_actions"] as const;
+      const results = await Promise.allSettled(names.map((name) => executeTool(actor, name, {}, context)));
+      const outputs = results.map((outcome, index) => ({ name: names[index], result: outcome.status === "fulfilled" ? outcome.value : null }));
+      const lines = outputs.map(({ name, result }) => result?.ok ? result.text : `${name} : indisponible`);
+      const links = outputs.flatMap(({ result }) => result?.links ?? []).slice(0, 8);
+      return NextResponse.json({ reply: lines.join(" "), links, source: "rules", mission: { steps: outputs.map(({ name, result }) => ({ agent: name, status: result?.ok ? "completed" : "failed" })) } }, { headers });
+    }
     const clientTarget = latest?.role === "user" ? resolveClientNavigation(latest.content) : null;
     if (clientTarget) {
       const client = await resolveClient(clientTarget);

@@ -21,6 +21,7 @@ import { loadCampaignTracking } from "./tracking";
 import { selectAIProvider } from "@/lib/ai/providers";
 import { analyzeAdsWithAI } from "./ai-analysis";
 import { analyzeRecommendation } from "./recommendation-core";
+import { buildAdsFindings } from "./findings";
 import { getAdsBusinessContext } from "./context-service";
 import { reserveAdsAnalysis, saveAdsAnalysisMetadata } from "./analysis-state";
 import type { AdsInstructionSnapshot } from "./business-context";

@@ -365,7 +365,7 @@ test("the Google Ads integration exposes no write path", () => {
   for (const file of readdirSync(directory)) {
     const source = readFileSync(new URL(file, directory), "utf8");
     assert.doesNotMatch(source, /:mutate|googleAds:mutate|campaigns:mutate|campaignBudgets|\bmutate\(/, file);
-    for (const url of source.match(/https:\/\/[^\s`"']+/g) ?? []) assert.match(url, /^https:\/\/(googleads\.googleapis\.com\/v\d+\/customers\/\$\{customerId\}\/googleAds:search|oauth2\.googleapis\.com\/token)$/, `${file}: ${url}`);
+    for (const url of source.match(/https:\/\/[^\s`"']+/g) ?? []) assert.match(url, /^https:\/\/(googleads\.googleapis\.com\/v\d+\/customers\/\$\{(?:customerId|account)\}\/googleAds:search|oauth2\.googleapis\.com\/token)$/, `${file}: ${url}`);
   }
 });
 

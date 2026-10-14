@@ -66,7 +66,9 @@ test("token exchange failures keep only the code and HTTP status", async () => {
 });
 test("scope problems are distinguished: missing drive.file or broader Drive access", async () => {
   assert.equal((await failure(providers(credentials, async () => token("openid email")).importDriveToken())).code, "drive_scope_missing");
-  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.readonly")).importDriveToken())).code, "drive_scope_too_broad");
+  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.readonly")).importDriveToken())).code, "drive_scope_readonly");
+  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.metadata.readonly")).importDriveToken())).code, "drive_scope_readonly");
+  assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata.readonly")).importDriveToken())).code, "drive_scope_readonly");
   assert.equal((await failure(providers(credentials, async () => token("https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive")).importDriveToken())).code, "drive_scope_too_broad");
   assert.equal(await providers(credentials, async () => token("openid https://www.googleapis.com/auth/drive.file")).importDriveToken(), "ya29.dummy-access-token");
 });

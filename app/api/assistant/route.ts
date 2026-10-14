@@ -11,6 +11,7 @@ import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
 import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignCommand, isDirectorBriefing, resolveAdsSeoMission } from "@/lib/assistant/operational-navigation";
 import { resolveClient } from "@/lib/assistant/clients";
+import { readSeoEvidence } from "@/lib/assistant/seo-evidence";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -63,11 +64,17 @@ export async function POST(request: Request) {
     if (missionClient && !simulation) {
       const client = await resolveClient(missionClient);
       if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
+      const seoEvidence = await readSeoEvidence(client.id).catch(() => null);
+      const seoFacts = seoEvidence?.recommendations ?? [];
+      const seoSummary = seoEvidence?.lastRun
+        ? `Dernière exécution SEO : ${seoEvidence.lastRun.status} (${seoEvidence.lastRun.at.slice(0, 10)}). ${seoEvidence.lastRun.summary ?? ""}`
+        : "Aucune exécution SEO enregistrée.";
+      const priorityLinks = seoFacts.slice(0, 3).map((r) => ({ label: `SEO : ${r.title}`, href: r.href }));
       const ads = await executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
       const seo = await proposeFromView("run_check", { check: "seo.analyze", client: client.name }, deps);
-      const links = [...(ads?.links ?? []), ...(seo.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
+      const links = [...priorityLinks, ...(ads?.links ?? []), ...(seo.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
       return NextResponse.json({
-        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo.reply}`].join(" "),
+        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo.reply}`, seoSummary, seoFacts.length ? `${seoFacts.length} recommandation(s) SEO existante(s), triées par gravité. Ces résultats ne proviennent pas nécessairement de cette mission.` : "Aucune recommandation SEO en attente enregistrée."].join(" "),
         links, source: "rules", context: { clientId: client.id, clientName: client.name },
         ...(ads?.view ? { view: ads.view } : {}),
         ...(seo.proposal ? { proposal: seo.proposal } : {}),

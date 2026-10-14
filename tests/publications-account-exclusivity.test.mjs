@@ -96,7 +96,8 @@ test('trigger UI and scope: only the admin action calls it, no cron / route / da
   for(const f of files){if(f==='lib/publications/delivery/registry.ts'||f==='app/(cockpit)/publications/delivery-actions.ts')continue;
    assert.doesNotMatch(src(f),/processDuePublications\b|runOnePublicationJobInProduction/,`${f}: no other trigger`);}}
  assert.equal(readdirSync(resolve(root,'app/api'),{recursive:true}).filter(f=>/cron|worker|publish/i.test(f)).length,0,'no cron / worker / publish route');
- if(existsSync(resolve(root,'vercel.json')))assert.doesNotMatch(src('vercel.json').replace(/\s/g,''),/"crons":\[\{/,'no Vercel cron');
+ // Seul cron autorisé : le planificateur unique (verrou, arrêt d'urgence et drapeau de diffusion vérifiés en aval).
+ if(existsSync(resolve(root,'vercel.json')))for(const c of JSON.parse(src('vercel.json')).crons??[])assert.equal(c.path,'/api/internal/scheduler/tick','no publication-specific Vercel cron');
  const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[22],'20261014000000_publications_account_client_exclusivity.sql');
  const sql=src('supabase/migrations/20261014000000_publications_account_client_exclusivity.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|create policy|cron|http|insert into public\.publication_jobs|drop |alter table/i);});

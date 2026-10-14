@@ -63,20 +63,17 @@ export async function POST(request: Request) {
     if (missionClient && !simulation) {
       const client = await resolveClient(missionClient);
       if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Clients", href: "/clients" }], source: "rules" }, { headers });
-      const outcomes = await Promise.allSettled([
-        executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }),
-        executeTool(actor, "run_check", { check: "seo.analyze", client: client.name }, {}),
-      ]);
-      const ads = outcomes[0].status === "fulfilled" ? outcomes[0].value : null;
-      const seo = outcomes[1].status === "fulfilled" ? outcomes[1].value : null;
-      const links = [...(ads?.links ?? []), ...(seo?.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
+      const ads = await executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }).catch(() => null);
+      const seo = await proposeFromView("run_check", { check: "seo.analyze", client: client.name }, deps);
+      const links = [...(ads?.links ?? []), ...(seo.links ?? []), { label: "Fiche client", href: `/clients/${client.id}` }].slice(0, 8);
       return NextResponse.json({
-        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo?.text ?? "lancement indisponible"}`, "L'analyse SEO peut se poursuivre dans le moteur d'agents ; aucun résultat SEO non confirmé n'est présenté."].join(" "),
+        reply: [`Mission Ads + SEO — ${client.name}.`, `Google Ads : ${ads?.text ?? "analyse indisponible"}`, `SEO : ${seo.reply}`].join(" "),
         links, source: "rules", context: { clientId: client.id, clientName: client.name },
         ...(ads?.view ? { view: ads.view } : {}),
+        ...(seo.proposal ? { proposal: seo.proposal } : {}),
         mission: { steps: [
           { agent: "google-ads", status: ads?.ok ? "completed" : "failed" },
-          { agent: "seo", status: seo?.ok ? "launched" : "failed" },
+          { agent: "seo", status: seo.proposal ? "awaiting_approval" : "failed" },
         ] },
       }, { headers });
     }

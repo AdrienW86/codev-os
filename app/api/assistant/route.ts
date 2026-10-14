@@ -9,7 +9,8 @@ import { executeTool, prepareProposal } from "@/lib/assistant/executor";
 import { writeAudit } from "@/lib/core/audit";
 import { todayInParis } from "@/lib/dashboard/home";
 import { parseContext } from "@/lib/assistant/views";
-import { resolveExplicitNavigation } from "@/lib/assistant/operational-navigation";
+import { resolveExplicitNavigation, resolveClientNavigation } from "@/lib/assistant/operational-navigation";
+import { resolveClient } from "@/lib/assistant/clients";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -58,6 +59,13 @@ export async function POST(request: Request) {
     }
     if ("propose" in parsed.data) return NextResponse.json(await proposeFromView(parsed.data.propose.tool, parsed.data.propose.input, deps), { headers });
     const latest = parsed.data.messages.at(-1);
+    const clientTarget = latest?.role === "user" ? resolveClientNavigation(latest.content) : null;
+    if (clientTarget) {
+      const client = await resolveClient(clientTarget);
+      if (!client.ok) return NextResponse.json({ reply: client.message, links: [{ label: "Voir les clients", href: "/clients" }], source: "rules" }, { headers });
+      const href = `/clients/${client.id}`;
+      return NextResponse.json({ reply: `J’ouvre la fiche de ${client.name}.`, links: [{ label: client.name, href }], navigation: { destination: "client", href }, context: { clientId: client.id, clientName: client.name }, source: "rules" }, { headers });
+    }
     const destination = latest?.role === "user" ? resolveExplicitNavigation(latest.content) : null;
     if (destination) return NextResponse.json({
       reply: `J’ouvre ${destination.label}.`, links: [{ label: destination.label, href: destination.href }],

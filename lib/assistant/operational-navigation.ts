@@ -36,7 +36,7 @@ const targets: { destination: OperationalDestination; expressions: RegExp[] }[] 
 export function resolveExplicitNavigation(message: string) {
   const normalized = message
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[’']/g, " ").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+    .toLowerCase().replace(/[’']/g, " ").replace(/-/g, " ").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
   // Le verbe explicite et une cible exacte empêchent de détourner les demandes métier.
   const match = /^(?:ouvre|ouvrir|affiche|afficher|montre|montrer|va sur|vas sur|navigue vers|emmene moi sur|amene moi sur)\s+(?:(?:moi|nous)\s+)?(?:la page\s+|l ecran\s+|le module\s+|la rubrique\s+|l onglet\s+)?(?:des?\s+|les?\s+|l\s+)?(.+)$/.exec(normalized);
   if (!match) return null;

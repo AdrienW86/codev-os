@@ -13,6 +13,7 @@ import { resolveExplicitNavigation, resolveClientNavigation, resolveCampaignComm
 import { resolveClient } from "@/lib/assistant/clients";
 import { readSeoEvidence } from "@/lib/assistant/seo-evidence";
 import { topClientPriorities } from "@/lib/assistant/client-priorities";
+import { readLiveAdsPriorities } from "@/lib/assistant/live-ads-priorities";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -72,7 +73,12 @@ export async function POST(request: Request) {
         executeTool(actor, "ads_recommendations", { client: client.name }, { clientId: client.id, clientName: client.name }),
         readSeoEvidence(client.id),
       ]);
-      const actions = actionsResult.status === "fulfilled" ? actionsResult.value : [];
+      const registered = actionsResult.status === "fulfilled" ? actionsResult.value : [];
+      const live = adsResult.status === "fulfilled" && adsResult.value.ok && adsResult.value.view?.type === "ads_recommendations"
+        ? await readLiveAdsPriorities(client.id, adsResult.value.view.result.runId) : [];
+      const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unrated: 5 };
+      const actions = [...live, ...registered.filter((item) => !live.some((fresh) => fresh.title.toLowerCase() === item.title.toLowerCase()))]
+        .sort((a, b) => (rank[a.priority] ?? 5) - (rank[b.priority] ?? 5)).slice(0, 3);
       const ads = adsResult.status === "fulfilled" ? adsResult.value : null;
       const seo = seoResult.status === "fulfilled" ? seoResult.value : null;
       const seoStatus = seo?.lastRun
@@ -83,7 +89,7 @@ export async function POST(request: Request) {
       // ranked recommendation, an estimated outcome, or a completed SEO run.
       const adsExcerpt = adsReport ? adsReport.slice(0, 1000) : "";
       const registryStatus = actions.length
-        ? `${actions.length} recommandation(s) enregistrée(s), triée(s) par gravité et date.`
+        ? `${actions.length} action(s) vérifiée(s), issues du diagnostic et des recommandations enregistrées.`
         : "Aucune recommandation Ads ou SEO en attente dans le registre.";
       const adsStatus = ads?.ok
         ? `Diagnostic Google Ads disponible${adsExcerpt ? ` : ${adsExcerpt}` : " dans le détail lié"}.`

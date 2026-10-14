@@ -5,6 +5,7 @@ import { change, createRequestTracker, describeScope, filterCampaigns, groupByTy
 import { PERIOD_PRESETS, describeDates, presetLabels, type PeriodPreset } from "@/lib/integrations/google-ads/periods";
 import type { AdsMetrics } from "@/lib/integrations/google-ads/types";
 import { CampaignTrackingEditor, type SaveTracking } from "./campaign-tracking";
+import { AdsAgentPanel } from "./ads-agent-panel";
 
 export type DashboardResult = { ok: true; data: DashboardData } | { ok: false; message: string };
 export type ScopeActionState = { ok?: boolean; message?: string; href?: string; detail?: string; reused?: boolean };
@@ -23,7 +24,7 @@ const chip = (active: boolean) => `min-h-9 rounded-full border px-3 text-sm ${ac
  * - Une réponse arrivée après une demande plus récente est ignorée (compteur de requêtes).
  * - Pendant un chargement ou après une erreur, aucun ancien chiffre n'est présenté comme celui de la nouvelle période.
  */
-export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, runAIAnalysis, analysisNote, syncUrl = true, onFiltersChange, actionLabels, saveTracking }: {
+export function CampaignDashboard({ clientId, initial, initialFilters, load, prepareReport, runAnalysis, runAIAnalysis, analysisNote, syncUrl = true, onFiltersChange, actionLabels, saveTracking, agentClientName }: {
   clientId: string; initial: DashboardResult; initialFilters: DashboardFilters;
   load: (clientId: string, query: string) => Promise<DashboardResult>;
   prepareReport?: ScopeAction; runAnalysis?: ScopeAction; runAIAnalysis?: ScopeAction; analysisNote?: string;
@@ -34,6 +35,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
   /** Libellés des actions (l'assistant les PROPOSE avant confirmation au lieu de les exécuter). */
   actionLabels?: { report?: string; analysis?: string; aiAnalysis?: string };
   saveTracking?: SaveTracking;
+  agentClientName?: string;
 }) {
   const titleId = useId();
   // Filtres analysés côté serveur depuis la même URL : rendu serveur et navigateur identiques.
@@ -94,7 +96,7 @@ export function CampaignDashboard({ clientId, initial, initialFilters, load, pre
           <button type="button" onClick={() => void fetchPeriod(filters)} className="mt-3 min-h-10 rounded-lg border border-border px-3 text-sm text-foreground">Réessayer</button>
         </div>
       )}
-      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} runAIAnalysis={runAIAnalysis} analysisNote={analysisNote} actionLabels={actionLabels} />}
+      {data && <DashboardBody data={data} filters={filters} selected={selected} onChange={commit} clientId={clientId} prepareReport={prepareReport} runAnalysis={runAnalysis} runAIAnalysis={runAIAnalysis} analysisNote={analysisNote} actionLabels={actionLabels} agentClientName={agentClientName} />}
     </section>
   );
 }
@@ -135,9 +137,9 @@ function PeriodControls({ filters, onChange, busy }: { filters: DashboardFilters
   );
 }
 
-function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, runAIAnalysis, analysisNote, actionLabels }: {
+function DashboardBody({ data, filters, selected, onChange, clientId, prepareReport, runAnalysis, runAIAnalysis, analysisNote, actionLabels, agentClientName }: {
   data: DashboardData; filters: DashboardFilters; selected: CampaignRow[]; onChange: (next: DashboardFilters) => void; clientId: string;
-  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; runAIAnalysis?: ScopeAction; analysisNote?: string; actionLabels?: { report?: string; analysis?: string; aiAnalysis?: string };
+  prepareReport?: ScopeAction; runAnalysis?: ScopeAction; runAIAnalysis?: ScopeAction; analysisNote?: string; actionLabels?: { report?: string; analysis?: string; aiAnalysis?: string }; agentClientName?: string;
 }) {
   const money = useMemo(() => new Intl.NumberFormat("fr-FR", { style: "currency", currency: data.account.currency }), [data.account.currency]);
   const fmt = useMemo(() => formatters(money), [money]);
@@ -155,6 +157,8 @@ function DashboardBody({ data, filters, selected, onChange, clientId, prepareRep
         <p className="font-medium">{scope}</p>
         <p className="text-xs text-muted">Fuseau du compte : {data.account.timezone} · devise {data.account.currency}{data.period.includesToday ? " · les données du jour peuvent être incomplètes" : " · aujourd’hui exclu"}{data.previousPeriod ? ` · comparé à ${describeDates(data.previousPeriod)}` : ""}</p>
       </div>
+
+      {agentClientName && <AdsAgentPanel clientId={clientId} clientName={agentClientName} filters={filters} scope={scopeForServer} connected={true} />}
 
       <fieldset className="space-y-3">
         <legend className="sr-only">Filtres des campagnes</legend>

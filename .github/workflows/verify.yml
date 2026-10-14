@@ -25,6 +25,8 @@ jobs:
       - name: Tests
         run: npm test
       - name: Lint
+        if: always()
         run: npm run lint
       - name: TypeScript
+        if: always()
         run: npm run typecheck

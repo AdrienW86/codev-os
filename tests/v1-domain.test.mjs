@@ -103,7 +103,7 @@ test("SEO analysis: drops, disappeared pages, emerging queries, low CTR", () => 
   const row = (key, clicks, impressions = 1000, position = 3, ctr = clicks / impressions) => ({ keys: [key], clicks, impressions, ctr, position });
   const findings = seo.analyzeSeo([row("/a", 10), row("/b", 40)], [row("/a", 40), row("/b", 20), row("/gone", 30)], [row("pain bio", 5, 300, 12), row("boulangerie", 5, 800, 2)], []);
   const kinds = findings.map((item) => `${item.kind}:${item.key}`);
-  assert.deepEqual(plain(kinds), ["page_drop:/a", "page_growth:/b", "page_drop:/gone", "emerging_query:pain bio", "low_ctr:boulangerie"]);
+  assert.deepEqual(plain(kinds), ["page_drop:/a", "page_growth:/b", "emerging_query:pain bio", "low_ctr:boulangerie"]);
   assert.equal(findings[0].severity, "high");
   assert.equal(seo.totals([]).position, null);
 });

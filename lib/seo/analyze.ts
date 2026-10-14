@@ -2,7 +2,7 @@
 import type { QueryRow } from "@/lib/providers/search-console";
 
 export type SeoFinding = {
-  kind: "page_drop" | "page_growth" | "emerging_query" | "low_ctr";
+  kind: "page_drop" | "page_growth" | "emerging_query" | "low_ctr" | "near_first_page";
   key: string;
   detail: string;
   severity: "low" | "medium" | "high";
@@ -33,14 +33,13 @@ export function analyzeSeo(pagesNow: QueryRow[], pagesBefore: QueryRow[], querie
     if (prior && prior.clicks >= 20 && row.clicks <= prior.clicks * 0.7) findings.push({ kind: "page_drop", key: row.keys[0], severity: row.clicks <= prior.clicks * 0.5 ? "high" : "medium", detail: `Clics passés de ${prior.clicks} à ${row.clicks}.`, metrics: { clicks: row.clicks, priorClicks: prior.clicks, impressions: row.impressions, priorImpressions: prior.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Auditer la page, la requête cible, les changements récents et le maillage interne avant de proposer une correction." });
     else if (prior && prior.clicks >= 10 && row.clicks >= prior.clicks * 1.5) findings.push({ kind: "page_growth", key: row.keys[0], severity: "low", detail: `Clics passés de ${prior.clicks} à ${row.clicks}.`, metrics: { clicks: row.clicks, priorClicks: prior.clicks, impressions: row.impressions, priorImpressions: prior.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Conserver les éléments qui progressent et renforcer prudemment le maillage vers cette page." });
   }
-  for (const page of pagesBefore) {
-    if (page.clicks >= 20 && !pagesNow.some((row) => row.keys[0] === page.keys[0])) findings.push({ kind: "page_drop", key: page.keys[0], severity: "high", detail: `Page sans clic sur la période (${page.clicks} auparavant).`, metrics: { clicks: 0, priorClicks: page.clicks, impressions: 0, priorImpressions: page.impressions }, suggestedAction: "Vérifier indexation, disponibilité, redirections et canonique avant toute modification éditoriale." });
-  }
+  // Absence de page dans une réponse GSC paginée / limitée ≠ zéro clic. Ne déduire aucune chute sans observation actuelle.
   const queriesPrior = new Map(queriesBefore.map((row) => [row.keys[0], row]));
   for (const row of queriesNow) {
     const prior = queriesPrior.get(row.keys[0]);
     if (row.impressions >= 100 && row.position >= 8 && row.position <= 20 && (!prior || row.impressions >= prior.impressions * 1.5)) findings.push({ kind: "emerging_query", key: row.keys[0], severity: "medium", detail: `${row.impressions} impressions, position ${row.position.toFixed(1)} : potentiel de première page.`, metrics: { clicks: row.clicks, impressions: row.impressions, priorImpressions: prior?.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Identifier la page qui répond déjà à l’intention, puis renforcer titre, contenu et maillage ; créer une page dédiée seulement si l’intention est distincte.", targetPage: pageByQuery.get(row.keys[0])?.keys[1] });
     else if (row.impressions >= 500 && row.position <= 5 && row.ctr < 0.02) findings.push({ kind: "low_ctr", key: row.keys[0], severity: "low", detail: `Bien positionnée (${row.position.toFixed(1)}) mais CTR de ${(row.ctr * 100).toFixed(1)} %.`, metrics: { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Revoir le title et la meta description en restant aligné avec l’intention réelle et le contenu de la page.", targetPage: pageByQuery.get(row.keys[0])?.keys[1] });
+    else if (row.impressions >= 100 && row.position >= 4 && row.position <= 10) findings.push({ kind: "near_first_page", key: row.keys[0], severity: "medium", detail: `${row.impressions} impressions, position moyenne ${row.position.toFixed(1)} : requête proche des premiers résultats, sans garantie de progression.`, metrics: { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }, suggestedAction: "Examiner la page déjà positionnée, les intentions et le maillage interne avant de préparer une amélioration du contenu.", targetPage: pageByQuery.get(row.keys[0])?.keys[1] });
   }
   return findings.slice(0, 20);
 }

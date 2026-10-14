@@ -69,6 +69,7 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
             page_drop: seoFindings.filter((item) => item.kind === "page_drop").length,
             emerging_query: seoFindings.filter((item) => item.kind === "emerging_query").length,
             low_ctr: seoFindings.filter((item) => item.kind === "low_ctr").length,
+            near_first_page: seoFindings.filter((item) => item.kind === "near_first_page").length,
             page_growth: seoFindings.filter((item) => item.kind === "page_growth").length,
           },
         } as unknown as Json,
@@ -76,7 +77,7 @@ export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now }) => {
     ]);
     for (const finding of seoFindings) {
       if (finding.kind === "page_growth") continue;
-      const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
+      const title = finding.kind === "page_drop" ? `Page en baisse : ${finding.key}` : finding.kind === "emerging_query" ? `Opportunité : « ${finding.key} »` : finding.kind === "near_first_page" ? `Renforcer la visibilité pour « ${finding.key} »` : `Améliorer le titre pour « ${finding.key} »`;
       const targetUrl = finding.kind === "page_drop" ? finding.key : finding.targetPage ?? null;
       const repositoryContext = targetUrl ? githubByUrl.get(targetUrl) ?? null : null;
       const created = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: title.slice(0, 200), reason: finding.detail, severity: finding.severity, payload: { kind: finding.kind, key: finding.key, metrics: finding.metrics, suggested_action: finding.suggestedAction, target_page: finding.targetPage ?? null, repository_context: repositoryContext, period: current } });

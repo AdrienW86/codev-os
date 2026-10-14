@@ -14,7 +14,7 @@ const evidenceIds = z.array(z.string().max(100)).min(1).max(6);
 const outputSchema = z.strictObject({
   factIds: z.array(z.string().max(100)).min(1).max(10),
   hypotheses: z.array(z.strictObject({ kind: z.enum(hypotheses), campaignIds: ids, explanation: narrative })).max(4),
-  recommendations: z.array(z.strictObject({ action: z.enum(actions), priority: z.enum(["high", "medium", "low"]).optional(), campaignIds: ids, evidenceIds, rationale: narrative })).max(5),
+  recommendations: z.array(z.strictObject({ action: z.enum(actions), priority: z.enum(["high", "medium", "low"]), campaignIds: ids, evidenceIds, rationale: narrative })).max(5),
 });
 export type AdsAIOutput = z.infer<typeof outputSchema>;
 export type Evidence = { id: string; campaignId: string | null; type: string | null; metric: string; value: number | null; text: string };

@@ -44,3 +44,14 @@ export function resolveExplicitNavigation(message: string) {
   const found = targets.find(({ expressions }) => expressions.some((expression) => expression.test(target)));
   return found ? { destination: found.destination, ...operationalDestinations[found.destination] } : null;
 }
+
+/**
+ * Navigation vers une fiche client, uniquement lorsque la commande est explicitement
+ * une demande de navigation. Le serveur résout ensuite le client existant.
+ */
+export function resolveClientNavigation(message: string): string | null {
+  const normalized = message.trim().replace(/[.!?]+$/g, "").replace(/\s+/g, " ");
+  const match = /^(?:ouvre|ouvrir|affiche|afficher|montre|montrer|va sur|vas sur)\s+(?:(?:moi)\s+)?(?:(?:la\s+)?fiche\s+(?:du\s+client\s+|de\s+|d['’])|(?:le\s+)?dossier\s+(?:du\s+client\s+|de\s+|d['’])|(?:le\s+)?client\s+)(.+)$/i.exec(normalized);
+  const name = match?.[1]?.trim();
+  return name && name.length <= 120 && !/[\/\\<>]/.test(name) ? name : null;
+}

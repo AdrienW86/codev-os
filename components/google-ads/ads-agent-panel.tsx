@@ -33,7 +33,7 @@ export function AdsAgentPanel({ clientId, clientName, filters, scope, connected 
           adsQuery: writeFilters(new URLSearchParams(), filters).toString() } }) });
       const data = await response.json() as AssistantResult;
       if (!response.ok) throw new Error("L'assistant est indisponible. Réessayez.");
-      setTurns([...next, { role: "assistant", content: data.reply ?? "Aucune réponse." }].slice(-12));
+      setTurns([...next, { role: "assistant" as const, content: data.reply ?? "Aucune réponse." }].slice(-12));
       if (data.view?.type === "ads_recommendations" && data.view.result?.text) setAnalysis(data.view.result.text);
     } catch { setError("L'assistant n'a pas pu répondre. Réessayez."); }
     finally { setPending(false); }

@@ -123,7 +123,6 @@ function TurnItem({ turn }: { turn: Turn }) {
 function Composer({ id, describedBy, session, placeholder, compact = false, label = "Votre demande à l’assistant" }: { id: string; describedBy: string; session: AssistantSession; placeholder: string; compact?: boolean; label?: string }) {
   const [value, setValue] = useState("");
   const { pending, voice, voiceOutput } = session;
-  const recording = voice.state === "recording";
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!value.trim() || pending) return;

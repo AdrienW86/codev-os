@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { AssistantCommandBox } from "@/components/dashboard/assistant-command-box";
 import { Icon } from "@/components/ui/icon";
@@ -10,11 +10,10 @@ import { Icon } from "@/components/ui/icon";
  * Visual collapse only: voice session and conversation do not unmount on route change.
  */
 export function PersistentVoiceDirector() {
-  const [expanded, setExpanded] = useState(false);
   const pathname = usePathname();
-
-  // When a command opens an actual page, get out of the way without stopping the mic.
-  useEffect(() => { setExpanded(false); }, [pathname]);
+  const [panel, setPanel] = useState({ pathname, expanded: false });
+  // Derive visibility from the current route without a synchronous effect update.
+  const expanded = panel.pathname === pathname && panel.expanded;
 
   return (
     <aside aria-label="Directeur opérationnel IA" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 w-[min(28rem,calc(100vw-2rem))]">
@@ -27,7 +26,7 @@ export function PersistentVoiceDirector() {
         <button type="button"
           aria-expanded={expanded} aria-controls="persistent-voice-panel"
           aria-label={expanded ? "Réduire le directeur IA" : "Ouvrir le directeur IA"}
-          onClick={() => setExpanded((value) => !value)}
+          onClick={() => setPanel({ pathname, expanded: !expanded })}
           className="inline-flex min-h-12 items-center gap-2.5 rounded-full border border-accent/35 bg-surface px-4 py-3 text-sm font-medium text-foreground shadow-xl backdrop-blur transition-colors hover:border-accent/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
           <Icon name="mic" width={18} height={18} className="text-accent" />
           <span>{expanded ? "Réduire" : "Directeur IA"}</span>

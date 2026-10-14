@@ -12,5 +12,5 @@ export interface AIProvider {
   readonly model: string;
   /** Vérification sans coût de génération : la clé est acceptée et le modèle accessible. */
   ping(signal?: AbortSignal): Promise<void>;
-  complete(input: { system: string; messages: ChatMessage[]; tools: ToolSpec[]; toolResults?: ToolResultMessage[]; signal?: AbortSignal }): Promise<AIResponse>;
+  complete(input: { system: string; messages: ChatMessage[]; tools: ToolSpec[]; toolChoice?: "auto" | "required"; toolResults?: ToolResultMessage[]; signal?: AbortSignal }): Promise<AIResponse>;
 }

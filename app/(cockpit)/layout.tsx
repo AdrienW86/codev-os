@@ -7,6 +7,7 @@ import { SimulationProvider } from "@/components/simulation/simulation-provider"
 import { getActiveScenario } from "@/lib/simulation/server";
 import { FlashRegion } from "@/components/ui/flash";
 import { PwaStatus } from "@/components/layout/pwa-status";
+import { PersistentVoiceDirector } from "@/components/assistant/persistent-voice-director";
 
 export default async function CockpitLayout({ children }: { children: ReactNode }) {
   await requireAdmin();
@@ -28,6 +29,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
           </footer>
         </main>
       </div>
+      <PersistentVoiceDirector />
       <FlashRegion />
     </SimulationProvider>
   );

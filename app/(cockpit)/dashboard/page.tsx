@@ -2,7 +2,6 @@ import { requireAdmin } from "@/lib/require-admin";
 import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AssistantCommandBox } from "@/components/dashboard/assistant-command-box";
 import { AttentionCard } from "@/components/dashboard/attention-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { TechNews } from "@/components/dashboard/tech-news";
@@ -91,9 +90,7 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Bonjour {name}</h1>
         <p className="mt-3 text-base text-muted">Que voulez-vous faire aujourd’hui ?</p>
       </div>
-      <div className="mx-auto mt-8 max-w-3xl text-left">
-        <AssistantCommandBox />
-      </div>
+      <p className="mx-auto mt-8 max-w-3xl text-center text-sm text-muted">Le directeur IA reste accessible en bas à droite sur chaque écran.</p>
 
       <section className="mt-14" aria-labelledby="attention-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">

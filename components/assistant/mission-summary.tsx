@@ -25,12 +25,14 @@ export function MissionSummary({ mission }: { mission: DirectorMission }) {
       </ol>
       {mission.actions && mission.actions.length > 0 && (
         <div className="mt-4 border-t border-border pt-3">
-          <h4 className="mb-2 text-xs font-semibold text-muted">Actions proposées · preuves enregistrées</h4>
+          <h4 className="mb-2 text-xs font-semibold text-muted">Actions proposées · données vérifiables</h4>
           <ol className="space-y-3">
             {mission.actions.map((action) => (
               <li key={action.href} className="text-sm">
                 <a href={action.href} className="font-medium text-accent hover:underline">{action.title}</a>
-                <p className="mt-1 text-xs text-muted">{action.source === "seo" ? "SEO" : "Google Ads"} · {action.priority === "unrated" ? "Priorité non évaluée" : action.priority} {action.date ? "· " + action.date.slice(0, 10) : ""}</p>
+                {action.detail && <p className="mt-1 text-xs text-muted">{action.detail}</p>}
+                {action.evidence && action.evidence.length > 0 && <p className="mt-1 text-xs text-muted">Preuves : {action.evidence.join(" · ")}</p>}
+                <p className="mt-1 text-xs text-muted">{action.origin === "diagnostic" ? "Nouveau diagnostic · " : "Recommandation enregistrée · "}{action.source === "seo" ? "SEO" : "Google Ads"} · {action.priority === "unrated" ? "Priorité non évaluée" : action.priority} {action.date ? "· " + action.date.slice(0, 10) : ""}</p>
               </li>
             ))}
           </ol>

@@ -17,6 +17,9 @@ type Env = Record<string, string | undefined>;
 export type AdsChange =
   | { kind: "campaign_pause"; customerId: string; campaignId: string }
   | { kind: "campaign_enable"; customerId: string; campaignId: string }
+  | { kind: "keyword_add"; customerId: string; campaignId: string; adGroupId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] }
+  | { kind: "keyword_pause"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
+  | { kind: "keyword_enable"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
   | { kind: "negative_keyword_add"; customerId: string; campaignId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] };
 
 export type AdsMutationPreview = {
@@ -38,6 +41,14 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
       }],
     };
   }
+  if (change.kind === "keyword_pause" || change.kind === "keyword_enable") {
+    if (!RESOURCE_ID.test(change.adGroupId) || !RESOURCE_ID.test(change.criterionId)) throw new Error("Identifiant de mot-clé invalide.");
+    return { resource: "adGroupCriteria", operations: [{
+      update: { resourceName: `customers/${change.customerId}/adGroupCriteria/${change.adGroupId}~${change.criterionId}`,
+        status: change.kind === "keyword_pause" ? "PAUSED" : "ENABLED" }, updateMask: "status",
+    }] };
+  }
+  if (change.kind === "keyword_add" && !RESOURCE_ID.test(change.adGroupId)) throw new Error("Groupe d'annonces invalide.");
   if (change.keywords.length === 0 || change.keywords.length > MAX_NEGATIVES) {
     throw new Error("Nombre de mots-clés négatifs invalide.");
   }
@@ -50,9 +61,11 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
     const key = `${normalized.toLowerCase()}:${matchType}`;
     if (seen.has(key)) throw new Error("Mot-clé négatif en double.");
     seen.add(key);
-    return { create: { campaign, negative: true, keyword: { text: normalized, matchType } } };
+    return change.kind === "keyword_add"
+      ? { create: { adGroup: `customers/${change.customerId}/adGroups/${change.adGroupId}`, status: "ENABLED", keyword: { text: normalized, matchType } } }
+      : { create: { campaign, negative: true, keyword: { text: normalized, matchType } } };
   });
-  return { resource: "campaignCriteria", operations };
+  return { resource: change.kind === "keyword_add" ? "adGroupCriteria" : "campaignCriteria", operations };
 }
 
 export async function executeApprovedAdsChange(

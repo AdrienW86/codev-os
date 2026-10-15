@@ -127,6 +127,15 @@ export function renderClientReportPdf(report: ReportForPdf): Buffer {
     paragraph(content.summary);
     y -= 20;
   }
+  if (content.highlights?.length) {
+    ensure(40); text("POINTS CLÉS", LEFT, y, 11.5, "F2", "0.52 0.36 0.15"); y -= 20;
+    for (const highlight of content.highlights) {
+      ensure(20); text("•", LEFT + 2, y, 10);
+      paragraph(highlight, 10.5, 16, 15);
+      y -= 4;
+    }
+    y -= 16;
+  }
   for (const section of content.sections) {
     if (section.lines.length === 0) continue;
     ensure(55);

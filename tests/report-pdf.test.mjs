@@ -51,3 +51,31 @@ test("strict client schema rejects internal data and invalid versions", () => {
   assert.throws(() => pdfText({ ...report, client_content: { ...report.client_content, internal: report.internal_content } }));
   assert.throws(() => pdfText({ ...report, version: 0 }));
 });
+
+test("PDF route checks admin before reading and serves an uncached private attachment", async () => {
+  let reads = 0;
+  const route = loadTs("app/api/reports/[id]/pdf/route.ts", {
+    "@/lib/require-admin": { requireAdmin: async () => { throw Error("no admin"); } },
+    "@/lib/reports/service": { getReport: async () => { reads++; return report; } },
+    "@/lib/reports/pdf": pdfModule,
+  }, { Response });
+  await assert.rejects(() => route.GET({}, { params: Promise.resolve({ id: report.id }) }), /no admin/);
+  assert.equal(reads, 0);
+  const authorized = loadTs("app/api/reports/[id]/pdf/route.ts", {
+    "@/lib/require-admin": { requireAdmin: async () => ({ userId: "admin" }) },
+    "@/lib/reports/service": { getReport: async () => report },
+    "@/lib/reports/pdf": pdfModule,
+  }, { Response });
+  const response = await authorized.GET({}, { params: Promise.resolve({ id: report.id }) });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "application/pdf");
+  assert.match(response.headers.get("Cache-Control"), /private, no-store/);
+  assert.match(response.headers.get("Content-Disposition"), /attachment; filename="code-v-/);
+  assert.equal(Buffer.from(await response.arrayBuffer()).subarray(0, 8).toString("latin1"), "%PDF-1.4");
+  const missing = loadTs("app/api/reports/[id]/pdf/route.ts", {
+    "@/lib/require-admin": { requireAdmin: async () => ({ userId: "admin" }) },
+    "@/lib/reports/service": { getReport: async () => null },
+    "@/lib/reports/pdf": pdfModule,
+  }, { Response });
+  assert.equal((await missing.GET({}, { params: Promise.resolve({ id: "missing" }) })).status, 404);
+});

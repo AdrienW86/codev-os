@@ -24,3 +24,12 @@ test("SEO V2 rollout preserves legacy analysis until SQL is approved and applied
   assert.match(ui, /Stockage SEO V2 non installé/);
   assert.match(ui, /disabled=\{!active \|\| !schemaReady\}/);
 });
+
+test("SEO V2 scheduler badge reflects actual execution rather than configured credentials", () => {
+  const ui = source("app/(cockpit)/agents/[id]/opportunities/page.tsx");
+  assert.match(ui, /getSchedulerHeartbeat\(\)/);
+  assert.match(ui, /classifyScheduler\(/);
+  assert.match(ui, /DIAGNOSTIC_STATUS_LABELS\[schedulerDiagnostic\.status\]/);
+  assert.match(ui, /Les analyses programmées ne sont pas confirmées/);
+  assert.doesNotMatch(ui, /scheduler \? "Configuré" : "Absent"/);
+});

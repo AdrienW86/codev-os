@@ -174,7 +174,7 @@ export function renderClientReportPdf(report: ReportForPdf): Buffer {
     objects.set(pageId, Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 " + PAGE_W + " " + PAGE_H + " ] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + streamId + " 0 R >>", "ascii"));
     objects.set(streamId, Buffer.concat([Buffer.from("<< /Length " + stream.length + " >>\nstream\n", "ascii"), stream, Buffer.from("endstream", "ascii")]));
   });
-  const buffers = [Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n", "latin1")];
+  const buffers: Buffer[] = [Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n", "latin1")];
   const offsets = [0];
   for (let id = 1; id <= total; id++) {
     offsets[id] = buffers.reduce((sum, b) => sum + b.length, 0);

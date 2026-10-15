@@ -83,6 +83,15 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
         </Panel>
 
         <div className="space-y-5">
+          <Panel className="p-5">
+            <h2 className="font-semibold">Rapport client en PDF</h2>
+            <p className="mt-2 text-sm text-muted">Document A4 téléchargeable, avec uniquement la version client de ce rapport. La version interne ne figure jamais dans le PDF.</p>
+            {item.status === "ready_for_review" || item.status === "draft"
+              ? <p className="mt-2 text-sm text-muted">La version non approuvée comporte une mention Brouillon. Elle ne peut pas être envoyée depuis CODE-V OS.</p>
+              : null}
+            <a href={`/api/reports/${id}/pdf`} className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">Télécharger le PDF · v{item.version}</a>
+            <p className="mt-2 text-xs text-muted">L’envoi par e-mail, ci-dessous, joindra le même PDF après une approbation distincte.</p>
+          </Panel>
           {item.kind === "google_ads" && (
             <Panel className="p-5">
               <h2 className="font-semibold">Périmètre enregistré</h2>
@@ -110,7 +119,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
                 {email.enabled && preview.data && !delivery
-                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer par e-mail" variant="primary" confirm="Envoyer le texte prévisualisé au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
+                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer le PDF par e-mail" variant="primary" confirm="Envoyer la version client approuvée en pièce jointe PDF au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
                       <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={recipient} readOnly={Boolean(recurring)} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
                       <label className="flex gap-2 text-sm"><input type="checkbox" name="recipient_confirmed" value="yes" required />Je confirme cette adresse et la version client prévisualisée.</label>
                     </MutationForm>

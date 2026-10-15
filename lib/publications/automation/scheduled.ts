@@ -67,17 +67,22 @@ export async function delegatedActor(clientId:string,isAdmin:(userId:string)=>bo
  return row.actor_id;
 }
 // Soumission à validation des brouillons encore en brouillon (révision courante). Jamais d'approbation.
-async function submitDrafts(actor:string,ids:readonly string[]):Promise<string[]>{
- if(!ids.length)return [];
+type DraftSubmission={submitted:string[];complete:boolean;reviewRequired:boolean};
+async function submitDrafts(actor:string,ids:readonly string[]):Promise<DraftSubmission>{
+ if(!ids.length)return {submitted:[],complete:false,reviewRequired:false};
  const rows=await db().from('publications').select('id,status,current_revision_id').in('id',[...ids]);
- if(rows.error||!rows.data)return [];
+ if(rows.error||!rows.data)return {submitted:[],complete:false,reviewRequired:false};
  const submitted:string[]=[];
+ let complete=new Set(rows.data.map(p=>p.id)).size===new Set(ids).size,reviewRequired=false;
  for(const p of rows.data as {id:string;status:string;current_revision_id:string|null}[]){
-  if(p.status!=='draft'||!p.current_revision_id)continue;
+  if(p.status==='pending_review'){reviewRequired=true;continue;}
+  // A human may already have decided on a previously submitted publication. Never resubmit it.
+  if(p.status==='approved'||p.status==='rejected')continue;
+  if(p.status!=='draft'||!p.current_revision_id){complete=false;continue;}
   const r=await db().rpc('publication_submit_manual',{p_publication_id:p.id,p_revision_id:p.current_revision_id,p_actor_id:actor});
-  if(!r.error)submitted.push(p.id);
+  if(r.error)complete=false;else{submitted.push(p.id);reviewRequired=true;}
  }
- return submitted;
+ return {submitted,complete,reviewRequired};
 }
 // Une notification idempotente (clé d'événement) : catégorie et lien autorisés par la base, jamais de texte ni de nom.
 async function notify(eventKey:string,category:'publication_review'|'media_missing'|'delivery_failed'|'incident',href:string):Promise<boolean>{
@@ -155,10 +160,14 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
    if(state!=='attached')continue;
    summary.followUp.attached++;
   }
-  const submitted=await submitDrafts(actor,run.publication_ids??[]);
-  summary.followUp.submitted+=submitted.length;summary.submitted+=submitted.length;
-  if(submitted.length&&await notifyReview(run.id))summary.notified++;
-  await closeFollowUp(run.id,'done');
+  const submission=await submitDrafts(actor,run.publication_ids??[]);
+  summary.followUp.submitted+=submission.submitted.length;summary.submitted+=submission.submitted.length;
+  // A process can stop after submitting but before notifying. Pending revisions also need the idempotent
+  // notification; a failed read/RPC/notification keeps this follow-up open for the next tick.
+  const notified=!submission.reviewRequired||await notifyReview(run.id);
+  if(submission.reviewRequired&&notified)summary.notified++;
+  if(submission.complete&&notified)await closeFollowUp(run.id,'done');
+  else skip('follow_up_submission_unconfirmed');
  }
 }
 
@@ -219,10 +228,12 @@ async function prepareClient(client:{client_id:string;prepare_lead_days:number},
   summary.preparations++;
   if(!prepared.runId){skip('preparation_refused');await audit(deps,projectId,{delegated_actor:actor,ok:false});continue;}
   // Brouillons complets (photo attachée) soumis ; sinon la préparation est suivie et reprise sans IA au passage suivant.
-  const submitted=prepared.ok&&prepared.withMedia?await submitDrafts(actor,prepared.publications.map(p=>p.id)):[];
+  const submission=prepared.ok&&prepared.withMedia?await submitDrafts(actor,prepared.publications.map(p=>p.id)):null;
+  const submitted=submission?.submitted??[];
   summary.submitted+=submitted.length;
-  if(submitted.length&&await notifyReview(prepared.runId))summary.notified++;
-  if(prepared.ok&&!prepared.mediaMissing&&submitted.length<prepared.publications.length){
+  const notified=!submission?.reviewRequired||await notifyReview(prepared.runId);
+  if(submission?.reviewRequired&&notified)summary.notified++;
+  if(prepared.ok&&!prepared.mediaMissing&&(!submission?.complete||!notified)){
    const tracked=await db().from('publication_scheduled_runs').upsert({run_id:prepared.runId,client_id:client.client_id},{onConflict:'run_id',ignoreDuplicates:true});
    if(tracked.error)console.error('[publications-scheduler] follow-up not recorded');
   }

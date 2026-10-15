@@ -249,10 +249,17 @@ test('À publier: pending_review → decision only; draft → submit then decisi
 
 test('Rejeter: reason of 10 to 3000 characters; pending → rejection; draft → submit then rejection; never for other states',async()=>{
  for(const reason of [undefined,'','   ','court','  neuf car ','x'.repeat(3001)]){const r=actionSetup();const result=await r.m.rejectFromDrawerAction({},decisionForm(reason===undefined?{}:{reason}));assert.equal(result.ok,false);assert.deepEqual(writes(r.calls),[]);}
- const pending=actionSetup({decision:'Révision refusée.'});assert.equal((await pending.m.rejectFromDrawerAction({},decisionForm({reason:'  Le ton est trop vague.  '}))).ok,true);
+ const pending=actionSetup({decision:'Révision refusée. Créez une nouvelle révision pour la retravailler.'});assert.equal((await pending.m.rejectFromDrawerAction({},decisionForm({reason:'  Le ton est trop vague.  '}))).ok,true);
  assert.deepEqual(json(pending.calls.find(c=>c[0]==='submitOrReview')[1]),{publication_id:PUB,revision_id:R2,decision:'rejected',reason:'Le ton est trop vague.'});
- const draft=actionSetup({current:{revision_id:R2,status:'draft'},decision:'Révision refusée.'});await draft.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}));assert.deepEqual(writes(draft.calls),['submitOrReview:submit','submitOrReview:rejected']);
+ const draft=actionSetup({current:{revision_id:R2,status:'draft'},decision:'Révision refusée. Créez une nouvelle révision pour la retravailler.'});await draft.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}));assert.deepEqual(writes(draft.calls),['submitOrReview:submit','submitOrReview:rejected']);
  const done=actionSetup({current:{revision_id:R2,status:'approved'}});assert.equal((await done.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}))).ok,false);assert.deepEqual(writes(done.calls),[]);});
+
+test('approval channel, archive and new unknown refusals cannot become a successful drawer decision',async()=>{
+ for(const message of ['Cette publication cible un canal désactivé.','Vérification des canaux impossible : lecture seule par sécurité.','Publication archivée : lecture seule.','Nouveau refus métier.','']){
+  const r=actionSetup({decision:message});const result=await r.m.approveFromDrawerAction({},decisionForm());
+  assert.equal(result.ok,false,message);assert.doesNotMatch(result.message,/Publication passée à/);
+ }
+});
 
 test('Enregistrer and image staging actions delegate to saveDraft and uploadImage and return safe data only',async()=>{
  const saved=actionSetup();const r=await saved.m.saveFromDrawerAction({},draftForm());assert.equal(r.ok,true);assert.deepEqual(writes(saved.calls),['saveDraft']);assert.ok(saved.calls.some(c=>c[0]==='revalidate'&&c[1]==='/publications'));

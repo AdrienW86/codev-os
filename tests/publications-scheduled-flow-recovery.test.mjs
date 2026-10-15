@@ -169,6 +169,72 @@ test("H restart between attach and submission: only the remaining draft is submi
   assert.equal(fake.tables.publications.length, 2, "no draft created");
 });
 
+test('submission read failure stays open and the next tick recovers without generating again',async()=>{
+ let fail=true;
+ const {mod,deps,fake,prepared}=setup(followTables({media_status:'attached'}),{failOn:(table,op)=>fail&&table==='publications'&&op==='select'});
+ const first=await mod.runScheduledPreparation(now,deps);
+ assert.equal(first.skipped.follow_up_submission_unconfirmed,1);
+ assert.equal(fake.tables.publication_scheduled_runs[0].state,'open');
+ assert.equal(fake.calls.filter(c=>c[1]==='publication_submit_manual').length,0);
+ fail=false;await mod.runScheduledPreparation(now,deps);
+ assert.equal(fake.tables.publication_scheduled_runs[0].state,'done');
+ assert.deepEqual(fake.tables.publications.map(p=>p.status),['pending_review','pending_review']);
+ assert.equal(prepared.length,0);assert.equal(fake.tables.admin_notifications.length,1);
+});
+
+test('partial submission retries only the remaining draft and never reopens a human decision',async()=>{
+ let failSecond=true;
+ const {mod,deps,fake}=setup(followTables({media_status:'attached'}),{rpc:{publication_submit_manual:(a,t)=>{
+  if(a.p_publication_id===PUB(2)&&failSecond)throw Error('temporary failure');
+  const p=t.publications.find(p=>p.id===a.p_publication_id);assert.equal(p.status,'draft');p.status='pending_review';
+ }}});
+ const first=await mod.runScheduledPreparation(now,deps);
+ assert.equal(first.followUp.submitted,1);assert.equal(fake.tables.publication_scheduled_runs[0].state,'open');
+ fake.tables.publications[0].status='approved';failSecond=false;
+ const second=await mod.runScheduledPreparation(now,deps);
+ assert.equal(second.followUp.submitted,1);assert.equal(fake.tables.publication_scheduled_runs[0].state,'done');
+ assert.deepEqual(fake.tables.publications.map(p=>p.status),['approved','pending_review']);
+ assert.deepEqual(fake.calls.filter(c=>c[1]==='publication_submit_manual').map(c=>c[2].p_publication_id),[PUB(1),PUB(2),PUB(2)]);
+ assert.equal(fake.tables.admin_notifications.length,1);
+});
+
+test('notification failure is recovered even when every revision was already submitted',async()=>{
+ let fail=true;
+ const {mod,deps,fake}=setup(followTables({media_status:'attached'}),{failOn:(table,op)=>fail&&table==='admin_notifications'&&op==='upsert'});
+ await mod.runScheduledPreparation(now,deps);
+ assert.equal(fake.tables.publication_scheduled_runs[0].state,'open');
+ assert.deepEqual(fake.tables.publications.map(p=>p.status),['pending_review','pending_review']);
+ fail=false;const second=await mod.runScheduledPreparation(now,deps);
+ assert.equal(second.followUp.submitted,0);assert.equal(fake.tables.publication_scheduled_runs[0].state,'done');
+ assert.equal(fake.calls.filter(c=>c[1]==='publication_submit_manual').length,2);
+ assert.equal(fake.tables.admin_notifications.length,1);
+});
+
+test('missing publications or revisions are not silently treated as completed follow-up',async()=>{
+ for(const publications of [[{id:PUB(1),status:'pending_review',current_revision_id:REV(1)}],[{id:PUB(1),status:'draft',current_revision_id:null},{id:PUB(2),status:'approved',current_revision_id:REV(2)}]]){
+  const {mod,deps,fake}=setup(followTables({media_status:'attached'},{publications}));
+  await mod.runScheduledPreparation(now,deps);assert.equal(fake.tables.publication_scheduled_runs[0].state,'open');
+ }
+});
+
+test('initial successful preparation tracks notification failure for the next tick',async()=>{
+ let failNotification=true;
+ const result={ok:true,message:'prepared',runId:RUN(1),withMedia:true,publications:[{id:PUB(1),platform:'facebook',label:'Facebook'}]};
+ const {mod,deps,fake}=setup(prepTables([{id:RUN(1),client_id:C(1),project_id:P(1),status:'completed',media_status:'attached',media_attempts:1,publication_ids:[PUB(1)],created_at:hours(1)}],{
+  publications:[{id:PUB(1),status:'draft',current_revision_id:REV(1)}],
+ }),{prepare:result,failOn:(table,op)=>failNotification&&table==='admin_notifications'&&op==='upsert'});
+ await mod.runScheduledPreparation(now,deps);
+ assert.equal(fake.tables.publications[0].status,'pending_review');
+ assert.equal(fake.tables.publication_scheduled_runs.length,1,'notification failure must keep a durable follow-up');
+ // Real PostgreSQL supplies these table defaults, which the in-memory double does not implement.
+ Object.assign(fake.tables.publication_scheduled_runs[0],{state:'open',created_at:hours(1)});
+ fake.tables.publication_client_settings[0].auto_prepare_enabled=false;
+ failNotification=false;await mod.runScheduledPreparation(now,deps);
+ assert.equal(fake.tables.publication_scheduled_runs[0].state,'done');
+ assert.equal(fake.tables.admin_notifications.length,1);
+ assert.equal(fake.calls.filter(c=>c[1]==='publication_submit_manual').length,1);
+});
+
 // 5. Envoi : le planificateur réserve « à l'heure » (tolérance), le bouton du cockpit garde la réservation humaine.
 test("#5 the scheduler claim carries the lateness tolerance; the cockpit claim is unchanged", async () => {
   const engine = load("lib/publications/delivery/engine.ts", { "../editor": { IMAGE_BUCKET: "b" }, "../validation": { isPublicationUuid: () => true }, "../connections/vault": {}, "./publisher": {}, "./model": {} });

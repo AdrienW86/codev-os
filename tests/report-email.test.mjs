@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./helpers/load-ts.mjs";
 const previewModule = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts") });
+const pdfModule = loadTs("lib/reports/pdf.ts", { "./email-preview": previewModule });
 const errors = loadTs("lib/providers/errors.ts");
 const id = "11111111-1111-4111-8111-111111111111";
 const report = { id, client_id: id, status: "approved", version: 2, approved_version: 2, title: "Rapport client", client_content: { summary: "Synthèse", sections: [{ title: "Résultats", lines: ["Mesures"] }] }, internal_content: { secret: "NEVER" } };
@@ -14,7 +15,7 @@ function setup({ denied = false, failure = null } = {}) {
   const service = loadTs("lib/reports/service.ts", {
     "./version-storage": { requireReportVersionStorage: async () => {} },
     "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": {},
-    "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/providers/errors": errors,
+    "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/reports/pdf": pdfModule, "@/lib/providers/errors": errors,
     "@/lib/vercel-analytics/sync": { syncVercelAnalytics: async () => ({ ok: true }) },
     "@/lib/integrations/search-console/model": { addDays: () => "", dayCount: () => 0, normalizeProperty: () => null },
     "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },
@@ -33,6 +34,10 @@ test("Simultaneous send requests claim once before provider and persist acceptan
   const x = setup(); const results = await Promise.all([x.service.sendReport(admin, id, "email", preview), x.service.sendReport(admin, id, "email", preview)]);
   assert.equal(results.filter((r) => r.ok).length, 1); assert.equal(x.sent.length, 1); assert.equal(x.finished[0].p_state, "accepted");
   assert.equal(x.sent[0].text.includes("NEVER"), false);
+  assert.match(x.sent[0].attachment.filename, /\.pdf$/);
+  const pdf = Buffer.from(x.sent[0].attachment.base64, "base64");
+  assert.equal(pdf.subarray(0, 8).toString("latin1"), "%PDF-1.4");
+  assert.doesNotMatch(pdf.toString("latin1"), /NEVER/);
   assert.equal((await x.service.sendReport(admin, id, "email", preview)).ok, false); assert.equal(x.sent.length, 1);
 });
 test("Stale version, changed digest, missing approval and denied admin never send", async () => {
@@ -65,4 +70,26 @@ test('invalid sender blocks before reservation; display-name sender remains supp
  assert.equal(email.emailSendingStatus({...env,EMAIL_FROM:'CODE-V\nBcc:x@example.invalid <reports@example.invalid>'}).enabled,false);
  await assert.rejects(()=>email.sendEmail({to:'reports@example.invalid',subject:'Test',text:'Test',idempotencyKey:'fake'},env,()=>{throw Error('must not fetch');}),e=>e.kind==='not_configured');
  assert.equal(email.emailSendingStatus({...env,EMAIL_FROM:'reports@example.invalid',EMAIL_SENDING_ENABLED:'false'}).enabled,false);
+});
+
+test("Resend receives the approved report as a real base64 PDF attachment", async () => {
+  let payload = null;
+  const provider = loadTs("lib/providers/email.ts", {
+    "@/lib/providers/api": { providerJson: async (_provider, _url, init) => { payload = JSON.parse(init.body); return { id: "fake-accepted" }; } },
+    "@/lib/providers/errors": errors,
+  });
+  const env = { RESEND_API_KEY: "fake-testing-only", EMAIL_FROM: "CODE-V <reports@example.invalid>", EMAIL_SENDING_ENABLED: "true" };
+  const attachment = { filename: "code-v-client-v2.pdf", base64: pdfModule.renderClientReportPdf({ ...report, client: { name: "Client" }, kind: "monthly", period_start: "2026-09-01", period_end: "2026-09-30", generated_at: "2026-10-15T10:00:00Z" }).toString("base64") };
+  const response = await provider.sendEmail({ to: "client@example.invalid", subject: "Rapport client", text: "Synthèse client", idempotencyKey: "report-unique-v2", attachment }, env);
+  assert.equal(response.id, "fake-accepted");
+  assert.equal(payload.to.length, 1);
+  assert.equal(payload.attachments[0].filename, attachment.filename);
+  assert.equal(payload.attachments[0].content, attachment.base64);
+  assert.equal(Buffer.from(payload.attachments[0].content, "base64").subarray(0, 8).toString("latin1"), "%PDF-1.4");
+  const body = JSON.stringify(payload);
+  assert.doesNotMatch(body, /SECRET_TO_NEVER_EXPOSE_IN_PDF|fake-testing-only/);
+  await assert.rejects(() => provider.sendEmail({
+    to: "client@example.invalid", subject: "Rapport client", text: "Synthèse client", idempotencyKey: "fake",
+    attachment: { filename: "bad\r\nBcc:someone.pdf", base64: attachment.base64 },
+  }, env), e => e.kind === "malformed");
 });

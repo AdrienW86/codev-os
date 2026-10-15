@@ -7,6 +7,7 @@ import { describeAction } from "@/lib/actions/registry";
 import { buildReport, previousPeriod, type Period, type RecurringReportKind, type ReportInput } from "@/lib/reports/build";
 import { requireAdmin } from "@/lib/require-admin";
 import { reportEmailPreview, recipientSchema } from "@/lib/reports/email-preview";
+import { clientReportPdfFilename, renderClientReportPdf } from "@/lib/reports/pdf";
 import { ProviderError } from "@/lib/providers/errors";
 import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
@@ -203,6 +204,14 @@ export async function transportApprovedReport(actor: Actor, id: string, mode: "e
     if (!parsed.success || !preview.confirmed || !report.client_id) return { ok: false, message: "Confirmez une adresse destinataire unique pour ce client." };
     const email = reportEmailPreview(report);
     if (email.digest !== preview.digest) return { ok: false, message: "Le contenu a changé : rechargez la prévisualisation." };
+    // Render the same approved CLIENT version before claiming delivery. Never attach internal_content.
+    let attachment: { filename: string; base64: string };
+    try {
+      const pdf = renderClientReportPdf(report);
+      attachment = { filename: clientReportPdfFilename(report), base64: pdf.toString("base64") };
+    } catch {
+      return { ok: false, message: "PDF client indisponible : aucun e-mail envoyé. Vérifiez le contenu du rapport." };
+    }
     const token = crypto.randomUUID();
     const { data: claimed, error: claimError } = await (actor.kind === "system" && occurrenceId
       ? db().rpc("codev_claim_recurring_delivery", { p_occurrence: occurrenceId, p_job: lease!.jobId, p_worker: lease!.worker, p_report_id: id, p_version: report.version, p_token: token, p_recipient: parsed.data, p_subject: email.subject, p_body: email.text, p_content: report.client_content })
@@ -211,7 +220,7 @@ export async function transportApprovedReport(actor: Actor, id: string, mode: "e
     if (!claimed) return { ok: false, message: "Une tentative existe déjà ou la version a changé. Aucun nouvel e-mail envoyé." };
     let providerId: string;
     try {
-      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
+      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, attachment, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
     } catch (error) {
       // Network/timeouts and malformed success are ambiguous: never retry automatically.
       const definite = error instanceof ProviderError && ["unauthorized", "rate_limited", "rejected", "not_found"].includes(error.kind) && error.status !== null && error.status < 500 && error.status !== 409;

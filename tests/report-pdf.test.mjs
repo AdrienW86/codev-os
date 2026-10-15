@@ -26,7 +26,7 @@ test("standalone A4 PDF has a valid cross-reference, version, French accents and
   const cross = data.match(/startxref\n(\d+)\n%%EOF/);
   assert.ok(cross);
   assert.equal(data.slice(Number(cross[1]), Number(cross[1]) + 4), "xref");
-  assert.ok(data.includes(Buffer.from("CODE-V", "latin1").toString("hex").toUpperCase()));
+  assert.ok(data.toLowerCase().includes(Buffer.from("CODE-V", "latin1").toString("hex").toLowerCase()));
   assert.ok(data.toLowerCase().includes(Buffer.from("Électricité", "latin1").toString("hex").toLowerCase()));
   assert.ok(!data.includes(Buffer.from("SECRET_TO_NEVER_EXPOSE_IN_PDF", "latin1").toString("hex").toUpperCase()));
   assert.match(pdfModule.clientReportPdfFilename(report), /^code-v-etablissements-catalans-monthly-2026-09-01-v3\.pdf$/);
@@ -34,7 +34,7 @@ test("standalone A4 PDF has a valid cross-reference, version, French accents and
 
 test("unapproved report is visibly stamped and client-only regardless of view", () => {
   const data = pdfText({ ...report, status: "ready_for_review" }).toString("latin1");
-  assert.ok(data.includes(Buffer.from("BROUILLON", "latin1").toString("hex").toUpperCase()));
+  assert.ok(data.toLowerCase().includes(Buffer.from("BROUILLON", "latin1").toString("hex").toLowerCase()));
   assert.ok(!data.includes("SECRET_TO_NEVER_EXPOSE_IN_PDF"));
 });
 
@@ -43,7 +43,7 @@ test("many client lines paginate without dropping records or exposing internal c
   const doc = pdfText({ ...report, client_content: { summary: "Résumé", sections: [{ title: "Observations", lines }] } });
   const data = doc.toString("latin1");
   assert.ok((data.match(/\/Type \/Page \/Parent/g) ?? []).length > 1);
-  assert.ok(data.includes(Buffer.from("Intervention client #109", "latin1").toString("hex").toUpperCase()));
+  assert.ok(data.toLowerCase().includes(Buffer.from("Intervention client #109", "latin1").toString("hex").toLowerCase()));
   assert.ok(doc.byteLength < 3_500_000);
 });
 

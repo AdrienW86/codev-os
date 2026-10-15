@@ -4,12 +4,13 @@ import { test } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 
 function load(path, mocks = {}) {
   const exports = {};
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
-    exports, console: { error() {} }, require(name) {
+    exports, Buffer, console: { error() {} }, require(name) {
       if (name === "server-only") return {};
       if (name in mocks) return mocks[name];
       throw Error(`Unexpected dependency: ${name}`);
@@ -25,6 +26,8 @@ const dashboard = load("lib/integrations/google-ads/dashboard.ts", { "./periods"
 const scopes = load("lib/integrations/google-ads/scope.ts", { "./periods": periods });
 const findings = load("lib/integrations/google-ads/findings.ts");
 const adsBuild = load("lib/reports/google-ads.ts", { "@/lib/integrations/google-ads/dashboard": dashboard, "@/lib/integrations/google-ads/periods": periods });
+const email = load("lib/reports/email-preview.ts", { "node:crypto": { createHash }, zod: { z }, "./recipient": load("lib/reports/recipient.ts", { zod: { z } }) });
+const pdf = load("lib/reports/pdf.ts", { "./email-preview": email });
 const clientId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";
 const otherId = "33333333-3333-4333-8333-333333333333";
@@ -253,4 +256,22 @@ test("query caps are visible and activity is not reported as complete at its kno
   const result = await repository.gatherProfessionalSources(input("activity"));
   assert.equal(result.sources[0].state, "partial");
   assert.match(result.sources[0].lines.join("\n"), /Limites de collecte atteintes \(tasks\)/);
+  const built = domain.buildProfessionalReport(input("activity"), result.clientName, result.sources);
+  assert.equal(email.reportClientContentSchema.safeParse(built.client).success, true);
+  const taskLines = built.client.sections.filter(section => section.title.startsWith("Réalisé")).flatMap(section => section.lines);
+  assert.equal(taskLines.length, 500);
+  assert.equal(new Set(taskLines).size, 500);
+  const rendered = pdf.renderClientReportPdf({ ...built, client_content: built.client, client: { name: result.clientName }, kind: "custom", version: 1, status: "ready_for_review", period_start: input().start, period_end: input().end, generated_at: "2026-10-05T00:00:00Z" });
+  assert.ok(Buffer.isBuffer(rendered));
+  assert.match(rendered.subarray(0, 8).toString(), /%PDF-1/);
+});
+
+test("professional export preserves long source lines and explicitly refuses documents exceeding the section budget", () => {
+  const text = "W".repeat(9_999) + "😀" + "é".repeat(10_001);
+  const source = { source: "website", state: "available", lines: [text], evidence: [] };
+  const built = domain.buildProfessionalReport(input(), "Client", [source]);
+  assert.equal(email.reportClientContentSchema.safeParse(built.client).success, true);
+  const reconstructed = built.client.sections.find(section => section.title.startsWith("Site web")).lines.join("");
+  assert.equal(reconstructed, text);
+  assert.throws(() => domain.buildProfessionalReport(input(), "Client", [{ ...source, lines: ["Résultat"], clientSections: Array.from({ length: 49 }, (_, i) => ({ title: `Bloc ${i}`, lines: ["Donnée à conserver"] })) }]), /limites d’export/);
 });

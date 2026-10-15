@@ -57,6 +57,33 @@ export const professionalSourceStateLabels: Record<ProfessionalSourceState, stri
   available: "Disponible", partial: "Partiel", unavailable: "Indisponible", not_connected: "Non connecté",
 };
 
+/** Respecte les limites de l’export sans retirer de résultat : les longues lignes et les
+ * grandes sections sont réparties. Un document excédant encore le contrat est refusé. */
+function exportableSections(sections: ReportSection[]): ReportSection[] {
+  const result: ReportSection[] = [];
+  for (const section of sections) {
+    const lines = section.lines.flatMap(line => {
+      const parts: string[] = [];
+      let remaining = line;
+      while (remaining.length > 10_000) {
+        let end = 10_000;
+        const last = remaining.charCodeAt(end - 1);
+        if (last >= 0xd800 && last <= 0xdbff) end--;
+        parts.push(remaining.slice(0, end));
+        remaining = remaining.slice(end);
+      }
+      parts.push(remaining);
+      return parts;
+    });
+    for (let offset = 0; offset < lines.length; offset += 200) {
+      const title = section.title + (offset ? ` (suite ${offset / 200 + 1})` : "");
+      if (title.length > 10_000 || result.length >= 50) throw new Error("Ce rapport dépasse les limites d’export. Réduisez sa période ou le nombre de sources ; aucune donnée n’a été supprimée.");
+      result.push({ title, lines: lines.slice(offset, offset + 200) });
+    }
+  }
+  return result;
+}
+
 /** Les seules sources affichées sont celles du périmètre validé, dans l’ordre choisi. */
 export function buildProfessionalReport(input: ProfessionalReportRequest, clientName: string, sources: ProfessionalSourceResult[]): {
   title: string; internal: ReportContent; client: ReportContent;
@@ -72,10 +99,10 @@ export function buildProfessionalReport(input: ProfessionalReportRequest, client
     `Client : ${clientName}. Période demandée : ${request.start} → ${request.end}.`,
     ...selected.map(row => `${professionalSourceLabels[row.source]} : ${professionalSourceStateLabels[row.state]}.`),
   ] };
-  const sections = (internal: boolean): ReportSection[] => [provenance, ...selected.flatMap(row => [
+  const sections = (internal: boolean): ReportSection[] => exportableSections([provenance, ...selected.flatMap(row => [
     { title: `${professionalSourceLabels[row.source]} · ${professionalSourceStateLabels[row.state]}`, lines: [...row.lines, ...row.evidence, ...(internal ? row.internalLines ?? [] : [])] },
     ...(internal ? row.internalSections ?? row.clientSections ?? [] : row.clientSections ?? []),
-  ]).filter(section => section.lines.length > 0)];
+  ]).filter(section => section.lines.length > 0)]);
   // Reconstruit volontairement les quatre champs du contrat ReportContent : le PDF client et
   // l’aperçu e-mail n’obtiennent jamais les champs techniques ou le contenu interne du collecteur.
   const content = (internal: boolean): ReportContent => ({

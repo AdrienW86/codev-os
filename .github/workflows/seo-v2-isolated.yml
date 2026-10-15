@@ -10,6 +10,8 @@ on:
       - "supabase/local/seo-v2-live-dependencies-20261015.sql"
       - "tests/seo-opportunities-db.test.mjs"
       - "tests/seo-v2-live-contract-db.test.mjs"
+      - "lib/scheduler/engine.ts"
+      - "tests/scoped-claim-db.test.mjs"
       - "tests/supabase-migration-versions.test.mjs"
       - "tests/helpers/local-postgres.mjs"
       - ".github/workflows/seo-v2-isolated.yml"
@@ -59,3 +61,7 @@ jobs:
         run: node --test tests/seo-opportunities-db.test.mjs
       - name: Replay against production-derived dependency contract and verify service role
         run: node --test tests/seo-v2-live-contract-db.test.mjs
+      - name: Native scoped job claims (no production connection)
+        run: node --test tests/scoped-claim-db.test.mjs
+        env:
+          CODEV_SCOPED_TEST_DATABASE_URL: postgres://postgres:codev_local_test_only@127.0.0.1:5432/codev_core_test_scoped_jobs

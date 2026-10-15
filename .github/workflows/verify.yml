@@ -41,3 +41,8 @@ jobs:
         env:
           NODE_USE_ENV_PROXY: "0"
           NEXT_TELEMETRY_DISABLED: "1"
+      - name: Automation supervision desktop and mobile (simulated data)
+        run: node scripts/test-automation-ui.mjs
+        env:
+          NODE_USE_ENV_PROXY: "0"
+          NEXT_TELEMETRY_DISABLED: "1"

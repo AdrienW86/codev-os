@@ -67,6 +67,10 @@ export function AssistantCommandBox({ suggestions = defaultSuggestions }: { sugg
         {voice.state !== "recording" && status && !open && <button type="button" onClick={() => { session.setNotice(""); voice.setMessage(""); }} aria-label="Fermer le message" className="-mt-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-raised hover:text-foreground"><span aria-hidden="true">×</span></button>}
       </div>
       <ul aria-label="Suggestions rapides" className="mt-1 flex flex-wrap gap-2">
+        <li><button type="button" disabled={pending} onClick={() => void session.send("Analyse tous mes clients et identifie les urgences")}
+          className="inline-flex min-h-10 items-center gap-2 rounded-full border border-accent/40 bg-surface px-3.5 text-sm text-accent transition-colors hover:border-accent disabled:opacity-60">
+          <Icon name="agents" width={16} height={16} />Analyser tous mes clients
+        </button></li>
         {suggestions.map((suggestion) => (
           <li key={suggestion.label}>
             <Link href={suggestion.href} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-surface px-3.5 text-sm text-muted transition-colors hover:border-accent/50 hover:text-foreground">

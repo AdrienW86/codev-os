@@ -10,7 +10,8 @@ export type TableView = { type: "table"; title: string; caption?: string; column
 export type MetricsView = { type: "metrics"; title: string; caption?: string; items: MetricItem[] };
 export type AdsCampaignsView = { type: "ads_campaigns"; title: string; clientId: string; clientName: string; filters: DashboardFilters; data: DashboardData };
 export type AdsRecommendationsView = { type: "ads_recommendations"; title: string; clientId: string; scope: string; result: Extract<import("@/lib/integrations/google-ads/recommendations-service").RecommendationResult, { ok: true }> };
-export type AssistantView = (TableView | MetricsView | AdsCampaignsView | AdsRecommendationsView) & { link?: ViewLink };
+export type DirectorBriefingView = { type: "director_briefing"; title: string; briefing: import("@/lib/assistant/director-model").DirectorBriefing };
+export type AssistantView = (TableView | MetricsView | AdsCampaignsView | AdsRecommendationsView | DirectorBriefingView) & { link?: ViewLink };
 
 /** Liens affichables : chemin interne ou https uniquement (jamais javascript:, data:, //hôte). */
 export const isSafeHref = (href: unknown): href is string => typeof href === "string" && href.length <= 2000 && (/^\/(?!\/)[^\s\\]*$/.test(href) || /^https:\/\/[^\s\\]+$/.test(href));

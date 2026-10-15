@@ -24,6 +24,7 @@ import { resolveClient } from "@/lib/assistant/clients";
 import { adsCampaignsTool, adsRecommendationsTool, prepareAdsWrite, runAdsWrite } from "@/lib/assistant/ads-tool";
 import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
 import { publicationsTools } from "@/lib/assistant/publications-deps";
+import { directorBriefingTool } from "@/lib/assistant/director";
 
 export { resolveClient };
 
@@ -46,6 +47,7 @@ const count = async (query: PromiseLike<{ count: number | null; error: unknown }
 export async function executeTool(actor: Actor, name: ToolName, input: Record<string, unknown>, context: AssistantContext = {}): Promise<ToolOutcome> {
   const today = todayInParis();
   switch (name) {
+    case "director_briefing": return directorBriefingTool(input);
     case "ads_campaigns": return adsCampaignsTool(input, context);
     case "ads_recommendations": return adsRecommendationsTool(input, context);
     case "ads_prepare_report": case "ads_run_analysis": return runAdsWrite(actor, name, input);

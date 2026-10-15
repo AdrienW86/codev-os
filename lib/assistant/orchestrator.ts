@@ -64,6 +64,7 @@ export const SYSTEM_PROMPT_RULES = [
   "Pour préparer des publications, appelle publications_prepare (brouillons Agent v2, confirmation obligatoire) avec period=next_week OU count (1 à 4) ; si ni la période ni le nombre ne sont clairs, demande. Pour reprogrammer, appelle publications_reschedule avec publication_id (publication courante ou de la liste numérotée) ou client, date et heure ; si la publication est ambiguë, demande laquelle.",
   "Une photo « rejetée / écartée » s’explique avec publications_photo_explain (photo_id si elle est connue, sinon client : le serveur demandera laquelle). Comptes à reconnecter : publications_reconnect_list ; clients à court de photos : publications_photo_shortage.",
   "Les données affichées viennent du serveur : ne recopie pas les tableaux, résume en une phrase et rappelle le périmètre (client, campagnes, dates).",
+  "Pour un diagnostic transversal, les clients en baisse, les priorités du jour ou un plan d’optimisation, appelle director_briefing : utilise les preuves déjà enregistrées, distingue les faits des hypothèses et affiche les données manquantes. L’impact reste qualitatif ; aucune causalité, gain ni stabilité ne doit être inventé. Cet outil ne relance ni n’approuve aucun agent.",
 ];
 
 /** Contexte courant décrit au modèle (données non sensibles, déjà revalidées). */
@@ -157,6 +158,9 @@ export async function respond(messages: ChatMessage[], input: OrchestratorDeps):
   if (isAdsMutationRequest(last)) return { reply: ADS_READ_ONLY_REPLY, links: [], source: "rules" };
   // Aucune publication ni approbation par l'assistant, quelle que soit la formulation (écrite ou dictée).
   if (isPublishRequest(last)) return { reply: PUBLISH_REFUSED_REPLY, links: [{ label: "Publications à valider", href: supervisionReviewHref() }], source: "rules" };
+  // The executive diagnosis must stay faithful to server evidence even when an LLM is configured.
+  const directIntent = parseIntent(last, deps.today, deps.context);
+  if (directIntent && "tool" in directIntent && directIntent.tool === "director_briefing") return viaRules(last, deps);
   if (!deps.provider) return viaRules(last, deps);
 
   const provider = deps.provider;

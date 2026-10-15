@@ -1,4 +1,5 @@
 import "server-only";
+import { missingSeoSchema } from "./schema-availability";
 // Services de l'interface « Opportunités de mots-clés » (lecture, décisions, préparation et exécution contrôlée).
 // L'autorisation (session administrateur, simulation refusée) est faite au point d'entrée (Server Actions).
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -29,6 +30,14 @@ function storeDeps(actor: Actor): StoreDeps {
     recommend: (input) => recordRecommendation(actor, input),
     audit: (entry) => writeAudit(actor, entry),
   };
+}
+
+/** Fail closed on permission or transport errors; missing V2 table is an explicit setup state. */
+export async function seoV2SchemaReady(): Promise<boolean> {
+  const { error } = await db().from("seo_opportunity_analyses").select("id").limit(1);
+  if (error && missingSeoSchema(error)) return false;
+  if (error) throw new Error("Disponibilité du stockage SEO V2 non vérifiable.");
+  return true;
 }
 
 // ——— Lecture ———

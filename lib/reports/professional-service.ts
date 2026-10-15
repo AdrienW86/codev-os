@@ -7,6 +7,8 @@ import type { Json } from "@/lib/supabase/database.types";
 import { buildProfessionalReport, professionalReportSchema, type ProfessionalReportRequest } from "./professional";
 import { gatherProfessionalSources } from "./professional-sources";
 import { requireReportVersionStorage } from "./version-storage";
+import { reportEmailPreview } from "./email-preview";
+import { renderClientReportPdf } from "./pdf";
 
 type Outcome = { ok: true; id: string; version: number; reused?: boolean } | { ok: false; message: string };
 const db = () => getSupabaseServerClient();
@@ -33,6 +35,20 @@ function content(built: ReturnType<typeof buildProfessionalReport>) {
   };
 }
 
+/** Refuse an unexportable draft before any insert or version change, including PDF page limits. */
+function canExport(built: ReturnType<typeof buildProfessionalReport>, input: ProfessionalReportRequest, clientName: string, version: number) {
+  try {
+    const document = {
+      title: built.title, client_content: built.client, version, kind: "custom", status: "ready_for_review",
+      period_start: input.start, period_end: input.end, generated_at: new Date().toISOString(), client: { name: clientName },
+    };
+    reportEmailPreview(document);
+    renderClientReportPdf(document);
+    return true;
+  } catch { return false; }
+}
+const exportError = { ok: false as const, message: "Le document dépasse les limites d’export ou contient des données invalides. Réduisez la période ou les sources ; aucune version n’a été enregistrée." };
+
 /** A request identifier is consumed once; retries return the existing document, never regenerate it. */
 export async function generateProfessionalReport(actor: Actor & { kind: "admin" }, raw: unknown): Promise<Outcome> {
   await requireAdmin();
@@ -48,7 +64,11 @@ export async function generateProfessionalReport(actor: Actor & { kind: "admin" 
     return { ok: true, id: existing.id, version: existing.version, reused: true };
   }
   const gathered = await gatherProfessionalSources(input);
-  const built = buildProfessionalReport(input, gathered.clientName, gathered.sources);
+  let built: ReturnType<typeof buildProfessionalReport>;
+  try {
+    built = buildProfessionalReport(input, gathered.clientName, gathered.sources);
+    if (!canExport(built, input, gathered.clientName, 1)) return exportError;
+  } catch { return exportError; }
   const { data: created, error } = await db().from("reports").insert({
     id: input.requestId, client_id: input.clientId, kind: "custom", period_start: input.start, period_end: input.end,
     scope: input as unknown as Json, status: "ready_for_review", version: 1, ...content(built),
@@ -73,8 +93,12 @@ export async function regenerateProfessionalReport(actor: Actor & { kind: "admin
   const parsed = professionalReportSchema.safeParse(report?.scope);
   if (!report || report.kind !== "custom" || !parsed.success || report.version !== expectedVersion || ["sent", "archived"].includes(report.status)) return { ok: false, message: "Ce rapport a changé ou ne peut plus être actualisé. Rechargez la version actuelle." };
   const gathered = await gatherProfessionalSources(parsed.data);
-  const built = buildProfessionalReport(parsed.data, gathered.clientName, gathered.sources);
   const version = report.version + 1;
+  let built: ReturnType<typeof buildProfessionalReport>;
+  try {
+    built = buildProfessionalReport(parsed.data, gathered.clientName, gathered.sources);
+    if (!canExport(built, parsed.data, gathered.clientName, version)) return exportError;
+  } catch { return exportError; }
   const { data: updated, error: updateError } = await db().from("reports").update({
     ...content(built), version, status: "ready_for_review", approved_at: null, approved_by: null, approved_version: null,
   }).eq("id", id).eq("version", expectedVersion).in("status", ["draft", "ready_for_review", "approved"]).select("id");

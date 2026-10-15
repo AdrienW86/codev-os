@@ -38,7 +38,7 @@ async function googleAds(input: ProfessionalReportRequest): Promise<Professional
   const loaded = await loadCampaignDashboard(input.clientId, {
     ...DEFAULT_FILTERS, period: { preset: "custom", start: input.start, end: input.end }, status: "all", includeUntracked: true,
   });
-  if (!loaded.ok) return failure("google_ads", loaded.message);
+  if (!loaded.ok) return { ...failure("google_ads", "Les résultats Google Ads n’ont pas pu être collectés pour cette période."), internalLines: [loaded.message] };
   const data = loaded.data;
   if (data.account.id !== linked.external_account_id || data.period.start !== input.start || data.period.end !== input.end) return failure("google_ads", "Le compte ou la période a changé pendant la collecte : préparez à nouveau le rapport.");
   // La sélection est explicite : toutes les campagnes renvoyées pour le seul compte associé
@@ -90,7 +90,7 @@ async function searchConsoleDetails(input: ProfessionalReportRequest, property: 
   // indispensable pour exclure celles d’une ancienne propriété rattachée au même client.
   const analyses = await db().from("seo_opportunity_analyses").select("id").eq("client_id", input.clientId).eq("property", property).eq("status", "succeeded")
     .eq("period_start", input.start).eq("period_end", input.end).order("finished_at", { ascending: false }).limit(20);
-  if (analyses.error) { lines.push("Opportunités SEO V2 : stockage indisponible ; le rapport conserve les données Search Console disponibles."); partial = true; }
+  if (analyses.error) { lines.push("Les opportunités SEO n’ont pas pu être consultées ; les résultats Search Console disponibles sont conservés."); partial = true; }
   else if (!analyses.data?.length) { lines.push("Aucune analyse d’opportunités SEO enregistrée pour cette propriété et ces dates ; aucune recommandation artificielle n’a été ajoutée."); partial = true; }
   else {
     const opportunities = await db().from("seo_keyword_opportunities").select("keyword,priority,confidence,verified,rationale,recommended_action,metrics,last_analysis_id,status")
@@ -118,7 +118,7 @@ async function searchConsole(input: ProfessionalReportRequest): Promise<Professi
   const length = dayCount(input);
   const result = await db().from("search_console_daily_metrics").select("client_id,property,date,clicks,impressions,position,fetched_at")
     .eq("client_id", input.clientId).eq("property", property).gte("date", addDays(input.start, -length)).lte("date", input.end).order("date", { ascending: true }).limit(800);
-  if (result.error) return failure("search_console", "Historique quotidien Search Console indisponible. Vérifiez la synchronisation et la migration de cette source.");
+  if (result.error) return { ...failure("search_console", "Les résultats quotidiens Search Console n’ont pas pu être collectés pour cette période."), internalLines: ["Vérifier la synchronisation et la migration du stockage Search Console."] };
   const rows = result.data ?? [];
   if (rows.some(row => row.client_id !== input.clientId || row.property !== property)) return failure("search_console", "L’historique reçu ne correspond pas au client et à sa propriété ; aucune donnée publiée.");
   const valid = rows.filter(row => finite(row.clicks) && finite(row.impressions) && (row.position === null || finite(row.position)));
@@ -181,7 +181,6 @@ async function website(input: ProfessionalReportRequest): Promise<ProfessionalSo
   if (!payload || payload.version !== VERCEL_SNAPSHOT_VERSION || payload.projectId !== projectId || record(payload.period).start !== input.start || record(payload.period).end !== input.end || !finite(payload.visitors) || !finite(payload.pageviews)) {
     return { source: "website", state: checks.observed ? "partial" : "unavailable", lines: ["Aucun instantané Vercel vérifiable pour ce projet et ces dates ; aucun chiffre repris d’une autre période.", ...checks.lines], evidence };
   }
-  evidence.push(`Projet Vercel : ${projectId}.`);
   const lines = [`Vercel Analytics : ${number(payload.visitors)} visiteurs et ${number(payload.pageviews)} pages vues.`, ...checks.lines];
   const sections = record(payload.sections);
   const failedBlocks = Object.entries(sections).filter(([, value]) => record(value).ok === false);
@@ -195,7 +194,7 @@ async function website(input: ProfessionalReportRequest): Promise<ProfessionalSo
     else if (key === "events") lines.push("Aucun événement personnalisé remonté par Vercel ; cela ne prouve pas l’absence de contacts ou de conversions.");
   }
   lines.push("Le taux de rebond et les conversions commerciales ne sont pas déduits des pages vues ou des événements.");
-  return { source: "website", state: stale || checks.partial || failedBlocks.length > 0 || missingBlocks.length > 0 || input.end >= new Date().toISOString().slice(0, 10) ? "partial" : "available", lines, evidence };
+  return { source: "website", state: stale || checks.partial || failedBlocks.length > 0 || missingBlocks.length > 0 || input.end >= new Date().toISOString().slice(0, 10) ? "partial" : "available", lines, evidence, internalLines: [`Projet Vercel vérifié : ${projectId}.`] };
 }
 
 async function activity(input: ProfessionalReportRequest): Promise<ProfessionalSourceResult> {
@@ -226,7 +225,8 @@ async function activity(input: ProfessionalReportRequest): Promise<ProfessionalS
   if (undated) lines.push(`${undated} tâche(s) terminée(s) sans date de réalisation : exclue(s), car non attribuable(s) à cette période.`);
   return {
     source: "activity", state: capped.length || undated || deliveries.error || deliveryRows.length >= 501 ? "partial" : "available", lines,
-    evidence: [`Activité du client ${input.clientId}, ${input.start} → ${input.end}, bornes UTC.`, "Les statuts des éléments sont leur état actuel ; seules les dates d’événement situées dans la période sont retenues."],
+    evidence: [`Activité enregistrée du ${input.start} au ${input.end}, bornes UTC.`, "Les statuts des éléments sont leur état actuel ; seules les dates d’événement situées dans la période sont retenues."],
+    internalLines: [`Identifiant du client : ${input.clientId}.`],
     internalSections: built.internal.sections, clientSections: built.client.sections,
   };
 }

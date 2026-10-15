@@ -4,9 +4,11 @@ import { loadTs } from "./helpers/load-ts.mjs";
 import { createFakeSupabase } from "./helpers/fake-supabase.mjs";
 
 const domain = loadTs("lib/reports/professional.ts");
+const preview = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts") });
+const pdf = loadTs("lib/reports/pdf.ts", { "./email-preview": preview });
 const input = { clientId: "11111111-1111-4111-8111-111111111111", requestId: "33333333-3333-4333-8333-333333333333", family: "activity", sources: ["activity"], start: "2026-09-01", end: "2026-09-15" };
 const admin = { kind: "admin", userId: "isolated-admin" };
-function setup({ ready = true, denied = false } = {}) {
+function setup({ ready = true, denied = false, exportFails = false } = {}) {
   let collected = 0, audited = 0;
   const store = createFakeSupabase({ reports: [] }, { unique: { reports: [["id"]] }, rpc: { codev_professional_reporting_ready: () => ready } });
   const service = loadTs("lib/reports/professional-service.ts", {
@@ -14,6 +16,8 @@ function setup({ ready = true, denied = false } = {}) {
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } },
     "@/lib/core/audit": { writeAudit: async () => { audited++; } },
     "./professional": domain,
+    "./email-preview": preview,
+    "./pdf": exportFails ? { renderClientReportPdf: () => { throw Error("PDF trop long"); } } : pdf,
     "./professional-sources": { gatherProfessionalSources: async () => { collected++; await Promise.resolve(); return { clientName: "Client test", sources: [{ source: "activity", state: "available", lines: ["Une action effectivement réalisée."], evidence: ["Période vérifiée."] }] }; } },
     "./version-storage": { requireReportVersionStorage: async () => {} },
   });
@@ -36,6 +40,16 @@ test("invalid report scope never reaches data sources or writes", async () => {
     assert.equal((await x.service.generateProfessionalReport(admin, invalid)).ok, false);
     assert.equal(x.collected, 0); assert.equal(x.store.calls.length, 0);
   }
+});
+
+test("unexportable PDF is rejected before creation or any approval/version change", async () => {
+  const x = setup({ exportFails: true });
+  const result = await x.service.generateProfessionalReport(admin, input);
+  assert.equal(result.ok, false); assert.match(result.message, /limites d’export/);
+  assert.equal(x.store.tables.reports.length, 0); assert.equal(x.audited, 0);
+  x.store.tables.reports.push({ id: input.requestId, client_id: input.clientId, kind: "custom", scope: input, version: 1, status: "approved", approved_version: 1 });
+  assert.equal((await x.service.regenerateProfessionalReport(admin, input.requestId, 1)).ok, false);
+  assert.equal(x.store.tables.reports[0].approved_version, 1); assert.equal(x.store.tables.reports[0].version, 1);
 });
 
 test("request replay returns the same version without collecting or invalidating approval", async () => {

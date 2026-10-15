@@ -97,7 +97,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
           {item.kind === "custom" && editable && <Panel className="p-5">
             <h2 className="font-semibold">Actualiser les données</h2>
             <p className="mt-2 text-sm text-muted">Relit les mêmes sources pour ce client et cette période. Une nouvelle version invalide l’approbation précédente.</p>
-            <MutationForm key={`refresh-${item.version}`} action={regenerateProfessionalReportAction} fields={{ id, version: String(item.version) }} label="Actualiser le document" pendingLabel="Actualisation…" confirm="Actualiser les données et invalider l’approbation éventuelle ?" className="mt-3" disableOnSuccess />
+            <MutationForm key={`refresh-${item.version}`} action={regenerateProfessionalReportAction} fields={{ id, version: String(item.version) }} label="Actualiser le document" pendingLabel="Actualisation…" confirm="Actualiser les données et invalider l’approbation éventuelle ?" className="mt-3" disableOnSuccess flashOnSuccess />
           </Panel>}
           {item.kind === "google_ads" && (
             <Panel className="p-5">

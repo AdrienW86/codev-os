@@ -143,6 +143,19 @@ test("website source includes exact analytics and measured check ratio without i
   assert.ok(!calls.some(call => call.table === "search_console_daily_metrics"));
 });
 
+test("client exports exclude internal project/client identifiers and migration diagnostics", async () => {
+  for (const source of ["website", "activity"]) {
+    const gathered = await setup().repository.gatherProfessionalSources(input(source));
+    const built = domain.buildProfessionalReport(input(source), gathered.clientName, gathered.sources);
+    assert.doesNotMatch(JSON.stringify(built.client), /prj_client|11111111-1111-4111-8111-111111111111|migration/);
+    assert.match(JSON.stringify(built.internal), source === "website" ? /prj_client/ : /11111111-1111-4111-8111-111111111111/);
+  }
+  const gathered = await setup({ tables: { search_console_daily_metrics: { error: { code: "42P01" } } } }).repository.gatherProfessionalSources(input("search_console"));
+  const built = domain.buildProfessionalReport(input("search_console"), gathered.clientName, gathered.sources);
+  assert.doesNotMatch(JSON.stringify(built.client), /migration|42P01/);
+  assert.match(JSON.stringify(built.internal), /migration/);
+});
+
 test("website never uses an old project or a different period as fallback", async () => {
   for (const data of [analytics({ projectId: "prj_foreign" }), analytics({ period: { start: "2026-09-01", end: "2026-09-03" } })]) {
     const { repository } = setup({ sync: { ok: false }, tables: { metric_snapshots: [{ client_id: clientId, provider: "vercel", metric_key: "web_analytics", period_start: input().start, period_end: input().end, fetched_at: "2026-10-04T00:00:00Z", data }] } });

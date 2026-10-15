@@ -2,6 +2,12 @@
 
 L’Agent SEO existant (`seo`, exécution `seo.analyze`) devient un moteur qui détecte, priorise et suit des opportunités de mots-clés par client, à partir de données Search Console réelles. Il n’y a **pas de second moteur** : même registre d’agents, même moteur d’exécution, mêmes automatisations, mêmes recommandations, mêmes actions et approbations.
 
+## Déploiement progressif sans migration immédiate
+
+La fusion du code n'applique PAS de SQL en production. Tant que les tables SEO V2 ne sont pas installées, le handler `seo.analyze` détecte uniquement les erreurs de table absente (`PGRST205` / `42P01`) et exécute l'analyse SEO précédente (Search Console et PageSpeed). Les erreurs de permission ou de disponibilité ne sont jamais masquées par ce repli. La page Opportunités affiche explicitement que la migration est manquante et n'autorise pas ses nouvelles actions.
+
+Production vérifiée en lecture seule le 15 octobre 2026 : les trois tables `seo_opportunity_analyses`, `seo_keyword_opportunities` et `seo_opportunity_interventions` étaient absentes. Avant activation V2, appliquer sur une copie isolée puis valider le SQL `20261109000000_seo_keyword_opportunities.sql` et l'historique distant selon `docs/supabase-migration-reconciliation.md`. Ne pas lancer un `db push` global sans réconciliation. L'écriture distante exige une approbation humaine distincte.
+
 ## Principes
 
 - **Données réelles uniquement.** Clics, impressions, CTR et positions viennent de Search Console. Aucun volume de recherche n’est inventé. Une piste issue du contexte client (prestation ou zone sans requête) est une **hypothèse** : `verified = false`, aucune métrique, confiance faible. La base l’impose (contraintes `check`).

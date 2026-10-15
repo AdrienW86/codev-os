@@ -16,7 +16,7 @@ import { agentCatalog, blueprintState, agentStateLabels, matchConfiguredAgents }
 import { getActiveScenario } from "@/lib/simulation/server";
 import { AutomationsPanel } from "@/components/automations/automations-panel";
 import { SystemStatus, Observability } from "@/components/system/system-status";
-import { listAutomations } from "@/lib/automations/service";
+import { listAutomationSupervision } from "@/lib/automations/supervision";
 import { listClients } from "@/lib/clients/data";
 import { getSystemHealth } from "@/lib/system/health";
 import { isProviderConfigured } from "@/lib/system/providers";
@@ -48,7 +48,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const [publicationSettings, agents, automations, clients, health, searchConsole] = await Promise.all([
     tab === "security" ? getPublicationSettingsState() : Promise.resolve(null),
     tab === "agents" ? listAgents() : Promise.resolve([]),
-    real && tab === "automations" ? safeRead("automations", () => listAutomations(), []) : Promise.resolve({ data: [], unavailable: false }),
+    real && tab === "automations" ? safeRead("automations", () => listAutomationSupervision(), []) : Promise.resolve({ data: [], unavailable: false }),
     real && tab === "automations" ? safeRead("clients", () => listClients(), []) : Promise.resolve({ data: [], unavailable: false }),
     real && (tab === "system" || tab === "connections") ? safeRead("health", () => getSystemHealth(), null) : Promise.resolve({ data: null, unavailable: false }),
     real && tab === "connections" ? safeRead("search-console", () => searchConsoleStatus(), null) : Promise.resolve({ data: null, unavailable: false }),

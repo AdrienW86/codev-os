@@ -18,10 +18,12 @@ export const generateReportsRun: RunHandler = async ({ job, agent, actor, now })
   }
   const today = todayInParis(now);
   let created = 0, updated = 0, frozen = 0;
+  const reportIds: string[] = [];
   for (const clientId of clientIds) {
     const result = await generateReport(actor, { clientId, kind, today });
+    reportIds.push(result.id);
     if (result.status === "created") created++; else if (result.status === "updated") updated++; else frozen++;
   }
   if (!clientIds.length) return { status: "skipped", summary: "Aucun client rattaché à l’Agent Rapport." };
-  return { status: "succeeded", summary: `${clientIds.length} rapport(s) ${kind === "weekly" ? "hebdomadaire(s)" : "mensuel(s)"} : ${created} créé(s), ${updated} mis à jour, ${frozen} déjà envoyé(s).`, data: { created, updated, frozen } };
+  return { status: "succeeded", summary: `${clientIds.length} rapport(s) ${kind === "weekly" ? "hebdomadaire(s)" : "mensuel(s)"} : ${created} créé(s), ${updated} mis à jour, ${frozen} déjà envoyé(s).`, data: { created, updated, frozen, report_ids: reportIds } };
 };

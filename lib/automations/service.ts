@@ -8,7 +8,7 @@ import { runTypes, type RunType } from "@/lib/agents/registry";
 import { getAgentByType } from "@/lib/agents/outputs";
 import { validateAutomation } from "@/lib/automations/definitions";
 import { nextRun, type Schedule } from "@/lib/scheduler/recurrence";
-import { enqueueJob, processJobs } from "@/lib/scheduler/engine";
+import { AutomationStorageUnavailable, enqueueJob, processJob } from "@/lib/scheduler/engine";
 import type { Json } from "@/lib/supabase/database.types";
 import type { AutomationRow, AutomationStatus, JobRow } from "@/lib/supabase/core.types";
 
@@ -89,20 +89,23 @@ export async function changeAutomationStatus(actor: Actor & { kind: "admin" }, i
 export async function runAutomationNow(actor: Actor & { kind: "admin" }, id: string): Promise<Outcome> {
   const automation = await getAutomation(id);
   if (!automation || automation.status === "archived") return { ok: false, message: "Automatisation introuvable ou archivée." };
-  return runNow(actor, { runType: automation.run_type as RunType, clientId: automation.client_id, agentId: automation.agent_id, payload: (automation.config ?? {}) as Record<string, unknown>, dedupeKey: `auto-${id}-${new Date().toISOString().slice(0, 16)}` });
+  return runNow(actor, { runType: automation.run_type as RunType, clientId: automation.client_id, agentId: automation.agent_id, automationId: automation.id, payload: (automation.config ?? {}) as Record<string, unknown>, dedupeKey: `auto-${id}-${new Date().toISOString().slice(0, 16)}` });
 }
 
-export async function runNow(actor: Actor, input: { runType: RunType; clientId?: string | null; agentId?: string | null; payload?: Record<string, unknown>; dedupeKey?: string; trigger?: "manual" | "assistant" }): Promise<Outcome> {
+export async function runNow(actor: Actor, input: { runType: RunType; clientId?: string | null; agentId?: string | null; automationId?: string | null; payload?: Record<string, unknown>; dedupeKey?: string; trigger?: "manual" | "assistant" }): Promise<Outcome> {
   const job = await enqueueJob(actor, { ...input, trigger: input.trigger ?? "manual" });
   if (!job.ok) return job;
   if (job.duplicate) return { ok: true, message: "Exécution déjà demandée il y a moins d’une minute." };
-  const summary = await processJobs(actor, `manual-${randomUUID()}`, 3);
-  const { data } = await db().from("jobs").select("status,last_error,result").eq("id", job.id!).maybeSingle();
-  if (!data) return { ok: true, message: "Exécution planifiée." };
+  let processed: Awaited<ReturnType<typeof processJob>> = null;
+  try { processed = job.id ? await processJob(actor, `manual-${randomUUID()}`, job.id) : null; }
+  catch (error) { if (error instanceof AutomationStorageUnavailable) return { ok: false, message: error.message }; throw error; }
+  const { data, error } = await db().from("jobs").select("status,last_error,result,lease_expires_at").eq("id", job.id!).maybeSingle();
+  if (error || !data) return { ok: false, message: "Demande enregistrée, mais résultat d’exécution actuellement indisponible." };
   const result = (data.result ?? {}) as { summary?: string };
   if (data.status === "succeeded") return { ok: true, message: result.summary ?? "Exécution terminée." };
   if (data.status === "skipped") return { ok: false, message: `Exécution ignorée : ${data.last_error ?? "conditions non réunies"}.` };
   if (data.status === "queued") return { ok: false, message: `Échec temporaire, nouvelle tentative programmée : ${data.last_error ?? "erreur"}.` };
   if (data.status === "failed") return { ok: false, message: `Échec : ${data.last_error ?? "erreur"}.` };
-  return { ok: true, message: summary.processed ? "Exécution en cours." : "Exécution planifiée : elle sera traitée au prochain passage du planificateur." };
+  if (data.status === "running" && (!data.lease_expires_at || Date.parse(data.lease_expires_at) <= Date.now())) return { ok: false, message: "Exécution interrompue : bail expiré, aucune réussite confirmée." };
+  return { ok: true, message: processed ? "Exécution en cours." : "Exécution planifiée : elle sera traitée au prochain passage du planificateur." };
 }

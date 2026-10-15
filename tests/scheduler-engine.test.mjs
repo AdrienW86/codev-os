@@ -26,10 +26,26 @@ function claimRpc(args, tables) {
   return JSON.parse(JSON.stringify(due));
 }
 
+function enqueueRpc(args, tables) {
+  const a = tables.automations.find(row => row.id === args.p_automation && row.status === "active" && row.next_run_at === args.p_due);
+  if (!a) return null;
+  const id = `job-${tables.jobs.length + 1}`;
+  tables.jobs.push({ id, automation_id: a.id, run_type: a.run_type, agent_id: a.agent_id, client_id: a.client_id, project_id: a.project_id, payload: a.config, scheduled_for: args.p_due, idempotency_key: `auto:${a.id}:${args.p_due}`, trigger: "schedule" });
+  Object.assign(a, { next_run_at: args.p_next, last_run_at: args.p_now, status: args.p_next ? "active" : "completed" });
+  return id;
+}
+
 const assigned = (agentId, clientId = CLIENT) => ({ agent_id: agentId, client_id: clientId, enabled: true });
 function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents(), assignments = [assigned(REPORT), assigned(MONITORING)] } = {}) {
   const fake = createFakeSupabase({ agents: initialAgents, agent_client_assignments: assignments, automations, jobs: jobs.map((job) => ({ status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", payload: {}, worker_id: null, ...job })), agent_runs: [], audit_logs: [] }, {
-    unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc },
+    unique: { jobs: [["idempotency_key"]] }, rpc: {
+      codev_claim_jobs: claimRpc, codev_enqueue_automation: enqueueRpc,
+      codev_claim_job: (args, tables) => {
+        const target = tables.jobs.filter(job => job.id === args.p_job);
+        for (const job of target) Object.assign(job, { status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", ...job });
+        return claimRpc({ ...args, p_limit: 1 }, { jobs: target });
+      },
+    },
   });
   const server = { getSupabaseServerClient: () => fake.client };
   const audit = loadTs("lib/core/audit.ts", { "@/lib/supabase/server": server, "@/lib/core/actor": actorModule });
@@ -41,7 +57,12 @@ function setup({ automations = [], jobs = [], handlers = {}, configured = () => 
     "@/lib/reports/recurring/service": { enqueueDueAdsReports: async () => 0 },
     "@/lib/runs/types": types, "@/lib/scheduler/recurrence": recurrence,
   });
-  return { engine, fake };
+  const service = loadTs("lib/automations/service.ts", {
+    "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/agents/registry": registry,
+    "@/lib/agents/outputs": outputs, "@/lib/automations/definitions": {}, "@/lib/scheduler/recurrence": recurrence,
+    "@/lib/scheduler/engine": engine,
+  });
+  return { engine, fake, service };
 }
 const system = { kind: "system", worker: "test" };
 const weekly = (overrides = {}) => ({ id: "auto-1", name: "Rapports", client_id: null, project_id: null, agent_id: REPORT, run_type: "report.generate", timezone: "Europe/Paris", frequency: "weekly", schedule: { time: "08:00", weekdays: [1] }, next_run_at: "2026-10-12T06:00:00.000Z", status: "active", config: { kind: "weekly" }, consecutive_failures: 0, ...overrides });
@@ -153,6 +174,56 @@ test("a worker that lost its lease cannot overwrite the result (fencing)", async
   assert.equal(summary.processed, 1);
   assert.equal(summary.succeeded, 0, "result discarded");
   assert.equal(fake.tables.jobs[0].status, "running");
+});
+
+test("an expired lease cannot report success even before another worker reclaims it", async () => {
+  let fakeRef;
+  const handlers = { "report.generate": async () => {
+    fakeRef.tables.jobs[0].lease_expires_at = "2000-01-01T00:00:00Z";
+    return { status: "succeeded", summary: "succès tardif" };
+  } };
+  const { engine, fake } = setup({ jobs: [{ id: "expired", run_type: "report.generate", client_id: CLIENT, idempotency_key: "expired" }], handlers });
+  fakeRef = fake;
+  const summary = await engine.processJobs(system, "w");
+  assert.equal(summary.succeeded, 0);
+  assert.equal(fake.tables.jobs[0].status, "running");
+  assert.equal(fake.tables.agent_runs[0].status, "failed");
+  assert.match(fake.tables.agent_runs[0].summary, /Bail perdu/);
+  assert.equal(fake.tables.audit_logs.some(row => row.action === "job.succeeded"), false);
+});
+
+test("a stale preclaimed job cannot start a handler or an agent run", async () => {
+  let called = false;
+  const { engine, fake } = setup({ jobs: [{ id: "stale", run_type: "report.generate", idempotency_key: "stale", status: "running", worker_id: "w", lease_expires_at: "2000-01-01T00:00:00Z", client_id: CLIENT }], handlers: { "report.generate": async () => { called = true; return { status: "succeeded", summary: "bad" }; } } });
+  assert.equal(await engine.runJob(system, "w", structuredClone(fake.tables.jobs[0])), "lost");
+  assert.equal(called, false);
+  assert.equal(fake.tables.agent_runs.length, 0);
+});
+
+test("manual automation runs only its own job, retains its history link and does not dispatch another queued send", async () => {
+  let sent = false;
+  const id = "22222222-2222-4222-8222-222222222222";
+  const { fake, service } = setup({ automations: [weekly({ id })], jobs: [{ id: "unrelated-send", run_type: "ads.report.send", idempotency_key: "unrelated-send" }], handlers: { "ads.report.send": async () => { sent = true; return { status: "succeeded", summary: "mail" }; } } });
+  const result = await service.runAutomationNow({ kind: "admin", userId: "u" }, id);
+  assert.equal(result.ok, true);
+  assert.equal(sent, false);
+  assert.equal(fake.tables.jobs.find(job => job.id === "unrelated-send").status, "queued");
+  assert.equal(fake.tables.jobs.find(job => job.automation_id === id).status, "succeeded");
+  assert.equal((await service.runAutomationNow({ kind: "admin", userId: "u" }, id)).ok, true);
+  assert.equal(fake.tables.jobs.length, 2, "double click retains one requested job");
+  assert.equal(fake.calls.filter(call => call[0] === "rpc" && call[1] === "codev_claim_jobs").length, 0);
+});
+
+test("missing selective-claim migration blocks execution with an explicit actionable message and no global fallback", async () => {
+  const id = "22222222-2222-4222-8222-222222222222";
+  const { fake, service } = setup({ automations: [weekly({ id })] });
+  fake.client.rpc = async name => ({ data: null, error: { code: "PGRST202", message: `missing ${name}` } });
+  const result = await service.runAutomationNow({ kind: "admin", userId: "u" }, id);
+  assert.equal(result.ok, false);
+  assert.match(result.message, /20261111000000_atomic_automation_enqueue.sql/);
+  assert.match(result.message, /avant le déploiement/);
+  assert.equal(fake.tables.agent_runs.length, 0);
+  assert.equal(fake.calls.filter(call => call[0] === "rpc" && call[1] === "codev_claim_jobs").length, 0);
 });
 
 test("a hanging handler times out and is retried", async () => {

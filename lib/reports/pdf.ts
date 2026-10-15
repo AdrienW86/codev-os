@@ -5,6 +5,7 @@ type ReportForPdf = {
   kind: string;
   version: number;
   status: string;
+  approved_version?: number | null;
   period_start: string;
   period_end: string;
   generated_at: string | null;
@@ -83,7 +84,7 @@ export function renderClientReportPdf(report: ReportForPdf): Buffer {
   const client = clean(report.client?.name ?? "Client");
   if (!title || title.length > 200 || client.length > 200) throw new Error("PDF titre invalide");
   const period = n2(report.period_start) + " au " + n2(report.period_end);
-  const finalized = ["approved", "sent", "archived"].includes(report.status);
+  const finalized = report.approved_version === report.version && ["approved", "sent", "archived"].includes(report.status);
   const pages: string[][] = [];
   let commands: string[] = [];
   let y = 0;

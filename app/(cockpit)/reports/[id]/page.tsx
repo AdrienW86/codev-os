@@ -23,6 +23,7 @@ import { getReportScope } from "@/lib/reports/google-ads-service";
 import { describeDates } from "@/lib/integrations/google-ads/periods";
 import { typeLabel } from "@/lib/integrations/google-ads/dashboard";
 import { approveReportAction, archiveReportAction, editReportSummaryAction, regenerateGoogleAdsReportAction, sendReportAction } from "../actions";
+import { regenerateProfessionalReportAction } from "../professional-actions";
 
 export const metadata: Metadata = { title: "Rapport" };
 
@@ -35,6 +36,7 @@ function ContentView({ content }: { content: ReportContent }) {
   return (
     <div className="space-y-6">
       <p className="text-base leading-7">{content.summary}</p>
+      {content.highlights.length > 0 && <ul className="grid gap-2 sm:grid-cols-2">{content.highlights.map((highlight, index) => <li key={index} className="rounded-lg border border-border bg-surface-raised/40 p-3 text-sm">{highlight}</li>)}</ul>}
       {content.sections.map((section) => (
         <section key={section.title}>
           <h3 className="mb-2 text-sm font-semibold tracking-wide text-muted uppercase">{section.title}</h3>
@@ -92,6 +94,11 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
             <a href={`/api/reports/${id}/pdf`} className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">Télécharger le PDF · v{item.version}</a>
             <p className="mt-2 text-xs text-muted">L’envoi par e-mail, ci-dessous, joindra le même PDF après une approbation distincte.</p>
           </Panel>
+          {item.kind === "custom" && editable && <Panel className="p-5">
+            <h2 className="font-semibold">Actualiser les données</h2>
+            <p className="mt-2 text-sm text-muted">Relit les mêmes sources pour ce client et cette période. Une nouvelle version invalide l’approbation précédente.</p>
+            <MutationForm key={`refresh-${item.version}`} action={regenerateProfessionalReportAction} fields={{ id, version: String(item.version) }} label="Actualiser le document" pendingLabel="Actualisation…" confirm="Actualiser les données et invalider l’approbation éventuelle ?" className="mt-3" disableOnSuccess />
+          </Panel>}
           {item.kind === "google_ads" && (
             <Panel className="p-5">
               <h2 className="font-semibold">Périmètre enregistré</h2>

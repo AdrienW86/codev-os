@@ -63,12 +63,12 @@ export async function enqueueDueAutomations(actor: Actor, now: Date) {
 }
 
 /** Job manuel (bouton, assistant). Un double clic dans la même minute ne crée qu'un job. */
-export async function enqueueJob(actor: Actor, input: { runType: RunType; clientId?: string | null; projectId?: string | null; agentId?: string | null; payload?: Record<string, unknown>; trigger: "manual" | "assistant" | "system"; dedupeKey?: string }) {
+export async function enqueueJob(actor: Actor, input: { runType: RunType; clientId?: string | null; projectId?: string | null; agentId?: string | null; automationId?: string | null; payload?: Record<string, unknown>; trigger: "manual" | "assistant" | "system"; dedupeKey?: string }) {
   if (!isRunType(input.runType)) return { ok: false as const, message: "Type d’exécution inconnu." };
   const bucket = new Date().toISOString().slice(0, 16);
   const key = `${input.trigger}:${input.runType}:${input.clientId ?? "all"}:${input.dedupeKey ?? bucket}`.slice(0, 200);
   const { data, error } = await db().from("jobs").upsert({
-    run_type: input.runType, client_id: input.clientId ?? null, project_id: input.projectId ?? null, agent_id: input.agentId ?? null,
+    run_type: input.runType, client_id: input.clientId ?? null, project_id: input.projectId ?? null, agent_id: input.agentId ?? null, automation_id: input.automationId ?? null,
     payload: (input.payload ?? {}) as Json, idempotency_key: key, trigger: input.trigger,
   }, { onConflict: "idempotency_key", ignoreDuplicates: true }).select("id");
   if (error) throw new Error("job enqueue");
@@ -77,7 +77,7 @@ export async function enqueueJob(actor: Actor, input: { runType: RunType; client
 }
 
 async function complete(job: JobRow, worker: string, patch: Partial<Omit<JobRow, "id" | "idempotency_key" | "created_at">>) {
-  const { data, error } = await db().from("jobs").update({ ...patch, lease_expires_at: null }).eq("id", job.id).eq("worker_id", worker).eq("status", "running").select("id");
+  const { data, error } = await db().from("jobs").update({ ...patch, lease_expires_at: null }).eq("id", job.id).eq("worker_id", worker).eq("status", "running").gt("lease_expires_at", new Date().toISOString()).select("id");
   if (error) throw new Error("job complete");
   return Boolean(data?.length); // false : bail perdu, un autre worker a repris le job.
 }
@@ -107,7 +107,14 @@ function withTimeout<T>(promise: Promise<T>, controller: AbortController, ms: nu
   ]).finally(() => clearTimeout(timer));
 }
 
+async function ownsLease(job: JobRow, worker: string) {
+  const { data, error } = await db().from("jobs").select("id").eq("id", job.id).eq("worker_id", worker).eq("status", "running").gt("lease_expires_at", new Date().toISOString()).maybeSingle();
+  if (error) throw new Error("job lease read");
+  return Boolean(data);
+}
+
 export async function runJob(actor: Actor, worker: string, job: JobRow, now = new Date(), timeoutMs = RUN_TIMEOUT_MS): Promise<"succeeded" | "skipped" | "failed" | "retried" | "lost"> {
+  if (!await ownsLease(job, worker)) return "lost";
   if (!isRunType(job.run_type)) {
     return (await complete(job, worker, { status: "failed", last_error: "Type d’exécution inconnu.", finished_at: now.toISOString() })) ? "failed" : "lost";
   }
@@ -132,22 +139,31 @@ export async function runJob(actor: Actor, worker: string, job: JobRow, now = ne
       return ok ? "skipped" : "lost";
     }
   }
+  // Les lectures de configuration peuvent avoir dépassé le bail depuis le premier contrôle.
+  if (!await ownsLease(job, worker)) return "lost";
   // Job global (sans client) : tracé par le job lui-même ; agent_runs exige un contexte client.
   const runId = job.client_id ? await startRun({ agentId: agent.id, clientId: job.client_id, projectId: job.project_id, runType: job.run_type, jobId: job.id }) : null;
   const controller = new AbortController();
   try {
     const handler = await runHandlers[job.run_type]();
+    // L'import différé ou la création du run peuvent aussi avoir rendu la réservation caduque.
+    if (!await ownsLease(job, worker)) {
+      if (runId) await finishRun(runId, "failed", "Bail perdu : exécution non démarrée.").catch(() => { console.error("[scheduler] Journal d’exécution indisponible."); });
+      return "lost";
+    }
     const outcome: RunOutcome = await withTimeout(handler({ job, agent, actor, now, signal: controller.signal, runId }), controller, timeoutMs);
-    if (runId) await finishRun(runId, "completed", outcome.summary);
     const ok = await complete(job, worker, { status: outcome.status, result: { summary: outcome.summary, ...(outcome.data ?? {}) } as Json, agent_run_id: runId, finished_at: new Date().toISOString(), last_error: null });
+    if (runId) await finishRun(runId, ok ? "completed" : "failed", ok ? outcome.summary : "Bail perdu : résultat non enregistré.").catch(() => { console.error("[scheduler] Journal d’exécution indisponible."); });
     if (ok) {
-      await noteAutomation(job, true);
-      await writeAudit(actor, { action: `job.${outcome.status}`, resource_type: "job", resource_id: job.id, metadata: { run_type: job.run_type, agent_run_id: runId } });
+      try {
+        await noteAutomation(job, true);
+        await writeAudit(actor, { action: `job.${outcome.status}`, resource_type: "job", resource_id: job.id, metadata: { run_type: job.run_type, agent_run_id: runId } });
+      } catch { console.error("[scheduler] Résultat enregistré ; observabilité différée."); }
     }
     return ok ? outcome.status : "lost";
   } catch (error) {
     const message = errorText(error);
-    if (runId) await finishRun(runId, "failed", message).catch(() => undefined);
+    if (runId) await finishRun(runId, "failed", message).catch(() => { console.error("[scheduler] Journal d’exécution indisponible."); });
     const retryable = isRetryable(error);
     const retry = retryable && job.attempts < job.max_attempts;
     const backoffMinutes = Math.min(60, 2 ** job.attempts);
@@ -190,6 +206,25 @@ export async function processJobs(actor: Actor, worker: string, limit = 5, timeo
     await run(job);
   }
   return summary;
+}
+
+/** Réserve uniquement la demande manuelle : aucun autre travail de la file n'est déclenché. */
+export async function processJob(actor: Actor, worker: string, jobId: string, timeoutMs = RUN_TIMEOUT_MS) {
+  const now = new Date(), due = now.toISOString();
+  const { data: candidate, error: readError } = await db().from("jobs").select("*")
+    .eq("id", jobId).eq("status", "queued").lte("scheduled_for", due).maybeSingle();
+  if (readError) throw new Error("job read");
+  if (!candidate || candidate.attempts >= candidate.max_attempts) return null;
+  // Compare-and-swap : le planificateur ou une autre demande a pu réserver ce job depuis sa lecture.
+  // Le compteur empêche aussi de reprendre une ancienne lecture après une remise en file.
+  const { data: job, error } = await db().from("jobs").update({
+    status: "running", worker_id: worker, attempts: candidate.attempts + 1,
+    lease_expires_at: new Date(now.getTime() + LEASE_SECONDS * 1000).toISOString(),
+    started_at: candidate.started_at ?? due,
+  }).eq("id", jobId).eq("status", "queued").eq("attempts", candidate.attempts).eq("max_attempts", candidate.max_attempts)
+    .lte("scheduled_for", due).select("*").maybeSingle();
+  if (error) throw new Error("job claim");
+  return job ? runJob(actor, worker, job, new Date(), timeoutMs) : null;
 }
 
 /** Un « tick » du planificateur : agents globaux, mise en file, exécution bornée (jobDeadline : voir processJobs). */

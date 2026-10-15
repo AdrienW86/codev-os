@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/require-admin";
 import { getAgentById } from "@/lib/agents/data";
 import { isProviderConfigured } from "@/lib/system/providers";
+import { getSchedulerHeartbeat } from "@/lib/scheduler/heartbeat";
+import { classifyScheduler, DIAGNOSTIC_STATUS_LABELS } from "@/lib/system/diagnostic-model";
 import { PageHeading, Panel } from "@/components/ui/primitives";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { EmptyState, InlineNotice } from "@/components/ui/states";
@@ -56,6 +58,9 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
   const counts = countByStatus(all);
   const active = agent.enabled && agent.status === "Actif";
   const scheduler = isProviderConfigured("scheduler");
+  const schedulerHeartbeat = await getSchedulerHeartbeat().catch(() => "unavailable" as const);
+  const schedulerDiagnostic = classifyScheduler(scheduler, schedulerHeartbeat === "unavailable" ? "unavailable" : schedulerHeartbeat ? { ...schedulerHeartbeat, steps: Object.entries(schedulerHeartbeat.steps).map(([name, step]) => ({ name, ...step })) } : null, new Date());
+  const schedulerTone: StatusTone = schedulerDiagnostic.status === "operational" ? "green" : schedulerDiagnostic.status === "error" ? "red" : schedulerDiagnostic.status === "disabled" ? "neutral" : "amber";
   const lastAnalysis = analyses[0] ?? null;
   const hasDaily = automations.some((item) => (item.config as { depth?: string } | null)?.depth !== "weekly");
   const hasWeekly = automations.some((item) => (item.config as { depth?: string } | null)?.depth === "weekly");
@@ -118,9 +123,9 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
             <ul className="mt-3 space-y-1.5 text-sm">
               <li className="flex justify-between gap-3"><span className="text-muted">Quotidienne (nouvelles données)</span><StatusBadge label={hasDaily ? "Planifiée" : "Non planifiée"} tone={hasDaily ? "green" : "neutral"} /></li>
               <li className="flex justify-between gap-3"><span className="text-muted">Hebdomadaire (recherche approfondie)</span><StatusBadge label={hasWeekly ? "Planifiée" : "Non planifiée"} tone={hasWeekly ? "green" : "neutral"} /></li>
-              <li className="flex justify-between gap-3"><span className="text-muted">Déclencheur (CRON_SECRET)</span><StatusBadge label={scheduler ? "Configuré" : "Absent"} tone={scheduler ? "green" : "amber"} /></li>
+              <li className="flex justify-between gap-3"><span className="text-muted">Planificateur</span><StatusBadge label={DIAGNOSTIC_STATUS_LABELS[schedulerDiagnostic.status]} tone={schedulerTone} /></li>
             </ul>
-            {!scheduler && <p className="mt-3 text-xs leading-5 text-muted">Sans CRON_SECRET et tâche planifiée Vercel vers /api/internal/scheduler/tick, les analyses planifiées ne partent pas seules.</p>}
+            {schedulerDiagnostic.status !== "operational" && <p role="status" className="mt-3 text-xs leading-5 text-warning">{schedulerDiagnostic.evidence} Les analyses programmées ne sont pas confirmées. Vérifiez la tâche Vercel et le secret CRON_SECRET ; leur présence seule ne prouve pas un passage réussi.</p>}
             {schemaReady && (!hasDaily || !hasWeekly) && <MutationForm action={scheduleAnalysesAction} fields={{ client_id: client.id }} label="Planifier les analyses" pendingLabel="Planification…" className="mt-4" />}
             <p className="mt-3 text-xs leading-5 text-muted">Les analyses ne déclenchent jamais de modification externe : elles créent des opportunités et des recommandations.</p>
           </Panel>

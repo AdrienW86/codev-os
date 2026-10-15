@@ -146,12 +146,8 @@ export async function POST(request: Request) {
       }, { headers });
     }
     if (latest?.role === "user" && isDirectorBriefing(latest.content) && !simulation) {
-      const names = ["get_priorities", "clients_attention", "list_pending_actions"] as const;
-      const results = await Promise.allSettled(names.map((name) => executeTool(actor, name, {}, context)));
-      const outputs = results.map((outcome, index) => ({ name: names[index], result: outcome.status === "fulfilled" ? outcome.value : null }));
-      const lines = outputs.map(({ name, result }) => result?.ok ? result.text : `${name} : indisponible`);
-      const links = outputs.flatMap(({ result }) => result?.links ?? []).slice(0, 8);
-      return NextResponse.json({ reply: lines.join(" "), links, source: "rules", mission: { steps: outputs.map(({ name, result }) => ({ agent: name, status: result?.ok ? "completed" : "failed" })) } }, { headers });
+      const result = await executeTool(actor, "director_briefing", {}, context);
+      return NextResponse.json({ reply: result.text, links: result.links ?? [], view: result.view, context: result.context, source: "rules" }, { headers });
     }
     const clientTarget = latest?.role === "user" ? resolveClientNavigation(latest.content) : null;
     if (clientTarget) {

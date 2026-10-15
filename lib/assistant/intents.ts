@@ -147,6 +147,19 @@ export function parseIntent(text: string, today: string, context: AssistantConte
   const publications = parsePublicationsIntent(original, value, today, context);
   if (publications) return publications;
 
+  // Diagnostic enregistré : lecture seulement, jamais une analyse d'agent ou une préparation en masse.
+  const directorValue = value.replace(/-/g, " ").replace(/[.!?]+$/g, "").trim();
+  if (/^(?:fais|prepare|donne|affiche|montre)(?: moi)? (?:un |le |mon )?(?:bilan global|briefing operationnel|point sur les priorites)$/.test(directorValue)
+    || /^(?:analyse|examine|diagnostique) (?:tous (?:mes|les) |l ensemble (?:de mes|des) )clients\b/.test(directorValue)
+    || /^quelles? actions (?:dois je |faut il )?prioriser\b/.test(directorValue)) return { tool: "director_briefing", input: {} };
+  if (/^quels? clients?\b.*\b(?:perdu|perdent|baisse|visibilite)\b/.test(directorValue)) return { tool: "director_briefing", input: { focus: "seo" } };
+  if (/^quelles? campagnes?\b.*\b(?:necessitent|optimisation|optimiser)\b/.test(directorValue)) return { tool: "director_briefing", input: { focus: "ads" } };
+  if (/^(?:prepare|propose|fais)(?: moi)? (?:un |le )?plan d optimisation\b/.test(directorValue)
+    || /^explique(?: moi)? (?:pourquoi |l evolution |les performances )/.test(directorValue) && /\bperformances\b/.test(directorValue)) {
+    const client = clientAfter(original.replace(/\s+(?:évoluent|evoluent|changent|ont chang[ée])\s*[.!?]*$/i, ""));
+    return client ? { tool: "director_briefing", input: { client } } : { clarify: "Pour quel client souhaitez-vous examiner les preuves et les priorités enregistrées ?" };
+  }
+
   // Google Ads en consultation : nouvelle vue, ou suite de la vue courante (« et sur 7 jours ? », « uniquement Local Services »).
   const ads = parseAdsRequest(original);
   const inAdsView = context.view === "ads_campaigns";

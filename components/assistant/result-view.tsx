@@ -8,6 +8,7 @@ import { loadGoogleAdsDashboardAction, runGoogleAdsScopeAnalysisAction, runGoogl
 import { isSafeHref, type AssistantView, type MetricsView, type TableView, type ViewLink } from "@/lib/assistant/views";
 import type { DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import type { Proposal } from "@/components/assistant/use-assistant";
+import { DirectorBriefing } from "@/components/assistant/director-briefing";
 
 export function SafeLink({ link, className = "text-sm text-accent hover:underline" }: { link: ViewLink; className?: string }) {
   if (!isSafeHref(link.href)) return null;
@@ -62,6 +63,7 @@ export function ResultView({ view, version, onAdsFilters, propose }: {
       {view.type === "ads_recommendations" && <section className="space-y-3"><p className="text-sm">{view.scope}</p><p className="text-xs text-muted">Récupéré le {new Date(view.result.fetchedAt).toLocaleString("fr-FR")} · {view.result.reused ? "Résultat réutilisé (moins de 5 minutes)" : "Nouvelle analyse"} · client {view.result.resolutionMs ?? "—"} ms · Google Ads {view.result.googleReadMs ?? "—"} ms · analyse {view.result.elapsedMs} ms, IA {view.result.aiMs} ms</p><p className="whitespace-pre-wrap text-sm">{view.result.text}</p><p className="text-xs text-muted">Pour actualiser : demandez « Actualise tes recommandations pour ce client ».</p></section>}
       {view.type === "metrics" && <Metrics view={view} />}
       {view.type === "table" && <Table view={view} />}
+      {view.type === "director_briefing" && <DirectorBriefing key={version} briefing={view.briefing} propose={propose} />}
       {view.type === "ads_campaigns" && (
         <CampaignDashboard key={version} clientId={view.clientId} initial={{ ok: true, data: view.data }} initialFilters={view.filters} load={loadGoogleAdsDashboardAction}
           syncUrl={false} onFiltersChange={(filters) => onAdsFilters(view.clientId, view.clientName, filters)}

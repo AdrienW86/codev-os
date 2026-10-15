@@ -10,7 +10,7 @@ import { EmptyState, InlineNotice } from "@/components/ui/states";
 import { MutationForm } from "@/components/ui/mutation-form";
 import { actionClass } from "@/components/ui/button";
 import { formatDate } from "@/lib/format-date";
-import { listAnalyses, listOpportunities, listSeoAutomations, listSeoClients } from "@/lib/seo/opportunity-service";
+import { listAnalyses, listOpportunities, listSeoAutomations, listSeoClients, seoV2SchemaReady } from "@/lib/seo/opportunity-service";
 import { categoryLabels, intentLabels, levelLabels, pathOf, type Level, type OpportunityCategory } from "@/lib/seo/opportunities";
 import { opportunityStatusLabels, opportunityStatuses } from "@/lib/seo/opportunity-status";
 import { clickChange, countByStatus, filterQuery, formatChange, formatNumber, formatPct, formatPosition, metricsOf, parseFilters, sortOpportunities, type OpportunityFilters, type SortKey } from "@/lib/seo/opportunity-view";
@@ -50,7 +50,8 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
   const client = clients.find((item) => item.id === filters.client) ?? clients[0] ?? null;
   const base = `/agents/${agent.id}/opportunities`;
   const current = { ...filters, client: client?.id ?? null };
-  const [all, analyses, automations] = client ? await Promise.all([listOpportunities(client.id), listAnalyses(client.id), listSeoAutomations(client.id)]) : [[], [], []];
+  const schemaReady = await seoV2SchemaReady();
+  const [all, analyses, automations] = client ? await Promise.all([schemaReady ? listOpportunities(client.id) : [], schemaReady ? listAnalyses(client.id) : [], listSeoAutomations(client.id)]) : [[], [], []];
   const visible = sortOpportunities(all.filter((row) => (!filters.category || row.category === filters.category) && (!filters.status || row.status === filters.status)), filters.sort, filters.dir);
   const counts = countByStatus(all);
   const active = agent.enabled && agent.status === "Actif";
@@ -63,6 +64,8 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
     <>
       <Link href={`/agents/${agent.id}`} className="mb-6 inline-block text-xs text-accent hover:underline">← {agent.name}</Link>
       <PageHeading eyebrow="Agent SEO" title="Opportunités de mots-clés" description="Requêtes à potentiel, CTR sous-performants, pages en baisse, cannibalisation et sujets absents, détectés à partir des données réelles de Search Console. Chaque opportunité ouvre une recommandation ; aucune modification n’est faite sans votre approbation." />
+
+      {!schemaReady && <div className="mb-6"><InlineNotice tone="amber" title="Stockage SEO V2 non installé">La migration SQL SEO V2 n’est pas encore appliquée. Les analyses SEO existantes restent disponibles depuis l’agent ; cette nouvelle vue sera active après validation et application de la migration, sans changement automatique de vos sites.</InlineNotice></div>}
 
       {!active && <div className="mb-6"><InlineNotice tone="amber" title="Agent SEO en pause">Les analyses planifiées ou manuelles sont ignorées tant que l’agent n’est pas activé et « Actif » (bouton « Modifier l’agent »). Les opportunités déjà détectées restent consultables.</InlineNotice></div>}
 
@@ -102,7 +105,7 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
                 <h2 className="font-semibold">{client.name}</h2>
                 <p className="mt-1 break-all text-xs text-muted">Search Console : {client.property ?? "propriété non renseignée"} · GitHub : {client.repository ?? "dépôt non renseigné"}</p>
               </div>
-              <MutationForm action={runAnalysisAction} fields={{ client_id: client.id }} label="Lancer une analyse complète" pendingLabel="Analyse en cours…" variant="primary" disabled={!active} />
+              <MutationForm action={runAnalysisAction} fields={{ client_id: client.id }} label="Lancer une analyse complète" pendingLabel="Analyse en cours…" variant="primary" disabled={!active || !schemaReady} />
             </div>
             <nav aria-label="Statuts" className="mt-4 flex flex-wrap gap-2">
               <Link href={`${base}${filterQuery(current, { status: null })}`} className={`rounded-lg border px-3 py-2 text-xs ${!filters.status ? "border-accent/50 text-foreground" : "border-border text-muted hover:text-foreground"}`}>Toutes · {all.length}</Link>
@@ -118,7 +121,7 @@ export default async function OpportunitiesPage({ params, searchParams }: PagePr
               <li className="flex justify-between gap-3"><span className="text-muted">Déclencheur (CRON_SECRET)</span><StatusBadge label={scheduler ? "Configuré" : "Absent"} tone={scheduler ? "green" : "amber"} /></li>
             </ul>
             {!scheduler && <p className="mt-3 text-xs leading-5 text-muted">Sans CRON_SECRET et tâche planifiée Vercel vers /api/internal/scheduler/tick, les analyses planifiées ne partent pas seules.</p>}
-            {(!hasDaily || !hasWeekly) && <MutationForm action={scheduleAnalysesAction} fields={{ client_id: client.id }} label="Planifier les analyses" pendingLabel="Planification…" className="mt-4" />}
+            {schemaReady && (!hasDaily || !hasWeekly) && <MutationForm action={scheduleAnalysesAction} fields={{ client_id: client.id }} label="Planifier les analyses" pendingLabel="Planification…" className="mt-4" />}
             <p className="mt-3 text-xs leading-5 text-muted">Les analyses ne déclenchent jamais de modification externe : elles créent des opportunités et des recommandations.</p>
           </Panel>
         </div>

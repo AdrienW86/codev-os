@@ -7,7 +7,9 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/seo-opportunities.sql"
       - "supabase/local/remote-schema.sql"
+      - "supabase/local/seo-v2-live-dependencies-20261015.sql"
       - "tests/seo-opportunities-db.test.mjs"
+      - "tests/seo-v2-live-contract-db.test.mjs"
       - "tests/supabase-migration-versions.test.mjs"
       - "tests/helpers/local-postgres.mjs"
       - ".github/workflows/seo-v2-isolated.yml"
@@ -55,3 +57,5 @@ jobs:
         run: node --test tests/supabase-migration-versions.test.mjs
       - name: Replay schema and migrations on disposable database, run SQL tests
         run: node --test tests/seo-opportunities-db.test.mjs
+      - name: Replay against production-derived dependency contract and verify service role
+        run: node --test tests/seo-v2-live-contract-db.test.mjs

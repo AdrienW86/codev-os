@@ -1,4 +1,6 @@
 import "server-only";
+import { legacyAnalyzeSeoRun } from "./legacy-run";
+import { missingSeoSchema } from "./schema-availability";
 // Handler « seo.analyze » — moteur unique de l'Agent SEO.
 //  - quotidien : nouvelles données Search Console (28 j consolidés vs 28 j précédents), détection des opportunités,
 //    déduplication, changements significatifs, mesure des interventions déployées ;
@@ -73,9 +75,17 @@ function attachContext(items: DetectedOpportunity[], github: SeoPageContext[], v
   });
 }
 
-export const analyzeSeoRun: RunHandler = async ({ job, agent, actor, now, runId }) => {
+export const analyzeSeoRun: RunHandler = async (args) => {
+  const { job, agent, actor, now, runId } = args;
   if (!job.client_id) throw new RunError("Client requis pour l’analyse SEO.", false);
   const supabase = getSupabaseServerClient();
+  // SEO V2 is additive: until its SQL is deliberately applied, keep the existing
+  // Search Console/PageSpeed agent running rather than failing every SEO task.
+  const schema = await supabase.from("seo_opportunity_analyses").select("id").limit(1);
+  if (schema.error) {
+    if (missingSeoSchema(schema.error)) return legacyAnalyzeSeoRun(args);
+    throw new RunError("Disponibilité du stockage SEO V2 non vérifiable.", true);
+  }
   const depth = analysisDepth(job.payload, job.trigger);
   const trigger: AnalysisTrigger = job.trigger === "schedule" ? "schedule" : job.trigger === "assistant" ? "assistant" : job.trigger === "system" ? "system" : "manual";
   const [{ data: client, error }, { data: searchConnection }, { data: githubConnection }, { data: adsContext }, { data: vercelSnapshot }] = await Promise.all([

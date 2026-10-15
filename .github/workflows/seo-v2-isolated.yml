@@ -10,6 +10,10 @@ on:
       - "supabase/local/seo-v2-live-dependencies-20261015.sql"
       - "tests/seo-opportunities-db.test.mjs"
       - "tests/seo-v2-live-contract-db.test.mjs"
+      - "tests/professional-reports-db.test.mjs"
+      - "tests/automation-operations-db.test.mjs"
+      - "tests/codev-core-db.test.mjs"
+      - "supabase/tests/codev-core.sql"
       - "tests/supabase-migration-versions.test.mjs"
       - "tests/helpers/local-postgres.mjs"
       - ".github/workflows/seo-v2-isolated.yml"
@@ -59,3 +63,10 @@ jobs:
         run: node --test tests/seo-opportunities-db.test.mjs
       - name: Replay against production-derived dependency contract and verify service role
         run: node --test tests/seo-v2-live-contract-db.test.mjs
+      - name: Reports and automation native concurrency regressions
+        run: >-
+          node --test --test-concurrency=1
+          tests/professional-reports-db.test.mjs tests/automation-operations-db.test.mjs
+          tests/codev-core-db.test.mjs tests/ads-recurring-db.test.mjs
+          tests/ads-migrations-db.test.mjs tests/ads-workspace-db.test.mjs
+          tests/google-ads-reports-db.test.mjs

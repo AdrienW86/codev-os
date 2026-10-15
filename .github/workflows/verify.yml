@@ -30,3 +30,16 @@ jobs:
       - name: TypeScript
         if: always()
         run: npm run typecheck
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Install isolated test browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Reports, automation supervision and Director desktop/mobile
+        run: |
+          node scripts/test-professional-report-ui.mjs
+          node scripts/test-director-ui.mjs
+        env:
+          NODE_USE_ENV_PROXY: "0"
+          NEXT_TELEMETRY_DISABLED: "1"

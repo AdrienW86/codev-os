@@ -16,13 +16,17 @@ import {createFakeSupabase} from '../../tests/helpers/fake-supabase.mjs';
 const client={id:'11111111-1111-4111-8111-111111111111',name:'Protection Nuisibles — fixture',email:'fixture@example.invalid',created_at:'2026-01-01T00:00:00Z'};
 export function reset(ready=true){
  const db=createFakeSupabase({clients:[client],reports:[],report_versions:[],report_deliveries:[],tasks:[{id:'22222222-2222-4222-8222-222222222222',client_id:client.id,title:'Page contact améliorée',status:'Terminé',priority:'Moyenne',due_date:null,completed_at:'2026-09-10T10:00:00Z',created_at:'2026-09-05T10:00:00Z'}]}, {unique:{reports:[['id']]},rpc:{codev_professional_reporting_ready:()=>ready,codev_unread_notifications:()=>0}});
+ db.tables.tasks.push({...db.tables.tasks[0],id:'88888888-8888-4888-8888-888888888888',title:'URL vérifiée : https://fixture.example.invalid/'+ 'chemin'.repeat(35)});
  const original=db.client.from;
  db.client.from=table=>{
   for(const r of db.tables.reports){
    r.client=client;r.delivery??={};r.approved_version??=null;
    if(!db.tables.report_versions.some(v=>v.report_id===r.id&&v.version===r.version))db.tables.report_versions.push({report_id:r.id,version:r.version,summary:r.summary,created_at:new Date().toISOString()});
   }
-  return original(table);
+  const query=original(table),limit=query.limit,order=query.order;
+  query.limit=(count,options)=>options?.referencedTable?query:limit(count);
+  query.order=(column,options)=>options?.referencedTable?query:order(column,options);
+  return query;
  };
  globalThis.__professionalFixture=db;return db;
 }
@@ -65,7 +69,7 @@ try {
     const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Préparer l’aperçu", exact: true }) });
     await form.locator('select[name="client_id"]').selectOption("11111111-1111-4111-8111-111111111111");
     await form.locator('select[name="family"]').selectOption("activity");
-    await page.screenshot({ path: join(out, name + "-generation.png"), fullPage: true });
+    await page.screenshot({ path: join(out, name + "-generation.png"), fullPage: true, caret: "initial" });
     await form.getByLabel("Du (inclus)").fill("2026-09-01"); await form.getByLabel("Au (inclus)").fill("2026-09-15");
     const confirmation = form.getByLabel("Je confirme la préparation", { exact: false });
     await confirmation.check(); await form.getByLabel("Au (inclus)").fill("2026-09-16"); assert.equal(await confirmation.isChecked(), false);
@@ -95,16 +99,16 @@ try {
     assert.equal(edited.reports[0].version, 2); assert.equal(edited.reports[0].status, "ready_for_review");
     await page.getByRole("button", { name: "Actualiser le document", exact: true }).click();
     await page.getByText(/Version 3 préparée/).waitFor();
-    await page.goto(reportUrl); await page.screenshot({ path: join(out, name + "-review.png"), fullPage: true });
+    await page.goto(reportUrl); await page.screenshot({ path: join(out, name + "-review.png"), fullPage: true, caret: "initial" });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await fetch(base + "/api/qa?automations=1"); await page.goto(base + "/settings?tab=automations");
     await page.getByText("Validation nécessaire", { exact: true }).waitFor();
     await page.getByText("Jamais exécutée", { exact: true }).waitFor();
     await page.getByText("Échouée", { exact: true }).waitFor();
-    await page.locator('a[href="/settings/automations/44444444-4444-4444-8444-444444444444"]').click();
+    await page.getByRole("link", { name: "Rapports à valider", exact: true }).click();
     await page.getByRole("heading", { name: "Historique des jobs", exact: true }).waitFor();
     await page.getByRole("link", { name: /version actuelle 3/ }).waitFor();
-    await page.screenshot({ path: join(out, name + "-automation-history.png"), fullPage: true });
+    await page.screenshot({ path: join(out, name + "-automation-history.png"), fullPage: true, caret: "initial" });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     assert.equal((await (await fetch(base + "/api/qa?inspect=1")).json()).jobCount, 2, "Reading supervision created no job");
     await fetch(base + "/api/qa?ready=0"); await page.goto(base + "/reports");
@@ -116,7 +120,7 @@ try {
   }
 } catch (error) {
   if (activePage && !activePage.isClosed()) {
-    await activePage.screenshot({ path: join(out, "failure.png"), fullPage: true });
+    await activePage.screenshot({ path: join(out, "failure.png"), fullPage: true, caret: "initial" });
     writeFileSync(join(out, "failure.html"), await activePage.content());
   }
   throw error;

@@ -100,7 +100,7 @@ function setup({ deny = false, missingAgent = false, missingClient = false, fail
   common["@/lib/integrations/google-ads/business-context"] = load("lib/integrations/google-ads/business-context.ts", { zod });
   const agentValidation = load("lib/agents/validation.ts");
   const recommendationValidation = load("lib/recommendations/validation.ts");
-  const actionRegistry = load("lib/actions/registry.ts", { zod });
+  const actionRegistry = load("lib/actions/registry.ts", { zod, "@/lib/seo/github-change-model": load("lib/seo/github-change-model.ts", { zod }) });
   const actionValidation = load("lib/actions/validation.ts", { "./registry": actionRegistry });
   const recommendationRepository = load("lib/recommendations/data.ts", { ...common, "./validation": recommendationValidation }, logs);
   const messageRepository = load("lib/agent-messages/data.ts", { ...common, "@/lib/recommendations/validation": recommendationValidation }, logs);

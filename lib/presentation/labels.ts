@@ -46,6 +46,7 @@ const severityLabels: Record<string, Label> = {
 const actionTypeLabels: Record<string, string> = {
   "internal.test": "Vérification interne",
   "seo.site_change": "Amélioration SEO du site",
+  "seo.github_pull_request": "Modification SEO du dépôt (PR)",
   "ads.optimization": "Optimisation Google Ads",
   "monitoring.fix": "Correctif technique",
   "report.send": "Envoi de rapport",

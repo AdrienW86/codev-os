@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, type FormEvent } from "react";
-import { approveActionAction, cancelActionAction, completeManualActionAction, executeActionAction, rejectActionAction } from "@/app/(cockpit)/actions/actions";
+import { approveActionAction, cancelActionAction, completeManualActionAction, executeActionAction, executeExternalActionAction, rejectActionAction } from "@/app/(cockpit)/actions/actions";
 import type { InternalActionRecord } from "@/lib/actions/types";
 import type { RecommendationActionState } from "@/lib/recommendations/types";
 import { executionModeOf } from "@/lib/actions/modes";
@@ -43,6 +43,8 @@ export function ActionControls({ action: item }: { action: InternalActionRecord 
       {approved && mode === "internal" && <Control id={item.id} action={executeActionAction} label="Exécuter" pendingLabel="Exécution…" className={accent} confirm="Exécuter cette action interne ? Aucun service externe ne sera appelé." />}
       {approved && mode === "manual" && <Control id={item.id} action={completeManualActionAction} label="Marquer comme réalisée" pendingLabel="Enregistrement…" className={accent} confirm="Confirmez-vous avoir réalisé cette action vous-même, exactement telle qu’approuvée ?" />}
       {approved && mode === "manual" && <p className="basis-full text-xs text-muted">Action externe : CODE-V OS ne l’exécute pas. Réalisez-la vous-même, puis confirmez.</p>}
+      {approved && mode === "external" && <Control id={item.id} action={executeExternalActionAction} label="Créer la branche et la PR" pendingLabel="Création de la PR…" className={accent} confirm="Créer la branche et la pull request en brouillon sur GitHub, exactement telles qu’approuvées ? Rien ne sera fusionné ni déployé." />}
+      {approved && mode === "external" && <p className="basis-full text-xs text-muted">Crée une branche dédiée et une PR en brouillon. La fusion et le déploiement restent entre vos mains.</p>}
     </div>
   );
 }

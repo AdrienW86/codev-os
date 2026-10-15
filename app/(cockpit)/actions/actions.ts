@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdminWriter, SimulationWriteBlocked } from "@/lib/core/guards";
 import { approveAction, cancelAction, completeManualAction, executeAction, rejectAction } from "@/lib/actions/data";
 import type { RecommendationActionState } from "@/lib/recommendations/types";
+import { executeGithubChange } from "@/lib/seo/opportunity-service";
 
 function actionId(formData: FormData) {
   const values = formData.getAll("id");
@@ -42,4 +43,18 @@ export async function executeActionAction(_previousState: RecommendationActionSt
 
 export async function completeManualActionAction(_previousState: RecommendationActionState, formData: FormData): Promise<RecommendationActionState> {
   return transition(formData, completeManualAction, "Réalisation manuelle consignée.");
+}
+
+/** Action externe approuvée (PR GitHub d'une modification SEO) : exécutée sur demande explicite, jamais fusionnée. */
+export async function executeExternalActionAction(_previousState: RecommendationActionState, formData: FormData): Promise<RecommendationActionState> {
+  let actor;
+  try { actor = await requireAdminWriter(); } catch (error) {
+    if (error instanceof SimulationWriteBlocked) return { message: error.message };
+    throw error;
+  }
+  const id = actionId(formData);
+  if (!id) return { message: "Impossible de traiter cette action. Rechargez l’état et réessayez." };
+  const result = await executeGithubChange(actor, id);
+  for (const path of ["/actions", "/recommendations", "/dashboard", "/work", "/agents"]) revalidatePath(path, path === "/agents" ? "layout" : undefined);
+  return { message: result.message };
 }

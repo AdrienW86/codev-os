@@ -25,7 +25,7 @@ function setup(count, handler) {
     { unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc } });
   const server = { getSupabaseServerClient: () => fake.client };
   const audit = loadTs("lib/core/audit.ts", { "@/lib/supabase/server": server, "@/lib/core/actor": actorModule });
-  const outputs = loadTs("lib/agents/outputs.ts", { "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry, "@/lib/actions/registry": loadTs("lib/actions/registry.ts", { zod }) });
+  const outputs = loadTs("lib/agents/outputs.ts", { "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry, "@/lib/actions/registry": loadTs("lib/actions/registry.ts", { zod, "@/lib/seo/github-change-model": loadTs("lib/seo/github-change-model.ts", { zod }) }) });
   const engine = loadTs("lib/scheduler/engine.ts", {
     "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry,
     "@/lib/system/providers": { isProviderConfigured: () => true }, "@/lib/agents/outputs": outputs,

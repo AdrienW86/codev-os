@@ -71,3 +71,25 @@ test('invalid sender blocks before reservation; display-name sender remains supp
  await assert.rejects(()=>email.sendEmail({to:'reports@example.invalid',subject:'Test',text:'Test',idempotencyKey:'fake'},env,()=>{throw Error('must not fetch');}),e=>e.kind==='not_configured');
  assert.equal(email.emailSendingStatus({...env,EMAIL_FROM:'reports@example.invalid',EMAIL_SENDING_ENABLED:'false'}).enabled,false);
 });
+
+test("Resend receives the approved report as a real base64 PDF attachment", async () => {
+  let payload = null;
+  const provider = loadTs("lib/providers/email.ts", {
+    "@/lib/providers/api": { providerJson: async (_provider, _url, init) => { payload = JSON.parse(init.body); return { id: "fake-accepted" }; } },
+    "@/lib/providers/errors": errors,
+  });
+  const env = { RESEND_API_KEY: "fake-testing-only", EMAIL_FROM: "CODE-V <reports@example.invalid>", EMAIL_SENDING_ENABLED: "true" };
+  const attachment = { filename: "code-v-client-v2.pdf", base64: pdfModule.renderClientReportPdf({ ...report, client: { name: "Client" }, kind: "monthly", period_start: "2026-09-01", period_end: "2026-09-30", generated_at: "2026-10-15T10:00:00Z" }).toString("base64") };
+  const response = await provider.sendEmail({ to: "client@example.invalid", subject: "Rapport client", text: "Synthèse client", idempotencyKey: "report-unique-v2", attachment }, env);
+  assert.equal(response.id, "fake-accepted");
+  assert.equal(payload.to.length, 1);
+  assert.equal(payload.attachments[0].filename, attachment.filename);
+  assert.equal(payload.attachments[0].content, attachment.base64);
+  assert.equal(Buffer.from(payload.attachments[0].content, "base64").subarray(0, 8).toString("latin1"), "%PDF-1.4");
+  const body = JSON.stringify(payload);
+  assert.doesNotMatch(body, /SECRET_TO_NEVER_EXPOSE_IN_PDF|fake-testing-only/);
+  await assert.rejects(() => provider.sendEmail({
+    to: "client@example.invalid", subject: "Rapport client", text: "Synthèse client", idempotencyKey: "fake",
+    attachment: { filename: "bad\r\nBcc:someone.pdf", base64: attachment.base64 },
+  }, env), e => e.kind === "malformed");
+});

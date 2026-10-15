@@ -83,5 +83,4 @@ export type CoreFunctions = {
   codev_professional_reporting_ready: { Args: Record<string, never>; Returns: boolean };
   codev_claim_jobs: { Args: { p_worker: string; p_limit: number; p_lease_seconds: number }; Returns: JobRow[] };
   codev_enqueue_automation: { Args: { p_automation: string; p_due: string; p_next: string | null; p_now: string }; Returns: string | null };
-  codev_claim_job: { Args: { p_job: string; p_worker: string; p_lease_seconds: number }; Returns: JobRow[] };
 };

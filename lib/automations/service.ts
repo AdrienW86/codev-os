@@ -8,7 +8,7 @@ import { runTypes, type RunType } from "@/lib/agents/registry";
 import { getAgentByType } from "@/lib/agents/outputs";
 import { validateAutomation } from "@/lib/automations/definitions";
 import { nextRun, type Schedule } from "@/lib/scheduler/recurrence";
-import { AutomationStorageUnavailable, enqueueJob, processJob } from "@/lib/scheduler/engine";
+import { enqueueJob, processJob } from "@/lib/scheduler/engine";
 import type { Json } from "@/lib/supabase/database.types";
 import type { AutomationRow, AutomationStatus, JobRow } from "@/lib/supabase/core.types";
 
@@ -96,9 +96,7 @@ export async function runNow(actor: Actor, input: { runType: RunType; clientId?:
   const job = await enqueueJob(actor, { ...input, trigger: input.trigger ?? "manual" });
   if (!job.ok) return job;
   if (job.duplicate) return { ok: true, message: "Exécution déjà demandée il y a moins d’une minute." };
-  let processed: Awaited<ReturnType<typeof processJob>> = null;
-  try { processed = job.id ? await processJob(actor, `manual-${randomUUID()}`, job.id) : null; }
-  catch (error) { if (error instanceof AutomationStorageUnavailable) return { ok: false, message: error.message }; throw error; }
+  const processed = job.id ? await processJob(actor, `manual-${randomUUID()}`, job.id) : null;
   const { data, error } = await db().from("jobs").select("status,last_error,result,lease_expires_at").eq("id", job.id!).maybeSingle();
   if (error || !data) return { ok: false, message: "Demande enregistrée, mais résultat d’exécution actuellement indisponible." };
   const result = (data.result ?? {}) as { summary?: string };

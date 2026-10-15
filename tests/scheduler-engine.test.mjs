@@ -36,33 +36,33 @@ function enqueueRpc(args, tables) {
 }
 
 const assigned = (agentId, clientId = CLIENT) => ({ agent_id: agentId, client_id: clientId, enabled: true });
-function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents(), assignments = [assigned(REPORT), assigned(MONITORING)] } = {}) {
+function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents(), assignments = [assigned(REPORT), assigned(MONITORING)], beforeJobClaim, finishRunHook, failOn, handlerLoaderHook } = {}) {
   const fake = createFakeSupabase({ agents: initialAgents, agent_client_assignments: assignments, automations, jobs: jobs.map((job) => ({ status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", payload: {}, worker_id: null, ...job })), agent_runs: [], audit_logs: [] }, {
-    unique: { jobs: [["idempotency_key"]] }, rpc: {
-      codev_claim_jobs: claimRpc, codev_enqueue_automation: enqueueRpc,
-      codev_claim_job: (args, tables) => {
-        const target = tables.jobs.filter(job => job.id === args.p_job);
-        for (const job of target) Object.assign(job, { status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", ...job });
-        return claimRpc({ ...args, p_limit: 1 }, { jobs: target });
-      },
-    },
+    unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc, codev_enqueue_automation: enqueueRpc }, failOn,
   });
+  const from = fake.client.from;
+  fake.client.from = (table) => {
+    const query = from(table);
+    if (table === "jobs" && beforeJobClaim) {
+      const update = query.update;
+      query.update = (patch) => { if (patch.status === "running") beforeJobClaim(fake, patch); return update(patch); };
+    }
+    return query;
+  };
   const server = { getSupabaseServerClient: () => fake.client };
   const audit = loadTs("lib/core/audit.ts", { "@/lib/supabase/server": server, "@/lib/core/actor": actorModule });
   const outputs = loadTs("lib/agents/outputs.ts", { "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry, "@/lib/actions/registry": loadTs("lib/actions/registry.ts", { zod, "@/lib/seo/github-change-model": loadTs("lib/seo/github-change-model.ts", { zod }) }) });
   const engine = loadTs("lib/scheduler/engine.ts", {
     "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/permissions/engine": permissions, "@/lib/agents/registry": registry,
-    "@/lib/system/providers": { isProviderConfigured: configured }, "@/lib/agents/outputs": outputs,
-    "@/lib/runs/handlers": { runHandlers: Object.fromEntries(Object.keys(registry.runTypes).map((type) => [type, async () => handlers[type] ?? (async () => ({ status: "succeeded", summary: "ok" }))])) },
+    "@/lib/system/providers": { isProviderConfigured: configured }, "@/lib/agents/outputs": {
+      ...outputs,
+      finishRun: async (...args) => { if (finishRunHook) await finishRunHook(fake, ...args); return outputs.finishRun(...args); },
+    },
+    "@/lib/runs/handlers": { runHandlers: Object.fromEntries(Object.keys(registry.runTypes).map((type) => [type, async () => { if (handlerLoaderHook) await handlerLoaderHook(fake, type); return handlers[type] ?? (async () => ({ status: "succeeded", summary: "ok" })); }])) },
     "@/lib/reports/recurring/service": { enqueueDueAdsReports: async () => 0 },
     "@/lib/runs/types": types, "@/lib/scheduler/recurrence": recurrence,
   });
-  const service = loadTs("lib/automations/service.ts", {
-    "@/lib/supabase/server": server, "@/lib/core/audit": audit, "@/lib/agents/registry": registry,
-    "@/lib/agents/outputs": outputs, "@/lib/automations/definitions": {}, "@/lib/scheduler/recurrence": recurrence,
-    "@/lib/scheduler/engine": engine,
-  });
-  return { engine, fake, service };
+  return { engine, fake };
 }
 const system = { kind: "system", worker: "test" };
 const weekly = (overrides = {}) => ({ id: "auto-1", name: "Rapports", client_id: null, project_id: null, agent_id: REPORT, run_type: "report.generate", timezone: "Europe/Paris", frequency: "weekly", schedule: { time: "08:00", weekdays: [1] }, next_run_at: "2026-10-12T06:00:00.000Z", status: "active", config: { kind: "weekly" }, consecutive_failures: 0, ...overrides });
@@ -200,32 +200,6 @@ test("a stale preclaimed job cannot start a handler or an agent run", async () =
   assert.equal(fake.tables.agent_runs.length, 0);
 });
 
-test("manual automation runs only its own job, retains its history link and does not dispatch another queued send", async () => {
-  let sent = false;
-  const id = "22222222-2222-4222-8222-222222222222";
-  const { fake, service } = setup({ automations: [weekly({ id })], jobs: [{ id: "unrelated-send", run_type: "ads.report.send", idempotency_key: "unrelated-send" }], handlers: { "ads.report.send": async () => { sent = true; return { status: "succeeded", summary: "mail" }; } } });
-  const result = await service.runAutomationNow({ kind: "admin", userId: "u" }, id);
-  assert.equal(result.ok, true);
-  assert.equal(sent, false);
-  assert.equal(fake.tables.jobs.find(job => job.id === "unrelated-send").status, "queued");
-  assert.equal(fake.tables.jobs.find(job => job.automation_id === id).status, "succeeded");
-  assert.equal((await service.runAutomationNow({ kind: "admin", userId: "u" }, id)).ok, true);
-  assert.equal(fake.tables.jobs.length, 2, "double click retains one requested job");
-  assert.equal(fake.calls.filter(call => call[0] === "rpc" && call[1] === "codev_claim_jobs").length, 0);
-});
-
-test("missing selective-claim migration blocks execution with an explicit actionable message and no global fallback", async () => {
-  const id = "22222222-2222-4222-8222-222222222222";
-  const { fake, service } = setup({ automations: [weekly({ id })] });
-  fake.client.rpc = async name => ({ data: null, error: { code: "PGRST202", message: `missing ${name}` } });
-  const result = await service.runAutomationNow({ kind: "admin", userId: "u" }, id);
-  assert.equal(result.ok, false);
-  assert.match(result.message, /20261111000000_atomic_automation_enqueue.sql/);
-  assert.match(result.message, /avant le déploiement/);
-  assert.equal(fake.tables.agent_runs.length, 0);
-  assert.equal(fake.calls.filter(call => call[0] === "rpc" && call[1] === "codev_claim_jobs").length, 0);
-});
-
 test("a hanging handler times out and is retried", async () => {
   const handlers = { "report.generate": () => new Promise(() => {}) };
   const { engine, fake } = setup({ jobs: [{ id: "j", run_type: "report.generate", idempotency_key: "t" }], handlers });
@@ -259,3 +233,236 @@ test("cron authorization: secret required, constant-time comparison, no prefix t
  const {engine}=setup({jobs:[{id:"job-recurring",run_type:"ads.report.send",client_id:CLIENT,idempotency_key:"recurring"}],configured:()=>false,handlers:{"ads.report.send":async()=>{ran=true;return{status:"skipped",summary:"Envoi bloqué : validation nécessaire."};}}});
  const result=await engine.processJobs(system,"worker-A");assert.equal(result.skipped,1);assert.equal(ran,true);
  });
+
+
+test("manual claim runs exactly the requested job and retains its automation history", async () => {
+  let unrelatedRan = false;
+  const { engine, fake } = setup({ jobs: [
+    { id: "other-send", run_type: "ads.report.send", idempotency_key: "other-send" },
+    { id: "manual", run_type: "report.generate", idempotency_key: "manual", automation_id: "auto-1", client_id: CLIENT },
+  ], handlers: { "ads.report.send": async () => { unrelatedRan = true; return { status: "succeeded", summary: "mail" }; } } });
+  const otherBefore = structuredClone(fake.tables.jobs[0]);
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "succeeded");
+  assert.equal(unrelatedRan, false);
+  assert.deepEqual(fake.tables.jobs[0], otherBefore);
+  const job = fake.tables.jobs[1];
+  assert.equal(job.status, "succeeded");
+  assert.equal(job.automation_id, "auto-1");
+  assert.equal(job.attempts, 1);
+  assert.equal(job.worker_id, "manual-worker");
+  assert.ok(job.started_at);
+  assert.equal(fake.tables.agent_runs[0].metadata.job_id, "manual");
+  assert.equal(fake.calls.some(call => call[0] === "rpc"), false, "manual execution requires no RPC or new migration");
+});
+
+test("manual enqueue preserves automation_id without changing ordinary manual jobs", async () => {
+  const { engine, fake } = setup();
+  await engine.enqueueJob(system, { runType: "report.generate", trigger: "manual", automationId: "auto-1", dedupeKey: "automation" });
+  await engine.enqueueJob(system, { runType: "report.generate", trigger: "manual", dedupeKey: "ordinary" });
+  assert.equal(fake.tables.jobs[0].automation_id, "auto-1");
+  assert.equal(fake.tables.jobs[1].automation_id, null);
+});
+
+test("concurrent manual requests claim the same job once with one 300-second lease", async () => {
+  let calls = 0;
+  const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual" }], handlers: {
+    "report.generate": async () => { calls++; return { status: "succeeded", summary: "ok" }; },
+  } });
+  const before = Date.now();
+  const results = await Promise.all(Array.from({ length: 4 }, (_, index) => engine.processJob(system, `worker-${index}`, "manual")));
+  assert.equal(results.filter(result => result === "succeeded").length, 1);
+  assert.equal(results.filter(result => result === null).length, 3);
+  assert.equal(calls, 1);
+  assert.equal(fake.tables.jobs[0].attempts, 1);
+  const claim = fake.calls.find(call => call[0] === "jobs" && call[1] === "update" && call[2].status === "running")[2];
+  const lease = Date.parse(claim.lease_expires_at);
+  assert.ok(lease >= before + engine.LEASE_SECONDS * 1000);
+  assert.ok(lease <= Date.now() + engine.LEASE_SECONDS * 1000);
+});
+
+test("manual claim ignores missing, future, running, failed and exhausted jobs without reclaiming expired leases", async () => {
+  let calls = 0;
+  const { engine, fake } = setup({ jobs: [
+    { id: "future", scheduled_for: "2999-01-01T00:00:00Z" },
+    { id: "running", status: "running", attempts: 1, worker_id: "existing", lease_expires_at: "2000-01-01T00:00:00Z" },
+    { id: "failed", status: "failed" },
+    { id: "exhausted", attempts: 3 },
+  ].map(job => ({ run_type: "report.generate", idempotency_key: job.id, ...job })), handlers: {
+    "report.generate": async () => { calls++; return { status: "succeeded", summary: "bad" }; },
+  } });
+  const before = structuredClone(fake.tables.jobs);
+  for (const id of ["missing", "future", "running", "failed", "exhausted"]) assert.equal(await engine.processJob(system, "manual", id), null);
+  assert.equal(calls, 0);
+  assert.deepEqual(fake.tables.jobs, before);
+  assert.equal(fake.calls.some(call => call[0] === "jobs" && call[1] === "update"), false);
+  assert.equal(fake.calls.some(call => call[0] === "rpc"), false);
+});
+
+test("manual compare-and-swap rejects a lost claim, newer attempt, changed attempt budget and future schedule", async () => {
+  for (const mutation of [
+    job => { job.status = "running"; job.worker_id = "scheduler"; job.attempts++; },
+    job => { job.attempts++; },
+    job => { job.max_attempts = 1; },
+    job => { job.scheduled_for = "2999-01-01T00:00:00Z"; },
+  ]) {
+    let calls = 0;
+    const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual" }],
+      beforeJobClaim: fake => mutation(fake.tables.jobs[0]),
+      handlers: { "report.generate": async () => { calls++; return { status: "succeeded", summary: "bad" }; } },
+    });
+    assert.equal(await engine.processJob(system, "manual-worker", "manual"), null);
+    assert.equal(calls, 0);
+    assert.equal(fake.tables.agent_runs.length, 0);
+    assert.equal(fake.calls.some(call => call[0] === "rpc"), false);
+  }
+});
+
+test("manual retries increment the existing attempt and retain the original start", async () => {
+  const started = "2026-01-01T00:00:00.000Z";
+  const { engine, fake } = setup({ jobs: [{ id: "retry", run_type: "report.generate", idempotency_key: "retry", attempts: 1, max_attempts: 3, started_at: started }],
+    handlers: { "report.generate": async () => { throw new types.RunError("Retry me"); } },
+  });
+  assert.equal(await engine.processJob(system, "manual-worker", "retry"), "retried");
+  assert.equal(fake.tables.jobs[0].attempts, 2);
+  assert.equal(fake.tables.jobs[0].started_at, started);
+  assert.equal(await engine.processJob(system, "manual-worker", "retry"), null, "backoff remains scheduled");
+  fake.tables.jobs[0].scheduled_for = "2000-01-01T00:00:00Z";
+  assert.equal(await engine.processJob(system, "manual-worker", "retry"), "failed");
+  assert.equal(fake.tables.jobs[0].attempts, 3);
+  assert.equal(await engine.processJob(system, "manual-worker", "retry"), null);
+});
+
+test("a completed agent run is recorded only after its job result is accepted", async () => {
+  const observed = [];
+  const { engine } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual", client_id: CLIENT }],
+    finishRunHook: (fake, runId, status) => observed.push([fake.tables.jobs[0].status, status]),
+  });
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "succeeded");
+  assert.deepEqual(observed, [["succeeded", "completed"]]);
+});
+
+test("a lost lease cannot publish a failed retry or affect automation failures", async () => {
+  let fakeRef;
+  const { engine, fake } = setup({ automations: [weekly()], jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual", automation_id: "auto-1", client_id: CLIENT }],
+    handlers: { "report.generate": async () => {
+      fakeRef.tables.jobs[0].lease_expires_at = "2000-01-01T00:00:00Z";
+      throw new types.RunError("too late");
+    } },
+  });
+  fakeRef = fake;
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "lost");
+  assert.equal(fake.tables.jobs[0].status, "running");
+  assert.equal(fake.tables.automations[0].consecutive_failures, 0);
+  assert.equal(fake.tables.audit_logs.some(row => row.action === "job.retry_scheduled" || row.action === "job.failed"), false);
+});
+
+test("manual claim read and write errors propagate without any global fallback", async () => {
+  for (const operation of ["select", "update"]) {
+    const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual" }],
+      failOn: (table, op) => table === "jobs" && op === operation,
+    });
+    await assert.rejects(engine.processJob(system, "manual-worker", "manual"), new RegExp(operation === "select" ? "job read" : "job claim"));
+    assert.equal(fake.calls.some(call => call[0] === "rpc"), false);
+    assert.equal(fake.tables.agent_runs.length, 0);
+  }
+});
+
+test("batch jobs whose leases expired while an earlier handler ran never start", async () => {
+  let fakeRef;
+  const ran = [];
+  const { engine, fake } = setup({ jobs: [
+    { id: "first", run_type: "report.generate", idempotency_key: "first", client_id: CLIENT },
+    { id: "second", run_type: "report.generate", idempotency_key: "second", client_id: CLIENT },
+  ], handlers: { "report.generate": async ({ job }) => {
+    ran.push(job.id);
+    if (job.id === "first") fakeRef.tables.jobs[1].lease_expires_at = "2000-01-01T00:00:00Z";
+    return { status: "succeeded", summary: "ok" };
+  } } });
+  fakeRef = fake;
+  const summary = await engine.processJobs(system, "batch-worker");
+  assert.equal(summary.processed, 2);
+  assert.equal(summary.succeeded, 1);
+  assert.deepEqual(ran, ["first"]);
+  assert.equal(fake.tables.agent_runs.length, 1);
+  assert.equal(fake.tables.jobs[1].status, "running");
+});
+
+test("deadline processing claims one job at a time and leaves the rest unclaimed when time runs short", async () => {
+  let time = 0;
+  const { engine, fake } = setup({ jobs: [
+    { id: "first", run_type: "report.generate", idempotency_key: "first" },
+    { id: "second", run_type: "report.generate", idempotency_key: "second" },
+  ], handlers: { "report.generate": async () => { time = 50; return { status: "succeeded", summary: "ok" }; } } });
+  const result = await engine.processJobs(system, "deadline-worker", 5, 60, { deadline: 100, clock: () => time });
+  assert.equal(result.processed, 1);
+  assert.equal(result.succeeded, 1);
+  assert.equal(result.deferred, 1);
+  assert.equal(fake.tables.jobs[1].status, "queued");
+  assert.equal(fake.tables.jobs[1].attempts, 0);
+  assert.equal(fake.calls.filter(call => call[0] === "rpc").length, 1);
+  assert.equal(fake.calls.find(call => call[0] === "rpc")[2].p_limit, 1);
+});
+
+
+test("a failing agent-run update cannot requeue an already successful job", async () => {
+  const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual", client_id: CLIENT }],
+    finishRunHook: async () => { throw new Error("agent run write unavailable"); },
+  });
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "succeeded");
+  assert.equal(fake.tables.jobs[0].status, "succeeded");
+  assert.equal(fake.tables.jobs[0].attempts, 1);
+  assert.equal(fake.calls.filter(call => call[0] === "jobs" && call[1] === "update" && call[2].status === "queued").length, 0);
+});
+
+test("an audit failure after completion cannot relabel a successful agent run as failed", async () => {
+  const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", idempotency_key: "manual", client_id: CLIENT }],
+    failOn: (table, operation) => table === "audit_logs" && operation === "insert",
+  });
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "succeeded");
+  assert.equal(fake.tables.jobs[0].status, "succeeded");
+  assert.equal(fake.tables.agent_runs[0].status, "completed");
+  assert.equal(fake.tables.jobs[0].attempts, 1);
+});
+
+
+test("a lease lost during agent lookup cannot start an agent run or handler", async () => {
+  let fakeRef, calls = 0;
+  const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", agent_id: REPORT, client_id: CLIENT, idempotency_key: "manual" }],
+    failOn: (table, operation) => {
+      if (table === "agents" && operation === "select") fakeRef.tables.jobs[0].lease_expires_at = "2000-01-01T00:00:00Z";
+      return false;
+    },
+    handlers: { "report.generate": async () => { calls++; return { status: "succeeded", summary: "bad" }; } },
+  });
+  fakeRef = fake;
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "lost");
+  assert.equal(calls, 0);
+  assert.equal(fake.tables.agent_runs.length, 0);
+  assert.equal(fake.tables.jobs[0].status, "running");
+});
+
+test("a lease lost while loading the handler cannot start it and closes the agent run as failed", async () => {
+  let calls = 0;
+  const { engine, fake } = setup({ jobs: [{ id: "manual", run_type: "report.generate", agent_id: REPORT, client_id: CLIENT, idempotency_key: "manual" }],
+    handlerLoaderHook: fake => { fake.tables.jobs[0].lease_expires_at = "2000-01-01T00:00:00Z"; },
+    handlers: { "report.generate": async () => { calls++; return { status: "succeeded", summary: "bad" }; } },
+  });
+  assert.equal(await engine.processJob(system, "manual-worker", "manual"), "lost");
+  assert.equal(calls, 0);
+  assert.equal(fake.tables.jobs[0].status, "running");
+  assert.equal(fake.tables.agent_runs.length, 1);
+  assert.equal(fake.tables.agent_runs[0].status, "failed");
+  assert.match(fake.tables.agent_runs[0].summary, /Bail perdu/);
+  assert.equal(fake.tables.audit_logs.some(row => row.action === "job.succeeded"), false);
+});
+
+
+test("atomic enqueue unavailable preserves the due occurrence and never falls back to separate writes", async () => {
+  const { engine, fake } = setup({ automations: [weekly()] });
+  const initial = structuredClone(fake.tables.automations[0]);
+  fake.client.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "missing RPC" } });
+  await assert.rejects(engine.enqueueDueAutomations(system, new Date("2026-10-12T06:00:30Z")), /migration atomique/);
+  assert.deepEqual(fake.tables.automations[0], initial);
+  assert.equal(fake.tables.jobs.length, 0);
+  assert.equal(fake.tables.audit_logs.some(row => row.action === "job.enqueued"), false);
+});

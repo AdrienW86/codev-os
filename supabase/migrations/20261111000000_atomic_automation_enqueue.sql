@@ -27,29 +27,7 @@ begin
   return job_id;
 end $$;
 
--- Une action manuelle ne doit pas vider la file globale ni lancer un autre travail (notamment un envoi).
-create function public.codev_claim_job(p_job uuid,p_worker text,p_lease_seconds integer)
-returns setof public.jobs language plpgsql security invoker set search_path=pg_catalog,public as $$
-declare candidate public.jobs;
-begin
-  if p_worker is null or char_length(p_worker) not between 1 and 120 then
-    raise exception 'Invalid worker' using errcode='22023';
-  end if;
-  select * into candidate from public.jobs where id=p_job for update skip locked;
-  if not found then return; end if;
-  if candidate.status='running' and candidate.lease_expires_at<now() then
-    update public.jobs set status=case when attempts>=max_attempts then 'failed' else 'queued' end,
-      last_error=left('Bail expiré : exécution interrompue.'||coalesce(' '||last_error,''),2000),
-      worker_id=null,lease_expires_at=null,finished_at=case when attempts>=max_attempts then now() else null end
-      where id=p_job returning * into candidate;
-  end if;
-  if candidate.status<>'queued' or candidate.scheduled_for>now() then return; end if;
-  return query update public.jobs set status='running',attempts=attempts+1,worker_id=p_worker,
-    lease_expires_at=now()+make_interval(secs=>greatest(30,least(coalesce(p_lease_seconds,300),900))),
-    started_at=coalesce(started_at,now()) where id=p_job returning *;
-end $$;
-
-revoke all on function public.codev_enqueue_automation(uuid,timestamptz,timestamptz,timestamptz),public.codev_claim_job(uuid,text,integer) from public,anon,authenticated;
-grant execute on function public.codev_enqueue_automation(uuid,timestamptz,timestamptz,timestamptz),public.codev_claim_job(uuid,text,integer) to service_role;
+revoke all on function public.codev_enqueue_automation(uuid,timestamptz,timestamptz,timestamptz) from public,anon,authenticated;
+grant execute on function public.codev_enqueue_automation(uuid,timestamptz,timestamptz,timestamptz) to service_role;
 comment on function public.codev_enqueue_automation(uuid,timestamptz,timestamptz,timestamptz) is 'Réserve une échéance et insère son job dans une transaction unique ; aucune exécution.';
-comment on function public.codev_claim_job(uuid,text,integer) is 'Réserve uniquement le job demandé, sans effet sur les autres jobs.';
+notify pgrst, 'reload schema';

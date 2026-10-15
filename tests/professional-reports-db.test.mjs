@@ -26,13 +26,38 @@ test("native professional reports: additive migration, private grants, concurren
     end $$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
     ${read("supabase/local/remote-schema.sql")}${previous.map(f => read(`supabase/migrations/${f}`)).join("\n")}${read("e2e/harness/seed.sql")}
     insert into public.reports(client_id,kind,period_start,period_end,title,summary,status) values('11111111-1111-4111-8111-111111111111','monthly','2026-08-01','2026-08-31','Historical','Preserved','ready_for_review');`);
-  const fingerprint = "select md5(coalesce(json_agg(row(id,client_id,kind,period_start,period_end,title,summary,status,version,scope) order by id)::text,'')) from public.reports";
+  const fingerprint = "select md5(coalesce(json_agg(r order by id)::text,'')) from public.reports r";
   const before = query(fingerprint);
   sql(`begin;${read(`supabase/migrations/${target}`)}\ncommit;`);
   assert.equal(query(fingerprint), before);
   assert.equal(query("select relrowsecurity from pg_class where oid='public.reports'::regclass"), "t");
   assert.equal(query("select not has_function_privilege('anon','public.codev_professional_reporting_ready()','EXECUTE') and not has_function_privilege('authenticated','public.codev_professional_reporting_ready()','EXECUTE') and has_function_privilege('service_role','public.codev_professional_reporting_ready()','EXECUTE')"), "t");
   assert.equal(query("set role service_role;select public.codev_professional_reporting_ready()"), "t");
+  const clientId = "11111111-1111-4111-8111-111111111111";
+  const invalidId = "22222222-2222-4222-8222-222222222222";
+  const baseScope = { requestId: invalidId, clientId, family: "global", sources: ["website"], start: "2026-09-01", end: "2026-09-12" };
+  const invalidScopes = [
+    { sources: ["website", "website"] }, { sources: [] }, { sources: ["unknown"] },
+    { sources: "website" }, { sources: ["website", null] },
+    { family: "ads", sources: ["website"] }, { family: "seo", sources: ["google_ads"] },
+    { family: "website", sources: ["website", "activity"] }, { family: "activity", sources: ["website"] },
+    { clientId: "99999999-9999-4999-8999-999999999999" },
+    { requestId: "99999999-9999-4999-8999-999999999999" },
+    { start: "2026-09-02" }, { end: "2026-09-13" },
+  ].map(patch => ({ scope: { ...baseScope, ...patch }, start: baseScope.start, end: baseScope.end }));
+  invalidScopes.push({ scope: { ...baseScope, start: "2024-01-01", end: "2025-01-01" }, start: "2024-01-01", end: "2025-01-01" });
+  const beforeInvalid = query(fingerprint);
+  sql(`do $$ begin ${invalidScopes.map(({ scope, start, end }) => `begin
+    insert into public.reports(id,client_id,kind,period_start,period_end,scope)
+      values('${invalidId}','${clientId}','custom','${start}','${end}','${JSON.stringify(scope)}');
+    raise exception 'Invalid custom scope accepted';exception when check_violation then null;end;`).join("\n")} end $$;`);
+  assert.equal(query(fingerprint), beforeInvalid, "invalid custom scopes do not alter any report data");
+  // Inclusive bounds: one day and a leap year's 366 days are both accepted.
+  sql(`insert into public.reports(id,client_id,kind,period_start,period_end,scope) values
+    ('22222222-2222-4222-8222-222222222221','${clientId}','custom','2024-01-01','2024-12-31',
+      '${JSON.stringify({ ...baseScope, requestId: "22222222-2222-4222-8222-222222222221", start: "2024-01-01", end: "2024-12-31" })}'),
+    ('22222222-2222-4222-8222-222222222223','${clientId}','custom','2026-09-01','2026-09-01',
+      '${JSON.stringify({ ...baseScope, requestId: "22222222-2222-4222-8222-222222222223", family: "website", end: "2026-09-01" })}');`);
   const id = "33333333-3333-4333-8333-333333333333";
   const scope = JSON.stringify({ requestId: id, clientId: "11111111-1111-4111-8111-111111111111", family: "global", sources: ["activity", "search_console"], start: "2026-09-01", end: "2026-09-12" });
   const insert = `insert into public.reports(id,client_id,kind,period_start,period_end,status,title,summary,client_content,scope) values('${id}','11111111-1111-4111-8111-111111111111','custom','2026-09-01','2026-09-12','ready_for_review','Rapport client','Synthèse','{"summary":"Synthèse","sections":[]}', '${scope}') on conflict do nothing returning id`;

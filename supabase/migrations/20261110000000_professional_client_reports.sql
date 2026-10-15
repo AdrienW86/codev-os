@@ -13,10 +13,27 @@ alter table public.reports add constraint reports_custom_scope_check check (
     and scope ->> 'requestId' = id::text
     and scope ->> 'start' = period_start::text
     and scope ->> 'end' = period_end::text
+    and period_end - period_start between 0 and 365
     and scope ->> 'family' in ('global','ads','seo','website','activity')
-    and jsonb_typeof(scope -> 'sources') = 'array'
-    and jsonb_array_length(scope -> 'sources') between 1 and 4
-    and (scope -> 'sources') <@ '["google_ads","search_console","website","activity"]'::jsonb,
+    and case when jsonb_typeof(scope -> 'sources') = 'array' then
+      jsonb_array_length(scope -> 'sources') between 1 and 4
+      and (scope -> 'sources') <@ '["google_ads","search_console","website","activity"]'::jsonb
+      -- JSONB containment ignores repeated array values: count the distinct known
+      -- sources explicitly so a repeated source cannot pass the SQL boundary.
+      and jsonb_array_length(scope -> 'sources') =
+        ((scope -> 'sources') @> '["google_ads"]'::jsonb)::integer
+        + ((scope -> 'sources') @> '["search_console"]'::jsonb)::integer
+        + ((scope -> 'sources') @> '["website"]'::jsonb)::integer
+        + ((scope -> 'sources') @> '["activity"]'::jsonb)::integer
+      and case scope ->> 'family'
+        when 'global' then true
+        when 'ads' then scope -> 'sources' = '["google_ads"]'::jsonb
+        when 'seo' then scope -> 'sources' = '["search_console"]'::jsonb
+        when 'website' then scope -> 'sources' = '["website"]'::jsonb
+        when 'activity' then scope -> 'sources' = '["activity"]'::jsonb
+        else false
+      end
+    else false end,
     false
   )
 );

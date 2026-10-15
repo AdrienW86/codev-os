@@ -42,6 +42,10 @@ export const toolDefinitions = {
     kind: "read", description: "Résumé des urgences : actions à valider, incidents ouverts, tâches en retard ou du jour, rapports à relire.",
     input: z.object({}).strict(), capability: null,
   },
+  director_briefing: {
+    kind: "read", description: "Diagnostic transversal des clients à partir des incidents, échéances, validations, recommandations d’agents et comparaisons Search Console déjà enregistrés. Classe les propositions avec preuves datées, impact qualitatif, confiance et validation requise. client facultatif, focus all/seo/ads. Aucun agent relancé, aucune API externe ni écriture ; les données absentes et anciennes restent explicites.",
+    input: z.object({ client: clientName.optional(), focus: z.enum(["all", "seo", "ads"]).optional() }).strict(), capability: null,
+  },
   client_overview: {
     kind: "read", description: "Vue d’ensemble d’un client (services, tâches ouvertes, incidents, dernier rapport) à partir de son nom.",
     input: z.object({ client: clientName }).strict(), capability: null,

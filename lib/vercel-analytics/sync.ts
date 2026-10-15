@@ -6,10 +6,11 @@ import type { Json } from "@/lib/supabase/database.types";
 
 const day = /^\d{4}-\d{2}-\d{2}$/;
 /**
- * Format des instantanés `metric_snapshots` vercel/web_analytics. Les instantanés sans cette version
- * (écrits avant la série quotidienne et les statuts par bloc) sont resynchronisés avant d'être affichés.
+ * Format des instantanés `metric_snapshots` vercel/web_analytics. Le tableau de bord tente une
+ * resynchronisation des anciens formats (écrits avant la validation stricte des compteurs).
+ * Les rapports personnalisés ne réutilisent jamais ces anciens formats en cas d'échec de collecte.
  */
-export const VERCEL_SNAPSHOT_VERSION = 2;
+export const VERCEL_SNAPSHOT_VERSION = 3;
 const DAY_MS = 86_400_000;
 
 function periodDays(period: { start: string; end: string }) {

@@ -95,6 +95,7 @@ async function searchConsoleDetails(input: ProfessionalReportRequest, property: 
   else {
     const opportunities = await db().from("seo_keyword_opportunities").select("keyword,priority,confidence,verified,rationale,recommended_action,metrics,last_analysis_id,status")
       .eq("client_id", input.clientId).eq("period_start", input.start).eq("period_end", input.end).in("last_analysis_id", analyses.data.map(row => row.id))
+      .in("status", ["detected", "to_review", "approved", "in_progress"])
       .order("last_detected_at", { ascending: false }).limit(51);
     if (opportunities.error) { lines.push("Opportunités SEO : lecture indisponible pour cette période."); partial = true; }
     else {

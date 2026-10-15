@@ -88,7 +88,7 @@ function fakeDb(tables, calls) {
 }
 
 function analytics(overrides = {}) {
-  return { version: 2, projectId: "prj_client", period: { start: "2026-10-01", end: "2026-10-03" }, visitors: 12, pageviews: 24,
+  return { version: 3, projectId: "prj_client", period: { start: "2026-10-01", end: "2026-10-03" }, visitors: 12, pageviews: 24,
     sections: { topPages: { ok: true }, topReferrers: { ok: true }, devices: { ok: true }, events: { ok: true } }, topPages: [{ label: "/contact", pageviews: 12 }], topReferrers: [], devices: [], events: [], ...overrides };
 }
 function setup(overrides = {}) {
@@ -113,7 +113,7 @@ function setup(overrides = {}) {
     "@/lib/integrations/google-ads/dashboard": dashboard, "@/lib/integrations/google-ads/scope": scopes,
     "@/lib/integrations/google-ads/findings": findings,
     "@/lib/integrations/search-console/model": model,
-    "@/lib/vercel-analytics/sync": { VERCEL_SNAPSHOT_VERSION: 2, syncVercelAnalytics: async (...args) => { providerCalls.push(args); return overrides.sync ?? { ok: true, data: analytics() }; } },
+    "@/lib/vercel-analytics/sync": { VERCEL_SNAPSHOT_VERSION: 3, syncVercelAnalytics: async (...args) => { providerCalls.push(args); return overrides.sync ?? { ok: true, data: analytics() }; } },
   });
   return { repository, calls, providerCalls, gatherCalls };
 }
@@ -166,6 +166,23 @@ test("website never uses an old project or a different period as fallback", asyn
   }
 });
 
+test("professional website reports reject pre-validation Analytics caches, but preserve verified current zero counts", async () => {
+  for (const version of [1, 2, 3]) {
+    const data = analytics({ version, visitors: 0, pageviews: 0 });
+    const { repository } = setup({ sync: { ok: false }, tables: { metric_snapshots: [{ client_id: clientId, provider: "vercel", metric_key: "web_analytics", period_start: input().start, period_end: input().end, fetched_at: "2026-10-04T00:00:00Z", data }] } });
+    const result = await repository.gatherProfessionalSources(input());
+    const text = result.sources[0].lines.join("\n");
+    assert.equal(result.sources[0].state, "partial");
+    if (version < 3) {
+      assert.doesNotMatch(text, /0 visiteurs|0 pages vues/);
+      assert.match(text, /Aucun instantané Vercel vérifiable/);
+    } else {
+      assert.match(text, /0 visiteurs et 0 pages vues/);
+      assert.match(result.sources[0].evidence.join("\n"), /actualisation indisponible/);
+    }
+  }
+});
+
 test("a source failure is explicit and does not discard another selected source or disclose provider errors", async () => {
   const { repository } = setup({ gatherError: true });
   const result = await repository.gatherProfessionalSources({ ...input(), family: "global", sources: ["website", "activity"] });
@@ -211,6 +228,19 @@ test("SEO dimensions and opportunities require the exact period and current link
     assert.doesNotMatch(invalid.sources[0].lines.join("\n"), /dératisation client/);
     assert.match(invalid.sources[0].lines.join("\n"), /aucun instantané vérifiable/);
   }
+});
+
+test("SEO active opportunities are filtered before the query cap so recent closed rows cannot hide them", async () => {
+  const active = { client_id: clientId, period_start: input().start, period_end: input().end, last_analysis_id: "valid-analysis", status: "to_review", keyword: "OPPORTUNITÉ ACTIVE", priority: "high", confidence: "high", verified: true, metrics: { clicks: 6, impressions: 30 }, rationale: "Preuve mesurée.", recommended_action: "Vérifier la page.", last_detected_at: "2026-10-01T00:00:00Z" };
+  const { repository, calls } = setup({ tables: {
+    search_console_daily_metrics: [1, 2, 3].map(day => ({ client_id: clientId, property: "sc-domain:client.fr", date: `2026-10-0${day}`, clicks: 2, impressions: 10, position: 5, fetched_at: "2026-10-05T00:00:00Z" })),
+    seo_opportunity_analyses: [{ id: "valid-analysis", client_id: clientId, property: "sc-domain:client.fr", status: "succeeded", period_start: input().start, period_end: input().end }],
+    seo_keyword_opportunities: [...Array.from({ length: 51 }, (_, index) => ({ ...active, keyword: `Fermée ${index}`, status: index % 2 ? "done" : "dismissed", last_detected_at: "2026-10-03T00:00:00Z" })), active],
+  } });
+  const result = await repository.gatherProfessionalSources(input("search_console"));
+  assert.match(result.sources[0].lines.join("\n"), /OPPORTUNITÉ ACTIVE/);
+  assert.doesNotMatch(result.sources[0].lines.join("\n"), /Aucune opportunité SEO active|Fermée/);
+  assert.deepEqual(json(calls.find(call => call.table === "seo_keyword_opportunities").filters.find(([kind, field]) => kind === "in" && field === "status")[2]), ["detected", "to_review", "approved", "in_progress"]);
 });
 
 test("missing Search Console history and partially synchronized days are visible without fabricated zeros", async () => {

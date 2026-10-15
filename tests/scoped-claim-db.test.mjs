@@ -78,7 +78,10 @@ before(() => {
   create schema if not exists storage;
   create table if not exists storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);\n`;
   sql(bootstrap + read("supabase/local/remote-schema.sql") + files.map(read).join("\n"));
-  assert.equal(sql("select current_database() || '@' || host(inet_server_addr());"), `${DATABASE}@127.0.0.1`);
+  // A CI service exposes PostgreSQL on the runner's loopback, while PostgreSQL
+  // sees its private Docker address. The client endpoint remains hard-pinned
+  // to 127.0.0.1 above; verify the dedicated database rather than that server IP.
+  assert.equal(sql("select current_database();"), DATABASE);
   console.log(`Existing schema and ${files.length} existing migrations replayed into ${DATABASE}.`);
 });
 

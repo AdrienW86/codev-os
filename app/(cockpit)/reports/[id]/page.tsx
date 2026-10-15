@@ -33,7 +33,7 @@ function asContent(value: unknown): ReportContent {
 
 function ContentView({ content }: { content: ReportContent }) {
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 break-words [overflow-wrap:anywhere]">
       <p className="text-base leading-7">{content.summary}</p>
       {content.sections.map((section) => (
         <section key={section.title}>
@@ -75,14 +75,14 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
         description={`Période couverte : ${periodLabel(item.kind, { start: item.period_start, end: item.period_end })} · version ${item.version} · généré le ${formatDate(item.generated_at)}`}
         action={<StatusBadge label={state.label} tone={state.tone} />} />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Panel className="p-6">
           <Tabs label="Versions du rapport" current={tab} items={[{ id: "client", label: "Version client", href: `/reports/${id}` }, { id: "internal", label: "Version interne", href: `/reports/${id}?view=internal` }]} />
           {tab === "internal" && <InlineNotice title="Usage interne uniquement.">Inclut retards, échecs d’analyse et éléments techniques : jamais envoyé au client.</InlineNotice>}
           <div className="mt-6"><ContentView content={asContent(tab === "internal" ? item.internal_content : item.client_content)} /></div>
         </Panel>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Panel className="p-5">
             <h2 className="font-semibold">Rapport client en PDF</h2>
             <p className="mt-2 text-sm text-muted">Document A4 téléchargeable, avec uniquement la version client de ce rapport. La version interne ne figure jamais dans le PDF.</p>

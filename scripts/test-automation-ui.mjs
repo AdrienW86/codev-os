@@ -51,7 +51,7 @@ const ids=${JSON.stringify(ids)},names=${JSON.stringify(names)};
 export function reset(){
  const now=Date.now(),past=new Date(now-60000).toISOString(),future=new Date(now+86400000).toISOString();
  const client={id:ids.client,name:'Protection Nuisibles — fixture',email:'fixture@example.invalid',created_at:past};
- const content={summary:${JSON.stringify(reportSummary)},highlights:[],sections:[{title:'Activité du mois',lines:['Page contact améliorée.']}],empty:false};
+ const content={summary:${JSON.stringify(reportSummary)},highlights:[],sections:[{title:'Activité du mois',lines:['Page contact améliorée.','URL vérifiée : https://fixture.example.invalid/'+'chemin'.repeat(35)]}],empty:false};
  const report={id:ids.report,client_id:client.id,client,kind:'monthly',title:${JSON.stringify(reportTitle)},summary:content.summary,
   period_start:'2026-09-01',period_end:'2026-09-30',status:'ready_for_review',version:2,approved_version:null,
   client_content:content,internal_content:content,generated_at:past,created_at:past,updated_at:past,

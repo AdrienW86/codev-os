@@ -18,7 +18,7 @@ test('Agent v2 media suite (P8) unchanged after the full migration chain (two re
  delete base.PGSERVICE;delete base.PGSERVICEFILE;
  const psql=(database,sql)=>executeLocalSql(process.env.PUBLICATIONS_SOCLE_TEST_PSQL??'psql',{...base,PGDATABASE:database},sql);
  const database='publications_socle_test_p8';
- const files=readdirSync(new URL('../supabase/migrations/',import.meta.url)).filter(f=>/^202610.*\.sql$/.test(f)).sort();
+ const files=readdirSync(new URL('../supabase/migrations/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort();
  assert.ok(files.indexOf(P8)>files.indexOf(P7)&&files.at(-1)>P8);
  const foundation='begin;'+read('supabase/local/remote-schema.sql')+'reset role;'+read('supabase/tests/remote-replay-helpers.sql')+read('supabase/tests/remote-replay-fixtures.sql')
   +'create schema storage authorization postgres;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);alter table storage.buckets owner to postgres;set local role postgres;'

@@ -5,6 +5,7 @@ import {isCredentialReference,type CredentialVault,type ProviderCredential} from
 import {outcomeOf,outcomeOfError,type PublicationPublisher,type PublishInput} from './publisher';
 import {outcomePayload,type PublishOutcome} from './model';
 import type {PublicationPlatform} from '../types';
+import {providerOfPlatform} from '../connections/model';
 
 // Delivery worker (Lot 4.3 P10). One explicit call = at most one job: no daemon, no loop, no cron. It is not wired
 // to any route in P10 and needs every dependency injected (tests / local development with the simulated publisher).
@@ -41,7 +42,7 @@ export async function executeClaimedPublicationJob(claim:Claim,workerId:string,d
   const row=await db.from('client_connections').select('credential_reference,status').eq('id',context.connection_id).maybeSingle();
   const ref=(row.data as {credential_reference?:unknown;status?:unknown}|null);
   if(row.error||ref?.status!=='active'||!isCredentialReference(ref.credential_reference))throw Error();
-  credential=await vault.readCredential(ref.credential_reference);
+  credential=await vault.readCredential(ref.credential_reference,providerOfPlatform(context.platform));
  }catch{log('credential');return {state:'aborted',step:'credential'};}
  // Media of the delivery snapshot only (never the current revision), signed at the last moment, short TTL.
  let media:PublishInput['media']=[];

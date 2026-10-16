@@ -20,7 +20,7 @@ test('Delivery engine suite (P10) unchanged after the full migration chain, fail
  delete base.PGSERVICE;delete base.PGSERVICEFILE;
  const psql=(database,sql)=>executeLocalSql(process.env.PUBLICATIONS_SOCLE_TEST_PSQL??'psql',{...base,PGDATABASE:database},sql);
  const database='publications_socle_test_p10';
- const files=readdirSync(new URL('../supabase/migrations/',import.meta.url)).filter(f=>/^202610.*\.sql$/.test(f)).sort();
+ const files=readdirSync(new URL('../supabase/migrations/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort();
  assert.ok(files.indexOf(P10)===files.indexOf(P9)+1&&files.at(-1)>P10);
  const foundation='begin;'+read('supabase/local/remote-schema.sql')+'reset role;'+read('supabase/tests/remote-replay-helpers.sql')+read('supabase/tests/remote-replay-fixtures.sql')
   +'create schema storage authorization postgres;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);alter table storage.buckets owner to postgres;set local role postgres;'

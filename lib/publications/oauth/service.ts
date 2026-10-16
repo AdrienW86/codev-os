@@ -74,7 +74,8 @@ export async function discoverAccounts(provider:ConnectionProvider,credential:Pr
 const counts=(accounts:ExternalPublicationAccount[])=>({accounts:accounts.length,facebook:accounts.filter(a=>a.platform==='facebook').length,instagram:accounts.filter(a=>a.platform==='instagram').length,
  google_business_profile:accounts.filter(a=>a.platform==='google_business_profile').length});
 async function record(deps:OAuthDeps,clientId:string,provider:ConnectionProvider,outcome:'oauth_completed'|'oauth_failed'|'connection_refreshed',code:string|null,actor:string,c:Record<string,number>|null=null){
- const r=await deps.db.rpc('publication_oauth_record',{p_client_id:clientId,p_provider:provider,p_outcome:outcome,p_code:code,p_counts:c,p_actor_id:actor});if(r.error)log(provider,'audit');
+ try{const r=await deps.db.rpc('publication_oauth_record',{p_client_id:clientId,p_provider:provider,p_outcome:outcome,p_code:code,p_counts:c,p_actor_id:actor});if(r.error)log(provider,'audit');}
+ catch{log(provider,'audit');}
 }
 function outcomeOfError(error:unknown,during:'exchange'|'discovery'):OAuthOutcome{
  if(error instanceof ConnectionProviderError){
@@ -111,12 +112,16 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  let reference:string;
  try{reference=await deps.vault.storeCredential({...credential,provider});}
  catch(error){log(provider,'vault',error);await record(deps,s.client_id,provider,'oauth_failed','vault_unavailable',userId);return back('unavailable');}
- const registered=await deps.db.rpc('publication_connection_register',{p_client_id:s.client_id,p_provider:provider,p_credential_reference:reference,
-  p_external_identity:credential.subject??null,p_expires_at:connectionExpiry(provider,credential),p_metadata:{},p_actor_id:userId});
- if(registered.error||!registered.data){log(provider,'register');await deps.vault.deleteCredential(reference).catch(()=>log(provider,'vault_cleanup'));
+ let registered;
+ try{registered=await deps.db.rpc('publication_connection_register',{p_client_id:s.client_id,p_provider:provider,p_credential_reference:reference,
+  p_external_identity:credential.subject??null,p_expires_at:connectionExpiry(provider,credential),p_metadata:{},p_actor_id:userId});}
+ catch{registered={data:null,error:{code:'network'}};}
+ // A lost RPC response can follow COMMIT. Keep the new encrypted secret on every unconfirmed result: deleting it
+ // here could destroy the live credential. An orphan is safe to review later; a live reference must remain usable.
+ if(registered.error||!registered.data||!isPublicationUuid((registered.data as {connection_id?:unknown}).connection_id)){log(provider,'register');
   await record(deps,s.client_id,provider,'oauth_failed','register_failed',userId);return back('unavailable');}
  const r=registered.data as {connection_id:string;replaced_reference?:unknown};
- if(isCredentialReference(r.replaced_reference))await deps.vault.deleteCredential(r.replaced_reference).catch(()=>log(provider,'vault_cleanup'));
+ if(isCredentialReference(r.replaced_reference)&&r.replaced_reference!==reference)await deps.vault.deleteCredential(r.replaced_reference).catch(()=>log(provider,'vault_cleanup'));
  let accounts:ExternalPublicationAccount[];
  try{accounts=await discoverAccounts(provider,credential,deps);}
  catch(error){log(provider,'discovery',error);await record(deps,s.client_id,provider,'oauth_completed','discovery_'+providerCode(error),userId);return back('partial');}
@@ -154,8 +159,16 @@ export async function verifyConnection(projectId:unknown,provider:unknown,deps:O
   try{
    if(credential.expiresAt&&Date.parse(credential.expiresAt)-now()<=REFRESH_MARGIN_MS[provider]){
     const refreshed=await source.refresh(credential);
-    const reference=await deps.vault.rotateCredential(c.credential_reference,{...refreshed,provider});
-    const updated=await setStatus('active',reference,connectionExpiry(provider,refreshed));if(updated.error)throw Error('status');
+    // The business reference must commit before its previous secret can be removed. rotateCredential deletes the
+    // old secret immediately, so it cannot span this database RPC safely (failure / lost response after COMMIT).
+    const reference=await deps.vault.storeCredential({...refreshed,provider});
+    const updated=await setStatus('active',reference,connectionExpiry(provider,refreshed));
+    const saved=updated.data as {connection_id?:unknown;status?:unknown;replaced_reference?:unknown}|null;
+    if(updated.error||saved?.connection_id!==c.id||saved.status!=='active')throw Error('status');
+    // Only the reference actually replaced under the SQL lock is safe to remove; the initially-read reference
+    // may already have changed in another verification. Never delete either secret on an ambiguous RPC response.
+    if(isCredentialReference(saved.replaced_reference)&&saved.replaced_reference!==reference)
+     await deps.vault.deleteCredential(saved.replaced_reference).catch(()=>log(provider,'vault_cleanup'));
     credential=refreshed;await record(deps,project.client_id,provider,'connection_refreshed',null,userId);
    }
    const validation=await source.validateConnection(credential);

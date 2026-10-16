@@ -64,6 +64,7 @@ test('pending card shows image, long date, subject, status, platform tabs, texts
 test('Google Business Profile card shows its own tab and a clean placeholder when the image is unavailable',async()=>{const [,,gbp]=await cards();const {ReviewCard}=card();const text=visible(render(jsx.jsx(ReviewCard,{card:gbp})));
  assert.ok(text.includes('Google Business Profile'));assert.ok(text.includes('Texte fiche Google.'));assert.ok(text.includes('Image indisponible'));assert.ok(!text.includes('Instagram'));});
 test('rejected card shows the reason and a single-publication regeneration that requires explicit AI authorization',async()=>{const [,rejected]=await cards();const {ReviewCard}=card();const html=render(jsx.jsx(ReviewCard,{card:rejected}));const text=visible(html);
+ assert.match(text,/Corriger manuellement/,'a provider is optional: rejection can be corrected without calling AI');
  for(const s of ['Rejeté','Motif du rejet','Le ton est trop vague pour ce client.','Régénérer','J’autorise un appel IA réel pour régénérer cette publication'])assert.ok(text.includes(s),s);
  assert.equal((html.match(/name="publication_id"/g)??[]).length,1);assert.ok(html.includes(`name="publication_id" value="${ids.rejected}"`));assert.match(html,/<input type="checkbox"[^>]*required=""[^>]*name="authorize_ai"/);assert.ok(!text.includes('Valider'));assert.ok(!html.includes('<select'));});
 test('debug card renders technical details only when provided',async()=>{const [pending]=await cards(true);const {ReviewCard}=card();const html=render(jsx.jsx(ReviewCard,{card:pending}));assert.ok(html.includes('data-debug="true"'));assert.ok(html.includes(ids.run));assert.ok(html.includes('estimated_cost_eur'));});
@@ -89,6 +90,12 @@ test('Modifier never submits when the save fails, and never resubmits the old re
  const stale=actionsSetup({current:{revision_id:ids.r2,status:'pending_review'}});assert.equal((await stale.m.editFromCardAction({},form())).ok,false);assert.deepEqual(writes(stale.calls),['saveDraft']);
  const unsubmitted=actionsSetup({submit:'Opération non confirmée. Rechargez la fiche et réessayez.'});assert.match((await unsubmitted.m.editFromCardAction({},form())).message,/brouillon/);});
 test('Valider calls the existing review decision for the current revision only',async()=>{const r=actionsSetup();const result=await r.m.approveFromCardAction({},form({reason:'ignoré'}));assert.equal(result.ok,true);assert.deepEqual(json(r.calls.find(c=>c[0]==='submitOrReview')[1]),{publication_id:ids.pending,revision_id:ids.r2,project_id:ids.project,decision:'approved'});});
+test('Valider reports channel, archive and unknown refusals as failures',async()=>{
+ for(const message of ['Cette publication cible un canal désactivé.','Vérification des canaux impossible : lecture seule par sécurité.','Publication archivée : lecture seule.','Nouveau refus métier.','']){
+  const r=actionsSetup({review:message});const result=await r.m.approveFromCardAction({},form());
+  assert.equal(result.ok,false,message);assert.equal(result.message,message);
+ }
+});
 test('Rejeter without a sufficient reason is impossible; with a reason it records the existing rejection',async()=>{for(const reason of [undefined,'','   ','court','  neuf car  ']){const r=actionsSetup();const result=await r.m.rejectFromCardAction({},form(reason===undefined?{}:{reason}));assert.equal(result.ok,false);assert.deepEqual(writes(r.calls),[]);}
  const r=actionsSetup({review:'Révision refusée. Créez une nouvelle révision pour la retravailler.'});const result=await r.m.rejectFromCardAction({},form({reason:'Le ton est trop vague pour ce client.'}));assert.equal(result.ok,true);const sent=r.calls.find(c=>c[0]==='submitOrReview')[1];assert.equal(sent.decision,'rejected');assert.equal(sent.reason,'Le ton est trop vague pour ce client.');});
 test('card actions deny a non-admin before any workflow call',async()=>{for(const name of ['approveFromCardAction','rejectFromCardAction','editFromCardAction']){const r=actionsSetup({deny:true});await assert.rejects(()=>r.m[name]({},form({reason:'Motif suffisamment long'})),/denied/);assert.deepEqual(writes(r.calls),[]);}});

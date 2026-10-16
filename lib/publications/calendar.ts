@@ -40,7 +40,7 @@ export function buildEditorialCalendar(client:{id:string},project:{id:string;cli
   result.push({key:`${project.id}:${week}:${slot}`,client_id:client.id,project_id:project.id,editorial_week:week,slot,local_date:date,local_time:time,timezone:zone,scheduled_for:instant,platforms:reservation?.platforms??[...platforms],publication_id:pub?.id??reservation?.publication_id??null,reservation_id:reservation?.id??null,state:conflict?"conflict":reservation?"reserved":pub?"existing":"missing"});
  }}return result;
 }
-export const calendarStatusLabels={free:"Slot libre",draft:"Brouillon",pending_review:"À valider",approved:"Approuvé",rejected:"Refusé",scheduled:"Planifié",published:"Publié",error:"Erreur"} as const;
+export const calendarStatusLabels={free:"Slot libre",skipped:"Ignoré",draft:"Brouillon",pending_review:"À valider",approved:"Approuvé",rejected:"Refusé",scheduled:"Planifié",published:"Publié",error:"Erreur"} as const;
 export type CalendarStatus=keyof typeof calendarStatusLabels;
 export type CalendarEntry={key:string;date:string;time:string|null;timezone:string;client_id:string;project_id:string|null;client_name:string;project_name:string;subject:string;platforms:PublicationPlatform[];status:CalendarStatus;revision:number|null;validation:string;publication_id:string|null;origin:Publication["creation_origin"]|null;conflict:boolean};
 export function entryStatus(publication:Publication|undefined,deliveries:PublicationDelivery[]):CalendarStatus {

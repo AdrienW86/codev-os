@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {useActionState} from 'react';
+import {flash} from '@/components/ui/flash';
 import {scheduleDraftAction,type ScheduleDraftState} from '@/app/(cockpit)/publications/[id]/schedule-actions';
 import type {ScheduleChoice} from '@/lib/publications/draft-scheduling-model';
 import {platformLabels} from '@/lib/publications/editor';
@@ -9,7 +10,11 @@ import type {PublicationPlatform} from '@/lib/publications/types';
 // « Planifier ce brouillon » : un créneau ouvert du calendrier par plateforme du brouillon. Les créneaux pris,
 // ignorés ou passés ne sont pas proposés ; la base les refuse aussi en cas de course.
 export function ScheduleDraftForm({publicationId,revisionId,choices}:{publicationId:string;revisionId:string;choices:ScheduleChoice[]}){
- const [state,schedule,pending]=useActionState(scheduleDraftAction,{} as ScheduleDraftState);
+ const [state,schedule,pending]=useActionState(async(previous:ScheduleDraftState,form:FormData)=>{
+  const result=await scheduleDraftAction(previous,form);
+  if(result.ok&&result.message)flash(result.message);
+  return result;
+ },{} as ScheduleDraftState);
  const missing=choices.filter(c=>!c.options.length);
  if(state.ok)return <div role="status" className="space-y-2 text-sm"><p>{state.message}</p><ul className="space-y-1">{state.publications?.map(p=><li key={p.publicationId}><Link className="text-accent" href={`/publications/${p.publicationId}`}>Ouvrir la publication {platformLabels[p.platform as PublicationPlatform]??'—'}</Link></li>)}</ul></div>;
  return <form action={schedule} className="space-y-3 text-sm"><input type="hidden" name="publication_id" value={publicationId}/><input type="hidden" name="revision_id" value={revisionId}/>

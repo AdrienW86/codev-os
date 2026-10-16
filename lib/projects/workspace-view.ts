@@ -20,10 +20,10 @@ export function projectTabs(projectId:string,hasPublications:boolean):ProjectTab
 export const publicationStatusLabels={draft:'Brouillon',pending_review:'À valider',approved:'Validé',rejected:'Rejeté'} as const;
 export function publicationStatusLabel(status:string):string{return (publicationStatusLabels as Record<string,string>)[status]??'Statut inconnu';}
 
-export type SlotDisplay='empty'|'draft'|'pending_review'|'approved'|'rejected'|'published'|'scheduled'|'error';
-export const slotDisplayLabels:Record<SlotDisplay,string>={empty:'Vide',draft:'Brouillon',pending_review:'À valider',approved:'Validé',rejected:'Rejeté',published:'Publié',scheduled:'Planifié',error:'Erreur'};
+export type SlotDisplay='empty'|'skipped'|'draft'|'pending_review'|'approved'|'rejected'|'published'|'scheduled'|'error';
+export const slotDisplayLabels:Record<SlotDisplay,string>={empty:'Vide',skipped:'Ignoré',draft:'Brouillon',pending_review:'À valider',approved:'Validé',rejected:'Rejeté',published:'Publié',scheduled:'Planifié',error:'Erreur'};
 export const slotDisplayClasses:Record<SlotDisplay,string>={
- empty:'border-dashed border-border text-muted',draft:'border-border bg-background',pending_review:'border-amber-500 bg-amber-500/10',
+ empty:'border-dashed border-border text-muted',skipped:'border-border text-muted',draft:'border-border bg-background',pending_review:'border-amber-500 bg-amber-500/10',
  approved:'border-emerald-600 bg-emerald-600/10',rejected:'border-red-600 bg-red-600/10',published:'border-sky-600 bg-sky-600/10',
  scheduled:'border-sky-400 bg-sky-400/10',error:'border-red-700 bg-red-700/15'};
 // A reserved placeholder without any revision is shown as empty, like an unreserved slot.

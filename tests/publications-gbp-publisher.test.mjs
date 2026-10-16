@@ -43,7 +43,7 @@ test('GBP: STANDARD local post (text, optional photo by signed URL), token only 
  assert.deepEqual(m.calls,[{method:'POST',path:`${LOC}/localPosts`,params:{},body:{languageCode:'fr',summary:'Avant l’hiver, faites vérifier votre toiture.',topicType:'STANDARD'},token:ACCESS}]);
  m=publisherWith(()=>post({state:'PROCESSING'}));
  res=await m.p.publish(input({media:[{url:SIGNED,mimeType:'image/png'}]}));
- assert.equal(res.ok,true,'PROCESSING is accepted (Google reviews asynchronously)');
+ assert.deepEqual(json(res),{ok:false,uncertain:true,errorCode:'post_processing'},'accepted by Google is not proof of visibility; no resend');
  assert.deepEqual(m.calls[0].body.media,[{mediaFormat:'PHOTO',sourceUrl:SIGNED}]);
  m=publisherWith(()=>post());await m.p.publish(input({media:[{url:SIGNED,mimeType:'image/jpeg'}]}));assert.equal(m.calls.length,1,'exactly one create');
  assert.deepEqual(leaks(res),[]);});
@@ -60,6 +60,21 @@ test('GBP validation before any call: platform, location, empty / too long text,
  assert.deepEqual(await r({media:[{url:SIGNED,mimeType:'image/jpeg'},{url:SIGNED,mimeType:'image/jpeg'}]}),['invalid_payload','too_many_media']);
  assert.deepEqual(await r({credential:credential({provider:'meta'})}),['auth','credential_invalid'],'a Meta secret is never sent to Google');
  assert.deepEqual(await r({credential:credential({expiresAt:'2029-06-01T09:00:00Z',refreshToken:null})}),['auth','token_expired']);});
+
+test('GBP HTTP 429 preserves safe Retry-After through the publisher, and seconds/date headers remain bounded',async()=>{
+ const retry=load('lib/integrations/publications-retry-after.ts');
+ assert.equal(retry.publicationRetryAfterSeconds('900',NOW),900);
+ assert.equal(retry.publicationRetryAfterSeconds('Fri, 01 Jun 2029 10:10:00 GMT',NOW),600);
+ assert.equal(retry.publicationRetryAfterSeconds('Fri, 01 Jun 2029 09:00:00 GMT',NOW),0);
+ assert.equal(retry.publicationRetryAfterSeconds('999999',NOW),21600);
+ for(const raw of [null,'','-1','1.5','Infinity','Bearer private','2029-06-01T10:10:00Z','x'.repeat(101)])assert.equal(retry.publicationRetryAfterSeconds(raw,NOW),null);
+ let calls=0;
+ const transport=integration.gbpPublishTransport(async()=>{calls++;return {status:429,headers:{get:name=>name==='retry-after'?'1200':name==='content-type'?'application/json':null},
+  text:async()=>JSON.stringify({error:{status:'RESOURCE_EXHAUSTED',message:'private provider text'}})};});
+ const result=await gbp.createGoogleBusinessProfilePublisher(transport,{now:()=>NOW}).publish(input());
+ assert.deepEqual(json(result),{ok:false,errorClass:'rate_limit',errorCode:'rate_limited',retryAfterSeconds:1200});
+ assert.equal(calls,1);assert.equal(model.nextRetryDelaySeconds(1,result.errorClass,result.retryAfterSeconds),1200);assert.deepEqual(leaks(result),[]);
+});
 
 test('GBP access token: refreshed in memory when expired (never before the create fails), refresh failures before any write',async()=>{
  const refreshed=[];const refresh=async c=>{refreshed.push(c.refreshToken);return {...c,accessToken:FRESH,expiresAt:'2029-06-01T11:00:00Z'};};
@@ -95,6 +110,8 @@ test('GBP error mapping: explicit 4xx → classified (no post), 5xx / 409 / time
  assert.deepEqual(pair(await r(()=>ok({}))),['uncertain','remote_id_missing']);
  assert.deepEqual(pair(await r(()=>post({name:'accounts/10/locations/2/localPosts/x'}))),['uncertain','remote_id_missing'],'a post of another location is never accepted');
  assert.deepEqual(pair(await r(()=>post({state:'REJECTED'}))),['invalid_payload','post_rejected']);
+ for(const state of [undefined,'LOCAL_POST_STATE_UNSPECIFIED','unexpected'])
+  assert.deepEqual(pair(await r(()=>post({state}))),['uncertain','post_visibility_unknown'],'only LIVE proves publication');
  for(const x of [await r(()=>gerr(401,'UNAUTHENTICATED')),await r(()=>gerr(500,'INTERNAL'))])assert.deepEqual(leaks(x),[],'provider text never kept');
  const outcome=publisherContract.outcomeOf(await r(()=>kind('timeout')));assert.deepEqual(json(outcome),{result:'uncertain',errorCode:'timeout_after_dispatch'},'P10: uncertain, never retried');
  assert.equal(publisherContract.outcomeOf(await r(()=>gerr(429,'RESOURCE_EXHAUSTED'))).result,'rate_limit');});
@@ -115,6 +132,12 @@ test('GBP reconciler: known name read, otherwise exact summary after the dispatc
  assert.deepEqual(json(await rec(()=>kind('timeout')).r.reconcile(base)),{status:'unknown',remoteId:null});
  const known={...base,remoteId:`${LOC}/localPosts/k1`};
  assert.deepEqual(json(await rec(()=>ok({name:`${LOC}/localPosts/k1`,state:'LIVE'})).r.reconcile(known)),{status:'exists',remoteId:`${LOC}/localPosts/k1`});
+ for(const state of ['PROCESSING',undefined,'LOCAL_POST_STATE_UNSPECIFIED']){
+  assert.deepEqual(json(await rec(()=>ok({name:`${LOC}/localPosts/k1`,state})).r.reconcile(known)),{status:'unknown',remoteId:null},'pending or unknown visibility: never published or missing');
+  assert.deepEqual(json(await rec(()=>ok({localPosts:[{...p('pending','Texte exact'),state}]})).r.reconcile(base)),{status:'unknown',remoteId:null},'pending match prevents a resend');
+ }
+ assert.deepEqual(json(await rec(()=>ok({localPosts:[p('foreign','Texte exact')].map(x=>({...x,name:'accounts/10/locations/other/localPosts/foreign'}))})).r.reconcile(base)),{status:'unknown',remoteId:null},'a foreign location cannot prove coverage of this location');
+ assert.deepEqual(json(await rec(()=>ok({localPosts:[],nextPageToken:999})).r.reconcile(base)),{status:'unknown',remoteId:null},'malformed pagination cannot prove absence');
  assert.deepEqual(json(await rec(()=>gerr(404,'NOT_FOUND')).r.reconcile(known)),{status:'missing',remoteId:null});
  assert.deepEqual(json(await rec(()=>gerr(403,'PERMISSION_DENIED')).r.reconcile(known)),{status:'unknown',remoteId:null});
  assert.deepEqual(json(await rec(()=>{throw Error('no call');}).r.reconcile({...base,remoteId:'accounts/10/locations/2/localPosts/k1'})),{status:'unknown',remoteId:null},'name of another location');
@@ -123,6 +146,21 @@ test('GBP reconciler: known name read, otherwise exact summary after the dispatc
  assert.deepEqual(json(await rec(()=>{throw Error('no call');}).r.reconcile({...base,credential:credential({expiresAt:null,refreshToken:null})})),{status:'unknown',remoteId:null},'expired, no refresh: unknown');
  m=rec(()=>ok({localPosts:[p('b','Texte exact')]}),{refresh:async c=>({...c,accessToken:FRESH})});
  assert.equal((await m.r.reconcile({...base,credential:credential({expiresAt:null})})).status,'exists');assert.equal(m.calls[0].token,FRESH);});
+
+test('GBP malformed or partial successful list responses never authorize an uncertain delivery retry',async()=>{
+ const base={platform:'google_business_profile',remoteId:null,idempotencyKey:'',credential:credential(),account:{externalAccountId:LOC,parentExternalId:'accounts/10'},text:'Texte exact',since:'2029-06-01T10:00:00.000Z'};
+ const valid={name:`${LOC}/localPosts/a`,summary:'Autre texte',createTime:'2029-06-01T10:00:05Z',state:'LIVE'};
+ const reconcile=body=>gbp.createGoogleBusinessProfileReconciler(double(()=>ok(body)).transport,{now:()=>NOW}).reconcile(base);
+ for(const body of [null,[],{},'invalid JSON',{error:{message:'private provider failure'}},{localPosts:null},{localPosts:{}},
+  {localPosts:[null]},{localPosts:[{}]},...[
+   {name:undefined},{name:'accounts/10/locations/other/localPosts/a'},{summary:undefined},{summary:3},
+   {createTime:undefined},{createTime:'invalid'},{state:undefined},{state:'UNEXPECTED'},
+  ].map(extra=>({localPosts:[{...valid,...extra}]})),
+  ...[null,1,{},' ',' page-2','page-2\n','x'.repeat(501)].map(nextPageToken=>({localPosts:[],nextPageToken})),
+ ])assert.deepEqual(json(await reconcile(body)),{status:'unknown',remoteId:null},'ambiguous coverage must remain unknown');
+ assert.deepEqual(json(await reconcile({localPosts:[]})),{status:'missing',remoteId:null},'an explicit complete empty list proves absence');
+ assert.deepEqual(json(await reconcile({localPosts:[valid],nextPageToken:''})),{status:'missing',remoteId:null},'a valid complete list without a match proves absence');
+});
 
 test('GBP transport: v4 localPosts allowlist, Authorization header only, JSON body, no redirect, bounded, no retry',async()=>{
  const calls=[];const f=async(url,init)=>{calls.push({url,init:{...init,signal:undefined}});return {status:200,headers:{get:k=>({'content-type':'application/json; charset=UTF-8'})[k.toLowerCase()]??null},text:async()=>JSON.stringify({name:'x'})};};

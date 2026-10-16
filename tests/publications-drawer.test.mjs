@@ -249,10 +249,17 @@ test('À publier: pending_review → decision only; draft → submit then decisi
 
 test('Rejeter: reason of 10 to 3000 characters; pending → rejection; draft → submit then rejection; never for other states',async()=>{
  for(const reason of [undefined,'','   ','court','  neuf car ','x'.repeat(3001)]){const r=actionSetup();const result=await r.m.rejectFromDrawerAction({},decisionForm(reason===undefined?{}:{reason}));assert.equal(result.ok,false);assert.deepEqual(writes(r.calls),[]);}
- const pending=actionSetup({decision:'Révision refusée.'});assert.equal((await pending.m.rejectFromDrawerAction({},decisionForm({reason:'  Le ton est trop vague.  '}))).ok,true);
+ const pending=actionSetup({decision:'Révision refusée. Créez une nouvelle révision pour la retravailler.'});assert.equal((await pending.m.rejectFromDrawerAction({},decisionForm({reason:'  Le ton est trop vague.  '}))).ok,true);
  assert.deepEqual(json(pending.calls.find(c=>c[0]==='submitOrReview')[1]),{publication_id:PUB,revision_id:R2,decision:'rejected',reason:'Le ton est trop vague.'});
- const draft=actionSetup({current:{revision_id:R2,status:'draft'},decision:'Révision refusée.'});await draft.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}));assert.deepEqual(writes(draft.calls),['submitOrReview:submit','submitOrReview:rejected']);
+ const draft=actionSetup({current:{revision_id:R2,status:'draft'},decision:'Révision refusée. Créez une nouvelle révision pour la retravailler.'});await draft.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}));assert.deepEqual(writes(draft.calls),['submitOrReview:submit','submitOrReview:rejected']);
  const done=actionSetup({current:{revision_id:R2,status:'approved'}});assert.equal((await done.m.rejectFromDrawerAction({},decisionForm({reason:'Le ton est trop vague.'}))).ok,false);assert.deepEqual(writes(done.calls),[]);});
+
+test('approval channel, archive and new unknown refusals cannot become a successful drawer decision',async()=>{
+ for(const message of ['Cette publication cible un canal désactivé.','Vérification des canaux impossible : lecture seule par sécurité.','Publication archivée : lecture seule.','Nouveau refus métier.','']){
+  const r=actionSetup({decision:message});const result=await r.m.approveFromDrawerAction({},decisionForm());
+  assert.equal(result.ok,false,message);assert.doesNotMatch(result.message,/Publication passée à/);
+ }
+});
 
 test('Enregistrer and image staging actions delegate to saveDraft and uploadImage and return safe data only',async()=>{
  const saved=actionSetup();const r=await saved.m.saveFromDrawerAction({},draftForm());assert.equal(r.ok,true);assert.deepEqual(writes(saved.calls),['saveDraft']);assert.ok(saved.calls.some(c=>c[0]==='revalidate'&&c[1]==='/publications'));
@@ -299,3 +306,19 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
  assert.equal(readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').length,23,'9 + Lot 4.3 P1 … P5 + P7 … P13');});
+
+test('detail loader reuses only the requested authorized workspace and still refreshes current delivery locks',async()=>{
+ const w=workspace(),calls=[],fake=fakeDb({publications:[{id:PUB,client:{name:'Jrenov'},project:{name:'Réseaux Jrenov'}}],publication_calendar_slots:[],publication_deliveries:[{id:ASSET,publication_id:PUB,status:'uncertain',variant_id:'v-facebook',platform:'facebook'}]});
+ const loader=deny=>load('lib/publications/drawer.ts',{'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');if(deny)throw Error('denied');}},'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},'./workspace':{getWorkspace:async()=>{throw Error('workspace must not be re-read');}},'./project-channels':{publicationChannelLock:async()=>null},'./agent-data':{},'./delivery/service':{DELIVERY_COLUMNS:'*',describeDeliveries:async()=>[]},'./editorial-justification-read':{loadPublicationJustification:async()=>null}});
+ const result=await loader(false).loadPublicationDetail(PUB,{debug:false,workspace:w});assert.equal(result.state,'ok');assert.equal(result.detail.readOnly,true);assert.match(result.detail.readOnlyReason,/incertain/);assert.ok(fake.reads.some(r=>r.table==='publication_deliveries'),'delivery status is freshly checked even with a preloaded workspace');
+ const reads=fake.reads.length;assert.deepEqual(json(await loader(false).loadPublicationDetail(OTHER,{debug:false,workspace:w})),{state:'unavailable'});assert.equal(fake.reads.length,reads,'mismatching publication is refused before storage');
+ await assert.rejects(()=>loader(true).loadPublicationDetail(PUB,{debug:false,workspace:w}),/denied/);assert.equal(fake.reads.length,reads,'preloading never bypasses admin authorization');
+});
+
+test('delivery preparation is offered only for the approved current revision attached to a real calendar slot',async()=>{
+ const cases=[{status:'approved',slot:null,occurrence_id:null,expected:false},{status:'approved',slot:1,occurrence_id:null,expected:true},{status:'approved',slot:null,occurrence_id:OTHER,expected:true},{status:'draft',slot:1,occurrence_id:null,expected:false},{status:'approved',slot:1,occurrence_id:null,archived_at:'2026-10-15T10:00:00Z',expected:false}];
+ for(const c of cases){const w=workspace({status:c.status});Object.assign(w.publication,c);const fake=fakeDb({publications:[{id:PUB,client:{name:'Jrenov'},project:{name:'Réseaux Jrenov'}}],publication_calendar_slots:[],publication_deliveries:[]});
+  const loader=load('lib/publications/drawer.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},'./workspace':{getWorkspace:async()=>w},'./project-channels':{publicationChannelLock:async()=>null},'./agent-data':{},'./delivery/service':{DELIVERY_COLUMNS:'*',describeDeliveries:async()=>[]},'./editorial-justification-read':{loadPublicationJustification:async()=>null}});
+  const result=await loader.loadPublicationDetail(PUB,{debug:false});assert.equal(result.state,'ok');assert.equal(result.detail.diffusion.canPrepare,c.expected,JSON.stringify(c));
+ }
+});

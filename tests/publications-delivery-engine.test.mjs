@@ -57,7 +57,7 @@ test('model: outcome payload validated (simulated never recorded as published, n
  assert.equal(model.deliveryView({...row,status:'blocked',blocked_reason:'emergency_stop'},{accountName:'a',attempts:0,nextRetryAt:null}).blockedReason,'Arrêt d’urgence actif');
  assert.equal(model.deliveryView({...row,status:'blocked',blocked_reason:'content_changed'},{accountName:'a',attempts:0,nextRetryAt:null}).blockedReason,'Contenu modifié depuis la préparation');
  assert.equal(model.deliveryView({...row,status:'weird'},{accountName:'a',attempts:0,nextRetryAt:null}),null,'unknown status not displayed');
- assert.equal(model.DELIVERY_ENGINE_NOTICE,'Envoi réel uniquement via « Envoyer les publications dues », et seulement si l’arrêt d’urgence est levé et la publication activée.');});
+ assert.match(model.DELIVERY_ENGINE_NOTICE,/Après validation humaine/);assert.match(model.DELIVERY_ENGINE_NOTICE,/planificateur/);assert.match(model.DELIVERY_ENGINE_NOTICE,/Sans API connectée, aucun envoi réel/);});
 
 test('publisher contract and fake publisher: deterministic results, typed failures, unknown exceptions are uncertain',async()=>{
  assert.deepEqual(json(publisher.outcomeOf({ok:true,remoteId:'simulated-a',simulated:true})),{result:'simulated',remoteId:'simulated-a'});
@@ -152,7 +152,7 @@ test('service: deliveries view, prepare refusals mapped, retry only for a delive
  assert.deepEqual(r.log.filter(x=>x[0]==='rpc').map(x=>x[1]),['publication_delivery_retry']);
  const foreign=serviceWith();assert.equal((await foreign.m.retryPublicationDelivery(uid(4,9),DEL)).message,'Diffusion invalide.');assert.ok(!foreign.log.some(x=>x[0]==='rpc'),'delivery of another publication: no RPC');});
 
-test('actions and UI: admin first, « Diffusion » section, manual-trigger notice, no « Publier maintenant », no secret',async()=>{
+test('actions and UI: admin first, « Diffusion » section, truthful approved-delivery notice, no « Publier maintenant », no secret',async()=>{
  const calls=[];const a=load('app/(cockpit)/publications/delivery-actions.ts',{'next/cache':{revalidatePath:(p,t)=>calls.push(['revalidate',p,t??null])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
   '@/lib/publications/delivery/service':{preparePublicationDelivery:async p=>{calls.push(['prepare',p]);return {ok:true,message:'ok'};},retryPublicationDelivery:async(p,d)=>{calls.push(['retry',p,d]);return {ok:true,message:'ok'};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
@@ -162,7 +162,7 @@ test('actions and UI: admin first, « Diffusion » section, manual-trigger notic
  const view=(status,extra={})=>({...model.deliveryView({id:uid(5,status.length),platform:'facebook',status,remote_id:status==='simulated'?'simulated-x':null,blocked_reason:status==='blocked'?'connection_inactive':null,
   last_error_class:status==='failed'?'invalid_payload':null,last_error_code:status==='failed'?'text_too_long':null},{accountName:'Toitures Dupont',attempts:2,nextRetryAt:null}),...extra});
  const html=renderToStaticMarkup(jsx.jsx(DeliverySection,{publicationId:PUB,diffusion:{deliveries:[view('simulated'),view('failed'),view('blocked')],canPrepare:false}}));
- assert.match(html,/Diffusion/);assert.match(html,/data-engine-mode="manual-trigger"[^>]*>Envoi réel uniquement via « Envoyer les publications dues »/);
+ assert.match(html,/Diffusion/);assert.match(html,/data-engine-mode="approved-delivery"[^>]*>Après validation humaine/);assert.match(html,/Sans API connectée, aucun envoi réel/);
  assert.match(html,/Diffusion simulée/);assert.match(html,/Identifiant simulé \(aucune publication réelle\)/);assert.match(html,/Contenu refusé par le fournisseur \(text_too_long\)/);assert.match(html,/Motif : Connexion inactive/);
  assert.equal((html.match(/>Réessayer</g)??[]).length,2,'retry for failed and blocked only');assert.doesNotMatch(html,/Préparer la diffusion/);
  assert.doesNotMatch(html,/Publier maintenant|simulated-x|vault:|token|credential/i);

@@ -77,11 +77,14 @@ export function createGoogleBusinessProfilePublisher(transport:GbpPublishTranspo
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
    if(kind==='invalid_path')return fail('permanent','invalid_request');
    return uncertain(kind==='timeout'?'timeout_after_dispatch':'network_after_dispatch');}
-  if(r.status!==200)return classifyGbpError(r.status,r.body,'write');
+  if(r.status!==200){const failure=classifyGbpError(r.status,r.body,'write');
+   return 'errorClass' in failure&&failure.errorClass==='rate_limit'&&r.retryAfterSeconds!==undefined?{...failure,retryAfterSeconds:r.retryAfterSeconds}:failure;}
   const post=record(r.body),name=typeof post.name==='string'&&POST_NAME.test(post.name)&&post.name.startsWith(location+'/')?post.name:null;
   if(!name)return uncertain('remote_id_missing');
-  // A post refused by Google's review is not visible: the content must change (no automatic resend).
+  // Accepted by the API is not necessarily public: only LIVE proves visibility after Google's review. A pending
+  // or unknown state may become live later, so it remains uncertain and must never trigger an automatic resend.
   if(post.state==='REJECTED')return fail('invalid_payload','post_rejected');
+  if(post.state!=='LIVE')return uncertain(post.state==='PROCESSING'?'post_processing':'post_visibility_unknown');
   return {ok:true,remoteId:name,simulated:false};
  }};
 }
@@ -101,23 +104,35 @@ export function createGoogleBusinessProfileReconciler(transport:GbpPublishTransp
   if(d.remoteId){
    if(!POST_NAME.test(d.remoteId)||!d.remoteId.startsWith(location+'/'))return unknown;
    const r=await read(d.remoteId,{},token.token);if(!r)return unknown;
-   if(r.status===200&&record(r.body).name===d.remoteId)return record(r.body).state==='REJECTED'?{status:'missing',remoteId:null}:{status:'exists',remoteId:d.remoteId};
+   if(r.status===200&&record(r.body).name===d.remoteId){const state=record(r.body).state;
+    return state==='LIVE'?{status:'exists',remoteId:d.remoteId}:state==='REJECTED'?{status:'missing',remoteId:null}:unknown;}
    return r.status===404?{status:'missing',remoteId:null}:unknown;
   }
   const text=(d.text??'').trim(),since=d.since?Date.parse(d.since):NaN;if(!text||!Number.isFinite(since))return unknown;
-  const matches:string[]=[];let pageToken:string|null=null;
+  const matches:string[]=[];let pageToken:string|null=null,pending=false;
   for(let i=0;;i++){
    if(i>=MAX_RECONCILE_PAGES)return unknown;
    const r=await read(`${location}/localPosts`,{pageSize:'100',...(pageToken?{pageToken}:{})},token.token);
    if(!r||r.status!==200)return unknown;
    const body=record(r.body);
-   for(const p of (Array.isArray(body.localPosts)?body.localPosts:[]).map(record)){
+   // A 200 alone cannot prove absence: an unreadable/partial JSON body, foreign location or malformed row may
+   // hide the dispatched post. Keep it uncertain rather than authorizing a duplicate after manual confirmation.
+   // Even an omitted repeated field is inconclusive here; only an explicit, well-formed list proves coverage.
+   if(!Array.isArray(body.localPosts))return unknown;
+   for(const p of body.localPosts.map(record)){
     const at=typeof p.createTime==='string'?Date.parse(p.createTime):NaN;
-    if(typeof p.name==='string'&&POST_NAME.test(p.name)&&p.state!=='REJECTED'&&Number.isFinite(at)&&at>=since-120_000&&String(p.summary??'').trim()===text)matches.push(p.name);
+    if(typeof p.name!=='string'||!POST_NAME.test(p.name)||!p.name.startsWith(location+'/')||!Number.isFinite(at)
+     ||typeof p.summary!=='string'||!['LIVE','PROCESSING','REJECTED'].includes(p.state as string))return unknown;
+    if(at>=since-120_000&&p.summary.trim()===text){
+     if(p.state==='LIVE')matches.push(p.name);else if(p.state!=='REJECTED')pending=true;
+    }
    }
+   if(body.nextPageToken!==undefined&&(typeof body.nextPageToken!=='string'||body.nextPageToken.length>500
+    ||body.nextPageToken!==body.nextPageToken.trim()||/[\u0000-\u001f\u007f]/.test(body.nextPageToken)))return unknown;
    pageToken=typeof body.nextPageToken==='string'&&body.nextPageToken.length>0&&body.nextPageToken.length<=500?body.nextPageToken:null;
    if(!pageToken)break;
   }
+  if(pending)return unknown;
   if(matches.length===1)return {status:'exists',remoteId:matches[0]};
   return matches.length===0?{status:'missing',remoteId:null}:unknown;
  }};

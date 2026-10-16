@@ -75,7 +75,7 @@ Les tests de sécurité exécutent le proxy et le helper avec des sessions Clerk
 
 ## Portées métier et Publications
 
-Lot 2 Publications manuel : liste filtrable, création, fiche, révisions, validation humaine et images privées. Rapport à jour et résultats de tests : [Lot 2](docs/publications-lot-2.md). Les migrations 00000–00005 sont installées sur `codev-os`, le kill switch reste actif. Les rapports de validation locale ci-dessous décrivent les étapes historiques précédant cette installation.
+Publications : parcours manuel complet avant connexion des API, médias privés, révisions, validation, planification, exports et diffusion contrôlée. Guide actuel et branchements restants : [Publications prêtes à connecter](docs/publications-ready-to-connect.md). Les rapports « Lot 1 » et « Lot 2 » ci-dessous décrivent des étapes historiques ; ils ne certifient pas l'état actuel de Supabase distant.
 
 Les agents distinguent les portées client et projet. Les spécialistes utilisent des autorisations projet, les généralistes disposent du contexte mensuel déterministe. Fiche projet : `/projects/[id]` ; synthèse : `/clients/[id]/summary?period=2026-09`.
 

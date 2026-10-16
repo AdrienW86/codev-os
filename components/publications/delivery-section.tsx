@@ -5,11 +5,11 @@ import {formatDate} from '@/lib/format-date';
 import {DELIVERY_ENGINE_NOTICE,type DeliveryView,type DiffusionView} from '@/lib/publications/delivery/model';
 
 // Drawer « Diffusion » (Lot 4.3 P10): status, account, attempts, last safe error, next retry. No per-publication
-// « Publier maintenant »: sending goes through the admin trigger « Envoyer les publications dues » (P13).
+// « Publier maintenant »: sending uses the bounded admin trigger or the existing scheduler when explicitly enabled.
 const initial:DeliveryActionState={};
 export function DeliverySection({publicationId,diffusion}:{publicationId:string;diffusion:DiffusionView}){
  return <section className="rounded-xl border border-border p-4" data-diffusion="true"><h3 className="font-semibold">Diffusion</h3>
-  <p role="note" className="mt-1 text-xs text-muted" data-engine-mode="manual-trigger">{DELIVERY_ENGINE_NOTICE}</p>
+  <p role="note" className="mt-1 text-xs text-muted" data-engine-mode="approved-delivery">{DELIVERY_ENGINE_NOTICE}</p>
   {diffusion.deliveries.length?<ul className="mt-3 space-y-3 text-sm">{diffusion.deliveries.map(d=><DeliveryRowView key={d.id} publicationId={publicationId} delivery={d}/>)}</ul>
    :<p className="mt-3 text-sm text-muted">Aucune diffusion préparée.</p>}
   {diffusion.canPrepare&&<PrepareForm publicationId={publicationId}/>}</section>;
@@ -41,11 +41,13 @@ function RetryForm({publicationId,deliveryId}:{publicationId:string;deliveryId:s
 function ReconcileForms({deliveryId}:{deliveryId:string}){
  const [checked,check,checking]=useActionState(reconcileDeliveryAction,initial);
  const [confirmed,confirm,confirming]=useActionState(confirmNotPublishedAction,initial);
+ const canConfirm=checked.ok===true&&checked.result==='missing'&&!checking&&!confirming&&!confirmed.ok;
  return <div className="mt-2 space-y-2 text-xs" data-reconcile="true">
   <form action={check} className="flex flex-wrap items-center gap-2"><input type="hidden" name="delivery_id" value={deliveryId}/>
-   <button disabled={checking} className="rounded-lg border border-border px-3 py-1">{checking?'Vérification…':'Vérifier chez le fournisseur'}</button>
+   <button disabled={checking||confirming} className="rounded-lg border border-border px-3 py-1">{checking?'Vérification…':'Vérifier chez le fournisseur'}</button>
    {checked.message&&<span role={checked.ok?'status':'alert'} className={checked.ok?'':'text-danger'}>{checked.message}</span>}</form>
   <form action={confirm} className="flex flex-wrap items-center gap-2"><input type="hidden" name="delivery_id" value={deliveryId}/>
-   <button disabled={confirming} className="rounded-lg border border-danger/60 px-3 py-1 text-danger">{confirming?'Enregistrement…':'Confirmer : non publiée'}</button>
+   <label className="flex items-start gap-2"><input type="checkbox" name="confirm" required disabled={!canConfirm}/>Je confirme, après vérification, que cette publication n’a pas été diffusée.</label>
+   <button disabled={!canConfirm} className="rounded-lg border border-danger/60 px-3 py-1 text-danger">{confirming?'Enregistrement…':'Confirmer : non publiée'}</button>
    {confirmed.message&&<span role={confirmed.ok?'status':'alert'} className={confirmed.ok?'':'text-danger'}>{confirmed.message}</span>}</form></div>;
 }

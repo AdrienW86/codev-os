@@ -17,14 +17,14 @@ import {driveMediaSource,type PublicationMediaSource} from '../media/source';
 import {buildEditorialJustification,MAX_JUSTIFICATION_BYTES,type EditorialJustification} from '../editorial-justification';
 import {adaptImage} from '../media/transform';
 import type {Json} from '@/lib/supabase/database.types';
-import type {PublicationPlatform} from '../types';
+import {publicationPlatforms,type PublicationPlatform} from '../types';
 
 // Agent Publications v2 orchestration (Lot 4.3 P7). Explicit admin action only. Order: open occurrences → batch →
 // context → begin (lease, budget, idempotence) → generation → strict validation → ONE atomic finish (all drafts or
 // nothing). Every failure after begin is recorded (fail). Never submits, approves, publishes or schedules.
 // P8: when a media was selected, finish reserves it and the compensable media step attaches it (media.ts). A media
 // failure keeps the drafts (explicit needs_media, never reported as a full success) and can be retried without AI.
-export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean};
+export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean;recoverable?:boolean};
 export type AgentV2MediaOptions={mediaSource?:PublicationMediaSource;adapt?:ImageAdapter};
 const result=(ok:boolean,message:string,extra:Partial<AgentV2Result>={}):AgentV2Result=>({ok,message,publications:[],withMedia:false,...extra});
 const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2MediaDb,source:options.mediaSource??driveMediaSource(),adapt:options.adapt??adaptImage});
@@ -32,6 +32,25 @@ const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2Medi
 async function previewOf(runId:string):Promise<string|null>{try{return (await getAgentV2RunMedia(runId))?.media.preview??null;}catch{return null;}}
 const json=(value:unknown):Json=>JSON.parse(JSON.stringify(value)) as Json;
 const zeroUsage={input_tokens:0,output_tokens:0,estimated_cost_eur:0,model:'gpt-4.1-mini-2025-04-14'};
+type CreatedPublication={id:string;platform:PublicationPlatform;label:string};
+type StoredPreparation={status:string;client_id:string;project_id:string;publication_ids:unknown;occurrence_ids:unknown};
+const publicationIds=(value:unknown,count:number):string[]|null=>Array.isArray(value)&&value.length===count&&value.every(isPublicationUuid)&&new Set(value).size===count?value:null;
+async function readPreparation(db:ReturnType<typeof getSupabaseServerClient>,runId:string,clientId:string,projectId:string):Promise<StoredPreparation|null>{
+ try{const r=await db.from('publication_agent_v2_runs').select('status,client_id,project_id,publication_ids,occurrence_ids').eq('id',runId).eq('client_id',clientId).eq('project_id',projectId).maybeSingle();
+  const row=r.data as StoredPreparation|null;return r.error||!row||row.client_id!==clientId||row.project_id!==projectId?null:row;
+ }catch{return null;}
+}
+// finish creates publications in ascending occurrence UUID order, while the run keeps the original input order.
+// Match that SQL order when recovering links from the durable, client-scoped run after a failed detail read.
+function storedPublications(row:StoredPreparation|null,batch:{occurrenceId:string;platform:PublicationPlatform}[]):CreatedPublication[]|null{
+ if(row?.status!=='completed')return null;
+ const ids=publicationIds(row.publication_ids,batch.length),occurrences=row.occurrence_ids;
+ if(!ids||!Array.isArray(occurrences)||occurrences.length!==batch.length||new Set(occurrences).size!==batch.length||!occurrences.every(isPublicationUuid))return null;
+ const platforms=[...occurrences].sort().map(id=>batch.find(o=>o.occurrenceId===id)?.platform);
+ if(platforms.some(p=>!p))return null;
+ return ids.map((id,i)=>({id,platform:platforms[i]!,label:platformLabels[platforms[i]!]}));
+}
+const uncertainPreparation=(runId:string)=>result(false,'Résultat de préparation indéterminé. Consultez les dernières préparations et le calendrier avant toute relance ; les réservations sont conservées.',{runId,recoverable:true});
 
 const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il contenait une affirmation absente du contexte (prix, garantie, délai, prestation non vérifiée…). Aucun brouillon créé.',
  repetition:'Contenu refusé : trop proche des dernières publications (sujet, prestation, formulation ou accroche). Aucun brouillon créé ; relancez.',
@@ -111,14 +130,38 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
   return fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',checked.detail?`${message} Motif : ${checked.detail}.`:message);}
  const value=checked.value,mediaId=value.publications[0]?.mediaId??null;
  await recordJustification(db,run,userId,buildEditorialJustification(context.input,{value},now));
- const finished=await db.rpc('publication_agent_v2_finish',{p_run_id:run,p_output:json({idea:value.idea,publications:value.publications.map(p=>({occurrence_id:p.occurrenceId,text:p.text,cta:p.cta}))}),
-  p_media_id:mediaId,p_usage:json({input_tokens:usage?.input_tokens??0,output_tokens:usage?.output_tokens??0,estimated_cost_eur:safeUsage(usage).estimated_cost_eur}),p_actor_id:userId});
- if(finished.error)return fail('occurrence_unavailable','Une occurrence a changé pendant la préparation. Aucun brouillon créé ; relancez.');
- const ids=((finished.data as {publication_ids?:unknown}|null)?.publication_ids??[]) as string[];
- const byOccurrence=new Map(value.publications.map(p=>[p.occurrenceId,p.platform]));
- const created=await db.from('publications').select('id,platform,occurrence_id').in('id',ids);
- const publications=(created.data??[]).map(p=>({id:p.id as string,platform:(p.platform??byOccurrence.get(p.occurrence_id as string)) as PublicationPlatform}))
-  .map(p=>({...p,label:platformLabels[p.platform]}));
+ const finishArgs={p_run_id:run,p_output:json({idea:value.idea,publications:value.publications.map(p=>({occurrence_id:p.occurrenceId,text:p.text,cta:p.cta}))}),
+  p_media_id:mediaId,p_usage:json({input_tokens:usage?.input_tokens??0,output_tokens:usage?.output_tokens??0,estimated_cost_eur:safeUsage(usage).estimated_cost_eur}),p_actor_id:userId};
+ let finished;
+ try{finished=await db.rpc('publication_agent_v2_finish',finishArgs);}catch{finished={data:null,error:{code:'network'}};}
+ let ids=publicationIds((finished.data as {publication_ids?:unknown}|null)?.publication_ids,batch.length),stored:StoredPreparation|null=null;
+ if(finished.error||!ids){
+  stored=await readPreparation(db,run,context.clientId,projectId);
+  const recovered=storedPublications(stored,batch);
+  if(recovered)ids=recovered.map(p=>p.id);
+  else{
+   // A PostgreSQL rejection confirms rollback. A transport error can arrive after COMMIT, or while the server is
+   // still finishing: never fail that run, release its reservations, or invite a second generation.
+   if(stored?.status==='processing'&&finished.error&&['23505','23514','40001','22023','55000','P0001'].includes(finished.error.code??''))
+    return fail('occurrence_unavailable','Une occurrence a changé pendant la préparation. Aucun brouillon créé ; relancez.');
+   if(stored?.status==='failed')return result(false,'Préparation interrompue. Consultez les dernières préparations avant de relancer.',{runId:run});
+   return uncertainPreparation(run);
+  }
+ }
+ // IDs belong to this project's run; a detail query is additionally scoped to the same client and project.
+ let publications:CreatedPublication[]|null=null,detailsUnavailable=false;
+ try{
+  const created=await db.from('publications').select('id,client_id,project_id,platform,occurrence_id').eq('client_id',context.clientId).eq('project_id',projectId).in('id',ids!);
+  const rows=created.data??[];
+  if(!created.error&&rows.length===ids!.length&&new Set(rows.map(p=>p.id)).size===ids!.length&&rows.every(p=>ids!.includes(p.id)&&p.client_id===context.clientId&&p.project_id===projectId
+    &&publicationPlatforms.includes(p.platform as PublicationPlatform)&&batch.some(o=>o.occurrenceId===p.occurrence_id&&o.platform===p.platform)))
+   publications=rows.map(p=>({id:p.id,platform:p.platform as PublicationPlatform,label:platformLabels[p.platform as PublicationPlatform]}));
+ }catch{/* Durable run below remains the authority after a failed detail read. */}
+ if(!publications){
+  stored??=await readPreparation(db,run,context.clientId,projectId);
+  publications=storedPublications(stored,batch);detailsUnavailable=true;
+  if(!publications)return uncertainPreparation(run);
+ }
  // Media step (only when a media was selected): drafts already exist, whatever happens next.
  const outcome=mediaId?await attachAgentV2Media(run,userId,mediaDeps(db,options)):null;
  const mediaState=mediaStateOf(outcome);
@@ -127,7 +170,8 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  if(outcome&&outcome.state!=='attached')console.error('[publications-agent-v2] media not attached',{run_id:run,state:outcome.state,code:'code' in outcome?outcome.code:null});
  // Aucune photo adaptée : les brouillons existent, la photo manque (approbation impossible tant qu'elle manque).
  const missing=!mediaId&&await notifyMissingPhoto(db,context.clientId,now);
- return result(true,agentV2ResultMessage(ids.length,mediaState)+(!mediaId?' Photo manquante signalée : ajoutez des photos à la photothèque du client.':''),{publications,withMedia:mediaState==='attached',runId:run,media,mediaMissing:!mediaId,missingNotified:missing});
+ return result(true,agentV2ResultMessage(publications.length,mediaState)+(!mediaId?' Photo manquante signalée : ajoutez des photos à la photothèque du client.':'')
+  +(detailsUnavailable?' Les liens proviennent de la préparation enregistrée ; les détails sont temporairement indisponibles.':''),{publications,withMedia:mediaState==='attached',runId:run,media,mediaMissing:!mediaId,missingNotified:missing});
 }
 
 // Reprise de l'étape média par le planificateur (socle lot 6), au nom de l'administrateur délégué : jamais de

@@ -169,7 +169,7 @@ const output=mediaId=>({idea:{subject:'Entretien de toiture',angle:'Vérifier la
  {occurrenceId:uid(5,2),platform:'instagram',text:'Toiture prête pour l’hiver ? #toiture',cta:null,mediaId},{occurrenceId:uid(5,3),platform:'google_business_profile',text:'Couverture : contrôle de toiture.',cta:null,mediaId}]});
 function serviceWith({mediaRpc={},run={project_id:P,status:'completed',media_status:'needs_media'}}={}){
  const log=[],stored=new Map();let generations=0;
- const db={from(table){const q={select:()=>q,eq:()=>q,in:async()=>({data:PUBS.map((id,i)=>({id,platform:batch[i].platform,occurrence_id:batch[i].occurrenceId})),error:null}),
+ const db={from(table){const q={select:()=>q,eq:()=>q,in:async()=>({data:PUBS.map((id,i)=>({id,client_id:C,project_id:P,platform:batch[i].platform,occurrence_id:batch[i].occurrenceId})),error:null}),
    maybeSingle:async()=>{log.push(['read',table]);return table==='publication_agent_v2_runs'?{data:mediaRpc.state?mediaRpc.state():run,error:null}:{data:{id:P,client_id:C,type:'Réseaux sociaux'},error:null};}};return q;},
   rpc:async(name,args)=>{log.push([name,json(args)]);if(mediaRpc[name])return mediaRpc[name](args);
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:PUBS,editorial_group_id:uid(7,1),media_status:'pending'},error:null}:{data:null,error:null};},

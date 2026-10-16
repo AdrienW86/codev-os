@@ -70,7 +70,9 @@ export async function delegatedActor(clientId:string,isAdmin:(userId:string)=>bo
 type DraftSubmission={submitted:string[];complete:boolean;reviewRequired:boolean};
 async function submitDrafts(actor:string,ids:readonly string[]):Promise<DraftSubmission>{
  if(!ids.length)return {submitted:[],complete:false,reviewRequired:false};
- const rows=await db().from('publications').select('id,status,current_revision_id').in('id',[...ids]);
+ let rows;
+ try{rows=await db().from('publications').select('id,status,current_revision_id').in('id',[...ids]);}
+ catch{return {submitted:[],complete:false,reviewRequired:false};}
  if(rows.error||!rows.data)return {submitted:[],complete:false,reviewRequired:false};
  const submitted:string[]=[];
  let complete=new Set(rows.data.map(p=>p.id)).size===new Set(ids).size,reviewRequired=false;
@@ -79,16 +81,18 @@ async function submitDrafts(actor:string,ids:readonly string[]):Promise<DraftSub
   // A human may already have decided on a previously submitted publication. Never resubmit it.
   if(p.status==='approved'||p.status==='rejected')continue;
   if(p.status!=='draft'||!p.current_revision_id){complete=false;continue;}
-  const r=await db().rpc('publication_submit_manual',{p_publication_id:p.id,p_revision_id:p.current_revision_id,p_actor_id:actor});
-  if(r.error)complete=false;else{submitted.push(p.id);reviewRequired=true;}
+  try{const r=await db().rpc('publication_submit_manual',{p_publication_id:p.id,p_revision_id:p.current_revision_id,p_actor_id:actor});
+   if(r.error)complete=false;else{submitted.push(p.id);reviewRequired=true;}
+  }catch{complete=false;}
  }
  return {submitted,complete,reviewRequired};
 }
 // Une notification idempotente (clé d'événement) : catégorie et lien autorisés par la base, jamais de texte ni de nom.
 async function notify(eventKey:string,category:'publication_review'|'media_missing'|'delivery_failed'|'incident',href:string):Promise<boolean>{
- const r=await db().from('admin_notifications').upsert({event_key:eventKey,category,href},{onConflict:'event_key',ignoreDuplicates:true});
- if(r.error)console.error('[publications-scheduler] notification not recorded',{category});
- return !r.error;
+ try{const r=await db().from('admin_notifications').upsert({event_key:eventKey,category,href},{onConflict:'event_key',ignoreDuplicates:true});
+  if(!r.error)return true;
+ }catch{/* A lost response may follow COMMIT; leave the durable follow-up open for an idempotent retry. */}
+ console.error('[publications-scheduler] notification not recorded',{category});return false;
 }
 // Une notification par préparation soumise, vers la file de validation.
 const notifyReview=(runId:string)=>notify(`publication-review:${runId}`,'publication_review','/publications/review');
@@ -137,7 +141,17 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
  for(const id of ids){
   const run=(runs.data as FollowRun[]).find(r=>r.id===id);
   summary.followUp.runs++;
-  if(!run||run.status!=='completed'||run.media_status==='none'){await closeFollowUp(id,'done');continue;}
+  // A lost finish response may have left a durable processing run. Wait for its confirmed outcome instead of
+  // closing the only recovery record while the database is still committing. Missing rows also fail closed.
+  if(!run||run.status==='processing'){skip('follow_up_preparation_unconfirmed');continue;}
+  if(run.status==='failed'){await closeFollowUp(id,'gave_up');summary.followUp.gaveUp++;continue;}
+  if(run.status!=='completed'){skip('follow_up_preparation_unconfirmed');continue;}
+  if(run.media_status==='none'){
+   if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`)){
+    summary.notified++;await closeFollowUp(id,'done');
+   }
+   continue;
+  }
   if(!actors.has(run.client_id))actors.set(run.client_id,await delegatedActor(run.client_id,deps.isAdmin));
   const actor=actors.get(run.client_id);
   if(!actor){skip('follow_up_no_delegated_admin');continue;}
@@ -227,16 +241,23 @@ async function prepareClient(client:{client_id:string;prepare_lead_days:number},
   // Toute tentative compte (un refus de contenu a pu consommer un appel IA) : au plus MAX_PREPARATIONS_PER_TICK.
   summary.preparations++;
   if(!prepared.runId){skip('preparation_refused');await audit(deps,projectId,{delegated_actor:actor,ok:false});continue;}
-  // Brouillons complets (photo attachée) soumis ; sinon la préparation est suivie et reprise sans IA au passage suivant.
+  // Persist the recovery record BEFORE any submission/notification. Their response can be lost after COMMIT, or
+  // the process may stop between them: the next tick must find this run without generating another batch.
+  const needsTracking=prepared.recoverable||prepared.ok&&!prepared.mediaMissing;
+  if(needsTracking){
+   let tracked=false;
+   try{const r=await db().from('publication_scheduled_runs').upsert({run_id:prepared.runId,client_id:client.client_id,state:'open'},{onConflict:'run_id',ignoreDuplicates:true});tracked=!r.error;}
+   catch{/* No submission while durable tracking is unconfirmed. */}
+   if(!tracked){console.error('[publications-scheduler] follow-up not recorded');skip('follow_up_tracking_unconfirmed');
+    await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId,ok:false,follow_up_unconfirmed:true});continue;}
+  }
+  // Brouillons complets (photo attachée) soumis ; sinon le suivi reste ouvert pour une reprise sans IA.
   const submission=prepared.ok&&prepared.withMedia?await submitDrafts(actor,prepared.publications.map(p=>p.id)):null;
   const submitted=submission?.submitted??[];
   summary.submitted+=submitted.length;
   const notified=!submission?.reviewRequired||await notifyReview(prepared.runId);
   if(submission?.reviewRequired&&notified)summary.notified++;
-  if(prepared.ok&&!prepared.mediaMissing&&(!submission?.complete||!notified)){
-   const tracked=await db().from('publication_scheduled_runs').upsert({run_id:prepared.runId,client_id:client.client_id},{onConflict:'run_id',ignoreDuplicates:true});
-   if(tracked.error)console.error('[publications-scheduler] follow-up not recorded');
-  }
+  if(needsTracking&&submission?.complete&&notified)await closeFollowUp(prepared.runId,'done');
   await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId,ok:prepared.ok,publications:prepared.publications.map(p=>p.id),submitted,media_missing:prepared.mediaMissing===true});
  }
 }

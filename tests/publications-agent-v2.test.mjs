@@ -89,9 +89,11 @@ test('context: admin first, each table read once (no N+1), only stored facts, no
  await assert.rejects(()=>contextWith(ctxTables()).m.buildAgentV2Context(P,[]),e=>e.code==='context_unavailable');});
 
 class ContextError extends Error{constructor(code){super(code);this.code=code;}}
-function serviceWith({open=batch,context,generator,rpc={},source='configured',platforms=['facebook','instagram','google_business_profile']}={}){
- const log=[];const db={from(table){const q={select:()=>q,eq:()=>q,in:async()=>({data:[{id:uid(4,1),platform:'facebook',occurrence_id:uid(5,1)},{id:uid(4,2),platform:'instagram',occurrence_id:uid(5,2)},{id:uid(4,3),platform:'google_business_profile',occurrence_id:uid(5,3)}],error:null}),
-  maybeSingle:async()=>{log.push(['read',table]);return {data:{id:P,client_id:C,type:'Réseaux sociaux'},error:null};}};return q;},
+function serviceWith({open=batch,context,generator,rpc={},source='configured',platforms=['facebook','instagram','google_business_profile'],runState,publicationRead}={}){
+ const log=[];const db={from(table){const filters=[];const q={select:()=>q,eq:(column,value)=>{filters.push([column,value]);return q;},in:async(_column,ids)=>{
+  log.push(['read',table,json(filters)]);
+  return publicationRead?publicationRead():{data:[{id:uid(4,1),client_id:C,project_id:P,platform:'facebook',occurrence_id:uid(5,1)},{id:uid(4,2),client_id:C,project_id:P,platform:'instagram',occurrence_id:uid(5,2)},{id:uid(4,3),client_id:C,project_id:P,platform:'google_business_profile',occurrence_id:uid(5,3)}].filter(p=>ids.includes(p.id)),error:null};},
+  maybeSingle:async()=>{log.push(['read',table,json(filters)]);return table==='publication_agent_v2_runs'?(runState?runState():{data:{id:RUN,client_id:C,project_id:P,status:'processing',occurrence_ids:open.map(o=>o.occurrenceId),publication_ids:[]},error:null}):{data:{id:P,client_id:C,type:'Réseaux sociaux'},error:null};}};return q;},
   rpc:async(name,args)=>{log.push([name,json(args)]);const fn=rpc[name];if(fn)return fn(args);
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:[uid(4,1),uid(4,2),uid(4,3)],editorial_group_id:uid(7,1)},error:null}:{data:null,error:null};}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
@@ -134,6 +136,60 @@ test('service: fail closed at every step, failures recorded, no AI without expli
  const single=serviceWith({open:[batch[2]],rpc:{publication_agent_v2_finish:()=>({data:{publication_ids:[uid(4,3)],editorial_group_id:null},error:null})}});
  const one=await single.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async i=>({output:{idea:{subject:'S',angle:'A'},publications:[{occurrenceId:i.occurrences[0].occurrenceId,platform:'google_business_profile',text:'Texte',cta:null,mediaId:null}]},usage:{input_tokens:1,output_tokens:1,estimated_cost_eur:0,model:'m'}})},now});
  assert.equal(one.message,'1 brouillon créé sans média. Média requis avant validation : ajoutez une photo à chaque brouillon. Photo manquante signalée : ajoutez des photos à la photothèque du client.');assert.equal(one.mediaMissing,true);assert.ok(!single.log.some(x=>x[0]==='attach_media'),'no media: no media step');});
+
+const storedRun=(extra={})=>({client_id:C,project_id:P,status:'completed',occurrence_ids:batch.map(o=>o.occurrenceId),publication_ids:[uid(4,1),uid(4,2),uid(4,3)],...extra});
+test('finish response lost after COMMIT is reconciled without failing the run or generating twice',async()=>{
+ for(const finish of [()=>({data:null,error:{code:'network',message:'sensitive provider details'}}),()=>{throw Error('response lost');}]){
+  let generations=0;
+  const s=serviceWith({rpc:{publication_agent_v2_finish:finish},runState:()=>({data:storedRun(),error:null})});
+  const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:{generate:async()=>{generations++;return s.generator.generate();}},now});
+  assert.equal(r.ok,true);assert.equal(r.publications.length,3);assert.equal(r.withMedia,true);assert.equal(generations,1);
+  assert.equal(s.log.filter(c=>c[0]==='publication_agent_v2_finish').length,1);
+  assert.equal(s.log.filter(c=>c[0]==='publication_agent_v2_fail').length,0);
+  const reads=s.log.filter(c=>c[0]==='read'&&c[1]==='publication_agent_v2_runs');
+  assert.deepEqual(json(reads[0][2]),[['id',RUN],['client_id',C],['project_id',P]]);
+  assert.doesNotMatch(JSON.stringify(r),/sensitive provider details|response lost/);
+ }
+});
+
+test('ambiguous finish preserves reservations and a recovery ID while its outcome is still processing or unreadable',async()=>{
+ for(const runState of [()=>({data:storedRun({status:'processing',publication_ids:[]}),error:null}),()=>({data:null,error:{message:'down'}}),()=>{throw Error('network');}]){
+  const s=serviceWith({rpc:{publication_agent_v2_finish:()=>({data:null,error:{code:'network'}})},runState});
+  const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:s.generator,now});
+  assert.equal(r.ok,false);assert.equal(r.runId,RUN);assert.equal(r.recoverable,true);assert.match(r.message,/indéterminé.*avant toute relance/);
+  assert.deepEqual(json(r.publications),[]);assert.equal(r.withMedia,false);
+  assert.equal(s.log.filter(c=>c[0]==='publication_agent_v2_fail'||c[0]==='attach_media').length,0);
+  assert.doesNotMatch(r.message,/Aucun brouillon créé/);
+ }
+});
+
+test('unavailable publication detail read recovers every link from the completed client-scoped run',async()=>{
+ for(const publicationRead of [()=>({data:null,error:{message:'down'}}),()=>{throw Error('read lost');},()=>({data:[],error:null})]){
+  const s=serviceWith({publicationRead,runState:()=>({data:storedRun(),error:null})});
+  const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:s.generator,now});
+  assert.equal(r.ok,true);assert.equal(r.publications.length,3);
+  assert.deepEqual(json(r.publications.map(p=>[p.id,p.platform])),[[uid(4,1),'facebook'],[uid(4,2),'instagram'],[uid(4,3),'google_business_profile']]);
+  assert.match(r.message,/détails sont temporairement indisponibles/);
+  assert.equal(s.log.filter(c=>c[0]==='publication_agent_v2_fail').length,0);
+ }
+});
+
+test('reconciliation refuses foreign, malformed or incomplete persisted mappings',async()=>{
+ const foreign=uid(4,99);
+ for(const row of [storedRun({client_id:uid(1,2),publication_ids:[foreign,uid(4,2),uid(4,3)]}),storedRun({project_id:uid(3,2)}),storedRun({publication_ids:[uid(4,1),uid(4,1),uid(4,3)]}),storedRun({occurrence_ids:[uid(5,1),uid(5,1),uid(5,3)]}),storedRun({occurrence_ids:[uid(5,1),uid(5,2),uid(5,99)]})]){
+  const s=serviceWith({rpc:{publication_agent_v2_finish:()=>({data:null,error:{code:'network'}})},runState:()=>({data:row,error:null})});
+  const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:s.generator,now});
+  assert.equal(r.ok,false);assert.equal(r.recoverable,true);assert.deepEqual(json(r.publications),[]);
+  assert.ok(!JSON.stringify(r).includes(foreign));assert.equal(s.log.filter(c=>c[0]==='attach_media'||c[0]==='publication_agent_v2_fail').length,0);
+ }
+});
+
+test('lost details recover the SQL publication creation order even when the run occurrence array is unsorted',async()=>{
+ const s=serviceWith({rpc:{publication_agent_v2_finish:()=>({data:{publication_ids:['invalid']},error:null})},publicationRead:()=>({data:null,error:{message:'down'}}),
+  runState:()=>({data:storedRun({publication_ids:[uid(4,3),uid(4,1),uid(4,2)],occurrence_ids:[uid(5,3),uid(5,1),uid(5,2)]}),error:null})});
+ const r=await s.m.prepareNextPublications(P,{allowRealAI:false,generator:s.generator,now});
+ assert.equal(r.ok,true);assert.deepEqual(json(r.publications.map(p=>[p.id,p.platform])),[[uid(4,3),'facebook'],[uid(4,1),'instagram'],[uid(4,2),'google_business_profile']]);
+});
 
 test('real generator: Responses API integration with strict instructions and schema (mocked, never called for real)',async()=>{
  const calls=[];const g=load('lib/publications/agent-v2/openai-generator.ts',{'@/lib/integrations/publications-openai':{structuredResponse:async(instructions,payload,schema)=>{calls.push({instructions,payload:JSON.parse(payload),schema});

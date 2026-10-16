@@ -1,5 +1,6 @@
 import 'server-only';
 import type {FetchLike} from './publications-oauth/http';
+import {publicationRetryAfterSeconds} from './publications-retry-after';
 
 // Google Business Profile publishing transport (Lot 4.3 P12), separate from the read-only OAuth transport. Official
 // endpoint: My Business API v4, accounts.locations.localPosts (create / get / list). The allowlist covers exactly
@@ -8,7 +9,7 @@ import type {FetchLike} from './publications-oauth/http';
 // {status, body} or a transport error kind.
 export class GbpPublishTransportError extends Error{constructor(readonly kind:'network'|'timeout'|'too_large'|'invalid_path'){super(`GBP publish transport: ${kind}`);}}
 export type GbpPublishRequest={method:'GET'|'POST';path:string;params:Record<string,string>;body?:Record<string,unknown>;token:string};
-export interface GbpPublishTransport{request(request:GbpPublishRequest):Promise<{status:number;body:unknown}>}
+export interface GbpPublishTransport{request(request:GbpPublishRequest):Promise<{status:number;body:unknown;retryAfterSeconds?:number}>}
 const API='https://mybusiness.googleapis.com/v4/';
 const MAX_BODY=1_048_576,TIMEOUT_MS=20_000;
 const SEG='[0-9A-Za-z_-]{1,100}';
@@ -27,6 +28,7 @@ export function gbpPublishTransport(fetchImpl:FetchLike=fetch):GbpPublishTranspo
   if(Number(response.headers.get('content-length')??'0')>MAX_BODY)throw new GbpPublishTransportError('too_large');
   const text=await response.text();if(text.length>MAX_BODY)throw new GbpPublishTransportError('too_large');
   let body:unknown=null;if(/json/.test(response.headers.get('content-type')??'')){try{body=JSON.parse(text);}catch{body=null;}}
-  return {status:response.status,body};
+  const retryAfter=response.status===429?publicationRetryAfterSeconds(response.headers.get('retry-after')):null;
+  return {status:response.status,body,...(retryAfter===null?{}:{retryAfterSeconds:retryAfter})};
  }};
 }

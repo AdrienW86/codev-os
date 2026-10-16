@@ -71,7 +71,7 @@ test('admin trigger « Envoyer les publications dues »: admin first, kill switc
  const settings=s=>({from:t=>{calls.push('read:'+t);return {select:()=>({limit:()=>({maybeSingle:async()=>s})})};}});
  const runner=results=>{let i=0;return async worker=>{calls.push('run:'+worker);return results[i++]??{state:'idle'};};};
  let r=await reg.processDuePublications({db:settings({data:{emergency_stop:true,publishing_enabled:false},error:null}),run:runner([{state:'completed',outcome:'published'}])});
- assert.deepEqual(json(r),{ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts:{published:0,failed:0,uncertain:0,blocked:0,retry:0}});
+ assert.deepEqual(json(r),{ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts:{published:0,simulated:0,failed:0,uncertain:0,blocked:0,retry:0}});
  assert.deepEqual(calls,['admin','read:publication_settings'],'admin checked first, nothing run under the emergency stop');
  calls.length=0;r=await reg.processDuePublications({db:settings({data:{emergency_stop:false,publishing_enabled:false},error:null}),run:runner([])});
  assert.equal(r.message,'Publication désactivée dans les réglages : aucun envoi.');assert.ok(!calls.some(c=>c.startsWith('run:')));
@@ -79,7 +79,7 @@ test('admin trigger « Envoyer les publications dues »: admin first, kill switc
  calls.length=0;r=await reg.processDuePublications({db:settings({data:{emergency_stop:false,publishing_enabled:true},error:null}),run:runner([
   {state:'completed',outcome:'published'},{state:'completed',outcome:'uncertain'},{state:'completed',outcome:'rate_limit'},{state:'blocked',reason:'account_shared'},{state:'completed',outcome:'invalid_payload'},{state:'completed',outcome:'published'}])});
  assert.equal(calls.filter(c=>c.startsWith('run:')).length,5,'at most 5 jobs per click');assert.ok(calls.includes('run:cockpit-user_2abc'),'worker id derived from the admin');
- assert.deepEqual(json(r.counts),{published:1,failed:1,uncertain:1,blocked:1,retry:1});assert.match(r.message,/5 envoi\(s\) traité\(s\)/);
+ assert.deepEqual(json(r.counts),{published:1,simulated:0,failed:1,uncertain:1,blocked:1,retry:1});assert.match(r.message,/5 envoi\(s\) traité\(s\)/);
  calls.length=0;r=await reg.processDuePublications({db:settings({data:{emergency_stop:false,publishing_enabled:true},error:null}),run:runner([])});
  assert.equal(r.message,'Aucune publication due pour le moment.');
  admin=false;calls.length=0;await assert.rejects(()=>reg.processDuePublications({db:settings({data:{emergency_stop:false,publishing_enabled:true},error:null}),run:runner([])}),/denied/);

@@ -2,6 +2,7 @@ import 'server-only';
 import {createHmac} from 'node:crypto';
 import {META_GRAPH_VERSION,type MetaOAuthConfig} from './publications-oauth/config';
 import type {FetchLike} from './publications-oauth/http';
+import {publicationRetryAfterSeconds} from './publications-retry-after';
 
 // Meta publishing transport (Lot 4.3 P11-b), separate from the read-only OAuth transport. Graph API v26.0 only;
 // the allowlist covers exactly: Page token lookup, Page feed / photo posts, Instagram container creation, container
@@ -10,7 +11,7 @@ import type {FetchLike} from './publications-oauth/http';
 // Never logs anything: callers only see {status, body} or a TransportError kind.
 export class MetaPublishTransportError extends Error{constructor(readonly kind:'network'|'timeout'|'too_large'|'invalid_path'){super(`Meta publish transport: ${kind}`);}}
 export type MetaPublishRequest={method:'GET'|'POST';path:string;params:Record<string,string>;token:string};
-export interface MetaPublishTransport{request(request:MetaPublishRequest):Promise<{status:number;body:unknown}>}
+export interface MetaPublishTransport{request(request:MetaPublishRequest):Promise<{status:number;body:unknown;retryAfterSeconds?:number}>}
 const GRAPH=`https://graph.facebook.com/${META_GRAPH_VERSION}/`;
 const MAX_BODY=1_048_576,TIMEOUT_MS=20_000;
 const ID='[0-9]{1,30}';
@@ -29,7 +30,8 @@ export function metaPublishTransport(config:Pick<MetaOAuthConfig,'appSecret'>,fe
   if(Number(response.headers.get('content-length')??'0')>MAX_BODY)throw new MetaPublishTransportError('too_large');
   const text=await response.text();if(text.length>MAX_BODY)throw new MetaPublishTransportError('too_large');
   let body:unknown=null;if(/json|javascript/.test(response.headers.get('content-type')??'')){try{body=JSON.parse(text);}catch{body=null;}}
-  return {status:response.status,body};
+  const retryAfter=response.status===429?publicationRetryAfterSeconds(response.headers.get('retry-after')):null;
+  return {status:response.status,body,...(retryAfter===null?{}:{retryAfterSeconds:retryAfter})};
  }};
 }
 // Bounded wait used between two Instagram container status checks (the only wait of the publisher).

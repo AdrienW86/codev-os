@@ -35,7 +35,7 @@ select pg_temp.replay_failure('select * from public.publication_deliveries','425
 reset role;
 
 -- 2. Additive and legacy-compatible.
-select pg_temp.replay_assert((select v->'deliveries' from p10_before)=(select coalesce(jsonb_agg(to_jsonb(d)-'revision_id'-'project_channel_id'-'text_hash'-'asset_ids'-'blocked_reason'-'last_error_class'-'last_error_code' order by d.id),'[]') from public.publication_deliveries d),'legacy delivery unchanged');
+select pg_temp.replay_assert((select v->'deliveries' from p10_before)=(select coalesce(jsonb_agg(to_jsonb(d)-'revision_id'-'project_channel_id'-'text_hash'-'asset_ids'-'blocked_reason'-'last_error_class'-'last_error_code'-'last_attempt_id'-'last_reconciliation_id' order by d.id),'[]') from public.publication_deliveries d),'legacy delivery unchanged');
 select pg_temp.replay_assert((select (v->>'jobs')::bigint=(select count(*) from public.publication_jobs) and (v->>'events')::bigint=(select count(*) from public.publication_events)
  and (v->'publications')=(select coalesce(jsonb_agg(to_jsonb(p) order by p.id),'[]') from public.publications p) from p10_before),'no job, event or publication change by the migration');
 select pg_temp.replay_assert(publications_private.delivery_retry_delay(1)='1 minute' and publications_private.delivery_retry_delay(2)='5 minutes' and publications_private.delivery_retry_delay(3)='15 minutes'

@@ -14,11 +14,12 @@ import {createGoogleBusinessProfilePublisher,createGoogleBusinessProfileReconcil
 import {runOnePublicationJob,type EngineDb,type ExecutionResult} from './engine';
 import type {PublicationPublisher,PublicationReconciler,PublishResult,ReconcileResult} from './publisher';
 import {publicationPlatforms,type PublicationPlatform} from '../types';
+import {providerOfPlatform} from '../connections/model';
 
 // Server-side publisher registry (Lot 4.3 P11-b). One publisher per platform; a platform whose provider is not
-// configured answers "auth / provider_not_configured" (no side effect, delivery blocked). Nothing here is wired to a
-// route, a button, a cron or a daemon: runOnePublicationJobInProduction is the single entry point a future worker
-// may call explicitly. The P10 engine re-checks the kill switches, the readiness and the dispatch marker anyway.
+// configured answers "auth / provider_not_configured" (no side effect, delivery blocked). The existing explicit
+// admin button and scheduler reuse runOnePublicationJobInProduction; scheduled delivery additionally requires
+// PUBLICATIONS_SCHEDULED_DELIVERY=enabled (off by default). The engine re-checks every switch and dispatch marker.
 export type PublisherRegistry=Partial<Record<PublicationPlatform,PublicationPublisher>>;
 export type ReconcilerRegistry=Partial<Record<PublicationPlatform,PublicationReconciler>>;
 const notConfigured:PublishResult={ok:false,errorClass:'auth',errorCode:'provider_not_configured'};
@@ -58,7 +59,7 @@ export const MAX_DUE_PER_RUN=5;
 type SettingsDb={from(table:string):{select(columns:string):{limit(n:number):{maybeSingle():PromiseLike<{data:unknown;error:unknown}>}}}};
 export type DueRunOptions={platforms?:readonly PublicationPlatform[]};
 export type DueRunDeps={db:SettingsDb;run:(workerId:string,options?:DueRunOptions)=>Promise<ExecutionResult>};
-export type DueRunSummary={ok:boolean;message:string;counts:{published:number;failed:number;uncertain:number;blocked:number;retry:number}};
+export type DueRunSummary={ok:boolean;message:string;counts:{published:number;simulated:number;failed:number;uncertain:number;blocked:number;retry:number}};
 export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
  const {userId}=await requireAdmin();
  return processDue('cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60),deps);
@@ -92,26 +93,29 @@ export async function processScheduledDuePublications(env:Record<string,string|u
 }
 // platformsFor (planificateur avec échéance) : plateformes permises pour le i-ème envoi ; liste vide → fin du passage.
 async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN,platformsFor?:(i:number)=>readonly PublicationPlatform[]|undefined):Promise<DueRunSummary>{
- const counts={published:0,failed:0,uncertain:0,blocked:0,retry:0};
- const settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();
+ const counts={published:0,simulated:0,failed:0,uncertain:0,blocked:0,retry:0};
+ let settings;
+ try{settings=await deps.db.from('publication_settings').select('emergency_stop,publishing_enabled').limit(1).maybeSingle();}
+ catch{return {ok:false,message:'Réglages de publication illisibles : aucun envoi.',counts};}
  const s=settings.data as {emergency_stop?:unknown;publishing_enabled?:unknown}|null;
  if(settings.error||!s)return {ok:false,message:'Réglages de publication illisibles : aucun envoi.',counts};
  if(s.emergency_stop!==false)return {ok:false,message:'Arrêt d’urgence actif : aucun envoi.',counts};
  if(s.publishing_enabled!==true)return {ok:false,message:'Publication désactivée dans les réglages : aucun envoi.',counts};
- let processed=0;
+ let processed=0,interrupted=false;
  for(let i=0;i<max;i++){
   const platforms=platformsFor?.(i);if(platforms&&!platforms.length)break;
-  let r:ExecutionResult;try{r=await (platforms?deps.run(worker,{platforms}):deps.run(worker));}catch{log('process_due');break;}
+  let r:ExecutionResult;try{r=await (platforms?deps.run(worker,{platforms}):deps.run(worker));}catch{log('process_due');interrupted=true;break;}
   if(r.state==='idle')break;processed++;
   if(r.state==='completed'){const o=r.outcome;
-   if(o==='published'||o==='simulated')counts.published++;else if(o==='uncertain')counts.uncertain++;
+   if(o==='published')counts.published++;else if(o==='simulated')counts.simulated++;else if(o==='uncertain')counts.uncertain++;
    else if(o==='retryable'||o==='rate_limit'||o==='provider_unavailable')counts.retry++;else if(o==='auth')counts.blocked++;else counts.failed++;}
   else if(r.state==='blocked')counts.blocked++;else if(r.state==='unconfirmed')counts.uncertain++;else counts.failed++;
   // Planificateur avec échéance : une réservation refusée par la base (« stale ») arrête le passage, sans insister.
   if(platformsFor&&r.state==='stale')break;
  }
+ if(interrupted)return {ok:false,message:'Traitement interrompu : résultat non confirmé. Consultez les diffusions avant toute nouvelle tentative.',counts};
  if(!processed)return {ok:true,message:'Aucune publication due pour le moment.',counts};
- return {ok:true,counts,message:`${processed} envoi(s) traité(s) : ${counts.published} publié(s), ${counts.retry} à réessayer, ${counts.blocked} bloqué(s), ${counts.failed} en échec, ${counts.uncertain} à vérifier.`};
+ return {ok:true,counts,message:`${processed} envoi(s) traité(s) : ${counts.published} publié(s)${counts.simulated?`, ${counts.simulated} simulé(s)`:''}, ${counts.retry} à réessayer, ${counts.blocked} bloqué(s), ${counts.failed} en échec, ${counts.uncertain} à vérifier.`};
 }
 
 // Reconciliation of an uncertain delivery (admin action). The provider is only READ; the outcome is recorded by
@@ -123,29 +127,36 @@ export function productionReconcileDeps():ReconcileDeps{
  return {db:getSupabaseServerClient() as unknown as ReconcileDeps['db'],vault:productionOAuthDeps().vault,reconcilers:productionPublisherRegistry().reconcilers};
 }
 const log=(step:string)=>console.error('[publications-reconcile]',{step});
+const checkedReconciliationUnavailable=(error:{code?:string}|null)=>Boolean(error&&['PGRST202','42883','42501'].includes(error.code??''));
+const checkedReconciliationRequired='Mise à jour Publications requise en base : vérification sécurisée indisponible. Aucun renvoi autorisé.';
 export async function reconcileDelivery(deliveryId:unknown,deps:ReconcileDeps=productionReconcileDeps()):Promise<{ok:boolean;message:string;result?:ReconcileResult['status']}>{
  const {userId}=await requireAdmin();if(!isPublicationUuid(deliveryId))return {ok:false,message:'Diffusion invalide.'};
  try{
-  const ctx=await deps.db.rpc('publication_delivery_reconcile_context',{p_delivery_id:deliveryId});
-  if(ctx.error||!ctx.data)return {ok:false,message:'Cette diffusion n’est pas à vérifier.'};
-  const c=ctx.data as {platform:PublicationPlatform;remote_id:string|null;connection_id:string|null;account:{external_account_id:string;parent_external_id:string|null};text:string;since:string|null};
+  const ctx=await deps.db.rpc('publication_delivery_reconcile_context_checked',{p_delivery_id:deliveryId});
+  if(checkedReconciliationUnavailable(ctx.error))return {ok:false,message:checkedReconciliationRequired};
+  if(ctx.error||!ctx.data)return {ok:false,message:'Cette diffusion ou sa tentative courante ne peut pas être vérifiée. Consultez son historique avant toute relance.'};
+  const c=ctx.data as {attempt_id?:unknown;platform:PublicationPlatform;remote_id:string|null;connection_id:string|null;account:{external_account_id:string;parent_external_id:string|null};text:string;since:string|null};
+  if(!isPublicationUuid(c.attempt_id))return {ok:false,message:checkedReconciliationRequired};
   const reconciler=deps.reconcilers[c.platform];
   if(!reconciler||!deps.vault||!c.connection_id)return {ok:false,message:'Vérification indisponible pour ce compte.'};
   const row=await deps.db.from('client_connections').select('credential_reference,status').eq('id',c.connection_id).maybeSingle();
-  const ref=(row.data as {credential_reference?:unknown}|null)?.credential_reference;
-  if(row.error||!isCredentialReference(ref))return {ok:false,message:'Connexion inactive : reconnectez le compte.'};
-  const credential=await deps.vault.readCredential(ref);
+  const connection=row.data as {credential_reference?:unknown;status?:unknown}|null,ref=connection?.credential_reference;
+  if(row.error||connection?.status!=='active'||!isCredentialReference(ref))return {ok:false,message:'Connexion inactive : reconnectez le compte.'};
+  const credential=await deps.vault.readCredential(ref,providerOfPlatform(c.platform));
   const r=await reconciler.reconcile({platform:c.platform,remoteId:c.remote_id,idempotencyKey:'',credential,
    account:{externalAccountId:c.account.external_account_id,parentExternalId:c.account.parent_external_id},text:c.text,since:c.since});
-  const saved=await deps.db.rpc('publication_delivery_reconcile',{p_delivery_id:deliveryId,p_status:r.status,p_remote_id:r.status==='exists'?r.remoteId:null,p_actor_id:userId});
-  if(saved.error)return {ok:false,message:'Vérification non enregistrée. Réessayez.'};
+  const saved=await deps.db.rpc('publication_delivery_reconcile_checked',{p_delivery_id:deliveryId,p_attempt_id:c.attempt_id,p_status:r.status,p_remote_id:r.status==='exists'?r.remoteId:null,p_actor_id:userId});
+  if(checkedReconciliationUnavailable(saved.error))return {ok:false,message:checkedReconciliationRequired};
+  if(saved.error||!saved.data)return {ok:false,message:saved.error?.code==='40001'?'La tentative a changé pendant la vérification. Vérifiez à nouveau chez le fournisseur.':'Vérification non enregistrée. Réessayez.'};
   return {ok:true,result:r.status,message:r.status==='exists'?'Publication retrouvée chez le fournisseur : diffusion marquée publiée.'
    :r.status==='missing'?'Aucune publication trouvée. Vous pouvez confirmer qu’elle n’a pas été publiée.':'Impossible de conclure : la diffusion reste à vérifier.'};
  }catch{log('reconcile');return {ok:false,message:'Vérification impossible pour le moment.'};}
 }
 export async function confirmDeliveryNotPublished(deliveryId:unknown,deps:Pick<ReconcileDeps,'db'>=productionReconcileDeps()):Promise<{ok:boolean;message:string}>{
  const {userId}=await requireAdmin();if(!isPublicationUuid(deliveryId))return {ok:false,message:'Diffusion invalide.'};
- const r=await deps.db.rpc('publication_delivery_confirm_not_published',{p_delivery_id:deliveryId,p_actor_id:userId});
- if(r.error)return {ok:false,message:/reconcile first/i.test(r.error.message??'')?'Vérifiez d’abord chez le fournisseur.':'Décision non enregistrée.'};
- return {ok:true,message:'Diffusion marquée non publiée : vous pouvez la réessayer.'};
+ try{const r=await deps.db.rpc('publication_delivery_confirm_not_published_checked',{p_delivery_id:deliveryId,p_actor_id:userId});
+  if(checkedReconciliationUnavailable(r.error))return {ok:false,message:checkedReconciliationRequired};
+  if(r.error||!r.data)return {ok:false,message:/reconcile first/i.test(r.error?.message??'')?'Vérifiez d’abord chez le fournisseur.':'Décision non enregistrée.'};
+  return {ok:true,message:'Diffusion marquée non publiée : vous pouvez la réessayer.'};
+ }catch{log('confirm');return {ok:false,message:'Décision non confirmée. Rechargez la diffusion avant de réessayer.'};}
 }

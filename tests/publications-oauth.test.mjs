@@ -179,6 +179,7 @@ function oauthHarness({rpc={},project={id:P,client_id:C},connection=null,metaPro
  const v=vaultImpl??encrypted.createEncryptedCredentialVault(store,{current:{id:'k2026a',key:KEY},previous:null},seq());
  const db={rpc:async(name,args)=>{log.push(['rpc',name,json(args)]);if(rpc[name])return rpc[name](args);
    return name==='publication_oauth_state_consume'?{data:{status:'valid',client_id:C,project_id:P},error:null}:name==='publication_connection_register'?{data:{connection_id:CONN,created:true,replaced_reference:null},error:null}
+    :name==='publication_connection_set_status'?{data:{connection_id:CONN,status:args.p_status,replaced_reference:args.p_credential_reference?connection?.credential_reference??null:null},error:null}
     :{data:{ok:true},error:null};},
   from:table=>({select:cols=>{const q={eq:()=>q,maybeSingle:async()=>{log.push(['read',table,cols]);return {data:table==='projects'?project:connection,error:null};}};return q;}})};
  const defaultMeta={calls:[],exchangeCode:async(code,uri)=>{defaultMeta.calls.push(['exchange',code,uri]);return {accessToken:'EAAB-long-lived-secret',refreshToken:null,expiresAt:'2030-01-01T00:00:00.000Z',scopes:['pages_show_list'],provider:'meta',subject:'987'};},
@@ -246,7 +247,7 @@ test('callback refusals: forged / replayed / expired state, provider error, miss
   assert.match(path,new RegExp(`oauth=${outcome}`),kind);assert.equal(h.rpcs('publication_connection_register').length,0,kind+': nothing registered');
   assert.equal(h.rpcs('publication_oauth_record')[0].p_code,'exchange_'+kind);assert.ok(h.logs.every(l=>!JSON.stringify(l).includes('AQD')),'code never logged');}
  h=oauthHarness({rpc:{publication_connection_register:()=>({data:null,error:{code:'23514'}})}});({path}=await run(h,{state:'S'.repeat(43),code:'AQD-code-value'}));
- assert.match(path,/oauth=unavailable/);assert.equal(h.store.rows.size,0,'stored secret cleaned when the registration fails');
+ assert.match(path,/oauth=unavailable/);assert.equal(h.store.rows.size,1,'unconfirmed registration keeps the encrypted secret: the RPC may have committed');
  const noDiscovery={exchangeCode:async()=>({accessToken:'EAAB-long-lived-secret',refreshToken:null,expiresAt:null,scopes:['pages_show_list'],provider:'meta',subject:'1'}),listFacebookPages:async()=>{throw new providers.ConnectionProviderError('rate_limited');}};
  ({path,h}=await run(oauthHarness({metaProvider:noDiscovery}),{state:'S'.repeat(43),code:'AQD-code-value'}));
  assert.match(path,/oauth=partial/);assert.equal(h.rpcs('publication_connection_register').length,1,'connection kept');assert.equal(h.rpcs('publication_accounts_sync').length,0);
@@ -273,6 +274,37 @@ test('verify: refresh near expiry (rotation), validation, resync; revoked / expi
  o=await outcome({validateConnection:async()=>{throw new providers.ConnectionProviderError('permission');}});assert.deepEqual(o.statuses,['error'],'ambiguous: error');assert.equal(o.res.message,'Compte inaccessible');
  for(const x of [o.logs])assert.deepEqual(leaks(x),[]);
  const none=oauthHarness({connection:{id:CONN,status:'disabled',credential_reference:null,expires_at:null}});assert.match((await none.m.verifyConnection(P,'meta',none.deps)).message,/Aucune connexion active/);});
+
+test('credential refresh: failed or lost database responses preserve both secrets and never break the live reference',async()=>{
+ for(const scenario of ['rejected','lost_after_commit','empty_response','wrong_connection']){
+  const store=memoryStore(),v=encrypted.createEncryptedCredentialVault(store,{current:{id:'k2026a',key:KEY},previous:null},seq());
+  const previous=await v.storeCredential(credential());let live=previous;
+  const h=oauthHarness({connection:{id:CONN,status:'active',credential_reference:previous,expires_at:'2030-01-01T00:00:00Z'},vaultImpl:v,
+   rpc:{publication_connection_set_status:async args=>{
+    assert.equal(store.rows.has(previous),true,'the old reference remains readable until the replacement is confirmed');
+    assert.equal((await v.readCredential(args.p_credential_reference)).accessToken,'EAAB-refreshed-secret');
+    if(scenario==='lost_after_commit'){live=args.p_credential_reference;throw Error('transport lost after commit EAAB-private');}
+    if(scenario==='empty_response')return {data:null,error:null};
+    if(scenario==='wrong_connection')return {data:{connection_id:uid(5,99),status:'active',replaced_reference:previous},error:null};
+    return {data:null,error:{code:'23514'}};
+   }}});
+  const result=await h.capture(()=>h.m.verifyConnection(P,'meta',h.deps));
+  assert.equal(result.ok,false,scenario);assert.equal(store.rows.size,2,scenario+': no destructive cleanup on ambiguity');
+  assert.equal(store.rows.has(live),true,scenario+': the actual live secret always remains');
+  assert.ok((await v.readCredential(live)).accessToken);assert.equal(h.rpcs('publication_accounts_sync').length,0);
+  assert.deepEqual(leaks(h.logs),[]);assert.deepEqual(leaks(result),[]);
+ }
+});
+
+test('OAuth callback: a committed registration with a lost response keeps the new live secret and redirects safely',async()=>{
+ let live=null;
+ const h=oauthHarness({rpc:{publication_connection_register:async args=>{live=args.p_credential_reference;throw Error('lost after COMMIT EAAB-private');},
+  publication_oauth_record:async()=>{throw Error('audit network EAAB-private');}}});
+ const path=await h.capture(()=>h.m.completeOAuthCallback('meta',q({state:'S'.repeat(43),code:'AQD-code-value'}),h.deps));
+ assert.match(path,/oauth=unavailable/);assert.equal(h.store.rows.size,1);
+ assert.equal((await h.deps.vault.readCredential(live,'meta')).accessToken,'EAAB-long-lived-secret');
+ assert.equal(h.rpcs('publication_accounts_sync').length,0);assert.deepEqual(leaks(h.logs),[]);assert.deepEqual(leaks(path),[]);
+});
 
 test('callback route, actions and UI: internal 303 redirect without referrer, admin-only actions, connect / reconnect / verify / disconnect, safe banners',async()=>{
  const calls=[];

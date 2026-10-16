@@ -140,6 +140,48 @@ test('publish transport: write allowlist, token only in the Authorization header
  await assert.rejects(()=>integration.metaPublishTransport({appSecret:'s'},async()=>{throw Object.assign(new Error('x'),{name:'TimeoutError'});}).request({method:'POST',path:'1/feed',params:{},token:PAGE}),e=>e.kind==='timeout');
  assert.equal(calls.length,2,'a failed request is never retried by the transport');});
 
+test('Meta HTTP 429 preserves safe Retry-After through the publisher without a second write',async()=>{
+ const calls=[];
+ const transport=integration.metaPublishTransport({appSecret:'meta-app-secret-value'},async(url,init)=>{
+  calls.push([url,init.method]);const rate=init.method==='POST';
+  return {status:rate?429:200,headers:{get:name=>name==='retry-after'&&rate?'900':name==='content-type'?'application/json':null},
+   text:async()=>JSON.stringify(rate?{error:{code:4,message:'private provider text'}}:{access_token:PAGE})};
+ });
+ const result=await meta.createMetaPublisher(transport,{now:()=>Date.parse('2029-06-01T00:00:00Z')}).publish(input());
+ assert.deepEqual(json(result),{ok:false,errorClass:'rate_limit',errorCode:'rate_limited',retryAfterSeconds:900});
+ assert.equal(calls.filter(([,method])=>method==='POST').length,1);assert.equal(model.nextRetryDelaySeconds(1,result.errorClass,result.retryAfterSeconds),900);
+ assert.deepEqual(leaks(result),[]);
+});
+
+test('Meta never silently drops approved additional media and malformed reconciliation cannot prove absence',async()=>{
+ for(const platform of ['facebook','instagram']){
+  const m=publisherWith(()=>{throw Error('must not dispatch');});
+  const result=await m.p.publish(input({platform,account:{externalAccountId:platform==='instagram'?'17841400000000001':'1001',parentExternalId:platform==='instagram'?'1001':null},media:[{url:SIGNED,mimeType:'image/jpeg'},{url:SIGNED,mimeType:'image/jpeg'}]}));
+  assert.equal(result.errorClass,'invalid_payload');assert.equal(result.errorCode,'too_many_media');assert.equal(m.calls.length,0);
+ }
+ const base={platform:'facebook',remoteId:null,idempotencyKey:'',credential:input().credential,account:{externalAccountId:'1001',parentExternalId:null},text:'Texte exact',since:'2029-06-01T10:00:00Z'};
+ const reconcile=async body=>meta.createMetaReconciler({request:async r=>r.path==='1001'?page():ok(body)}).reconcile(base);
+ assert.deepEqual(json(await reconcile({})),{status:'unknown',remoteId:null},'malformed data is not an empty result');
+ assert.deepEqual(json(await reconcile({data:[],paging:{next:'https://provider.example/next'}})),{status:'unknown',remoteId:null},'more pages may contain the post');
+});
+
+test('Meta partial list entries and malformed pagination never prove absence; image-only posts remain valid',async()=>{
+ const base={platform:'facebook',remoteId:null,idempotencyKey:'',credential:input().credential,account:{externalAccountId:'1001',parentExternalId:null},text:'Texte exact',since:'2029-06-01T10:00:00Z'};
+ const valid={id:'1001_2',message:'Autre texte',created_time:'2029-06-01T10:00:05+0000'};
+ const reconcile=(body,extra={})=>meta.createMetaReconciler({request:async r=>r.path==='1001'?page():ok(body)}).reconcile({...base,...extra});
+ for(const body of [
+  {data:[null]},{data:[{}]},{data:[valid,valid]},
+  ...[{id:undefined},{id:'invalid'},{id:'1002_3'},{created_time:undefined},{created_time:'invalid'},{message:null},{message:42}].map(extra=>({data:[{...valid,...extra}]})),
+  ...[null,[],false,'invalid'].map(paging=>({data:[],paging})),
+  ...[null,0,false,[],{},'',' '].map(next=>({data:[],paging:{next}})),
+  {data:[{...valid,created_time:'2029-06-01T09:00:00+0000'}],paging:{next:'https://provider.example/next'}},
+ ])assert.deepEqual(json(await reconcile(body)),{status:'unknown',remoteId:null},'unreadable evidence must remain unknown');
+ assert.deepEqual(json(await reconcile({data:[{id:'1001_2',created_time:valid.created_time}]})),{status:'missing',remoteId:null},'a Facebook image-only post has no message');
+ assert.deepEqual(json(await reconcile({data:[{id:'17890000000000001',timestamp:valid.created_time}]},{platform:'instagram',account:{externalAccountId:'17841400000000001',parentExternalId:'1001'}})),{status:'missing',remoteId:null},'an Instagram photo can have no caption');
+ assert.deepEqual(json(await reconcile({data:[{id:'1001_2',created_time:valid.created_time}]},{text:''})),{status:'exists',remoteId:'1001_2'},'an image-only dispatch matches an image-only post');
+ assert.deepEqual(json(await reconcile({id:'1001_3'},{remoteId:'1001_2'})),{status:'unknown',remoteId:null},'a different remote ID cannot certify publication');
+});
+
 // --- Engine with the REAL Meta publisher (mock transport): kill switches and at-most-once ------------------------
 const vault=load('lib/publications/connections/vault.ts');
 const fakes=load('lib/publications/connections/fakes.ts',{'./vault':vault});
@@ -180,18 +222,32 @@ test('registry, production entry point, reconcile service and drawer actions: ex
  assert.deepEqual(json(reg.productionPublisherRegistry()),{publishers:{},reconcilers:{}},'no Meta config: no publisher');
  assert.deepEqual(json(await reg.runOnePublicationJobInProduction('worker-1')),{state:'idle'},'no vault: nothing runs');
  const v=fakes.createMemoryCredentialVault(()=>uid(9,2));const ref=await v.storeCredential({accessToken:USER,refreshToken:null,expiresAt:null,scopes:[],provider:'meta'});
- const rpcs=[];const ctx={platform:'facebook',remote_id:null,connection_id:uid(7,1),account:{external_account_id:'1001',parent_external_id:null},text:'Texte exact',since:'2029-06-01T10:00:00.000Z'};
- const db=(extra={})=>({rpc:async(n,a)=>{rpcs.push([n,json(a)]);if(extra[n])return extra[n](a);return n==='publication_delivery_reconcile_context'?{data:ctx,error:null}:{data:{status:'published'},error:null};},
+ const rpcs=[];const ctx={attempt_id:uid(6,1),platform:'facebook',remote_id:null,connection_id:uid(7,1),account:{external_account_id:'1001',parent_external_id:null},text:'Texte exact',since:'2029-06-01T10:00:00.000Z'};
+ const db=(extra={})=>({rpc:async(n,a)=>{rpcs.push([n,json(a)]);if(extra[n])return extra[n](a);return n==='publication_delivery_reconcile_context_checked'?{data:ctx,error:null}:{data:{status:'published'},error:null};},
   from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{credential_reference:ref,status:'active'},error:null})})})})});
  const reconciler={reconcile:async d=>{rpcs.push(['reconciler',{platform:d.platform,text:d.text,since:d.since,hasToken:Boolean(d.credential.accessToken)}]);return {status:'exists',remoteId:'1001_7'};}};
  let r=await reg.reconcileDelivery(uid(5,1),{db:db(),vault:v,reconcilers:{facebook:reconciler}});
- assert.equal(r.ok,true);assert.equal(r.result,'exists');assert.deepEqual(rpcs.find(x=>x[0]==='publication_delivery_reconcile')[1],{p_delivery_id:uid(5,1),p_status:'exists',p_remote_id:'1001_7',p_actor_id:'user_admin'});
+ assert.equal(r.ok,true);assert.equal(r.result,'exists');assert.deepEqual(rpcs.find(x=>x[0]==='publication_delivery_reconcile_checked')[1],{p_delivery_id:uid(5,1),p_attempt_id:uid(6,1),p_status:'exists',p_remote_id:'1001_7',p_actor_id:'user_admin'});
  assert.deepEqual(leaks(rpcs),[],'credential never sent to the database');
  rpcs.length=0;r=await reg.reconcileDelivery(uid(5,1),{db:db(),vault:v,reconcilers:{facebook:{reconcile:async()=>({status:'missing',remoteId:null})}}});
- assert.match(r.message,/Aucune publication trouvée/);assert.equal(rpcs.find(x=>x[0]==='publication_delivery_reconcile')[1].p_remote_id,null);
+ assert.match(r.message,/Aucune publication trouvée/);assert.equal(rpcs.find(x=>x[0]==='publication_delivery_reconcile_checked')[1].p_remote_id,null);
  assert.match((await reg.reconcileDelivery(uid(5,1),{db:db(),vault:v,reconcilers:{}})).message,/indisponible/);
- assert.match((await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_context:()=>({data:null,error:{code:'55000'}})}),vault:v,reconcilers:{facebook:reconciler}})).message,/pas à vérifier/);
- assert.match((await reg.confirmDeliveryNotPublished(uid(5,1),{db:db({publication_delivery_confirm_not_published:()=>({data:null,error:{code:'55000',message:'Reconcile first: no provider check'}})})})).message,/Vérifiez d’abord/);
+ assert.match((await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_context_checked:()=>({data:null,error:{code:'55000'}})}),vault:v,reconcilers:{facebook:reconciler}})).message,/ne peut pas être vérifiée/);
+ assert.match((await reg.confirmDeliveryNotPublished(uid(5,1),{db:db({publication_delivery_confirm_not_published_checked:()=>({data:null,error:{code:'55000',message:'Reconcile first: no provider check'}})})})).message,/Vérifiez d’abord/);
+ for(const code of ['PGRST202','42883','42501']){
+  rpcs.length=0;
+  const absent=await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_context_checked:()=>({data:null,error:{code}})}),vault:v,reconcilers:{facebook:reconciler}});
+  assert.equal(absent.ok,false);assert.match(absent.message,/Mise à jour Publications requise/);assert.equal(rpcs.length,1,'no provider check or unsafe RPC fallback without checked schema');
+  const confirm=await reg.confirmDeliveryNotPublished(uid(5,1),{db:db({publication_delivery_confirm_not_published_checked:()=>({data:null,error:{code}})})});
+  assert.equal(confirm.ok,false);assert.match(confirm.message,/Aucun renvoi autorisé/);
+ }
+ rpcs.length=0;
+ const missingAttempt=await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_context_checked:()=>({data:{...ctx,attempt_id:undefined},error:null})}),vault:v,reconcilers:{facebook:reconciler}});
+ assert.equal(missingAttempt.ok,false);assert.equal(rpcs.length,1,'context without current attempt never reaches provider');
+ const stale=await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_checked:()=>({data:null,error:{code:'40001'}})}),vault:v,reconcilers:{facebook:reconciler}});
+ assert.equal(stale.ok,false);assert.match(stale.message,/tentative a changé/);
+ const empty=await reg.reconcileDelivery(uid(5,1),{db:db({publication_delivery_reconcile_checked:()=>({data:null,error:null})}),vault:v,reconcilers:{facebook:reconciler}});
+ assert.equal(empty.ok,false,'empty persistence response never presented as successful reconciliation');
  const {DeliverySection}=load('components/publications/delivery-section.tsx',{'@/app/(cockpit)/publications/delivery-actions':{prepareDeliveryAction:async()=>({}),retryDeliveryAction:async()=>({}),reconcileDeliveryAction:async()=>({}),confirmNotPublishedAction:async()=>({})}});
  const v1=model.deliveryView({id:uid(5,1),platform:'instagram',status:'uncertain',remote_id:null,blocked_reason:null,last_error_class:'provider_unavailable',last_error_code:'timeout_after_dispatch'},{accountName:'@toitures',attempts:1,nextRetryAt:null});
  const html=renderToStaticMarkup(jsx.jsx(DeliverySection,{publicationId:uid(4,1),diffusion:{deliveries:[v1],canPrepare:false}}));

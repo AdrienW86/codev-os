@@ -45,7 +45,10 @@ export function createMetaPublisher(transport:MetaPublishTransport,options:MetaP
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
    if(kind==='invalid_path')return fail('permanent','invalid_request');
    return phase==='write'?uncertain(kind==='timeout'?'timeout_after_dispatch':'network_after_dispatch'):fail('provider_unavailable',kind==='timeout'?'timeout':'network');}
-  if(r.status!==200||!r.body||typeof r.body!=='object')return r.status===200?(phase==='write'?uncertain('malformed_response'):fail('provider_unavailable','malformed_response')):classifyMetaError(r.status,r.body,phase);
+  if(r.status!==200||!r.body||typeof r.body!=='object'){
+   const failure=r.status===200?(phase==='write'?uncertain('malformed_response'):fail('provider_unavailable','malformed_response')):classifyMetaError(r.status,r.body,phase);
+   return 'errorClass' in failure&&failure.errorClass==='rate_limit'&&r.retryAfterSeconds!==undefined?{...failure,retryAfterSeconds:r.retryAfterSeconds}:failure;
+  }
   return {ok:true,body:record(r.body)};
  }
  async function pageToken(pageId:string,userToken:string):Promise<{ok:true;token:string}|Failure>{
@@ -62,6 +65,7 @@ export function createMetaPublisher(transport:MetaPublishTransport,options:MetaP
   const pageId=id(input.account.externalAccountId,/^[0-9]{1,30}$/);if(!pageId)return fail('auth','page_unavailable');
   const text=input.text.trim();if(text.length>FACEBOOK_MESSAGE_MAX)return fail('invalid_payload','text_too_long');
   const image=input.media[0]??null;
+  if(input.media.length>1)return fail('invalid_payload','too_many_media');
   if(!text&&!image)return fail('invalid_payload','empty_post');
   if(image&&!/^https:\/\//.test(image.url))return fail('invalid_payload','invalid_media');
   const token=await pageToken(pageId,input.credential.accessToken);if(!token.ok)return token;
@@ -75,6 +79,7 @@ export function createMetaPublisher(transport:MetaPublishTransport,options:MetaP
   const igId=id(input.account.externalAccountId,/^[0-9]{1,30}$/),pageId=id(input.account.parentExternalId,/^[0-9]{1,30}$/);
   if(!igId||!pageId)return fail('auth','instagram_unavailable');
   const image=input.media[0];
+  if(input.media.length>1)return fail('invalid_payload','too_many_media');
   if(!image)return fail('invalid_payload','image_required');
   if(image.mimeType!=='image/jpeg'||!/^https:\/\//.test(image.url))return fail('invalid_payload','invalid_media');
   const caption=input.text.trim();
@@ -125,7 +130,7 @@ export function createMetaReconciler(transport:MetaPublishTransport):Publication
   if(d.remoteId){
    if(!id(d.remoteId))return unknown;
    const r=await publisher.read(d.remoteId,{fields:'id'},token);if(!r)return unknown;
-   if(r.status===200&&id(record(r.body).id))return {status:'exists',remoteId:d.remoteId};
+   if(r.status===200&&id(record(r.body).id)===d.remoteId)return {status:'exists',remoteId:d.remoteId};
    const e=record(record(r.body).error);return e.code===100&&e.error_subcode===33?{status:'missing',remoteId:null}:unknown;
   }
   const text=(d.text??'').trim(),since=d.since?Date.parse(d.since):NaN;if(!Number.isFinite(since))return unknown;
@@ -133,15 +138,27 @@ export function createMetaReconciler(transport:MetaPublishTransport):Publication
   if(d.platform==='instagram'&&!/^[0-9]{1,30}$/.test(d.account?.externalAccountId??''))return unknown;
   const r=await publisher.read(path,d.platform==='facebook'?{fields:'id,message,created_time',since:String(Math.floor(since/1000)-120),limit:String(RECONCILE_PAGE_SIZE)}:{fields:'id,caption,timestamp',limit:String(RECONCILE_PAGE_SIZE)},token);
   if(!r||r.status!==200)return unknown;
-  const data=(Array.isArray(record(r.body).data)?record(r.body).data as unknown[]:[]).map(record);
+  if(!Array.isArray(record(r.body).data))return unknown;
+  const data=(record(r.body).data as unknown[]).map(record);
   const timeOf=(p:Record<string,unknown>)=>meta_time(d.platform==='facebook'?p.created_time:p.timestamp);
+  const textOf=(p:Record<string,unknown>)=>d.platform==='facebook'?p.message:p.caption;
+  // Missing message/caption is valid for an image-only post. IDs and timestamps are required; an invalid row or
+  // a malformed text field cannot certify that the dispatched publication was absent from this page.
+  if(new Set(data.map(p=>p.id)).size!==data.length||data.some(p=>!id(p.id,d.platform==='instagram'?/^[0-9]{1,30}$/:undefined)
+   ||!Number.isFinite(timeOf(p))||(textOf(p)!==undefined&&typeof textOf(p)!=='string')
+   ||(d.platform==='facebook'&&String(p.id).includes('_')&&!String(p.id).startsWith(pageId+'_'))))return unknown;
   const matches=data.filter(p=>{const at=timeOf(p);
-   return Number.isFinite(at)&&at>=since-120_000&&String((d.platform==='facebook'?p.message:p.caption)??'').trim()===text;});
+   return at>=since-120_000&&String(textOf(p)??'').trim()===text;});
   if(matches.length===1){const remote=id(matches[0].id);return remote?{status:'exists',remoteId:remote}:unknown;}
   if(matches.length>1)return unknown;
   // "missing" only when the whole window since the dispatch was read: a page that is not full, or a post older than
   // the window in it. A full page of newer posts may hide ours (a false "missing" would allow a duplicate).
-  const covered=data.length<RECONCILE_PAGE_SIZE||data.some(p=>{const at=timeOf(p);return Number.isFinite(at)&&at<since-120_000;});
+  const paging=record(r.body).paging;
+  if(paging!==undefined&&(!paging||typeof paging!=='object'||Array.isArray(paging)))return unknown;
+  const next=record(paging).next;
+  if(next!==undefined&&(typeof next!=='string'||!next.trim()))return unknown;
+  // An advertised next page may still contain the post, even when this page contains older entries.
+  const covered=!next&&(data.length<RECONCILE_PAGE_SIZE||data.some(p=>timeOf(p)<since-120_000));
   return covered?{status:'missing',remoteId:null}:unknown;
  }};
 }

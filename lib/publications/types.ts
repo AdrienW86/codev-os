@@ -76,6 +76,7 @@ export type PublicationDelivery = Updated & {
   // Lot 4.3 P10 engine snapshot (null on legacy rows) and last safe failure.
   revision_id: string | null; project_channel_id: string | null; text_hash: string | null; asset_ids: string[];
   blocked_reason: string | null; last_error_class: string | null; last_error_code: string | null;
+  last_attempt_id?: string | null; last_reconciliation_id?: string | null;
 };
 export type PublicationJob = Updated & {
   type: JobType; publication_id: string; delivery_id: string | null; revision_id: string | null;
@@ -183,9 +184,9 @@ export type PublicationFunctions = {
   publication_oauth_state_create:{Args:{p_provider:string;p_client_id:string;p_project_id:string|null;p_state_hash:string;p_actor_id:string};Returns:string};
   publication_oauth_state_consume:{Args:{p_provider:string;p_state_hash:string;p_actor_id:string};Returns:Json};
   publication_oauth_record:{Args:{p_client_id:string;p_provider:string;p_outcome:string;p_code:string|null;p_counts:Json|null;p_actor_id:string};Returns:undefined};
-  publication_delivery_reconcile_context:{Args:{p_delivery_id:string};Returns:Json};
-  publication_delivery_reconcile:{Args:{p_delivery_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
-  publication_delivery_confirm_not_published:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
+  publication_delivery_reconcile_context_checked:{Args:{p_delivery_id:string};Returns:Json};
+  publication_delivery_reconcile_checked:{Args:{p_delivery_id:string;p_attempt_id:string;p_status:string;p_remote_id:string|null;p_actor_id:string};Returns:Json};
+  publication_delivery_confirm_not_published_checked:{Args:{p_delivery_id:string;p_actor_id:string};Returns:Json};
   publication_prepare_delivery:{Args:{p_publication_id:string;p_actor_id:string};Returns:Json};
   publication_reschedule:{Args:{p_publication_id:string;p_expected_revision_id:string;p_occurrence_id:string;p_actor_id:string};Returns:Json};
   publication_job_claim:{Args:{p_worker_id:string;p_lease_seconds:number};Returns:Json};

@@ -135,7 +135,7 @@ test('channel lock: save, media and approval refused server-side on a disabled c
  const detail=load('lib/publications/publication-detail.ts');const w={variants:[],links:[],assets:[],revisions:[],reviews:[],events:[]};
  const built=detail.buildPublicationDetail({publication:{id:PUB,client_id:C,project_id:SOCIAL,current_revision_id:null,status:'draft',subject:'S',target_date:null,editorial_week:'2026-10-12',creation_origin:'manual'},clientName:'C',projectName:'P',workspace:w,slot:null,deliveries:[],debug:null,channelLock:'Cette publication cible Instagram, canal désactivé pour ce projet.'});
  assert.equal(built.readOnly,true);assert.match(built.readOnlyReason,/cible Instagram/);
- assert.match(src('lib/publications/drawer.ts'),/publicationChannelLock\(id\)/);assert.match(src('app/(cockpit)/publications/[id]/edit/page.tsx'),/channelLock\?<p role="status" data-channel-lock="true"/);});
+ assert.match(src('lib/publications/drawer.ts'),/publicationChannelLock\(id\)/);assert.match(src('app/(cockpit)/publications/[id]/edit/page.tsx'),/(?:channelLock|lock)\?<p role="status" data-channel-lock="true"/);});
 
 test('defaultCadence and the editorial calendar take explicit platforms; legacy defaults are unchanged',()=>{
  const calendar=load('lib/publications/calendar.ts');const platformsOf=type=>channels.publicationCapabilities(legacy.legacyPublicationChannelsForType(type),'legacy').platforms;

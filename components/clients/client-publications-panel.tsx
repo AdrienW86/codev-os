@@ -20,10 +20,11 @@ export function ClientPublicationsSetupStart({clientId}:{clientId:string}){
 }
 
 export function ClientPublicationsProjectPicker({clientId,projects,current}:{clientId:string;projects:{id:string;name:string}[];current:string}){
- if(projects.length<2)return null;
- return <nav aria-label="Projet Publications" className="mb-4 flex flex-wrap items-center gap-2 text-sm"><span className="text-muted">Projet :</span>
+ return <div className="space-y-4">{projects.length>1&&<nav aria-label="Projet Publications" className="mb-4 flex flex-wrap items-center gap-2 text-sm"><span className="text-muted">Projet :</span>
   {projects.map(p=><Link key={p.id} href={`/clients/${clientId}?tab=publications&project=${p.id}`} aria-current={p.id===current?'page':undefined}
-   className={`rounded-full border px-3 py-1 ${p.id===current?'border-accent text-accent':'border-border'}`}>{p.name}</Link>)}</nav>;
+   className={`rounded-full border px-3 py-1 ${p.id===current?'border-accent text-accent':'border-border'}`}>{p.name}</Link>)}</nav>}
+  <nav aria-label="Parcours Publications du client" className="flex flex-wrap gap-2 text-sm"><Link href={`/publications/new?client=${clientId}&project=${current}`} className="rounded-lg bg-accent-strong px-4 py-2 font-semibold text-accent-foreground">Rédiger un brouillon</Link><Link href={`/publications?client=${clientId}&project=${current}`} className="rounded-lg border border-border px-4 py-2">Publications du client</Link><Link href={`/projects/${current}/calendar`} className="rounded-lg border border-border px-4 py-2">Calendrier</Link><Link href={`/publications/supervision?view=review&client=${clientId}`} className="rounded-lg border border-border px-4 py-2">À valider</Link></nav>
+ </div>;
 }
 
 export function ClientPublicationSettingsForm({clientId,settings,globalStop}:{clientId:string;settings:ClientPublicationSettings;globalStop:boolean}){

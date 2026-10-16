@@ -78,7 +78,10 @@ test('panel: start, settings with locked human approval, no identifier other tha
  const html=renderToStaticMarkup(jsx.jsx(p.ClientPublicationSettingsForm,{clientId:C,settings:{...model.clientSettingsFromRow(null),autoPrepareEnabled:true},globalStop:true}));
  assert.match(html,/Validation humaine obligatoire/);assert.match(html,/type="checkbox" disabled="" readOnly="" checked=""/);assert.doesNotMatch(html,/name="require_human_approval"/);
  assert.match(html,/Préparation automatique active/);assert.match(html,/Arrêt général actif/);assert.match(html,/name="prepare_lead_days"/);assert.match(html,/name="editorial_brief"/);
- assert.equal(renderToStaticMarkup(jsx.jsx(p.ClientPublicationsProjectPicker,{clientId:C,projects:[{id:P,name:'A'}],current:P})),'','single project: no picker');
+ const navigation=renderToStaticMarkup(jsx.jsx(p.ClientPublicationsProjectPicker,{clientId:C,projects:[{id:P,name:'A'}],current:P}));
+ assert.doesNotMatch(navigation,/aria-label="Projet Publications"/,'one project needs no project switcher');
+ for(const label of ['Rédiger un brouillon','Publications du client','Calendrier','À valider'])assert.match(navigation,new RegExp(label));
+ assert.match(navigation,new RegExp(`/publications/new\\?client=${C}&amp;project=${P}`),'client and project stay together in the manual drafting journey');
 });
 
 test('client page: « Publications » tab wired, OAuth return view and no secret in the new client components',()=>{

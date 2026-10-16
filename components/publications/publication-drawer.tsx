@@ -1,13 +1,16 @@
 /* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and must not be cached by an image proxy. */
 'use client';
 import {useRouter} from 'next/navigation';
+import Link from 'next/link';
 import {useActionState,useEffect,useRef,useState,type ReactNode} from 'react';
 import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
 import {DeliverySection} from './delivery-section';
+import {PublicationManualExport} from './manual-export';
 import {AgentV2Justification} from './agent-v2-justification';
 import {DebugDetails} from '@/components/projects/debug-details';
+import {flash} from '@/components/ui/flash';
 import {boardOriginLabels,boardStatusClasses,boardStatusLabels} from '@/lib/publications/board-query';
 import {formatDate} from '@/lib/format-date';
 import {platformLabels} from '@/lib/publications/editor';
@@ -35,7 +38,7 @@ export function PublicationDrawer({load,closeHref}:{load:DrawerLoad;closeHref:st
   <div className="space-y-5 px-5 py-5">
    {load.state==='not_found'&&<p role="alert">Publication introuvable. Le lien est peut-être incorrect ou la publication n’existe plus.</p>}
    {load.state==='unavailable'&&<p role="alert">Publication indisponible pour le moment. Réessayez dans quelques instants.</p>}
-   {detail&&<DrawerBody detail={detail}/>}
+   {detail&&<PublicationWorkspace detail={detail}/>}
   </div></dialog>;
 }
 
@@ -48,7 +51,8 @@ function Header({detail}:{detail:PublicationDetailData}){
    {detail.archived&&<span data-archived="true" className="rounded-full border border-border px-2 py-0.5 text-muted">Archivée</span>}</p></div>;
 }
 
-function DrawerBody({detail}:{detail:PublicationDetailData&{justification?:JustificationView|null}}){
+// Shared by the URL drawer and the full publication page: the same locks, editing and approval controls.
+export function PublicationWorkspace({detail,showHistory=true}:{detail:PublicationDetailData&{justification?:JustificationView|null};showHistory?:boolean}){
  const editable=!detail.readOnly&&detail.revisionId!==null&&detail.status!=='to_prepare';
  return <>
   {detail.readOnlyReason&&<p role="note" data-read-only="true" className="rounded-lg border border-border p-3 text-sm">{detail.readOnlyReason}</p>}
@@ -56,11 +60,15 @@ function DrawerBody({detail}:{detail:PublicationDetailData&{justification?:Justi
    {detail.rejection&&<p className="rounded-lg border border-danger/40 p-3 text-sm"><span className="font-medium">Motif du rejet :</span> {detail.rejection}</p>}
    {detail.status==='ready'&&editable&&<p className="text-sm text-muted">Version approuvée. Toute modification crée une nouvelle version, à revalider avant publication.</p>}
    {editable?<Editor key={detail.revisionId} detail={detail}/>:<ReadOnly detail={detail}/>}
+   {detail.variants.length>0&&<PublicationManualExport clientName={detail.clientName} subject={detail.subject}
+    revisionNumber={detail.versions.find(version=>version.current)?.number??null}
+    approved={detail.status==='ready'||detail.status==='published'}
+    variants={detail.variants.map(variant=>({platform:variant.platform,text:variant.text,title:variant.title,cta:variant.cta}))}/>}
    {detail.status==='rejected'&&!detail.readOnly&&detail.projectId&&<section className={section} data-regenerate="true"><h3 className="font-semibold">Régénérer</h3>
     <p className="mt-1 text-xs text-muted">Une seule publication, en tenant compte du motif du rejet. La nouvelle version sera soumise à votre validation.</p>
     <AgentPrepareForm projectId={detail.projectId} publicationId={detail.publicationId} regenerate/></section>}
    {detail.justification&&<AgentV2Justification justification={detail.justification}/>}
-   <History detail={detail}/></>}
+   {showHistory&&<History detail={detail}/>}</>}
   {detail.diffusion&&detail.status!=='to_prepare'&&<DeliverySection publicationId={detail.publicationId} diffusion={detail.diffusion}/>}
   <section className={section}><h3 className="mb-2 text-sm font-semibold">Tableau</h3><BoardVisibilityForm publicationId={detail.publicationId} hidden={detail.hidden}/></section>
   {!detail.archived&&<ArchiveSection detail={detail}/>}
@@ -72,6 +80,7 @@ function DrawerBody({detail}:{detail:PublicationDetailData&{justification?:Justi
 function ToPrepare({detail}:{detail:PublicationDetailData}){
  return <section className={section} data-to-prepare="true"><h3 className="font-semibold">Créneau à préparer</h3>
   <p className="mt-1 text-sm text-muted">Aucun contenu n’a encore été préparé pour ce créneau.</p>
+  {!detail.readOnly&&<p className="mt-3 text-sm"><Link className="text-accent underline" href={`/publications/${detail.publicationId}/edit`}>Rédiger manuellement</Link> · sans appel IA</p>}
   {detail.projectId?<><h4 className="mt-4 text-sm font-semibold">Préparer avec l’agent</h4><AgentPrepareForm projectId={detail.projectId} publicationId={detail.publicationId}/></>
    :<p className="mt-3 text-sm">Associez d’abord un projet pour préparer ce créneau.</p>}</section>;
 }
@@ -100,7 +109,11 @@ function Ids({detail}:{detail:PublicationDetailData}){return <><input type="hidd
 // Editing never touches the current revision: Enregistrer creates a new manual revision through saveDraft.
 function Editor({detail}:{detail:PublicationDetailData}){
  const [textDirty,setTextDirty]=useState(false),[media,setMedia]=useState<MediaChoice>({mode:'current'});
- const [saveState,save,saving]=useActionState<DrawerState,FormData>(saveFromDrawerAction,{});
+ const [saveState,save,saving]=useActionState<DrawerState,FormData>(async(previous,form)=>{
+  const result=await saveFromDrawerAction(previous,form);
+  if(result.ok&&result.message)flash(result.message);
+  return result;
+ },{});
  const [stageState,stage,staging]=useActionState<DrawerState,FormData>(stageMediaAction,{});
  const [seenStage,setSeenStage]=useState(stageState);
  if(stageState!==seenStage){setSeenStage(stageState);if(stageState.staged)setMedia({mode:'staged',staged:stageState.staged});}
@@ -156,7 +169,7 @@ function Decision({detail,dirty}:{detail:PublicationDetailData;dirty:boolean}){
 
 function History({detail}:{detail:PublicationDetailData}){
  return <details className={section} data-history="true"><summary className="cursor-pointer text-sm font-semibold">Historique des versions ({detail.versions.length})</summary>
-  <ol className="mt-3 space-y-1 text-sm">{detail.versions.map(v=><li key={v.number}>Version {v.number} · {v.origin} · {formatDate(v.date)}{v.decision?` · ${v.decision}`:''}{v.reason?` · ${v.reason}`:''}{v.current?' · actuelle':''}</li>)}</ol></details>;
+  <ol className="mt-3 space-y-1 text-sm">{detail.versions.map(v=><li key={v.number}>Version {v.number} · {v.origin} · {formatDate(v.date)}{v.decision?` · ${v.decision}`:''}{v.reason&&!v.current?` · ${v.reason}`:''}{v.current?' · actuelle':''}</li>)}</ol></details>;
 }
 
 // Lot 4.3 P5: archive is explicit and one-way (confirmation checkbox, no modal); history stays readable.

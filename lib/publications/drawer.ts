@@ -1,7 +1,7 @@
 import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {getWorkspace} from './workspace';
+import {getWorkspace,type Workspace} from './workspace';
 import {getAiRunForRevision,getGenerationDetails} from './agent-data';
 import {isPublicationUuid} from './validation';
 import {publicationChannelLock} from './project-channels';
@@ -16,10 +16,11 @@ export type DrawerLoad={state:'ok';detail:PublicationDetailData&{justification?:
 type Root={client:{name:string}|null;project:{name:string}|null};
 
 // One publication only (never once per board row): getWorkspace plus the calendar slot and the delivery summary.
-export async function loadPublicationDetail(id:string,options:{debug:boolean}):Promise<DrawerLoad>{
+export async function loadPublicationDetail(id:string,options:{debug:boolean;workspace?:Workspace}):Promise<DrawerLoad>{
  await requireAdmin();if(!isPublicationUuid(id))return {state:'not_found'};
+ if(options.workspace&&options.workspace.publication.id!==id)return {state:'unavailable'};
  try{
-  const workspace=await getWorkspace(id);if(!workspace)return {state:'not_found'};
+  const workspace=options.workspace??await getWorkspace(id);if(!workspace)return {state:'not_found'};
   const db=getSupabaseServerClient();
   const [root,slot,deliveries,channelLock]=await Promise.all([
    db.from('publications').select('client:clients(name),project:projects(name)').eq('id',id).maybeSingle(),
@@ -40,7 +41,8 @@ export async function loadPublicationDetail(id:string,options:{debug:boolean}):P
   const views=await describeDeliveries([...rows].sort((a,b)=>b.created_at.localeCompare(a.created_at))).catch(()=>null);
   const live=(deliveries.data??[]).some(d=>(d as {status:string}).status!=='cancelled');
   const justification=await loadPublicationJustification(id);
-  return {state:'ok',detail:{...detail,diffusion:views?{deliveries:views,canPrepare:p.status==='approved'&&!p.archived_at&&!live}:null,justification}};
+  const scheduled=p.slot===1||p.slot===2||Boolean(p.occurrence_id);
+  return {state:'ok',detail:{...detail,diffusion:views?{deliveries:views,canPrepare:p.status==='approved'&&Boolean(p.current_revision_id)&&scheduled&&!detail.readOnly&&!live}:null,justification}};
  }catch{console.error('[publications] Lecture du panneau indisponible.');return {state:'unavailable'};}
 }
 

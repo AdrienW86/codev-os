@@ -306,3 +306,19 @@ test('loader: strict id, admin first, one publication only, targeted reads, debu
 test('review cards and the drawer share one variant/history/media builder; no migration added',()=>{
  const cards=src('lib/publications/review-cards.ts');assert.match(cards,/currentVariants\(w,revisionId\)/);assert.match(cards,/versionHistory\(w,revisionId\)/);assert.match(src('lib/publications/publication-detail.ts'),/export function currentVariants/);
  assert.equal(readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').length,23,'9 + Lot 4.3 P1 … P5 + P7 … P13');});
+
+test('detail loader reuses only the requested authorized workspace and still refreshes current delivery locks',async()=>{
+ const w=workspace(),calls=[],fake=fakeDb({publications:[{id:PUB,client:{name:'Jrenov'},project:{name:'Réseaux Jrenov'}}],publication_calendar_slots:[],publication_deliveries:[{id:ASSET,publication_id:PUB,status:'uncertain',variant_id:'v-facebook',platform:'facebook'}]});
+ const loader=deny=>load('lib/publications/drawer.ts',{'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');if(deny)throw Error('denied');}},'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},'./workspace':{getWorkspace:async()=>{throw Error('workspace must not be re-read');}},'./project-channels':{publicationChannelLock:async()=>null},'./agent-data':{},'./delivery/service':{DELIVERY_COLUMNS:'*',describeDeliveries:async()=>[]},'./editorial-justification-read':{loadPublicationJustification:async()=>null}});
+ const result=await loader(false).loadPublicationDetail(PUB,{debug:false,workspace:w});assert.equal(result.state,'ok');assert.equal(result.detail.readOnly,true);assert.match(result.detail.readOnlyReason,/incertain/);assert.ok(fake.reads.some(r=>r.table==='publication_deliveries'),'delivery status is freshly checked even with a preloaded workspace');
+ const reads=fake.reads.length;assert.deepEqual(json(await loader(false).loadPublicationDetail(OTHER,{debug:false,workspace:w})),{state:'unavailable'});assert.equal(fake.reads.length,reads,'mismatching publication is refused before storage');
+ await assert.rejects(()=>loader(true).loadPublicationDetail(PUB,{debug:false,workspace:w}),/denied/);assert.equal(fake.reads.length,reads,'preloading never bypasses admin authorization');
+});
+
+test('delivery preparation is offered only for the approved current revision attached to a real calendar slot',async()=>{
+ const cases=[{status:'approved',slot:null,occurrence_id:null,expected:false},{status:'approved',slot:1,occurrence_id:null,expected:true},{status:'approved',slot:null,occurrence_id:OTHER,expected:true},{status:'draft',slot:1,occurrence_id:null,expected:false},{status:'approved',slot:1,occurrence_id:null,archived_at:'2026-10-15T10:00:00Z',expected:false}];
+ for(const c of cases){const w=workspace({status:c.status});Object.assign(w.publication,c);const fake=fakeDb({publications:[{id:PUB,client:{name:'Jrenov'},project:{name:'Réseaux Jrenov'}}],publication_calendar_slots:[],publication_deliveries:[]});
+  const loader=load('lib/publications/drawer.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>fake.db},'./workspace':{getWorkspace:async()=>w},'./project-channels':{publicationChannelLock:async()=>null},'./agent-data':{},'./delivery/service':{DELIVERY_COLUMNS:'*',describeDeliveries:async()=>[]},'./editorial-justification-read':{loadPublicationJustification:async()=>null}});
+  const result=await loader.loadPublicationDetail(PUB,{debug:false});assert.equal(result.state,'ok');assert.equal(result.detail.diffusion.canPrepare,c.expected,JSON.stringify(c));
+ }
+});

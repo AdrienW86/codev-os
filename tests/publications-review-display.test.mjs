@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import {renderToStaticMarkup} from 'react-dom/server';
+import * as React from 'react';
 
 function load(path,mocks={}) {
  const exports={};
@@ -13,6 +14,18 @@ function load(path,mocks={}) {
  return exports;
 }
 const model=load('lib/publications/review-decisions.ts');
+const platformLabels={facebook:'Facebook',instagram:'Instagram',google_business_profile:'Google Business Profile'};
+const board=load('lib/publications/board-query.ts',{'./types':{publicationPlatforms:Object.keys(platformLabels)}});
+const details=load('lib/publications/publication-detail.ts',{'./editor':{platformLabels},'./board-query':board,
+ './board-visibility-events':load('lib/publications/board-visibility-events.ts')});
+const workspaceComponent=load('components/publications/publication-drawer.tsx',{
+ 'react':React,'next/link':{default:({href,children})=>jsx.jsx('a',{href,children})},'next/navigation':{useRouter:()=>({replace:()=>{}})},
+ '@/app/(cockpit)/publications/drawer-actions':Object.fromEntries(['approveFromDrawerAction','archiveFromDrawerAction','rejectFromDrawerAction','saveFromDrawerAction','stageMediaAction'].map(name=>[name,async()=>({})])),
+ './agent-forms':{AgentPrepareForm:()=>null},'./board-visibility-form':{BoardVisibilityForm:()=>null},
+ './delivery-section':{DeliverySection:()=>null},'./manual-export':{PublicationManualExport:()=>null},'./agent-v2-justification':{AgentV2Justification:()=>null},
+ '@/components/projects/debug-details':{DebugDetails:()=>null},'@/components/ui/flash':{flash:()=>{}},
+ '@/lib/publications/board-query':board,'@/lib/format-date':{formatDate:()=> '05 oct. 2026'},'@/lib/publications/editor':{platformLabels},
+});
 const timestamp='2026-10-05T20:18:54.869589+00:00';
 const variants=[{id:'facebook',revision_id:'rev1',platform:'facebook',metadata:{}},{id:'instagram',revision_id:'rev1',platform:'instagram',metadata:{}}];
 const reviews=variants.map((v,i)=>({id:`review${i}`,variant_id:v.id,publication_id:'pub',revision_id:'rev1',client_id:'client',decision:'rejected',reason:'texte invalide',actor_id:'user_fixture',created_at:timestamp}));
@@ -36,6 +49,9 @@ async function render(current) {
  const page=load('app/(cockpit)/publications/[id]/page.tsx',{
   'next/link':{default:({href,children})=>jsx.jsx('a',{href,children})},'next/navigation':{notFound:()=>{throw Error('notFound')}},
   '@/lib/require-admin':{requireAdmin:async()=>({userId:'user_fixture'})},'@/lib/publications/workspace':{getWorkspace:async()=>workspace},
+  '@/lib/publications/drawer':{loadPublicationDetail:async()=>({state:'ok',detail:details.buildPublicationDetail({publication:workspace.publication,
+   clientName:'Client',projectName:null,workspace,slot:null,deliveries:[],debug:null})})},
+  '@/components/publications/publication-drawer':workspaceComponent,
   '@/lib/publications/actor-label':load('lib/publications/actor-label.ts'),'@/lib/projects/data':{listProjects:async()=>[]},'@/lib/clients/data':{listClients:async()=>[]},'@/lib/publications/editor':{platformLabels:{facebook:'Facebook',instagram:'Instagram'}},
   '@/components/publications/workflow-forms':{PublicationReviewForm:()=>null,PublicationUploadForm:()=>null},
   '@/components/publications/agent-forms':{AgentPrepareForm:()=>null},

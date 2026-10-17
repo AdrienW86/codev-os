@@ -21,9 +21,9 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const day = /^\d{4}-\d{2}-\d{2}$/;
 const fail = (what: string): never => { throw new Error(`report ${what}`); };
 
-export async function gatherReportInput(clientId: string, period: Period): Promise<ReportInput> {
+export async function gatherReportInput(clientId: string, period: Period, options: { syncWebsite?: boolean } = {}): Promise<ReportInput> {
   const supabase = db();
-  await syncVercelAnalytics(clientId, period).catch(() => ({ ok: false as const, reason: "unavailable" as const }));
+  if (options.syncWebsite !== false) await syncVercelAnalytics(clientId, period).catch(() => ({ ok: false as const, reason: "unavailable" as const }));
   const since = `${period.start}T00:00:00Z`;
   const until = new Date(`${period.end}T00:00:00Z`);
   until.setUTCDate(until.getUTCDate() + 1);

@@ -26,10 +26,19 @@ function claimRpc(args, tables) {
   return JSON.parse(JSON.stringify(due));
 }
 
+function enqueueRpc(args, tables) {
+  const a = tables.automations.find(row => row.id === args.p_automation && row.status === "active" && row.next_run_at === args.p_due);
+  if (!a) return null;
+  const id = `job-${tables.jobs.length + 1}`;
+  tables.jobs.push({ id, automation_id: a.id, run_type: a.run_type, agent_id: a.agent_id, client_id: a.client_id, project_id: a.project_id, payload: a.config, scheduled_for: args.p_due, idempotency_key: `auto:${a.id}:${args.p_due}`, trigger: "schedule" });
+  Object.assign(a, { next_run_at: args.p_next, last_run_at: args.p_now, status: args.p_next ? "active" : "completed" });
+  return id;
+}
+
 const assigned = (agentId, clientId = CLIENT) => ({ agent_id: agentId, client_id: clientId, enabled: true });
 function setup({ automations = [], jobs = [], handlers = {}, configured = () => true, initialAgents = agents(), assignments = [assigned(REPORT), assigned(MONITORING)], beforeJobClaim, finishRunHook, failOn, handlerLoaderHook } = {}) {
   const fake = createFakeSupabase({ agents: initialAgents, agent_client_assignments: assignments, automations, jobs: jobs.map((job) => ({ status: "queued", attempts: 0, max_attempts: 3, scheduled_for: "2000-01-01T00:00:00Z", payload: {}, worker_id: null, ...job })), agent_runs: [], audit_logs: [] }, {
-    unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc }, failOn,
+    unique: { jobs: [["idempotency_key"]] }, rpc: { codev_claim_jobs: claimRpc, codev_enqueue_automation: enqueueRpc }, failOn,
   });
   const from = fake.client.from;
   fake.client.from = (table) => {
@@ -445,4 +454,15 @@ test("a lease lost while loading the handler cannot start it and closes the agen
   assert.equal(fake.tables.agent_runs[0].status, "failed");
   assert.match(fake.tables.agent_runs[0].summary, /Bail perdu/);
   assert.equal(fake.tables.audit_logs.some(row => row.action === "job.succeeded"), false);
+});
+
+
+test("atomic enqueue unavailable preserves the due occurrence and never falls back to separate writes", async () => {
+  const { engine, fake } = setup({ automations: [weekly()] });
+  const initial = structuredClone(fake.tables.automations[0]);
+  fake.client.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "missing RPC" } });
+  await assert.rejects(engine.enqueueDueAutomations(system, new Date("2026-10-12T06:00:30Z")), /migration atomique/);
+  assert.deepEqual(fake.tables.automations[0], initial);
+  assert.equal(fake.tables.jobs.length, 0);
+  assert.equal(fake.tables.audit_logs.some(row => row.action === "job.enqueued"), false);
 });

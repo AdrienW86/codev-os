@@ -84,7 +84,7 @@ export function searchConsoleReportLines(input: NonNullable<ReportInput["searchC
 }
 
 export function periodLabel(kind: ReportKind, period: Period) {
-  if (kind === "google_ads") return period.start === period.end ? `le ${frDate(period.start)} ${period.start.slice(0, 4)}` : `du ${frDate(period.start)} ${period.start.slice(0, 4)} au ${frDate(period.end)} ${period.end.slice(0, 4)}`;
+  if (kind === "google_ads" || kind === "custom") return period.start === period.end ? `le ${frDate(period.start)} ${period.start.slice(0, 4)}` : `du ${frDate(period.start)} ${period.start.slice(0, 4)} au ${frDate(period.end)} ${period.end.slice(0, 4)}`;
   if (kind === "monthly") return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${period.start}T00:00:00Z`));
   return `semaine du ${frDate(period.start)} au ${frDate(period.end)}`;
 }

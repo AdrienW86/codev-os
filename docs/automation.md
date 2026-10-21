@@ -37,7 +37,7 @@ La route du planificateur acquiert maintenant un verrou atomique dans `scheduler
 
 **Ce changement ne crée pas de cron Vercel et n'active aucun envoi** : le déclenchement reste à configurer explicitement, avec le secret serveur et les garde-fous Publications existants. Tests isolés : `tests/scheduler-single-flight.test.mjs`.
 
-### Activer Vercel Cron (manuel, non activé par ce lot)
+### Vercel Cron (activé : `vercel.json`, toutes les 15 minutes, plan Pro)
 
 1. Ajoutez `CRON_SECRET` dans les variables Vercel (Production). Vercel l’envoie automatiquement en `Authorization: Bearer …` aux crons.
 2. Ajoutez à la racine un `vercel.json` :

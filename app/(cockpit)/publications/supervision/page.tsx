@@ -15,6 +15,8 @@ import {AgentV2Form} from "@/components/publications/agent-v2-form";
 import {ReconnectForm,RescheduleForm,SuspendClientForm,SuspendDeliveryForm} from "@/components/publications/supervision-forms";
 import {ClientFilter,SupervisionTabs} from "@/components/publications/supervision-tabs";
 import {SupervisionReviewCard} from "@/components/publications/supervision-review-card";
+import {ReviewGroupHeader} from "@/components/publications/review-card";
+import {groupReviewCards} from "@/lib/publications/review-groups";
 
 // Socle Publications, lot 7 : supervision de tous les clients, pilotable depuis un téléphone. Une seule page, des onglets
 // compacts collants (?view=) et un filtre client (?client=) : voir lib/publications/supervision-view.ts. Lecture seule,
@@ -128,8 +130,10 @@ export default async function PublicationsSupervisionPage({searchParams}:PagePro
    </Section>
   </>}
 
-  {view==="review"&&<Section id="sv-review" title="À valider" description="Aperçu de chaque plateforme avec sa photo. Valider, rejeter (motif obligatoire) ou modifier : une modification crée une nouvelle version soumise à validation.">
-   {reviewItems.length?<div className="space-y-4">{reviewItems.map(item=><SupervisionReviewCard key={item.card.publicationId} item={item}/>)}
+  {view==="review"&&<Section id="sv-review" title="À valider" description="Un post = une carte par réseau, avec « Tout approuver ». Aperçu de chaque plateforme avec sa photo. Valider, rejeter (motif obligatoire) ou modifier : une modification crée une nouvelle version soumise à validation.">
+   {reviewItems.length?<div className="space-y-4">{groupReviewCards(reviewItems.map(item=>({...item,publicationId:item.card.publicationId,groupId:item.card.groupId}))).map(g=>g.cards.length>1
+    ?<section key={g.key} data-review-group="true" className="space-y-3 rounded-2xl border border-border p-3"><ReviewGroupHeader cards={g.cards.map(i=>i.card)} showContext/>{g.cards.map(item=><SupervisionReviewCard key={item.card.publicationId} item={item}/>)}</section>
+    :<SupervisionReviewCard key={g.key} item={g.cards[0]}/>)}
     {pending.length>Math.min(reviewItems.length,SUPERVISION_REVIEW_LIMIT)&&<p className="text-sm"><Link href="/publications/review" className="text-accent hover:underline">Voir les {pending.length} publications à valider</Link></p>}</div>
     :<Empty>Aucune publication à valider.</Empty>}
   </Section>}

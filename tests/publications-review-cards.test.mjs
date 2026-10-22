@@ -35,7 +35,7 @@ const workspaces={
  [ids.approved]:{publication:publications[2],revisions:[],variants:[],reviews:[],links:[],assets:[]},
  [ids.gbp]:{publication:publications[3],revisions:[rev(ids.r7,ids.gbp,1,'manual','2026-10-06T08:00:00Z')],variants:[variant('vg',ids.r7,'google_business_profile','Texte fiche Google.')],reviews:[],links:[{variant_id:'vg',asset_id:'missing',sort_order:0}],assets:[{id:'missing',storage_path:'x',preview:null}]}};
 function cardsModule(){const calls=[];const m=load('lib/publications/review-cards.ts',{'./workspace':{getWorkspace:async pid=>{calls.push(['workspace',pid]);return workspaces[pid];}},'./agent-data':{getGenerationDetails:async r=>{calls.push(['details',r]);return {run_id:ids.run,selected_opportunity:{subject:'Automatisation IA',score:87},media_id:'drive-media',factual_basis:['Phrase vérifiée.'],generation_summary:'Sujet et photo compatibles ; validation humaine requise.'};},getAiRunForRevision:async r=>{calls.push(['run',r]);return {id:ids.run,model:'gpt-4.1-mini-2025-04-14',input_tokens:4090,output_tokens:386,estimated_cost_eur:0.0028};}}});return {m,calls};}
-const reviewActions={approveFromCardAction:async()=>({}),rejectFromCardAction:async()=>({}),editFromCardAction:async()=>({})};
+const reviewActions={approveFromCardAction:async()=>({}),approveGroupFromCardAction:async()=>({}),rejectFromCardAction:async()=>({}),editFromCardAction:async()=>({})};
 const agentActions={configureAgentAction:async()=>({}),prepareAgentAction:async()=>({})};
 const card=()=>load('components/publications/review-card.tsx',{'@/app/(cockpit)/publications/review-actions':reviewActions,'@/app/(cockpit)/publications/agent-actions':agentActions});
 async function cards(debug=false){const {m}=cardsModule();return m.buildReviewCards(publications,{debug});}
@@ -107,3 +107,34 @@ test('Régénérer goes through the existing preparation action: explicit author
 test('project and global review pages share the single ReviewQueue/ReviewCard UI',()=>{const queue=readFileSync(resolve(root,'components/publications/review-queue.tsx'),'utf8');assert.match(queue,/<ReviewCard /);
  for(const f of ['app/(cockpit)/projects/[id]/(tabs)/review/page.tsx','app/(cockpit)/publications/review/page.tsx']){const s=readFileSync(resolve(root,f),'utf8');assert.match(s,/ReviewQueue/,f);assert.match(s,/buildReviewCards/,f);assert.doesNotMatch(s,/PublicationReviewForm|getGenerationDetails|score/,f);}
  assert.match(readFileSync(resolve(root,'app/(cockpit)/publications/review/page.tsx'),'utf8'),/<ReviewQueue cards=\{cards\} showContext\/>/);});
+
+// Validation simplifiée : un post préparé sur plusieurs réseaux = une carte groupée avec « Tout approuver ».
+test('sister publications of one post are grouped, in order, with one « Tout approuver » for the pending ones',()=>{
+ const groups=load('lib/publications/review-groups.ts').groupReviewCards;
+ const c=(id,group)=>({publicationId:id,groupId:group});
+ assert.deepEqual(json(groups([c('a','g1'),c('b',undefined),c('c','g1'),c('d','g2')]).map(g=>[g.key,g.cards.map(x=>x.publicationId)])),[['g1',['a','c']],['b',['b']],['g2',['d']]]);
+ const {ReviewGroupApproveForm,ReviewGroupHeader}=card();
+ const base=(n,platform,label,assets=[ids.asset])=>({publicationId:`1111111${n}-1111-4111-8111-111111111111`,revisionId:`2222222${n}-2222-4222-8222-222222222222`,groupId:'g',clientId:'c',projectId:'p',status:'pending_review',date:'2026-10-26',subject:'Toiture refaite',clientName:'Jrenov',projectName:'Social',image:null,
+  variants:[{platform,label,text:'T',title:null,cta:null,assetIds:assets}],editorial:{title:'',angle:'',source:'',targetDate:''},rejection:null,versions:[],debug:null});
+ const three=[base(1,'facebook','Facebook'),base(2,'instagram','Instagram'),base(3,'google_business_profile','Google Business Profile')];
+ const html=render(jsx.jsx(ReviewGroupHeader,{cards:three}));
+ assert.match(html,/Tout approuver \(3\)/);assert.match(html,/Post sur 3 réseaux/);assert.equal((html.match(/name="item"/g)??[]).length,3);
+ assert.match(html,new RegExp(`value="${three[2].publicationId}\\|${three[2].revisionId}\\|google_business_profile"`));
+ const missing=render(jsx.jsx(ReviewGroupApproveForm,{cards:[three[0],base(4,'instagram','Instagram',[])]}));
+ assert.match(missing,/data-media-required="true"/);assert.doesNotMatch(missing,/Tout approuver/,'media required before approving everything');
+ assert.equal(render(jsx.jsx(ReviewGroupApproveForm,{cards:[three[0]]})),'','a single publication keeps its own « Valider »');
+ assert.doesNotMatch(render(jsx.jsx(ReviewGroupApproveForm,{cards:[three[0],{...three[1],status:'rejected'}]})),/Tout approuver/,'only pending publications are approved together');
+});
+test('« Tout approuver » repeats the human decision per publication, each on its own revision, and reports partial failures',async()=>{
+ const seen=[];const outcomes={};
+ const a=load('app/(cockpit)/publications/review-actions.ts',{'next/cache':{revalidatePath:()=>{}},'@/lib/require-admin':{requireAdmin:async()=>{seen.push('admin');return {userId:'user_admin'};}},
+  '@/lib/publications/workspace':{submitOrReview:async f=>{seen.push([f.get('publication_id'),f.get('revision_id'),f.get('decision')]);return {message:outcomes[f.get('publication_id')]??'Révision approuvée.'};},saveDraft:async()=>({}),currentRevision:async()=>null}});
+ const P1='11111111-1111-4111-8111-111111111111',P2='11111112-1111-4111-8111-111111111111',R1='22222221-2222-4222-8222-222222222222',R2='22222222-2222-4222-8222-222222222222';
+ const f=(...items)=>{const d=new FormData();for(const i of items)d.append('item',i);return d;};
+ let r=await a.approveGroupFromCardAction({},f(`${P1}|${R1}|facebook`,`${P2}|${R2}|instagram`));
+ assert.equal(r.ok,true);assert.equal(r.message,'2 publications approuvées.');assert.deepEqual(json(seen),['admin',[P1,R1,'approved'],[P2,R2,'approved']]);
+ seen.length=0;outcomes[P2]='Média requis : instagram.';
+ r=await a.approveGroupFromCardAction({},f(`${P1}|${R1}|facebook`,`${P2}|${R2}|instagram`));assert.equal(r.ok,false);assert.match(r.message,/1 approuvée\(s\) sur 2\. Instagram : Média requis/);
+ for(const bad of [f(),f(`${P1}|${R1}|facebook`,`${P1}|${R1}|instagram`),f(`${P1}|nope|facebook`),f(`${P1}|${R1}|tiktok`),f(...Array.from({length:7},(_,i)=>`1111111${i}-1111-4111-8111-111111111111|${R1}|facebook`))]){
+  seen.length=0;r=await a.approveGroupFromCardAction({},bad);assert.equal(r.ok,false);assert.deepEqual(json(seen),['admin'],'invalid selection: no decision at all');}
+});

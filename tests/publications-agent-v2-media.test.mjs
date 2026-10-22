@@ -223,7 +223,8 @@ test('service: media failure keeps the drafts and is never a full success; retry
 
 // --- Action and UI -------------------------------------------------------------------------------------------
 test('retry action: admin first, run id validated, revalidation; UI shows state, category, signed preview and the required-media messages',async()=>{
- const calls=[];const a=load('app/(cockpit)/publications/agent-v2-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
+ const calls=[];const a=load('app/(cockpit)/publications/agent-v2-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');return {userId:'user_admin'};}},
+  '@/lib/publications/automation/scheduled':{submitDrafts:async()=>({submitted:[],complete:false,reviewRequired:false})},
   '@/lib/publications/agent-v2/service':{prepareNextPublications:async()=>({ok:true,message:'m',publications:[],withMedia:false}),retryAgentV2Media:async id=>{calls.push(['retry',id]);return {ok:true,message:'Média attaché aux brouillons.',projectId:P};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
  assert.deepEqual(json(await a.retryAgentV2MediaAction({},form({run_id:'nope'}))),{ok:false,message:'Préparation invalide.'});assert.ok(!calls.some(c=>c[0]==='retry'));

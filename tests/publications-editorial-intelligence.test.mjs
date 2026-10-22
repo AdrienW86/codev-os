@@ -136,6 +136,7 @@ test("lieux : seuls ceux des données du client, refus déterministe d'un lieu i
   assert.deepEqual(json(places.unsupportedPlaces("Toulouse : gouttières en zinc.", facts)), ["Toulouse"], "known city without preposition");
   assert.deepEqual(json(places.unsupportedPlaces("Dans les Pyrénées-Orientales, la tramontane souffle.", facts)), ["Pyrénées-Orientales"]);
   assert.deepEqual(json(places.unsupportedPlaces("Isolation en PVC, à Noël comme en Mai, sur Facebook.", facts)), [], "acronyms, holidays, months and platforms are not places");
+  assert.deepEqual(json(places.unsupportedPlaces("Soyez visibles sur Internet, sur le Web et sur Google Business Profile.", facts)), [], "digital channels are not places");
   assert.deepEqual(json(places.unsupportedPlaces("Partout en France.", facts)), ["France"]);
   const bad = check({ idea, publications: variants([zinc[0], zinc[1], "Zinguerie à Narbonne : pose et entretien de gouttières en zinc."]) });
   assert.deepEqual([bad.reason, bad.detail], ["place_not_allowed", "lieu absent des données du client : Narbonne"]);

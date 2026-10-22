@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and must not be cached by an image proxy. */
 'use client';
 import {useActionState,useState} from 'react';
-import {approveFromCardAction,editFromCardAction,rejectFromCardAction,type ReviewCardState} from '@/app/(cockpit)/publications/review-actions';
+import {approveFromCardAction,approveGroupFromCardAction,editFromCardAction,rejectFromCardAction,type ReviewCardState} from '@/app/(cockpit)/publications/review-actions';
 import {AgentPrepareForm} from './agent-forms';
 import {DebugDetails} from '@/components/projects/debug-details';
 import type {ReviewCardData} from '@/lib/publications/review-cards';
@@ -30,6 +30,27 @@ export function ReviewApproveForm({card}:{card:ReviewCardData}){
  // Same rule as the server: every channel needs a media before approval. The server check remains authoritative.
  if(card.variants.some(v=>!v.assetIds.length))return <p role="note" data-media-required="true" className="max-w-xs text-sm text-danger">Média requis : ajoutez une photo avant de valider.</p>;
  return <form action={action}><Ids card={card}/><button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-accent-foreground">{pending?'Validation…':'Valider'}</button>{state.message&&<p role="status" className="mt-2 text-sm">{state.message}</p>}</form>;
+}
+// Validation simplifiée : un seul bouton pour toutes les publications sœurs d'un post (une par réseau). Chaque
+// publication reste approuvée sur sa version courante, avec ses propres contrôles côté serveur.
+export function ReviewGroupApproveForm({cards}:{cards:ReviewCardData[]}){
+ const [state,action,pending]=useActionState<ReviewCardState,FormData>(approveGroupFromCardAction,{});
+ const pendingCards=cards.filter(c=>c.status==='pending_review');
+ if(pendingCards.length<2)return null;
+ const missing=pendingCards.flatMap(c=>c.variants.filter(v=>!v.assetIds.length).map(v=>v.label));
+ if(missing.length)return <p role="note" data-media-required="true" className="text-sm text-danger">Média requis ({missing.join(', ')}) : ajoutez une photo avant de tout approuver.</p>;
+ return <form action={action} data-approve-group="true" className="flex flex-wrap items-center gap-3"><input type="hidden" name="project_id" value={pendingCards[0].projectId}/>
+  {pendingCards.map(c=><input key={c.publicationId} type="hidden" name="item" value={`${c.publicationId}|${c.revisionId}|${c.variants[0]?.platform??''}`}/>)}
+  <button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-accent-foreground">{pending?'Validation…':`Tout approuver (${pendingCards.length})`}</button>
+  {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
+}
+// En-tête d'un post multi-réseaux : sujet, date, réseaux, puis « Tout approuver ». Les cartes par réseau suivent.
+export function ReviewGroupHeader({cards,showContext=false}:{cards:ReviewCardData[];showContext?:boolean}){
+ const first=cards[0];if(!first)return null;
+ return <header className="flex flex-wrap items-start justify-between gap-3">
+  <div className="min-w-0"><p className="text-xs text-muted">{showContext?`${first.clientName} · `:''}{formatLongDate(first.date)} · Post sur {cards.length} réseaux</p>
+   <h3 className="mt-0.5 font-semibold break-words">{first.subject}</h3><p className="mt-0.5 text-xs text-muted">{cards.flatMap(c=>c.variants.map(v=>v.label)).join(' · ')}</p></div>
+  <ReviewGroupApproveForm cards={cards}/></header>;
 }
 export function ReviewCard({card,showContext=false}:{card:ReviewCardData;showContext?:boolean}){
  const [platform,setPlatform]=useState(card.variants[0]?.platform),[mode,setMode]=useState<'view'|'edit'|'reject'>('view');

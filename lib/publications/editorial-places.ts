@@ -20,14 +20,18 @@ const KNOWN_PLACES=['Île-de-France','Occitanie','Bretagne','Normandie','Provenc
  'Toulon','Grenoble','Dijon','Angers','Nîmes','Perpignan','Narbonne','Béziers','Carcassonne','Barcelone','Argelès-sur-Mer','Canet-en-Roussillon','Saint-Cyprien','Céret','Prades','Rivesaltes'];
 // Noms propres qui ne sont pas des lieux (fêtes, mois, jours, plateformes, marques fréquentes).
 const NOT_PLACES=new Set(['noel','paques','toussaint','nouvel an','janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre',
- 'lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche','facebook','instagram','google','whatsapp','messenger'].map(s=>normalizeText(s)));
+ 'lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche','facebook','instagram','google','whatsapp','messenger',
+ // Canaux numériques (« présents sur Internet », « visible sur le Web »…) : jamais des lieux.
+ 'internet','web','linkedin','tiktok','youtube','pinterest','snapchat','twitter','x','threads','maps','google maps','google business profile'].map(s=>normalizeText(s)));
+// Un nom composé dont le premier mot est un canal numérique (« Google Business Profile », « Internet Explorer ») n'est pas un lieu.
+const notPlace=(name:string)=>{const n=normalizeText(name);return NOT_PLACES.has(n)||NOT_PLACES.has(n.split(' ')[0]??'');};
 
 /** Lieux nommés dans un texte (forme d'origine, sans doublon). */
 export function placeMentions(text:string):string[]{
  const found:string[]=[];
  for(const m of text.matchAll(PLACE_AFTER_PREPOSITION)){const name=m[1].replace(/[’'-]+$/,'').trim();
   // Sigles (PVC, VMC…) et noms courants exclus.
-  if(name.length>1&&name===name.toUpperCase())continue;if(!NOT_PLACES.has(normalizeText(name)))found.push(name);}
+  if(name.length>1&&name===name.toUpperCase())continue;if(!notPlace(name))found.push(name);}
  const plain=' '+normalizeText(text)+' ';
  for(const place of KNOWN_PLACES)if(plain.includes(' '+normalizeText(place)+' '))found.push(place);
  return [...new Set(found)];

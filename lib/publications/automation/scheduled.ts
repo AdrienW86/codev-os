@@ -67,8 +67,8 @@ export async function delegatedActor(clientId:string,isAdmin:(userId:string)=>bo
  return row.actor_id;
 }
 // Soumission à validation des brouillons encore en brouillon (révision courante). Jamais d'approbation.
-type DraftSubmission={submitted:string[];complete:boolean;reviewRequired:boolean};
-async function submitDrafts(actor:string,ids:readonly string[]):Promise<DraftSubmission>{
+export type DraftSubmission={submitted:string[];complete:boolean;reviewRequired:boolean};
+export async function submitDrafts(actor:string,ids:readonly string[]):Promise<DraftSubmission>{
  if(!ids.length)return {submitted:[],complete:false,reviewRequired:false};
  let rows;
  try{rows=await db().from('publications').select('id,status,current_revision_id').in('id',[...ids]);}

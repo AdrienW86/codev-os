@@ -8,6 +8,8 @@ export type ReviewCardVariant={platform:PublicationPlatform;label:string;text:st
 export type ReviewCardVersion={number:number;origin:string;date:string;decision:string|null;reason:string|null;current:boolean};
 export type ReviewCardData={
  publicationId:string;revisionId:string;clientId:string;projectId:string;status:'pending_review'|'rejected';
+ // Idée éditoriale partagée par les publications sœurs (un réseau chacune) ; à défaut, la publication elle-même.
+ groupId:string;
  date:string;subject:string;clientName:string;projectName:string;image:string|null;variants:ReviewCardVariant[];
  editorial:{title:string;angle:string;source:string;targetDate:string};rejection:string|null;versions:ReviewCardVersion[];
  debug:Record<string,unknown>|null};
@@ -29,7 +31,7 @@ export async function buildReviewCards(publications:PublicationListItem[],option
   if(options.debug){const [details,run]=await Promise.all([getGenerationDetails(revisionId),getAiRunForRevision(revisionId)]);
    debug={publication_id:p.id,revision_id:revisionId,run_id:details?.run_id??run?.id??null,model:revision?.model??run?.model??null,input_tokens:run?.input_tokens??null,output_tokens:run?.output_tokens??null,estimated_cost_eur:run?.estimated_cost_eur??revision?.estimated_cost??null,
     opportunity:details?.selected_opportunity??null,media_id:details?.media_id??null,asset_ids:assetIds,storage_paths:assetIds.map(id=>w.assets.find(a=>a.id===id)?.storage_path??null),factual_basis:details?.factual_basis??null,generation_summary:details?.generation_summary??null};}
-  return {publicationId:p.id,revisionId,clientId:p.client_id,projectId:p.project_id!,status:p.status as ReviewCardData['status'],date:p.target_date??p.editorial_week,subject:p.subject,
+  return {publicationId:p.id,groupId:p.editorial_group_id??p.id,revisionId,clientId:p.client_id,projectId:p.project_id!,status:p.status as ReviewCardData['status'],date:p.target_date??p.editorial_week,subject:p.subject,
    clientName:p.client?.name??'Client',projectName:p.project?.name??'Projet',image,variants,
    editorial:{title:p.subject,angle:revision?.angle??p.subject,source:revision?.source_content??variants[0]?.text??p.subject,targetDate:p.target_date??''},
    rejection:p.status==='rejected'?rejected?.reason??null:null,versions,debug} satisfies ReviewCardData;

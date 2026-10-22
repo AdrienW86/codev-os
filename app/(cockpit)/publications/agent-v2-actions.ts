@@ -21,13 +21,13 @@ export async function prepareNextPublicationsAction(_state:AgentV2State,form:For
   if(!result.ok&&result.refused){retried=true;result=await prepareNextPublications(project,{allowRealAI:true});}
  }catch{return {ok:false,message:"Préparation indisponible. Aucun brouillon créé."};}
  let message=result.message;
- if(retried)message=(result.ok?"Premier contenu refusé, régénéré automatiquement. ":"Contenu refusé deux fois. ")+message;
  if(result.ok&&result.withMedia){
   let submitted=0;
   try{submitted=(await submitDrafts(userId,result.publications.map(p=>p.id))).submitted.length;}catch{/* drafts stay drafts */}
   message=submitted===result.publications.length?`${submitted>1?`${submitted} publications prêtes`:"Publication prête"} : à valider dans la file de validation.`
    :`${message} Soumission à validation incomplète : soumettez les brouillons restants depuis leur fiche.`;
  }
+ if(retried)message=(result.ok?"Premier contenu refusé, régénéré automatiquement. ":"Contenu refusé deux fois. ")+message;
  if(result.ok)revalidateProject(project);
  return {ok:result.ok,message,publications:result.publications,withMedia:result.withMedia,media:result.media};
 }

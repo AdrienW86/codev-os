@@ -9,7 +9,7 @@ export type ReviewCardVersion={number:number;origin:string;date:string;decision:
 export type ReviewCardData={
  publicationId:string;revisionId:string;clientId:string;projectId:string;status:'pending_review'|'rejected';
  // Idée éditoriale partagée par les publications sœurs (un réseau chacune) ; à défaut, la publication elle-même.
- groupId?:string;
+ groupId:string;
  date:string;subject:string;clientName:string;projectName:string;image:string|null;variants:ReviewCardVariant[];
  editorial:{title:string;angle:string;source:string;targetDate:string};rejection:string|null;versions:ReviewCardVersion[];
  debug:Record<string,unknown>|null};

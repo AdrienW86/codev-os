@@ -74,6 +74,63 @@ function loadVercel(providerJson) {
   return { ProviderError, vercel: loadTs("lib/providers/vercel.ts", { "@/lib/providers/api": { providerJson }, "@/lib/providers/errors": { ProviderError } }, { URL, URLSearchParams }) };
 }
 
+test("Vercel analytics rejects absent or malformed mandatory counters instead of inventing zero", async () => {
+  const period = { start: "2026-10-01", end: "2026-10-03" };
+  const options = { env: { VERCEL_TOKEN: "isolated-token" } };
+  for (const response of [null, {}, { data: null }, { data: [] }, { data: {} }]) {
+    const { vercel } = loadVercel(async () => response);
+    await assert.rejects(() => vercel.webAnalyticsCount("prj_ABCDEF123", period, options), error => error.kind === "malformed");
+  }
+  for (const field of ["pageviews", "visitors"]) {
+    for (const invalid of [undefined, null, "0", "12", NaN, Infinity, -Infinity, -1]) {
+      const { vercel } = loadVercel(async () => ({ data: { pageviews: 12, visitors: 6, [field]: invalid } }));
+      await assert.rejects(() => vercel.webAnalyticsCount("prj_ABCDEF123", period, options), error => error.kind === "malformed");
+    }
+  }
+  const { vercel } = loadVercel(async (_provider, url) => url.includes("/visits/count") ? { data: {} } : { data: [] });
+  await assert.rejects(() => vercel.webAnalyticsSummary("prj_ABCDEF123", period, options), error => error.kind === "malformed");
+});
+
+test("Vercel analytics keeps explicit zero counters and empty successful dimensions", async () => {
+  const { vercel } = loadVercel(async (_provider, url) => url.includes("/visits/count")
+    ? { data: { pageviews: 0, visitors: 0 } } : { data: [] });
+  const data = await vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-01", end: "2026-10-03" }, { env: { VERCEL_TOKEN: "isolated-token" } });
+  assert.equal(data.visitors, 0); assert.equal(data.pageviews, 0);
+  assert.equal(data.sections.topPages.ok, true); assert.equal(data.topPages.length, 0);
+  assert.equal(data.sections.events.ok, true); assert.equal(data.events.length, 0);
+});
+
+test("Vercel analytics isolates malformed dimension counters while keeping verified totals", async () => {
+  for (const row of [{ requestPath: "/contact", pageviews: 2 }, { requestPath: "/contact", pageviews: -1, visitors: 1 }, { requestPath: "/contact", pageviews: 2, visitors: "1" }, null, { pageviews: 2, visitors: 1 }]) {
+    const { vercel } = loadVercel(async (_provider, url) => {
+      if (url.includes("/visits/count")) return { data: { pageviews: 12, visitors: 6 } };
+      if (new URL(url).searchParams.get("by") === "requestPath") return { data: [row] };
+      return { data: [] };
+    });
+    const data = await vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-01", end: "2026-10-03" }, { env: { VERCEL_TOKEN: "isolated-token" } });
+    assert.equal(data.visitors, 6); assert.equal(data.pageviews, 12);
+    assert.equal(data.sections.topPages.ok, false); assert.match(data.sections.topPages.error, /malformed/);
+    assert.equal(data.topPages.length, 0); assert.equal(data.sections.events.ok, true);
+  }
+});
+
+test("Vercel analytics never zero-fills malformed daily or event counters", async () => {
+  const { vercel } = loadVercel(async (_provider, url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith("/visits/count")) return { data: { pageviews: 12, visitors: 6 } };
+    if (parsed.searchParams.get("by") === "day") return { data: [{ day: "2026-10-01", visitors: 1 }] };
+    if (parsed.searchParams.get("by") === "eventName") return { data: [{ eventName: "phone_click", visitors: 1, count: null }] };
+    return { data: [] };
+  });
+  const data = await vercel.webAnalyticsSummary("prj_ABCDEF123", { start: "2026-10-01", end: "2026-10-03" }, { env: { VERCEL_TOKEN: "isolated-token" } });
+  assert.equal(data.visitors, 6);
+  for (const section of ["trend", "eventTrend", "events"]) {
+    assert.equal(data.sections[section].ok, false); assert.match(data.sections[section].error, /malformed/);
+    assert.equal(data[section].length, 0);
+  }
+  assert.equal(data.sections.topPages.ok, true);
+});
+
 test("Vercel analytics: a refused complementary query is isolated with its cause, never fatal or zero-filled silently", async () => {
   let ProviderErrorRef;
   const { ProviderError, vercel } = loadVercel(async (_provider, url) => {

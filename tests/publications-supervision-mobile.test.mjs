@@ -100,7 +100,7 @@ const Link = ({ href, children, ...rest }) => { delete rest.scroll; delete rest.
 const action = async () => ({});
 const mocks = (extra = {}) => ({
   "next/link": { __esModule: true, default: Link },
-  "@/app/(cockpit)/publications/review-actions": { approveFromCardAction: action, rejectFromCardAction: action, editFromCardAction: action },
+  "@/app/(cockpit)/publications/review-actions": { approveFromCardAction: action, approveGroupFromCardAction: action, rejectFromCardAction: action, editFromCardAction: action },
   "@/app/(cockpit)/publications/supervision-actions": { rescheduleAction: action, suspendDeliveryAction: action, suspendClientAction: action },
   "@/app/(cockpit)/publications/connection-actions": { startOAuthAction: action },
   "@/app/(cockpit)/publications/agent-v2-actions": { prepareNextPublicationsAction: action, retryAgentV2MediaAction: action },

@@ -24,7 +24,8 @@ import {publicationPlatforms,type PublicationPlatform} from '../types';
 // nothing). Every failure after begin is recorded (fail). Never submits, approves, publishes or schedules.
 // P8: when a media was selected, finish reserves it and the compensable media step attaches it (media.ts). A media
 // failure keeps the drafts (explicit needs_media, never reported as a full success) and can be retried without AI.
-export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean;recoverable?:boolean};
+// refused : contenu refusé par les gardes (run échoué et enregistré, réservations libérées) ; une relance est sûre.
+export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean;recoverable?:boolean;refused?:boolean};
 export type AgentV2MediaOptions={mediaSource?:PublicationMediaSource;adapt?:ImageAdapter};
 const result=(ok:boolean,message:string,extra:Partial<AgentV2Result>={}):AgentV2Result=>({ok,message,publications:[],withMedia:false,...extra});
 const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2MediaDb,source:options.mediaSource??driveMediaSource(),adapt:options.adapt??adaptImage});
@@ -127,7 +128,9 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  if(!checked.ok){
   await recordJustification(db,run,userId,buildEditorialJustification(context.input,{refusal:{reason:checked.reason,detail:checked.detail??null}},now));
   const message=refusals[checked.reason]??'Contenu généré invalide. Aucun brouillon créé.';
-  return fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',checked.detail?`${message} Motif : ${checked.detail}.`:message);}
+  const text=checked.detail?`${message} Motif : ${checked.detail}.`:message;
+  const failed=await fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',text);
+  return failed.message===text?{...failed,refused:true}:failed;}
  const value=checked.value,mediaId=value.publications[0]?.mediaId??null;
  await recordJustification(db,run,userId,buildEditorialJustification(context.input,{value},now));
  const finishArgs={p_run_id:run,p_output:json({idea:value.idea,publications:value.publications.map(p=>({occurrence_id:p.occurrenceId,text:p.text,cta:p.cta}))}),

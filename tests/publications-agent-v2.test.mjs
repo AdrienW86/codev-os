@@ -198,11 +198,30 @@ test('real generator: Responses API integration with strict instructions and sch
  assert.deepEqual(json(r.output.publications),[{occurrenceId:uid(5,1),platform:'facebook',text:'T',cta:null,mediaId:M}]);});
 
 test('action and UI: explicit AI authorization, admin first; configured → Agent v2, legacy → Agent v1; no database in client components',async()=>{
- const calls=[];const a=load('app/(cockpit)/publications/agent-v2-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
+ const calls=[];const a=load('app/(cockpit)/publications/agent-v2-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');return {userId:'user_admin'};}},
+  '@/lib/publications/automation/scheduled':{submitDrafts:async()=>{throw Error('unexpected submission');}},
   '@/lib/publications/agent-v2/service':{prepareNextPublications:async(p,o)=>{calls.push(['prepare',p,o.allowRealAI]);return {ok:true,message:'3 brouillons créés',publications:[],withMedia:false};}}});
  const form=e=>{const f=new FormData();for(const [k,v] of Object.entries(e))f.set(k,v);return f;};
  assert.match((await a.prepareNextPublicationsAction({},form({project_id:P}))).message,/Autorisez explicitement/);assert.ok(!calls.some(c=>c[0]==='prepare'));
  calls.length=0;assert.equal((await a.prepareNextPublicationsAction({},form({project_id:P,authorize_ai:'on'}))).ok,true);assert.deepEqual(json(calls.slice(0,2)),['admin',['prepare',P,true]]);
+ // Validation simplifiée : un refus de contenu est régénéré une fois, puis les brouillons complets passent « À valider ».
+ const pubs=[{id:uid(9,1),platform:'facebook',label:'Facebook'},{id:uid(9,2),platform:'instagram',label:'Instagram'}];
+ const flow=(results,submit=async(actor,ids)=>({submitted:[...ids],complete:true,reviewRequired:true}))=>{const seen=[];const queue=[...results];
+  const action=load('app/(cockpit)/publications/agent-v2-actions.ts',{'next/cache':{revalidatePath:()=>{}},'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},
+   '@/lib/publications/automation/scheduled':{submitDrafts:async(actor,ids)=>{seen.push(['submit',actor,ids]);return submit(actor,ids);}},
+   '@/lib/publications/agent-v2/service':{prepareNextPublications:async()=>{seen.push('prepare');return queue.shift();}}});
+  return {seen,run:()=>action.prepareNextPublicationsAction({},form({project_id:P,authorize_ai:'on'}))};};
+ let f=flow([{ok:false,refused:true,message:'Contenu refusé',publications:[],withMedia:false},{ok:true,message:'2 brouillons',publications:pubs,withMedia:true}]);
+ let r=await f.run();assert.equal(r.ok,true);assert.match(r.message,/régénéré automatiquement/);assert.match(r.message,/2 publications prêtes/);
+ assert.deepEqual(json(f.seen),['prepare','prepare',['submit','user_admin',pubs.map(p=>p.id)]]);
+ f=flow([{ok:false,refused:true,message:'Contenu refusé',publications:[],withMedia:false},{ok:false,refused:true,message:'Contenu refusé',publications:[],withMedia:false}]);
+ r=await f.run();assert.equal(r.ok,false);assert.match(r.message,/refusé deux fois/);assert.deepEqual(json(f.seen),['prepare','prepare'],'one retry at most, nothing submitted');
+ f=flow([{ok:false,message:'Budget mensuel de l’agent atteint.',publications:[],withMedia:false}]);
+ r=await f.run();assert.equal(r.ok,false);assert.deepEqual(json(f.seen),['prepare'],'no retry when the refusal is not a content refusal');
+ f=flow([{ok:true,message:'2 brouillons sans média',publications:pubs,withMedia:false}]);
+ r=await f.run();assert.equal(r.message,'2 brouillons sans média');assert.deepEqual(json(f.seen),['prepare'],'drafts without photo are never submitted');
+ f=flow([{ok:true,message:'2 brouillons',publications:pubs,withMedia:true}],async()=>({submitted:[pubs[0].id],complete:false,reviewRequired:true}));
+ r=await f.run();assert.match(r.message,/Soumission à validation incomplète/);
  const link={__esModule:true,default:({href,children,...p})=>jsx.jsx('a',{href,...p,children})};
  const {AgentV2Section}=load('components/publications/agent-v2-section.tsx',{'next/link':link,'./agent-forms':{AgentConfigurationForm:()=>jsx.jsx('form',{'data-config':'true'})},'./agent-v2-form':{AgentV2Form:p=>jsx.jsx('form',{'data-v2-form':String(p.disabled)})}});
  const html=renderToStaticMarkup(jsx.jsx(AgentV2Section,{projectId:P,status:'active',config:null,openCount:5,upcoming:[{key:'a',platformLabel:'Facebook',date:'2026-10-13',time:'12:00'},{key:'b',platformLabel:'Instagram',date:'2026-10-13',time:'18:00'}]}));

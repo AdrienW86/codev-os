@@ -20,7 +20,7 @@ export async function buildSupervisionReviewItems(publications:readonly Publicat
   const revisionId=p.current_revision_id!,revision=w.revisions.find(r=>r.id===revisionId);
   const detailed=currentVariants(w,revisionId);
   const variants=detailed.map(v=>({platform:v.platform,label:v.label,text:v.text,title:v.title,cta:v.cta,assetIds:v.assetIds,media:v.media}));
-  const card:ReviewCardData={publicationId:p.id,revisionId,clientId:p.client_id,projectId:p.project_id!,status:'pending_review',date:p.target_date??p.editorial_week,subject:p.subject,
+  const card:ReviewCardData={publicationId:p.id,groupId:p.editorial_group_id??p.id,revisionId,clientId:p.client_id,projectId:p.project_id!,status:'pending_review',date:p.target_date??p.editorial_week,subject:p.subject,
    clientName:p.client?.name??'Client',projectName:p.project?.name??'Projet',image:primaryMedia(detailed).preview,
    variants:detailed.map(v=>({platform:v.platform,label:v.label,text:v.text,title:v.title,cta:v.cta,assetIds:v.assetIds})),
    editorial:{title:p.subject,angle:revision?.angle??p.subject,source:revision?.source_content??variants[0]?.text??p.subject,targetDate:p.target_date??''},

@@ -23,7 +23,8 @@ export function AgentV2Form({projectId,disabled}:{projectId:string;disabled:bool
   <button disabled={disabled||pending} className="rounded-lg bg-accent-strong px-4 py-2 font-semibold text-accent-foreground disabled:opacity-50">{pending?'Préparation…':'Préparer les prochaines publications'}</button>
   {state.message&&<p role={state.ok&&!warning?'status':'alert'} className={state.ok&&!warning?'':'text-danger'}>{state.message}</p>}
   {state.ok&&state.media&&<AgentV2MediaSummary media={state.media}/>}
-  {state.ok&&state.publications&&state.publications.length>0&&<ul className="space-y-1" data-agent-v2-created="true">{state.publications.map(p=><li key={p.id}><Link className="text-accent" href={`/publications?publication=${p.id}`}>{p.label} · brouillon à relire</Link></li>)}</ul>}</form>;
+  {state.ok&&state.publications&&state.publications.length>0&&<ul className="space-y-1" data-agent-v2-created="true">{state.publications.map(p=><li key={p.id}><Link className="text-accent" href={`/publications?publication=${p.id}`}>{p.label} · brouillon à relire</Link></li>)}</ul>}
+  {state.ok&&state.withMedia&&<Link className="inline-block rounded-lg bg-accent-strong px-4 py-2 text-sm text-accent-foreground" href="/publications/review" data-agent-v2-review="true">Valider le post →</Link>}</form>;
 }
 // Explicit retry of the media step only (same drafts, no AI call).
 export function AgentV2MediaRetryForm({runId}:{runId:string}){

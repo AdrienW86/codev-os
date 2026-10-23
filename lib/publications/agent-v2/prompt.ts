@@ -6,6 +6,8 @@ import {compactEditorial} from '../editorial-plan';
 export const FORBIDDEN_INVENTIONS=['prix','promotion','réduction ou offre','année de création ou d’existence','nombre d’années d’expérience','certification','qualification ou label',
  'chantier ou intervention réalisée','ville ou zone non fournie','avis client','délai d’intervention','garantie','résultat chiffré','équipe','nombre de clients','matériel','offre','service absent du contexte',
  'caractéristique d’une photo non décrite'] as const;
+export const BLOCKED_WORDS=['gratuit','offert','promotion','remise','réduction','garanti','décennale','certifié','label','RGE','Qualibat','avis','étoiles','clients satisfaits',
+ 'rapidement','intervention rapide','en urgence','24h','48h','7j/7','récemment','hier','nous avons réalisé','nous sommes intervenus','chez un client','X ans d’expérience','depuis + année'] as const;
 export const PLATFORM_GUIDELINES={
  facebook:'Facebook : ton conversationnel et lisible, paragraphes courts, 0 à 2 hashtags au maximum.',
  instagram:'Instagram : accroche courte et visuelle en première ligne, puis texte bref ; 3 à 6 hashtags pertinents maximum, jamais de liste spammy.',
@@ -19,6 +21,8 @@ export const AGENT_V2_INSTRUCTIONS=[
  'Aucune légende, aucun message d’expéditeur ni aucun nom de fichier n’est fourni : n’en suppose aucun.',
  `Interdit sauf si le fait figure mot pour mot dans le contexte : ${FORBIDDEN_INVENTIONS.join(', ')}.`,
  'Si une information manque, reste générique et factuel ; n’écris aucun chiffre, aucun prix, aucune promesse, aucun avis, aucune garantie, aucun délai, aucune ville non fournie.',
+ // Mots refusés automatiquement par le contrôle anti-invention (selection.ts) : les nommer évite des refus en série.
+ `Mots refusés automatiquement s’ils ne figurent pas mot pour mot dans le contexte : ${BLOCKED_WORDS.join(', ')}. Pour l’appel à l’action, écris par exemple « Demandez votre devis » sans qualificatif.`,
  'Une seule idée éditoriale commune (idea.subject et idea.angle), différente des previous_subjects, déclinée en un texte natif et DIFFÉRENT pour chaque occurrence fournie.',
  'Chaque plateforme a son propre texte (accroche, structure et longueur adaptées) : jamais la même phrase reprise ou à peine retouchée d’une plateforme à l’autre. Seuls les faits sont communs.',
  'Prestations : ne cite que des prestations présentes dans services. Si les previous_publications portent toutes sur la même prestation, choisis une autre prestation de services illustrée par une photo disponible.',

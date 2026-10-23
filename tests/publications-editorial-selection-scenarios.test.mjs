@@ -30,7 +30,7 @@ test("prompt injection: a photo description (vision output, possibly read from t
   const facts = sel.factsOf(i);
   assert.doesNotMatch(facts, /2 500|garantie|Faîtage de toiture en tuiles/, "media descriptions and topics excluded from the facts");
   const copied = { idea, publications: variants([faitage[0] + " Devis 2 500 € – garantie 10 ans.", faitage[1], faitage[2]], A(9)) };
-  assert.deepEqual(json(sel.validateGeneratorOutput(i, copied)), { ok: false, reason: "unsupported_claim" }, "a claim copied from the image text is refused");
+  assert.deepEqual(json(sel.validateGeneratorOutput(i, copied)).reason, "unsupported_claim", "a claim copied from the image text is refused");
   assert.deepEqual(json(sel.unsupportedClaims("Devis 2 500 € – garantie 10 ans", facts).map(c => c.split(":")[0])), ["price", "guarantee", "experience"]);
   // Délimitation : contexte non fiable nommé comme tel, jamais de légende, de message ni de nom de fichier.
   const payload = prompt.buildGeneratorPayload(i);
@@ -65,7 +65,7 @@ test("scénario B — rotation : trois démoussages récents, une autre prestati
   assert.equal(sel.repeatsService(again.idea.subject, input({ media: [{ ...roof, description: "Toiture couverte de mousse.", categories: ["toiture"] }] })), false);
   assert.equal(sel.repeatsService(again.idea.subject, input({ previousPublications: demoussage.slice(0, 1) })), false, "a single previous idea is not a series");
   const invented = { idea, publications: variants([faitage[0], faitage[1], "Réparation de faîtage et pose de zinguerie neuve pour une toiture étanche à la pluie."]) };
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), invented)), { ok: false, reason: "unsupported_claim" }, "zinguerie is not a verified service");
+  assert.deepEqual(json(sel.validateGeneratorOutput(input(), invented)), { ok: false, reason: "unsupported_claim", detail: "termes non confirmés : « zinguerie »" }, "zinguerie is not a verified service");
   assert.deepEqual(json(sel.unsupportedClaims("Pose de zinguerie", sel.factsOf(input()))), ["service:zinguerie"]);
   assert.deepEqual(json(sel.unsupportedClaims("Démoussage et réparation de faitage", sel.factsOf(input()))), [], "accents aside, verified services pass");
 });

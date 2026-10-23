@@ -117,7 +117,9 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  const value={idea:{subject,angle},publications:o.publications.map(p=>({...p,text:p.text.trim(),cta:p.cta?.trim()||null}))};
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
-  for(const t of [value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])])if(unsupportedClaims(t,facts).length)return {ok:false,reason:'unsupported_claim'};}
+  // Le motif (termes refusés, sans le texte) est conservé : il dit quoi corriger au lieu d'un refus muet.
+  const found=[...new Set([value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])].flatMap(t=>unsupportedClaims(t,facts)).map(c=>c.split(':').slice(1).join(':').trim().toLocaleLowerCase('fr')))];
+  if(found.length)return {ok:false,reason:'unsupported_claim',detail:`termes non confirmés : ${found.slice(0,5).map(f=>`« ${f.slice(0,40)} »`).join(', ')}`};}
  if(input.previousSubjects&&repeatsPrevious(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput))return {ok:false,reason:'repetition'};
  // PR #42 : lieux autorisés, photo cohérente (jamais un document), répétitions sur tout l'historique chargé.
  const refusal=editorialRefusal(input,value);if(refusal)return {ok:false,...refusal};

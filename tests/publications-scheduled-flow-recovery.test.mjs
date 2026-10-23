@@ -362,7 +362,7 @@ test("#5 the scheduler claim carries the lateness tolerance; the cockpit claim i
   assert.deepEqual(json(calls), [["publication_job_claim_on_time", { p_worker_id: "scheduler", p_lease_seconds: 120, p_max_late_seconds: 7200 }], ["publication_job_claim", { p_worker_id: "cockpit-user", p_lease_seconds: 120 }]]);
   const registry = src("lib/publications/delivery/registry.ts");
   assert.match(registry, /SCHEDULED_LATE_TOLERANCE_SECONDS=2\*3600/);
-  assert.match(registry, /run:scheduledRun\}(,options:ScheduledDueOptions=\{\})?\):Promise<DueRunSummary\|\{disabled:true\}>/, "scheduler default: on-time claim");
+  assert.match(registry, /const run=deps\?\?\{db:getSupabaseServerClient\(\) as unknown as SettingsDb,run:scheduledRun\}/, "scheduler default: on-time claim");
   assert.match(registry, /processDuePublications\(deps:DueRunDeps=\{db:getSupabaseServerClient\(\) as unknown as SettingsDb,run:runOnePublicationJobInProduction\}\)/, "cockpit default unchanged");
 });
 

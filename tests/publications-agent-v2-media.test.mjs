@@ -36,7 +36,9 @@ test('binary validation: JPEG / PNG / WebP accepted with SHA-256; empty, oversiz
  for(const [format,mime] of [['jpeg','image/jpeg'],['png','image/png'],['webp','image/webp']]){const bytes=await image(format);
   const r=validate.checkSourceImage(bytes,mime);assert.equal(r.ok,true,format);assert.equal(r.mimeType,mime);assert.equal(r.sha256,sha(bytes));assert.equal(r.size,bytes.length);
   for(const platform of ['facebook','instagram','google_business_profile']){const d=await transform.adaptImage(bytes,platform);
-   assert.equal(d.mime_type,'image/jpeg');assert.ok(d.bytes.length>0&&d.bytes.length<=786432);assert.deepEqual([d.width,d.height],platform==='google_business_profile'?[1200,900]:[1080,1080]);
+   assert.equal(d.mime_type,'image/jpeg');assert.ok(d.bytes.length>0&&d.bytes.length<=786432);assert.deepEqual([d.width,d.height],[1080,1080],'square for every network');
+   const px=await sharp(Buffer.from(d.bytes)).raw().toBuffer({resolveWithObject:true});
+   for(const i of [0,(px.info.width*px.info.height-1)*px.info.channels])assert.ok(px.data[i+2]<200,'no white band');
    assert.equal(validate.checkSourceImage(d.bytes,'image/jpeg').ok,true,'derivative is a real JPEG');}}
  assert.deepEqual(json(validate.checkSourceImage(new Uint8Array(0),'image/jpeg')),{ok:false,reason:'empty'});
  assert.deepEqual(json(validate.checkSourceImage(null,'image/jpeg')),{ok:false,reason:'empty'});
@@ -95,7 +97,7 @@ test('workflow: FB + IG + GBP attached — fetched once, one private upload per 
   for(const [i,u] of uploads.entries()){const id=media.agentMediaAssetId(RUN,1,PUBS[i]);assert.deepEqual(u,['upload','publication-images',`${C}/${PUBS[i]}/${id}`,{contentType:'image/jpeg',upsert:false}]);}
   const [attach]=h.rpcs('publication_agent_v2_media_attach');assert.equal(attach.p_attempt,1);assert.equal(attach.p_original_hash,sha(bytes),'original SHA-256');
   assert.deepEqual(attach.p_assets.map(a=>Object.keys(a).sort().join(',')),Array(3).fill('asset_id,file_hash,height,mime_type,publication_id,storage_path,width'),'metadata only, no bytes');
-  assert.deepEqual(attach.p_assets.map(a=>[a.publication_id,a.width,a.height,a.mime_type]),[[PUBS[0],1080,1080,'image/jpeg'],[PUBS[1],1080,1080,'image/jpeg'],[PUBS[2],1200,900,'image/jpeg']]);
+  assert.deepEqual(attach.p_assets.map(a=>[a.publication_id,a.width,a.height,a.mime_type]),[[PUBS[0],1080,1080,'image/jpeg'],[PUBS[1],1080,1080,'image/jpeg'],[PUBS[2],1080,1080,'image/jpeg']]);
   for(const a of attach.p_assets)assert.equal(a.file_hash,sha(h.stored.get(a.storage_path)),'hash of the stored derivative');
   assert.ok(!h.log.some(x=>x[0]==='remove'),'nothing removed on success');
   const leaked=JSON.stringify([outcome,attach,errors]);for(const s of [DRIVE_FILE,DRIVE_FOLDER,'chantier-lyon','token','https://'])assert.ok(!leaked.includes(s),`no leak: ${s}`);

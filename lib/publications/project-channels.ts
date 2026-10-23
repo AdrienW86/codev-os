@@ -32,7 +32,14 @@ function resolve(project:PublicationProjectRef,rows:Map<string,PublicationProjec
  return {...configured,legacyAligned:sameSet(configured.platforms,legacy.map(c=>c.platform))};
 }
 export async function getPublicationProjectChannels(project:PublicationProjectRef):Promise<PublicationCapabilities>{
- await requireAdmin();return resolve(project,await readChannels([project]));
+ await requireAdmin();return loadPublicationProjectChannels(project);
+}
+/**
+ * Même lecture, sans session : réservée aux traitements serveur déjà autorisés (planificateur, au nom d'un
+ * administrateur délégué vérifié par l'appelant). Jamais exposée à une action ou à une page.
+ */
+export async function loadPublicationProjectChannels(project:PublicationProjectRef):Promise<PublicationCapabilities>{
+ return resolve(project,await readChannels([project]));
 }
 // Batch variant for lists: one read per 100 projects, never one read per row.
 export async function getPublicationCapabilitiesForProjects(projects:readonly PublicationProjectRef[]):Promise<Map<string,PublicationCapabilities>>{

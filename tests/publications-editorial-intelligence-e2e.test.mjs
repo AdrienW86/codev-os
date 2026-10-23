@@ -90,7 +90,7 @@ function world(client) {
   const fetched = [];
   const service = load("lib/publications/agent-v2/service.ts", {
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: ADMIN }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
-    "../project-channels": { getPublicationProjectChannels: async () => ({ source: "configured", channels: [], platforms: PLATFORMS, legacyAligned: true }) },
+    "../project-channels": { loadPublicationProjectChannels: async () => ({ source: "configured", channels: [], platforms: PLATFORMS, legacyAligned: true }) },
     "./openai-generator": { openaiAgentV2Generator: () => generator }, "./media-runs": { getAgentV2RunMedia: async () => ({ media: { preview: null } }) },
     "../media/source": { driveMediaSource: () => ({ fetchMedia: async ref => { fetched.push(ref); return { bytes: JPEG, mimeType: "image/jpeg" }; } }) },
     "../media/transform": { adaptImage: async (_b, platform) => ({ bytes: new Uint8Array([255, 216, 255, platform.length]), width: platform === "google_business_profile" ? 1200 : 1080, height: platform === "google_business_profile" ? 900 : 1080, mime_type: "image/jpeg" }) } });

@@ -53,7 +53,8 @@ test('anti-invention check: risky claims refused unless the very same fact is st
  assert.deepEqual(json(sel.unsupportedClaims('Un contrôle de la toiture avant l’hiver.',facts)),[]);
  assert.deepEqual(json(sel.unsupportedClaims('Garantie décennale',facts+'\nGarantie décennale')),[],'stored fact allowed');
  const r=sel.validateGeneratorOutput(input(),good());assert.equal(r.ok,true);
- assert.deepEqual(json(sel.validateGeneratorOutput(input(),good({publications:good().publications.map((p,i)=>i===0?{...p,text:p.text+' Devis gratuit !'}:p)}))),{ok:false,reason:'unsupported_claim'});
+ assert.deepEqual(json(sel.validateGeneratorOutput(input(),good({publications:good().publications.map((p,i)=>i===0?{...p,text:p.text+' Devis gratuit !'}:p)}))),{ok:false,reason:'unsupported_claim',detail:'termes non confirmés : « gratuit »'});
+ assert.ok(prompt.AGENT_V2_INSTRUCTIONS.includes('gratuit')&&prompt.AGENT_V2_INSTRUCTIONS.includes('rapidement'),'blocked words are announced to the model');
  assert.deepEqual(json(sel.validateGeneratorOutput(input(),good({publications:good().publications.map(p=>({...p,text:'Même texte'}))}))),{ok:false,reason:'identical_texts'});
  assert.deepEqual(json(sel.validateGeneratorOutput(input(),good({idea:{subject:'',angle:'A'}}))),{ok:false,reason:'invalid_idea'});
  assert.deepEqual(json(sel.validateGeneratorOutput(input(),good({idea:{subject:'s'.repeat(301),angle:'A'}}))),{ok:false,reason:'invalid_idea'});

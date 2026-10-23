@@ -1,5 +1,6 @@
 import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
+import {isAuthorizedAdmin} from '@/lib/admin-policy';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {googleOAuthConfig,metaOAuthConfig} from '@/lib/integrations/publications-oauth/config';
 import {googleTransport} from '@/lib/integrations/publications-oauth/http';
@@ -59,7 +60,7 @@ export const MAX_DUE_PER_RUN=5;
 type SettingsDb={from(table:string):{select(columns:string):{limit(n:number):{maybeSingle():PromiseLike<{data:unknown;error:unknown}>}}}};
 export type DueRunOptions={platforms?:readonly PublicationPlatform[]};
 export type DueRunDeps={db:SettingsDb;run:(workerId:string,options?:DueRunOptions)=>Promise<ExecutionResult>};
-export type DueRunSummary={ok:boolean;message:string;counts:{published:number;simulated:number;failed:number;uncertain:number;blocked:number;retry:number}};
+export type DueRunSummary={ok:boolean;message:string;counts:{published:number;simulated:number;failed:number;uncertain:number;blocked:number;retry:number};reconciled?:AutoReconcileSummary};
 export async function processDuePublications(deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:runOnePublicationJobInProduction}):Promise<DueRunSummary>{
  const {userId}=await requireAdmin();
  return processDue('cockpit-'+userId.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60),deps);
@@ -79,17 +80,23 @@ export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
 // pour le contexte, le coffre et les URL signées). Instagram (~290 s) n'est donc jamais qu'un premier envoi. Plafond fixe.
 export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000};
 export const MAX_SCHEDULED_DUE_WITH_DEADLINE=10;
-export type ScheduledDueOptions={deadline?:number;clock?:()=>number};
+// reconcile : vérification automatique des posts Google « en cours de relecture » (voir reconcilePendingGoogleDeliveries).
+// Par défaut, uniquement sur le chemin de production (deps non fournies) ; jamais d'envoi, seulement une lecture.
+export type ScheduledDueOptions={deadline?:number;clock?:()=>number;reconcile?:()=>Promise<AutoReconcileSummary>};
 export const SCHEDULED_DELIVERY_FLAG='PUBLICATIONS_SCHEDULED_DELIVERY';
 // L'environnement est lu par l'appelant (route du planificateur), jamais dans lib/publications.
 export function scheduledDeliveryEnabled(env:Record<string,string|undefined>):boolean{return env[SCHEDULED_DELIVERY_FLAG]==='enabled';}
 const scheduledRun=(workerId:string,options:DueRunOptions={})=>runOnePublicationJobInProduction(workerId,{maxLateSeconds:SCHEDULED_LATE_TOLERANCE_SECONDS,...options});
-export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps:DueRunDeps={db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun},options:ScheduledDueOptions={}):Promise<DueRunSummary|{disabled:true}>{
+export async function processScheduledDuePublications(env:Record<string,string|undefined>,deps?:DueRunDeps,options:ScheduledDueOptions={}):Promise<DueRunSummary|{disabled:true}>{
  if(!scheduledDeliveryEnabled(env))return {disabled:true};
- const deadline=options.deadline;
- if(deadline===undefined||!Number.isFinite(deadline))return processDue('scheduler',deps,MAX_SCHEDULED_DUE_PER_TICK);
- const clock=options.clock??Date.now;
- return processDue('scheduler',deps,MAX_SCHEDULED_DUE_WITH_DEADLINE,i=>i===0?undefined:publicationPlatforms.filter(p=>SEND_BUDGET_MS[p]<=deadline-clock()));
+ const reconcile=options.reconcile??(deps?undefined:()=>reconcilePendingGoogleDeliveries());
+ const run=deps??{db:getSupabaseServerClient() as unknown as SettingsDb,run:scheduledRun};
+ const deadline=options.deadline,clock=options.clock??Date.now;
+ const summary=deadline===undefined||!Number.isFinite(deadline)?await processDue('scheduler',run,MAX_SCHEDULED_DUE_PER_TICK)
+  :await processDue('scheduler',run,MAX_SCHEDULED_DUE_WITH_DEADLINE,i=>i===0?undefined:publicationPlatforms.filter(p=>SEND_BUDGET_MS[p]<=deadline-clock()));
+ // Après les envois, et seulement s'il reste le temps de son pire cas : un échec de vérification ne change rien aux envois.
+ if(!reconcile||(deadline!==undefined&&Number.isFinite(deadline)&&deadline-clock()<AUTO_RECONCILE_BUDGET_MS))return summary;
+ try{const r=await reconcile();return r.checked?{...summary,reconciled:r}:summary;}catch{log('auto_reconcile');return summary;}
 }
 // platformsFor (planificateur avec échéance) : plateformes permises pour le i-ème envoi ; liste vide → fin du passage.
 async function processDue(worker:string,deps:DueRunDeps,max=MAX_DUE_PER_RUN,platformsFor?:(i:number)=>readonly PublicationPlatform[]|undefined):Promise<DueRunSummary>{
@@ -131,6 +138,11 @@ const checkedReconciliationUnavailable=(error:{code?:string}|null)=>Boolean(erro
 const checkedReconciliationRequired='Mise à jour Publications requise en base : vérification sécurisée indisponible. Aucun renvoi autorisé.';
 export async function reconcileDelivery(deliveryId:unknown,deps:ReconcileDeps=productionReconcileDeps()):Promise<{ok:boolean;message:string;result?:ReconcileResult['status']}>{
  const {userId}=await requireAdmin();if(!isPublicationUuid(deliveryId))return {ok:false,message:'Diffusion invalide.'};
+ return reconcileAs(userId,deliveryId,deps);
+}
+// recordOnlyExists (vérification automatique) : seul « retrouvée » est enregistré ; sinon rien n'est écrit et la
+// diffusion reste à vérifier, sans nouvel événement à chaque passage du planificateur.
+async function reconcileAs(userId:string,deliveryId:string,deps:ReconcileDeps,recordOnlyExists=false):Promise<{ok:boolean;message:string;result?:ReconcileResult['status']}>{
  try{
   const ctx=await deps.db.rpc('publication_delivery_reconcile_context_checked',{p_delivery_id:deliveryId});
   if(checkedReconciliationUnavailable(ctx.error))return {ok:false,message:checkedReconciliationRequired};
@@ -145,6 +157,7 @@ export async function reconcileDelivery(deliveryId:unknown,deps:ReconcileDeps=pr
   const credential=await deps.vault.readCredential(ref,providerOfPlatform(c.platform));
   const r=await reconciler.reconcile({platform:c.platform,remoteId:c.remote_id,idempotencyKey:'',credential,
    account:{externalAccountId:c.account.external_account_id,parentExternalId:c.account.parent_external_id},text:c.text,since:c.since});
+  if(recordOnlyExists&&r.status!=='exists')return {ok:true,result:r.status,message:'Pas encore visible chez le fournisseur.'};
   const saved=await deps.db.rpc('publication_delivery_reconcile_checked',{p_delivery_id:deliveryId,p_attempt_id:c.attempt_id,p_status:r.status,p_remote_id:r.status==='exists'?r.remoteId:null,p_actor_id:userId});
   if(checkedReconciliationUnavailable(saved.error))return {ok:false,message:checkedReconciliationRequired};
   if(saved.error||!saved.data)return {ok:false,message:saved.error?.code==='40001'?'La tentative a changé pendant la vérification. Vérifiez à nouveau chez le fournisseur.':'Vérification non enregistrée. Réessayez.'};
@@ -159,4 +172,43 @@ export async function confirmDeliveryNotPublished(deliveryId:unknown,deps:Pick<R
   if(r.error||!r.data)return {ok:false,message:/reconcile first/i.test(r.error?.message??'')?'Vérifiez d’abord chez le fournisseur.':'Décision non enregistrée.'};
   return {ok:true,message:'Diffusion marquée non publiée : vous pouvez la réessayer.'};
  }catch{log('confirm');return {ok:false,message:'Décision non confirmée. Rechargez la diffusion avant de réessayer.'};}
+}
+
+// Vérification automatique (planificateur) des posts Google acceptés mais encore en relecture chez Google
+// (post_processing / post_visibility_unknown) : ils deviennent visibles quelques minutes plus tard, sans renvoi.
+// Lecture seule chez Google, au nom de l'administrateur qui a approuvé la révision (toujours autorisé) ; seul un post
+// retrouvé est enregistré (diffusion « publiée »). Bornée : 5 diffusions de moins de 7 jours par passage.
+export const AUTO_RECONCILE_CODES=['post_processing','post_visibility_unknown'] as const;
+export const MAX_AUTO_RECONCILE_PER_TICK=5;
+export const AUTO_RECONCILE_WINDOW_MS=7*24*3600_000;
+export const AUTO_RECONCILE_BUDGET_MS=60_000;
+export type AutoReconcileSummary={checked:number;published:number;pending:number;skipped:number};
+type Rows=PromiseLike<{data:unknown;error:unknown}>;
+export type AutoReconcileDeps=ReconcileDeps&{list:(since:string,limit:number)=>Rows;approver:(publicationId:string,revisionId:string)=>Promise<string|null>;isAdmin:(userId:string)=>boolean;now?:()=>number};
+const USER_ID=/^user_[a-zA-Z0-9_-]{1,200}$/;
+export function productionAutoReconcileDeps():AutoReconcileDeps{
+ const db=getSupabaseServerClient();
+ return {...productionReconcileDeps(),
+  list:(since,limit)=>db.from('publication_deliveries').select('id,publication_id,revision_id').eq('status','uncertain').eq('platform','google_business_profile')
+   .in('last_error_code',[...AUTO_RECONCILE_CODES]).gte('updated_at',since).order('updated_at',{ascending:false}).limit(limit),
+  approver:async(publicationId,revisionId)=>{
+   const r=await db.from('publication_reviews').select('actor_id').eq('publication_id',publicationId).eq('revision_id',revisionId).eq('decision','approved')
+    .order('created_at',{ascending:false}).limit(1).maybeSingle();
+   const actor=(r.data as {actor_id?:unknown}|null)?.actor_id;return !r.error&&typeof actor==='string'?actor:null;},
+  isAdmin:userId=>isAuthorizedAdmin(userId)};
+}
+export async function reconcilePendingGoogleDeliveries(deps:AutoReconcileDeps=productionAutoReconcileDeps()):Promise<AutoReconcileSummary>{
+ const summary:AutoReconcileSummary={checked:0,published:0,pending:0,skipped:0};
+ const since=new Date((deps.now??Date.now)()-AUTO_RECONCILE_WINDOW_MS).toISOString();
+ const rows=await deps.list(since,MAX_AUTO_RECONCILE_PER_TICK);
+ if(rows.error||!Array.isArray(rows.data))return summary;
+ for(const d of rows.data as {id?:unknown;publication_id?:unknown;revision_id?:unknown}[]){
+  if(!isPublicationUuid(d.id)||!isPublicationUuid(d.publication_id)||!isPublicationUuid(d.revision_id)){summary.skipped++;continue;}
+  const actor=await deps.approver(d.publication_id,d.revision_id).catch(()=>null);
+  if(!actor||!USER_ID.test(actor)||!deps.isAdmin(actor)){summary.skipped++;continue;}
+  summary.checked++;
+  const r=await reconcileAs(actor,d.id,deps,true);
+  if(r.ok&&r.result==='exists')summary.published++;else summary.pending++;
+ }
+ return summary;
 }

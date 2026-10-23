@@ -97,7 +97,7 @@ function serviceWith({open=batch,context,generator,rpc={},source='configured',pl
   rpc:async(name,args)=>{log.push([name,json(args)]);const fn=rpc[name];if(fn)return fn(args);
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:[uid(4,1),uid(4,2),uid(4,3)],editorial_group_id:uid(7,1)},error:null}:{data:null,error:null};}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
-  '../project-channels':{getPublicationProjectChannels:async()=>({source,channels:[],platforms,legacyAligned:true})},'./open-occurrences':{loadOpenOccurrences:async()=>{log.push('open');return open;}},
+  '../project-channels':{loadPublicationProjectChannels:async()=>({source,channels:[],platforms,legacyAligned:true})},'./open-occurrences':{loadOpenOccurrences:async()=>{log.push('open');return open;}},
   './context':{AgentV2ContextError:ContextError,loadAgentV2Context:context??(async(_p,b)=>({clientId:C,input:input({occurrences:b})}))},'./openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},
   // Media step (P8) doubled here; its own behaviour is covered by publications-agent-v2-media.test.mjs.
   './media':{attachAgentV2Media:async run=>{log.push(['attach_media',run]);return {state:'attached'};}},'./media-runs':{getAgentV2RunMedia:async()=>null},
@@ -243,3 +243,18 @@ test('P7 scope: one migration, drafts only, no publisher / delivery / cron; agen
  const sql=src('supabase/migrations/20261008040000_publications_agent_v2.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/\bdrop (table|column|index|function)|delete from|truncate (table )?public|security definer|insert into public\.publication_deliveries|insert into public\.publication_jobs|status='approved'|publication_submit_manual|publication_review_manual/i);
  for(const f of readdirSync(resolve(root,'lib/publications/agent-v2')))assert.doesNotMatch(src('lib/publications/agent-v2/'+f).replace(/\/\/[^\n]*/g,''),/publications-drive|google-drive|googleapis|setInterval|cron|submitOrReview|publication_deliveries/i,f);});
+
+// Préparation planifiée (cron, sans session Clerk) : le chemin du planificateur ne doit dépendre d'aucune lecture
+// gardée par requireAdmin, sinon chaque passage échoue (« preparation failed ») avant tout appel IA.
+test('scheduled path: prepareNextPublicationsAs reads channels without a session guard',()=>{
+ const service=src('lib/publications/agent-v2/service.ts');
+ const start=service.indexOf('export async function prepareNextPublicationsAs'),end=service.indexOf('\nexport ',start+10);
+ const body=service.slice(start,end);
+ assert.ok(start>0&&body.length>100);
+ assert.match(body,/loadPublicationProjectChannels\(/);
+ assert.doesNotMatch(body,/requireAdmin\(|getPublicationProjectChannels\(|getOpenOccurrencesForAgent\(|buildAgentV2Context\(/,'no session-guarded loader on the scheduler path');
+ const channels=src('lib/publications/project-channels.ts');
+ const loader=channels.slice(channels.indexOf('export async function loadPublicationProjectChannels'));
+ assert.doesNotMatch(loader.slice(0,loader.indexOf('\n}')),/requireAdmin/,'the session-free loader never calls requireAdmin');
+ assert.match(channels,/export async function getPublicationProjectChannels[^{]*\{\n await requireAdmin\(\);/,'the public variant stays admin-guarded');
+});

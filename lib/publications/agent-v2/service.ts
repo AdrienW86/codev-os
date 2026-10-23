@@ -3,7 +3,7 @@ import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from '../validation';
 import {platformLabels} from '../editor';
-import {getPublicationProjectChannels} from '../project-channels';
+import {loadPublicationProjectChannels} from '../project-channels';
 import {projectSupportsPublications} from '../channels';
 import {loadOpenOccurrences} from './open-occurrences';
 import {selectIdeaBatch,validateGeneratorOutput} from './selection';
@@ -101,7 +101,8 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  const db=getSupabaseServerClient();
  const project=await db.from('projects').select('id,client_id,type').eq('id',projectId).maybeSingle();
  if(project.error||!project.data)return result(false,'Projet indisponible.');
- const capabilities=await getPublicationProjectChannels(project.data);
+ // Sans session (#planificateur) : l'acteur est vérifié par l'appelant (requireAdmin ou administrateur délégué).
+ const capabilities=await loadPublicationProjectChannels(project.data);
  if(capabilities.source!=='configured')return result(false,'Confirmez d’abord les canaux du projet (onglet Configuration).');
  if(!projectSupportsPublications(capabilities))return result(false,'Publications suspendues : aucun canal actif.');
  // The state is re-read here: occurrences linked by a previous run are no longer candidates (idempotence).

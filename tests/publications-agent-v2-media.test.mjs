@@ -175,7 +175,7 @@ function serviceWith({mediaRpc={},run={project_id:P,status:'completed',media_sta
    return name==='publication_agent_v2_begin'?{data:{run_id:RUN,reused:false},error:null}:name==='publication_agent_v2_finish'?{data:{run_id:RUN,publication_ids:PUBS,editorial_group_id:uid(7,1),media_status:'pending'},error:null}:{data:null,error:null};},
   storage:{from:()=>({upload:async(p,b)=>{stored.set(p,b);return {error:null};},remove:async ps=>{for(const p of ps)stored.delete(p);return {error:null};}})}};
  const m=load('lib/publications/agent-v2/service.ts',{'@/lib/require-admin':{requireAdmin:async()=>{log.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db},
-  '../project-channels':{getPublicationProjectChannels:async()=>({source:'configured',channels:[],platforms:['facebook','instagram','google_business_profile'],legacyAligned:true})},
+  '../project-channels':{loadPublicationProjectChannels:async()=>({source:'configured',channels:[],platforms:['facebook','instagram','google_business_profile'],legacyAligned:true})},
   './open-occurrences':{loadOpenOccurrences:async()=>batch},'./context':{AgentV2ContextError:class extends Error{},loadAgentV2Context:async()=>({clientId:C,input})},
   './openai-generator':{openaiAgentV2Generator:()=>{throw Error('real AI must not be used in tests');}},'./media-runs':{getAgentV2RunMedia:async id=>({id,media:{state:'attached',category:'Toiture',preview:'https://storage.local/signed?token=short'}})},
   '../media/source':{driveMediaSource:()=>{throw Error('Drive must not be used in tests');}}});

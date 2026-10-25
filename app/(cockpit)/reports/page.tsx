@@ -17,6 +17,11 @@ import { isReportKind, isReportStatus, reportKindLabels, reportStatusLabels } fr
 import { periodLabel } from "@/lib/reports/build";
 import { formatDate } from "@/lib/format-date";
 import { generateReportAction } from "./actions";
+import { randomUUID } from "node:crypto";
+import { ProfessionalReportGenerator } from "@/components/reports/professional-generator";
+import { professionalReportingStatus } from "@/lib/reports/professional-service";
+import { previousPeriod } from "@/lib/reports/build";
+import { todayInParis } from "@/lib/dashboard/home";
 
 export const metadata: Metadata = { title: "Rapports" };
 
@@ -34,19 +39,25 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   // Période COUVERTE (chevauchement avec [du, au]) — distincte de la date de génération.
   const from = typeof params.from === "string" && day.test(params.from) ? params.from : undefined;
   const to = typeof params.to === "string" && day.test(params.to) ? params.to : undefined;
-  const [reports, clients] = await Promise.all([
+  const [reports, clients, professional] = await Promise.all([
     safeRead("reports", () => listReports({ status, kind, clientId, from, to, includeArchived: status === "archived" }), []),
     safeRead("clients", () => listClients(), []),
+    safeRead("reports", () => professionalReportingStatus(), false),
   ]);
   const toReview = reports.data.filter((report) => report.status === "ready_for_review").length;
+  const defaultPeriod = previousPeriod("monthly", todayInParis());
 
   return (
     <>
-      <PageHeading eyebrow="Suivi" title="Rapports" description="Documents enregistrés, versionnés et soumis à approbation : rapports hebdomadaires et mensuels de l’Agent Rapport, et rapports Google Ads préparés depuis l’onglet Campagnes d’un client." />
+      <PageHeading eyebrow="Suivi" title="Rapports" description="Préparez un document client à partir des données disponibles, relisez sa synthèse, approuvez sa version, puis téléchargez le PDF ou confirmez son envoi." />
       {reports.unavailable && <div className="mb-6"><ModuleUnavailable module="Rapports" /></div>}
 
       <Panel className="mb-8 p-5">
-        <h2 className="font-semibold">Générer un rapport</h2>
+        <ProfessionalReportGenerator clients={clients.data} requestId={randomUUID()} start={defaultPeriod.start} end={defaultPeriod.end} available={professional.data} />
+      </Panel>
+
+      <details className="mb-8 rounded-xl border border-border bg-surface p-5">
+        <summary className="cursor-pointer font-semibold">Génération rapide : semaine ou mois clos</summary>
         <p className="mt-1 text-sm text-muted">Période close précédente (semaine lundi→dimanche ou mois civil). Les rapports sont aussi générés automatiquement par les automatisations. Un rapport Google Ads se prépare depuis la fiche client → Campagnes, pour une période et des campagnes explicites.</p>
         {clients.data.length ? (
           <MutationForm action={generateReportAction} label="Générer" pendingLabel="Génération…" variant="primary" className="mt-4 grid items-end gap-3 sm:flex sm:flex-wrap">
@@ -64,7 +75,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
             </label>
           </MutationForm>
         ) : <p className="mt-4 text-sm text-muted">Aucun client : <Link href="/clients/new" className="text-accent hover:underline">créez un client</Link> pour générer un rapport.</p>}
-      </Panel>
+      </details>
 
       <SectionHeader title="Rapports" count={reports.data.length} description={toReview ? `${toReview} à relire` : undefined} />
       <FilterBar resetHref="/reports" fields={[

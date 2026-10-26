@@ -15,7 +15,11 @@ export function driveFolderBackfill():DriveBackfill{
  const accessToken=driveAccessTokenSource(driveCredentials());
  return async(folderId,after)=>{
   if(!validId(folderId))throw Error('Invalid folder');
-  if(after!==null&&!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(after))throw Error('Invalid cursor');
+  // Curseur relu en base (timestamptz) : « …+00:00 » côté Supabase, ramené au format RFC 3339 « …Z » attendu par Drive.
+  if(after!==null&&!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/.test(after))throw Error('Invalid cursor');
+  const cursor=after===null?null:new Date(after.replace(' ','T').replace(/([+-]\d{2})$/,'$1:00'));
+  if(cursor!==null&&!Number.isFinite(cursor.getTime()))throw Error('Invalid cursor');
+  after=cursor?cursor.toISOString():null;
   const url=new URL(base);
   url.searchParams.set('q',`'${folderId}' in parents and trashed = false and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/webp')${after?` and modifiedTime > '${after}'`:''}`);
   url.searchParams.set('fields','nextPageToken,files(id,modifiedTime,mimeType,size)');

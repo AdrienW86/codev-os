@@ -228,7 +228,7 @@ function boardFrom(context){return {listPublicationBoardRows:async()=>{const row
 test("publications page renders true empty state, flags and kill switch", async () => {
   const context = setup();
   const page = load("app/(cockpit)/publications/page.tsx", {
-    "@/components/publications/process-due-form":{ProcessDueForm:({stopped})=>jsx.jsx("div",{"data-process-due":stopped?"stopped":"ready"})},
+    "@/components/publications/cleanup-form":{CleanupForm:()=>null},"@/lib/publications/cleanup":{previewCleanup:async()=>null},"@/components/publications/process-due-form":{ProcessDueForm:({stopped})=>jsx.jsx("div",{"data-process-due":stopped?"stopped":"ready"})},
     "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/project-channels":{publicationProjectOptions:async()=>[]},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
     "@/lib/projects/data":{listProjects:async()=>[]},
     "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,
@@ -251,7 +251,7 @@ test("simulation active: publications page renders the simulated view and never 
   const context = setup({ rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
   let boardReads = 0;
   const page = load("app/(cockpit)/publications/page.tsx", {
-    "@/components/publications/process-due-form": { ProcessDueForm: () => null }, "@/lib/clients/data": { listClients: async () => { throw new Error("no real read"); } },
+    "@/components/publications/cleanup-form":{CleanupForm:()=>null},"@/lib/publications/cleanup":{previewCleanup:async()=>null},"@/components/publications/process-due-form": { ProcessDueForm: () => null }, "@/lib/clients/data": { listClients: async () => { throw new Error("no real read"); } },
     "@/lib/publications/board": { listPublicationBoardRows: async () => { boardReads++; return {}; } }, "@/lib/publications/board-query": boardQuery, "@/components/publications/publications-board": boardComponent,
     "@/lib/publications/drawer": { loadPublicationDetail: async () => { throw new Error("no real read"); } }, "@/components/publications/publication-drawer": { PublicationDrawer: () => null },
     "@/lib/publications/project-channels": { publicationProjectOptions: async () => [] }, "@/lib/projects/data": { listProjects: async () => [] },
@@ -270,7 +270,7 @@ test("page refuses non-admin and renders existing publications without demo fall
   for (const deny of [false, true]) {
     const context = setup({ deny, rows: [{ id, subject: "Contenu réel", editorial_week: "2026-10-05", slot: 1, client_id: id, client: { name: "Client réel" }, status: "pending_review" }] });
     const page = load("app/(cockpit)/publications/page.tsx", {
-    "@/components/publications/process-due-form":{ProcessDueForm:({stopped})=>jsx.jsx("div",{"data-process-due":stopped?"stopped":"ready"})},
+    "@/components/publications/cleanup-form":{CleanupForm:()=>null},"@/lib/publications/cleanup":{previewCleanup:async()=>null},"@/components/publications/process-due-form":{ProcessDueForm:({stopped})=>jsx.jsx("div",{"data-process-due":stopped?"stopped":"ready"})},
       "@/lib/clients/data":{listClients:async()=>[]},"@/lib/publications/board":boardFrom(context),"@/lib/publications/board-query":boardQuery,"@/components/publications/publications-board":boardComponent,"@/lib/publications/drawer":{loadPublicationDetail:async()=>{throw new Error("drawer must not load without publication");}},"@/components/publications/publication-drawer":{PublicationDrawer:()=>null},"@/lib/publications/project-channels":{publicationProjectOptions:async()=>[]},"@/lib/publications/editor":{platformLabels:{},allowedPlatforms:()=>[]},"@/lib/publications/types":types,
       "@/lib/projects/data":{listProjects:async()=>[]},
       "@/lib/require-admin": { requireAdmin: context.guard }, "@/lib/publications/data": context.repository,

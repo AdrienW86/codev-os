@@ -197,7 +197,8 @@ export async function runDriveSyncTick(maxClients=5,perClient=5,deps:{drive?:()=
  if(!clients.length)return {clients:0,added:0};
  let drive:MediaProvider;try{drive=(deps.drive??driveReadProvider)();}catch{log('tick_drive','drive_not_configured');return {clients:0,added:0};}
  const states=await db().from('client_media_drive_sync').select('client_id,last_synced_at').in('client_id',clients);
- const last=new Map<string,string>();for(const s of (states.error?[]:states.data??[]) as {client_id:string;last_synced_at:string|null}[])if(s.last_synced_at&&(!last.has(s.client_id)||s.last_synced_at<last.get(s.client_id)!))last.set(s.client_id,s.last_synced_at);
+ const last=new Map<string,string>();for(const s of (states.error?[]:states.data??[]) as {client_id:string;last_synced_at:string|null}[])if(s.last_synced_at&&(!last.has(s.client_id)||s.last_synced_at>last.get(s.client_id)!))last.set(s.client_id,s.last_synced_at);
+ // Dernière synchronisation du client (tous dossiers) : un ancien dossier retiré ne le garde pas éternellement en tête.
  const order=clients.sort((a,b)=>(last.get(a)??'').localeCompare(last.get(b)??'')||a.localeCompare(b)).slice(0,maxClients);
  const sync=deps.sync??syncDriveLibrary;let added=0;
  for(const clientId of order){try{added+=(await sync(clientId,perClient,{provider:drive})).added;}catch(e){log('tick_drive',codeOf(e));}}

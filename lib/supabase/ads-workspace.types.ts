@@ -13,7 +13,7 @@ export type AdsWorkspaceTables = {
   ads_analysis_leases: Table<{ client_id: string; token: string; expires_at: string; next_allowed_at: string }, { client_id: string; token: string; expires_at: string; next_allowed_at: string }>;
   report_deliveries: Table<{ report_id: string; version: number; token: string; state: string; recipient: string; subject: string; body: string; provider_id: string | null; created_at: string; updated_at: string }, { report_id: string; version: number; token: string; recipient: string; subject: string; body: string }>;
   admin_notifications: Table<{ id: string; event_key: string; category: string; href: string; created_at: string }, { event_key: string; category: string; href: string }>;
-  admin_notification_reads: Table<{ notification_id: string; user_id: string; read_at: string }, { notification_id: string; user_id: string }>;
+  admin_notification_reads: Table<{ notification_id: string; user_id: string; read_at: string; dismissed_at: string | null }, { notification_id: string; user_id: string; dismissed_at?: string | null }>;
   admin_notification_preferences: Table<{ user_id: string; categories: string[]; push_enabled: boolean; push_categories: string[] }, { user_id: string; categories: string[]; push_enabled: boolean; push_categories: string[] }>;
   admin_push_subscriptions: Table<{ id: string; user_id: string; device_id: string; endpoint: string; keys: Json; created_at: string }, { user_id: string; device_id: string; endpoint: string; keys: Json }>;
   admin_push_deliveries: Table<PushDelivery, { notification_id: string; subscription_id: string; state?: string; token?: string | null; updated_at?: string }>;

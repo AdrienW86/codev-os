@@ -64,7 +64,11 @@ export async function gatherReportDocuments(clientId: string, period: DocumentPe
   const documents = [
     await safely("Google Ads", () => adsDocument(clientId, period, access, warnings)),
     await safely("Référencement", async () => input.searchConsole ? buildSearchDocument({ days: input.searchConsole.days }, period) : null),
-    await safely("Site web", async () => buildSiteDocument(site?.data ?? null, period)),
+    await safely("Site web", async () => {
+      const document = buildSiteDocument(site?.data ?? null, period);
+      if (!document && site) warnings.push("Site web non inclus : aucune visite mesurée par Vercel sur la période (historique peut-être expiré).");
+      return document;
+    }),
     await safely("Réseaux sociaux", () => socialDocument(clientId, period, warnings)),
   ].filter((document): document is ReportDocument => Boolean(document));
   return { documents, warnings };

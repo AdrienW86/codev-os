@@ -1,6 +1,6 @@
 'use client';
 import {useActionState} from 'react';
-import {cleanupBoardAction,type CleanupState} from '@/app/(cockpit)/publications/board-actions';
+import {cleanupBoardAction,type CleanupState} from '@/app/(cockpit)/publications/cleanup-actions';
 import {cleanupCategories,cleanupLabels,type CleanupCategory} from '@/lib/publications/cleanup-rules';
 
 // Board clean-up: archives finished publications in bulk. Nothing is deleted; they move to the « Archivées » view.

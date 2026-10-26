@@ -20,7 +20,7 @@ test("Push subscription rejects private endpoints and unvalidated keys", () => {
 test("Admin denial precedes notification reads, preferences and subscription writes", async () => {
   const fake = createFakeSupabase({});
   const service = loadTs("lib/notifications/service.ts", { "@/lib/require-admin": { requireAdmin: async () => { throw Error("denied"); } }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client }, "./schema": schema });
-  for (const action of [() => service.listNotifications(), () => service.notificationPreferences(), () => service.markNotificationRead(deviceId), () => service.subscribeDevice({}), () => service.revokeDevice(deviceId)]) await assert.rejects(action, /denied/);
+  for (const action of [() => service.listNotifications(), () => service.notificationPreferences(), () => service.markNotificationRead(deviceId), () => service.subscribeDevice({}), () => service.revokeDevice(deviceId), () => service.dismissNotification(deviceId), () => service.dismissReadNotifications()]) await assert.rejects(action, /denied/);
   assert.equal(fake.calls.length, 0);
 });
 test("Expired push devices are removed; only a discreet payload reaches the fake transport", async () => {
@@ -43,4 +43,16 @@ test("Service worker caches only public offline content and refuses external cli
   assert.equal(cached.length, 1); assert.equal(network[1].cache, "no-store");
   handlers.notificationclick({ notification: { data: { url: "https://evil.test" }, close() {} }, waitUntil: (promise) => work = promise }); await work;
   assert.deepEqual(opened, ["https://os.example.test/notifications"]);
+});
+
+test("Read notifications can be removed from the list; unread ones never are", () => {
+  const service = readFileSync("lib/notifications/service.ts", "utf8"), page = readFileSync("app/(cockpit)/notifications/page.tsx", "utf8");
+  const sql = readFileSync("supabase/migrations/20261113000000_notifications_dismiss.sql", "utf8");
+  assert.match(sql, /add column if not exists dismissed_at timestamptz/);
+  // Retrait = mise à jour de la ligne de lecture : sans lecture préalable, rien n'est retiré.
+  assert.match(service, /from\("admin_notification_reads"\)\.update\(\{ dismissed_at:/);
+  assert.doesNotMatch(service, /from\("admin_notifications"\)\.delete/);
+  assert.match(service, /filter\(\(row\) => !dismissed\.has\(row\.id\)\)/);
+  assert.match(page, /row\.read \? <MutationForm action=\{dismissNotificationAction\}/);
+  assert.match(page, /Supprimer les notifications lues/);
 });

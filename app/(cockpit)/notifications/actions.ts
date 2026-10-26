@@ -1,7 +1,7 @@
 "use server";
 import { requireAdmin } from "@/lib/require-admin";
 import { revalidatePath } from "next/cache";
-import { markNotificationRead, revokeDevice, saveNotificationPreferences, subscribeDevice } from "@/lib/notifications/service";
+import { dismissNotification, dismissReadNotifications, markNotificationRead, revokeDevice, saveNotificationPreferences, subscribeDevice } from "@/lib/notifications/service";
 import type { MutationState } from "@/lib/core/mutation";
 import { requireAdminWriter } from "@/lib/core/guards";
 export async function readNotificationAction(_: MutationState, form: FormData) {
@@ -19,4 +19,12 @@ export async function subscribePushAction(input: unknown) {
 export async function revokePushAction(deviceId: unknown) {
   await requireAdmin();
   try { await requireAdminWriter(); await revokeDevice(deviceId); revalidatePath("/notifications"); return { ok: true }; } catch { return { ok: false, message: "Révocation non enregistrée." }; }
+}
+export async function dismissNotificationAction(_: MutationState, form: FormData) {
+  await requireAdmin();
+  try { await requireAdminWriter(); await dismissNotification(form.get("id")); revalidatePath("/", "layout"); return { ok: true, message: "Notification supprimée." }; } catch { return { ok: false, message: "Suppression non enregistrée : seule une notification lue peut être supprimée." }; }
+}
+export async function dismissReadNotificationsAction() {
+  await requireAdmin();
+  try { await requireAdminWriter(); const count = await dismissReadNotifications(); revalidatePath("/", "layout"); return { ok: true, message: count ? `${count} notification(s) lue(s) supprimée(s).` : "Aucune notification lue à supprimer." }; } catch { return { ok: false, message: "Suppression non enregistrée. Quittez la simulation si elle est active." }; }
 }

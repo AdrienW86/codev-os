@@ -14,6 +14,7 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { SimReports } from "@/components/simulation/views/sim-reports";
 import { getReport, getReportDelivery, listReportVersions } from "@/lib/reports/service";
 import { reportEmailPreview } from "@/lib/reports/email-preview";
+import { clientDocuments, reportDocumentLabels } from "@/lib/reports/documents/model";
 import { reportKindLabels, reportStatusLabels } from "@/lib/reports/labels";
 import { periodLabel, type ReportContent } from "@/lib/reports/build";
 import { emailSendingStatus } from "@/lib/providers/email";
@@ -63,6 +64,8 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
   const sending = ["sending", "uncertain"].includes(delivery?.state ?? "");
   const editable = !["sent", "archived"].includes(item.status) && !sending;
   const preview = await safeRead("reports", async () => reportEmailPreview(item), null);
+  let documents: ReturnType<typeof clientDocuments> = [];
+  try { documents = clientDocuments(item.client_content); } catch { documents = []; }
   const occurrence = await getSupabaseServerClient().from("ads_report_occurrences").select("config,due_at,transport").eq("report_id", id).maybeSingle();
   const recurring = occurrence.error ? null : occurrence.data;
   const recipient = recurring ? recurringConfigSchema.parse(recurring.config).recipient : item.client?.email ?? "";
@@ -80,6 +83,11 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
           <Tabs label="Versions du rapport" current={tab} items={[{ id: "client", label: "Version client", href: `/reports/${id}` }, { id: "internal", label: "Version interne", href: `/reports/${id}?view=internal` }]} />
           {tab === "internal" && <InlineNotice title="Usage interne uniquement.">Inclut retards, échecs d’analyse et éléments techniques : jamais envoyé au client.</InlineNotice>}
           <div className="mt-6"><ContentView content={asContent(tab === "internal" ? item.internal_content : item.client_content)} /></div>
+          {tab !== "internal" && documents.length > 0 && <div className="mt-8 space-y-6">{documents.map((document) => <section key={document.key} className="rounded-lg border border-border p-4">
+            <h3 className="font-semibold">{document.title}</h3><p className="mt-1 text-sm text-muted">{document.summary}</p>
+            {document.kpis.length > 0 && <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{document.kpis.map((kpi) => <div key={kpi.label} className="rounded-lg bg-surface-raised p-3"><dt className="text-xs text-muted">{kpi.label}</dt><dd className="mt-1 text-lg font-semibold">{kpi.value}</dd>{kpi.change && <dd className={`text-xs ${kpi.trend === "flat" || kpi.good === undefined ? "text-muted" : kpi.good ? "text-success" : "text-danger"}`}>{kpi.change}</dd>}</div>)}</dl>}
+            <p className="mt-3 text-xs text-muted">{document.charts.length} graphique(s), {document.tables.length} tableau(x) dans le PDF.</p>
+          </section>)}</div>}
         </Panel>
 
         <div className="min-w-0 space-y-5">
@@ -89,8 +97,10 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
             {item.status === "ready_for_review" || item.status === "draft"
               ? <p className="mt-2 text-sm text-muted">La version non approuvée comporte une mention Brouillon. Elle ne peut pas être envoyée depuis CODE-V OS.</p>
               : null}
-            <a href={`/api/reports/${id}/pdf`} className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">Télécharger le PDF · v{item.version}</a>
-            <p className="mt-2 text-xs text-muted">L’envoi par e-mail, ci-dessous, joindra le même PDF après une approbation distincte.</p>
+            {documents.length
+              ? <ul className="mt-3 space-y-2">{documents.map((document) => <li key={document.key}><a href={`/api/reports/${id}/pdf?doc=${document.key}`} className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">{reportDocumentLabels[document.key]} · PDF v{item.version}</a></li>)}</ul>
+              : <a href={`/api/reports/${id}/pdf`} className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised">Télécharger le PDF · v{item.version}</a>}
+            <p className="mt-2 text-xs text-muted">{documents.length ? `L’e-mail, ci-dessous, joindra ces ${documents.length} PDF (un par agent) après une approbation distincte.` : "L’envoi par e-mail, ci-dessous, joindra le même PDF après une approbation distincte."}</p>
           </Panel>
           {item.kind === "google_ads" && (
             <Panel className="p-5">
@@ -119,7 +129,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
               <>
                 <p className="text-sm text-muted">Approuvé le {formatDate(item.approved_at)} (version {item.approved_version}).</p>
                 {email.enabled && preview.data && !delivery
-                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label="Envoyer le PDF par e-mail" variant="primary" confirm="Envoyer la version client approuvée en pièce jointe PDF au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
+                  ? <MutationForm action={sendReportAction} fields={{ id, mode: "email", version: String(item.version), digest: preview.data.digest }} label={documents.length ? `Envoyer les ${documents.length} PDF par e-mail` : "Envoyer le PDF par e-mail"} variant="primary" confirm="Envoyer la version client approuvée en pièce jointe PDF au destinataire affiché et confirmé ?" disableOnSuccess flashOnSuccess className="space-y-3">
                       <label className="block text-sm">Destinataire unique<input type="email" name="recipient" required maxLength={320} defaultValue={recipient} readOnly={Boolean(recurring)} className="mt-1 w-full rounded-lg border border-border bg-background p-2" /></label>
                       <label className="flex gap-2 text-sm"><input type="checkbox" name="recipient_confirmed" value="yes" required />Je confirme cette adresse et la version client prévisualisée.</label>
                     </MutationForm>

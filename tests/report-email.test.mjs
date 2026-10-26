@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./helpers/load-ts.mjs";
-const previewModule = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts") });
+const previewModule = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts"), "./documents/model": loadTs("lib/reports/documents/model.ts") });
 const pdfModule = loadTs("lib/reports/pdf.ts", { "./email-preview": previewModule });
+const documentModel = loadTs("lib/reports/documents/model.ts");
+const documentPdf = loadTs("lib/reports/documents/pdf.ts", { "../pdf": pdfModule, "./model": documentModel });
 const errors = loadTs("lib/providers/errors.ts");
 const id = "11111111-1111-4111-8111-111111111111";
 const report = { id, client_id: id, status: "approved", version: 2, approved_version: 2, title: "Rapport client", client_content: { summary: "Synthèse", sections: [{ title: "Résultats", lines: ["Mesures"] }] }, internal_content: { secret: "NEVER" } };
@@ -14,7 +16,7 @@ function setup({ denied = false, failure = null } = {}) {
   } };
   const service = loadTs("lib/reports/service.ts", {
     "./version-storage": { requireReportVersionStorage: async () => {} },
-    "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": {},
+    "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": { periodLabel: () => "septembre 2026" }, "@/lib/reports/documents/gather": {}, "@/lib/reports/documents/build": {}, "@/lib/reports/documents/model": documentModel, "@/lib/reports/documents/pdf": documentPdf,
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/reports/pdf": pdfModule, "@/lib/providers/errors": errors,
     "@/lib/vercel-analytics/sync": { syncVercelAnalytics: async () => ({ ok: true }) },
     "@/lib/integrations/search-console/model": { addDays: () => "", dayCount: () => 0, normalizeProperty: () => null },
@@ -34,8 +36,9 @@ test("Simultaneous send requests claim once before provider and persist acceptan
   const x = setup(); const results = await Promise.all([x.service.sendReport(admin, id, "email", preview), x.service.sendReport(admin, id, "email", preview)]);
   assert.equal(results.filter((r) => r.ok).length, 1); assert.equal(x.sent.length, 1); assert.equal(x.finished[0].p_state, "accepted");
   assert.equal(x.sent[0].text.includes("NEVER"), false);
-  assert.match(x.sent[0].attachment.filename, /\.pdf$/);
-  const pdf = Buffer.from(x.sent[0].attachment.base64, "base64");
+  assert.equal(x.sent[0].attachments.length, 1, "legacy report: one client PDF");
+  assert.match(x.sent[0].attachments[0].filename, /\.pdf$/);
+  const pdf = Buffer.from(x.sent[0].attachments[0].base64, "base64");
   assert.equal(pdf.subarray(0, 8).toString("latin1"), "%PDF-1.4");
   assert.doesNotMatch(pdf.toString("latin1"), /NEVER/);
   assert.equal((await x.service.sendReport(admin, id, "email", preview)).ok, false); assert.equal(x.sent.length, 1);

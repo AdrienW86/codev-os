@@ -264,34 +264,39 @@ export function buildCampaignRows(raw: CampaignDashboardRaw): CampaignRow[] {
 export type DashboardResult = { ok: true; data: DashboardData } | { ok: false; message: string };
 
 /** Lecture seule, à la demande : vérifie le client et SON compte associé, résout la période dans le fuseau du compte. */
-export async function loadCampaignDashboard(clientId: string, filters: DashboardFilters, now = new Date()): Promise<DashboardResult> {
+export type DashboardOptions = { daily?: boolean };
+export async function loadCampaignDashboard(clientId: string, filters: DashboardFilters, now = new Date(), options: DashboardOptions = {}): Promise<DashboardResult> {
   await requireAdmin();
   if (!isAgentUuid(clientId)) return { ok: false, message: "Client invalide." };
   let connection: GoogleAdsConnection;
   try { connection = await checkedConnection(clientId); } catch { return { ok: false, message: "Aucun compte Google Ads associé à ce client." }; }
   if (connection.status !== "connected") return { ok: false, message: "Connexion Google Ads à tester depuis l’onglet Agents avant d’afficher les campagnes." };
-  return readDashboard(connection, filters, now);
+  return readDashboard(connection, filters, now, undefined, options);
 }
 
 /** Internal worker repository: caller must be the authenticated scheduler, never a browser action. */
-export async function loadCampaignDashboardForSystem(clientId: string, filters: DashboardFilters, now = new Date(), lease?: { jobId: string; worker: string }): Promise<DashboardResult> {
+// Bails acceptés : préparation d'un rapport Google Ads récurrent (job du client) ou génération des rapports complets
+// (job « report.generate » du client, ou global : tous les clients rattachés à l'Agent Rapport).
+export async function loadCampaignDashboardForSystem(clientId: string, filters: DashboardFilters, now = new Date(), lease?: { jobId: string; worker: string; runType?: "ads.report.prepare" | "report.generate" }, options: DashboardOptions = {}): Promise<DashboardResult> {
   if (!isAgentUuid(clientId)) return { ok: false, message: "Client invalide." };
   if (!lease || !isAgentUuid(lease.jobId) || !lease.worker) return { ok: false, message: "Bail de préparation requis pour la lecture Google Ads." };
   // Rechecked before EVERY provider query, without requiring a Clerk/browser session.
   const authorize = async () => {
-    const job = await getSupabaseServerClient().from("jobs").select("id").eq("id", lease.jobId).eq("client_id", clientId)
-      .eq("run_type", "ads.report.prepare").eq("worker_id", lease.worker).eq("status", "running")
+    const runType = lease.runType ?? "ads.report.prepare";
+    const job = await getSupabaseServerClient().from("jobs").select("id,client_id").eq("id", lease.jobId)
+      .eq("run_type", runType).eq("worker_id", lease.worker).eq("status", "running")
       .gt("lease_expires_at", new Date().toISOString()).maybeSingle();
-    if (job.error || !job.data) throw new Error("Bail Google Ads indisponible.");
+    const scoped = job.data && (job.data.client_id === clientId || runType === "report.generate" && job.data.client_id === null);
+    if (job.error || !scoped) throw new Error("Bail Google Ads indisponible.");
   };
   try { await authorize(); } catch { return { ok: false, message: "Bail de préparation perdu : aucune lecture Google Ads autorisée." }; }
   const { data, error } = await getSupabaseServerClient().from("client_connections").select(connectionColumns).eq("client_id", clientId).eq("provider", "google_ads").eq("status", "connected").maybeSingle();
   if (error || !data || !normalizeCustomerId(data.external_account_id)) return { ok: false, message: "Connexion Google Ads indisponible." };
   const connection = { ...data, metadata: safeMetadata(data.metadata) } as GoogleAdsConnection;
-  return readDashboard(connection, filters, now, authorize);
+  return readDashboard(connection, filters, now, authorize, options);
 }
 
-async function readDashboard(connection: GoogleAdsConnection, filters: DashboardFilters, now: Date, authorize?: () => Promise<unknown>): Promise<DashboardResult> {
+async function readDashboard(connection: GoogleAdsConnection, filters: DashboardFilters, now: Date, authorize?: () => Promise<unknown>, options: DashboardOptions = {}): Promise<DashboardResult> {
   try {
     const started = performance.now();
     const client = createGoogleAdsReadClient(authorize);
@@ -303,9 +308,14 @@ async function readDashboard(connection: GoogleAdsConnection, filters: Dashboard
     const previous = filters.compare ? previousPeriod(period) : null;
     const tracking = await readCampaignTracking(connection);
     const raw = await client.getCampaignDashboard(account, { start: period.start, end: period.end, days: period.days }, previous, connection.metadata.manager_customer_id);
+    // Série quotidienne (rapports clients) : facultative ; un échec n'empêche jamais le tableau.
+    let daily: DashboardData["daily"] = null;
+    if (options.daily && client.getDailyMetrics) {
+      try { daily = await client.getDailyMetrics(account, { start: period.start, end: period.end, days: period.days }, connection.metadata.manager_customer_id); } catch { daily = null; }
+    }
     return { ok: true, data: {
       account, period: { start: period.start, end: period.end, days: period.days, includesToday: period.includesToday, today: period.today, preset: period.preset },
-      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: new Date().toISOString(), googleReadMs: Math.round(performance.now() - started), tracking,
+      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: new Date().toISOString(), googleReadMs: Math.round(performance.now() - started), tracking, ...(options.daily ? { daily } : {}),
     } };
   } catch (error) {
     safeFailure("dashboard", error);

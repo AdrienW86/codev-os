@@ -13,16 +13,16 @@ type ReportForPdf = {
   client?: { name: string } | null;
 };
 
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const LEFT = 48;
-const RIGHT = 48;
-const BOTTOM = 68;
-const LINE_W = PAGE_W - LEFT - RIGHT;
-const MAX_PAGES = 45;
+export const PAGE_W = 595.28;
+export const PAGE_H = 841.89;
+export const LEFT = 48;
+export const RIGHT = 48;
+export const BOTTOM = 68;
+export const LINE_W = PAGE_W - LEFT - RIGHT;
+export const MAX_PAGES = 45;
 const MAX_BYTES = 3_500_000;
 const MAX_TEXT = 200_000;
-type Font = "F1" | "F2";
+export type Font = "F1" | "F2";
 
 const winAnsi: Record<string, number> = {
   "€": 0x80, "‚": 0x82, "ƒ": 0x83, "„": 0x84, "…": 0x85, "†": 0x86,
@@ -38,7 +38,7 @@ const widths: Record<Font, number[]> = {
   F2: [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584,350,556,350,278,556,500,1000,556,556,333,1000,667,333,1000,350,611,350,350,278,278,500,500,350,556,1000,333,1000,556,333,944,350,500,667,278,333,556,556,556,556,280,556,333,737,370,556,584,333,737,333,400,584,333,333,333,611,556,278,333,333,365,556,834,834,834,611,722,722,722,722,722,722,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,556,556,556,556,556,278,278,278,278,611,611,611,611,611,611,611,584,611,611,611,611,611,556,611,556],
 };
 
-function clean(value: string): string {
+export function clean(value: string): string {
   // Normalize decomposed French accents and remove invisible formatting/bidi controls.
   return value.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, " ")
     .replace(/−/g, "-").replace(/→/g, "->").replace(/←/g, "<-")
@@ -53,13 +53,13 @@ function encoded(value: string): number[] {
   });
 }
 /** Hex strings prevent any content from becoming PDF operators, links or scripts. */
-function hexText(value: string): string {
+export function hexText(value: string): string {
   return "<" + encoded(value).map((byte) => byte.toString(16).padStart(2, "0")).join("") + ">";
 }
-function textWidth(value: string, size: number, font: Font): number {
+export function textWidth(value: string, size: number, font: Font): number {
   return encoded(value).reduce((sum, byte) => sum + widths[font][byte - 32], 0) * size / 1000;
 }
-function fold(value: string, maxWidth: number, size: number, font: Font = "F1"): string[] {
+export function fold(value: string, maxWidth: number, size: number, font: Font = "F1"): string[] {
   const words = clean(value).split(" ").filter(Boolean);
   const result: string[] = [];
   let current = "";
@@ -88,13 +88,13 @@ function fold(value: string, maxWidth: number, size: number, font: Font = "F1"):
   if (current) result.push(current);
   return result.length ? result : [""];
 }
-function validDay(value: string): boolean {
+export function validDay(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + "T00:00:00Z"))
     && new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
 }
-const frDay = (date: string) => validDay(date)
+export const frDay = (date: string) => validDay(date)
   ? date.slice(8, 10) + "/" + date.slice(5, 7) + "/" + date.slice(0, 4) : "Date non renseignée";
-const escapeFile = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+export const escapeFile = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 45);
 
 export function clientReportPdfFilename(report: Pick<ReportForPdf, "client" | "kind" | "version" | "period_start">): string {
@@ -241,7 +241,11 @@ export function renderClientReportPdf(report: ReportForPdf): Buffer {
     cmds.push("0.43 0.47 0.53 rg BT /F1 8 Tf 1 0 0 1 " + LEFT + " 36 Tm " + hexText(footer) + " Tj ET");
   }
 
-  // Standalone PDF, byte-correct xref, no external resource or active content.
+  return assemblePdf(pages, title);
+}
+
+/** Standalone PDF, byte-correct xref, no external resource or active content (Helvetica F1 / Helvetica-Bold F2). */
+export function assemblePdf(pages: string[][], title: string): Buffer {
   const total = 5 + pages.length * 2;
   const objects = new Map<number, Buffer>();
   objects.set(1, Buffer.from("<< /Type /Catalog /Pages 2 0 R /Lang (fr-FR) >>", "ascii"));

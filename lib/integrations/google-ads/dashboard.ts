@@ -85,6 +85,8 @@ export type DashboardData = {
   fetchedAt: string;
   googleReadMs?: number; clientResolutionMs?: number;
   tracking?: { available: boolean; revision: number; ids: string[] | null };
+  /** Rapports clients uniquement : métriques du compte jour par jour (null = non récupérées). */
+  daily?: (AdsMetrics & { date: string })[] | null;
 };
 
 export const typeLabels: Record<string, string> = {

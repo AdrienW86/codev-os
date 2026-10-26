@@ -1,6 +1,6 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery, accountDailyQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
 import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic } from "./types";
 
@@ -173,6 +173,14 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       }
     }
     return { inventory, current: Object.fromEntries(current), previous: before ? Object.fromEntries(before) : null, accountTotals: accountNow, accountPrevious: accountBefore, leads };
+  }
+
+  async getDailyMetrics(account: AdsAccount, period: AdsPeriod, managerId?: string) {
+    const rows = await this.#search(account.id, accountDailyQuery(period), managerId);
+    return rows.flatMap((row) => {
+      const date = text(row.segments?.date);
+      return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? [{ date, ...normalizeMetrics(row.metrics) }] : [];
+    });
   }
 }
 

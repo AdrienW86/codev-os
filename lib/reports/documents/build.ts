@@ -52,7 +52,9 @@ const leadTypeLabels: Record<string, string> = { PHONE_CALL: "Appels", MESSAGE: 
 
 export function buildAdsDocument(input: AdsDocumentInput, period: DocumentPeriod): ReportDocument {
   const { totals: now, previousTotals: before, currency } = input;
-  const active = input.campaigns.filter((row) => row.hasActivity || row.localServices);
+  // Campagnes ayant réellement diffusé (dépense, clic ou impression) ; les noms techniques Local Services sont remplacés.
+  const active = input.campaigns.filter((row) => (row.metrics.cost ?? 0) > 0 || (row.metrics.clicks ?? 0) > 0 || (row.metrics.impressions ?? 0) > 0)
+    .map((row) => row.localServices && /^LocalServicesCampaign/i.test(row.name) ? { ...row, name: "Annonces Local Services" } : row);
   const kpis = [
     kpi("Budget dépensé", money(now.cost, currency), variation(now.cost, before?.cost)),
     kpi("Clics", count(now.clicks), variation(now.clicks, before?.clicks)),
@@ -78,7 +80,7 @@ export function buildAdsDocument(input: AdsDocumentInput, period: DocumentPeriod
 
   const tables: ReportTable[] = [];
   if (active.length) tables.push({ title: "Résultats par campagne", columns: ["Campagne", "Dépenses", "Clics", "Conversions", "Coût / conv."],
-    rows: active.slice(0, 40).map((row) => [clip(row.name, 60) + (row.localServices ? " (Local Services)" : ""), money(row.metrics.cost, currency), count(row.metrics.clicks),
+    rows: active.slice(0, 40).map((row) => [clip(row.name, 60) + (row.localServices && row.name !== "Annonces Local Services" ? " (Local Services)" : ""), money(row.metrics.cost, currency), count(row.metrics.clicks),
       count(row.metrics.conversions === null ? null : Math.round(row.metrics.conversions * 10) / 10), money(row.metrics.costPerConversion, currency)]) });
   const notes: string[] = [];
   if (input.leads) {
@@ -150,7 +152,9 @@ const friendlyEvent = (value: string) => eventLabels[value] ?? clip(value.replac
 export function buildSiteDocument(data: Row | null, period: DocumentPeriod): ReportDocument | null {
   if (!data) return null;
   const visitors = num(data.visitors), pageviews = num(data.pageviews);
-  if (visitors === null && pageviews === null) return null;
+  // Aucune visite comptée : souvent un historique expiré chez Vercel (durée de conservation limitée selon l'offre).
+  // Le document est omis plutôt que d'afficher « 0 visiteur » comme un résultat.
+  if (!visitors && !pageviews) return null;
   const previous = data.previous && typeof data.previous === "object" ? data.previous as Row : null;
   const beforeVisitors = previous ? num(previous.visitors) : null, beforeViews = previous ? num(previous.pageviews) : null;
   const events = rows(data.events).flatMap((row) => { const name = label(row.label), total = num(row.count); return name && total !== null ? [{ name, total }] : []; });
@@ -202,6 +206,8 @@ const shortPlatform: Record<SocialPost["platform"], string> = { facebook: "Faceb
 export function buildSocialDocument(input: { posts: SocialPost[]; previousCount: number | null; channels: SocialPost["platform"][] }, period: DocumentPeriod): ReportDocument | null {
   if (!input.channels.length && !input.posts.length) return null;
   const posts = input.posts.filter((post) => post.date >= period.start && post.date <= period.end).sort((a, b) => a.date.localeCompare(b.date));
+  // Service pas encore démarré (rien sur la période ni la précédente) : pas de document vide envoyé au client.
+  if (!posts.length && !input.previousCount) return null;
   const platforms = [...new Set([...input.channels, ...posts.map((post) => post.platform)])];
   const byPlatform = platforms.map((platform) => ({ platform, total: posts.filter((post) => post.platform === platform).length }));
   const subjects = new Set(posts.map((post) => post.subject)).size;

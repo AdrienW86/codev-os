@@ -18,11 +18,11 @@ const compact = (value: number) => {
   if (abs >= 1000) return format(value / 1000, 1) + " k";
   return format(value, abs < 10 && value % 1 ? 1 : 0);
 };
-/** Graduation « ronde » : 4 intervalles de 1, 2 ou 5 × 10ⁿ au-dessus du maximum. */
+/** Graduation « ronde » : 4 intervalles réguliers juste au-dessus du maximum. */
 function niceMax(max: number) {
   if (max <= 0) return 4;
   const raw = max / 4, power = 10 ** Math.floor(Math.log10(raw));
-  for (const step of [1, 2, 5, 10]) if (step * power >= raw) return step * power * 4;
+  for (const step of [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10]) if (step * power >= raw) return step * power * 4;
   return 40 * power;
 }
 
@@ -174,7 +174,9 @@ export function renderReportDocumentPdf(context: DocumentPdfContext, input: Repo
       });
       y -= 24;
     };
-    heading(spec.title, 50);
+    // Un petit tableau n'est jamais coupé : il passe entier à la page suivante.
+    const estimate = 24 + spec.rows.reduce((sum, row) => sum + Math.max(...row.map((cell, i) => fold(cell, widths[i] - 16, 9, numeric[i] ? "F2" : "F1").length)) * 12.5 + 8, 0);
+    heading(spec.title, estimate <= 320 ? estimate : 50);
     header();
     spec.rows.forEach((row, index) => {
       const cells = row.map((cell, i) => fold(cell, widths[i] - 16, 9, numeric[i] ? "F2" : "F1"));

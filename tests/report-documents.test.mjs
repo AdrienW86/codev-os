@@ -33,6 +33,10 @@ test("Google Ads document: KPIs, daily charts, campaigns and Local Services lead
   assert.equal(daily.labels.length, 30); assert.equal(daily.series[0].values[1], 20); assert.equal(daily.series[0].values[0], 0, "a day without Ads row has no spend");
   const leads = document.tables.find((table) => table.title === "Leads Local Services par type");
   assert.deepEqual(json(leads.rows), [["Appels", "5"], ["Messages", "2"], ["Total", "7"]], "billing unknown: not shown as zero");
+  const named = build.buildAdsDocument({ currency: "EUR", campaigns: [campaign("1", "LocalServicesCampaign:SystemGenerated:0001", metrics(100, 10, 2), true), campaign("2", "Ancienne", { ...metrics(0, 1, 0), clicks: 0, impressions: 0 })],
+    totals: metrics(100, 10, 2), previousTotals: null, daily: null, leads: null }, period);
+  assert.deepEqual(json(named.tables[0].rows.map((row) => row[0])), ["Annonces Local Services"], "technical names replaced, idle campaigns left out");
+  assert.match(named.summary, /1 campagne active/);
   const unavailable = build.buildAdsDocument({ currency: "EUR", campaigns: [], totals: metrics(0, 1, 0), previousTotals: null, daily: null, leads: { available: false, reason: "x" } }, period);
   assert.match(unavailable.summary, /Aucune diffusion/); assert.ok(unavailable.notes.some((note) => /n’ont pas pu être récupérés/.test(note)));
 });
@@ -53,10 +57,13 @@ test("Site and social documents: readable labels, comparisons only when known", 
   assert.deepEqual(json(site.tables.find((table) => table.title === "Appareils utilisés").rows[0]), ["Mobile", "75", "75 %"]);
   assert.equal(site.tables.find((table) => table.title === "Actions des visiteurs").rows[0][0], "Clic sur le téléphone");
   assert.equal(build.buildSiteDocument({ events: [] }, period), null);
+  assert.equal(build.buildSiteDocument({ visitors: 0, pageviews: 0 }, period), null, "0 visit (expired history): no misleading document");
   const social = build.buildSocialDocument({ channels: ["facebook", "instagram"], previousCount: 2, posts: [
     { date: "2026-09-03", platform: "facebook", subject: "Toiture" }, { date: "2026-09-03", platform: "instagram", subject: "Toiture" }, { date: "2026-08-20", platform: "facebook", subject: "Ancien" }] }, period);
   assert.equal(social.kpis[0].value, "2"); assert.equal(social.tables[0].rows.length, 2, "only posts of the period are listed");
   assert.equal(build.buildSocialDocument({ channels: [], previousCount: null, posts: [] }, period), null);
+  assert.equal(build.buildSocialDocument({ channels: ["facebook"], previousCount: 0, posts: [] }, period), null, "service not started yet");
+  assert.match(build.buildSocialDocument({ channels: ["facebook"], previousCount: 3, posts: [] }, period).summary, /Aucune publication/);
 });
 
 test("Schema refuses inconsistent charts and tables; PDF renders charts as vectors with escaped text", () => {
@@ -76,7 +83,7 @@ test("Schema refuses inconsistent charts and tables; PDF renders charts as vecto
 });
 
 test("Generic e-mail for a full report; the legacy text e-mail is unchanged", () => {
-  const document = build.buildSocialDocument({ channels: ["facebook"], previousCount: null, posts: [] }, period);
+  const document = build.buildSocialDocument({ channels: ["facebook"], previousCount: 2, posts: [] }, period);
   const email = preview.reportEmailPreview({ title: "Rapport mensuel — Jrenov — septembre 2026", version: 1, kind: "monthly", period_start: "2026-09-01", period_end: "2026-09-30", client_content: { summary: "s", sections: [], documents: [document] } });
   assert.equal(email.text, "Bonjour,\n\nVous trouverez ci-joint votre rapport mensuel de septembre 2026.\nIl comprend 1 document : Réseaux sociaux.\n\nNous restons à votre disposition pour en parler.\n\nCordialement,\nL’équipe CODE-V");
   const weekly = preview.genericReportEmail("weekly", [{ key: "google_ads" }, { key: "site" }], { start: "2026-10-19", end: "2026-10-25" });

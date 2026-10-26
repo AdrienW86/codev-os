@@ -20,7 +20,7 @@ function setup({ denied = false, failure = null } = {}) {
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/reports/pdf": pdfModule, "@/lib/providers/errors": errors,
     "@/lib/vercel-analytics/sync": { syncVercelAnalytics: async () => ({ ok: true }) },
     "@/lib/integrations/search-console/model": { addDays: () => "", dayCount: () => 0, normalizeProperty: () => null },
-    "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },
+    "@/lib/reports/email-logo": loadTs("lib/reports/email-logo.ts"), "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },
   });
   return { service, sent, finished };
 }
@@ -95,4 +95,26 @@ test("Resend receives the approved report as a real base64 PDF attachment", asyn
     to: "client@example.invalid", subject: "Rapport client", text: "Synthèse client", idempotencyKey: "fake",
     attachment: { filename: "bad\r\nBcc:someone.pdf", base64: attachment.base64 },
   }, env), e => e.kind === "malformed");
+});
+
+test("HTML email: CODE-V logo inline (cid), escaped content, plain text kept alongside", async () => {
+  const logo = loadTs("lib/reports/email-logo.ts");
+  assert.equal(logo.EMAIL_LOGO_CID, previewModule.REPORT_EMAIL_LOGO_CID);
+  assert.equal(Buffer.from(logo.EMAIL_LOGO_BASE64, "base64").subarray(1, 4).toString("latin1"), "PNG");
+  const html = previewModule.reportEmailHtml({ heading: "Votre rapport <b>", subheading: "", paragraphs: ["Bonjour & <script>x</script>"], items: ["Google Ads"], sections: [], closing: ["Merci", "L’équipe CODE-V"] }, "Objet");
+  assert.match(html, /src="cid:codev-logo"/);
+  assert.match(html, /Bonjour &amp; &lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>|<b>/);
+  let payload = null;
+  const provider = loadTs("lib/providers/email.ts", {
+    "@/lib/providers/api": { providerJson: async (_provider, _url, init) => { payload = JSON.parse(init.body); return { id: "fake-accepted" }; } },
+    "@/lib/providers/errors": errors,
+  });
+  const env = { RESEND_API_KEY: "fake-testing-only", EMAIL_FROM: "CODE-V <reports@example.invalid>", EMAIL_SENDING_ENABLED: "true" };
+  const inline = [{ filename: logo.EMAIL_LOGO_FILENAME, base64: logo.EMAIL_LOGO_BASE64, contentId: logo.EMAIL_LOGO_CID }];
+  await provider.sendEmail({ to: "client@example.invalid", subject: "Rapport", text: "Texte", html, inline, idempotencyKey: "k" }, env);
+  assert.equal(payload.text, "Texte");
+  assert.equal(payload.html, html);
+  assert.equal(payload.attachments[0].content_id, "codev-logo");
+  await assert.rejects(() => provider.sendEmail({ to: "client@example.invalid", subject: "R", text: "T", html, inline: [{ ...inline[0], contentId: "bad id" }], idempotencyKey: "k" }, env), (e) => e.kind === "malformed");
 });

@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { describeAction } from "@/lib/actions/registry";
-import { buildReport, previousPeriod, type Period, type RecurringReportKind, type ReportInput } from "@/lib/reports/build";
+import { buildReport, periodLabel, previousPeriod, type Period, type RecurringReportKind, type ReportInput } from "@/lib/reports/build";
 import { requireAdmin } from "@/lib/require-admin";
 import { reportEmailPreview, recipientSchema } from "@/lib/reports/email-preview";
 import { clientReportPdfFilename, renderClientReportPdf } from "@/lib/reports/pdf";
@@ -15,6 +15,10 @@ import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
 import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
 import { addDays, dayCount, normalizeProperty } from "@/lib/integrations/search-console/model";
+import { gatherReportDocuments, type DocumentAccess } from "@/lib/reports/documents/gather";
+import { clientDocuments, reportDocumentLabels } from "@/lib/reports/documents/model";
+import { documentPdfFilename, renderReportDocumentPdf } from "@/lib/reports/documents/pdf";
+import { documentsSummary } from "@/lib/reports/documents/build";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,12 +80,26 @@ async function gatherSearchConsoleHistory(clientId: string, period: Period): Pro
 export type GenerateResult = { status: "created" | "updated" | "frozen"; id: string; version: number };
 
 /** Génère (ou régénère en nouvelle version) le rapport d'une période. Un rapport envoyé ou archivé n'est jamais modifié. */
-export async function generateReport(actor: Actor, input: { clientId: string; kind: RecurringReportKind; today: string; period?: Period }): Promise<GenerateResult> {
+export async function generateReport(actor: Actor, input: { clientId: string; kind: RecurringReportKind; today: string; period?: Period; lease?: { jobId: string; worker: string } }): Promise<GenerateResult> {
   if (!uuid.test(input.clientId)) fail("client");
   await requireReportVersionStorage();
   const period = input.period ?? previousPeriod(input.kind, input.today);
   const data = await gatherReportInput(input.clientId, period);
   const built = buildReport(input.kind, data, input.today);
+  // Rapport complet : un document par agent branché (PDF joint à l'e-mail). Google Ads n'est lu qu'avec une session
+  // administrateur ou le bail du job de génération ; sans l'un ni l'autre, il est signalé comme non inclus.
+  const access: DocumentAccess | null = actor.kind === "admin" ? { kind: "admin" } : input.lease ? { kind: "system", lease: input.lease } : null;
+  const gathered = await gatherReportDocuments(input.clientId, period, data, access ?? { kind: "system", lease: { jobId: "", worker: "" } });
+  if (gathered.documents.length) {
+    (built.client as typeof built.client & { documents?: unknown }).documents = gathered.documents;
+    built.client.empty = false;
+    built.internal.empty = false;
+    built.client.summary = documentsSummary(gathered.documents).slice(0, 4000);
+  }
+  built.internal.sections.push({ title: "Documents joints (un PDF par agent)", lines: [
+    ...(gathered.documents.length ? gathered.documents.map((document) => `${reportDocumentLabels[document.key]} : ${document.summary}`) : ["Aucune source branchée pour ce client : rapport sans document joint."]),
+    ...gathered.warnings,
+  ] });
   const supabase = db();
   const { data: existing, error } = await supabase.from("reports").select("id,status,version,client_content").eq("client_id", input.clientId).eq("kind", input.kind).eq("period_start", period.start).maybeSingle();
   if (error) fail("read");
@@ -144,6 +162,23 @@ export async function getReportDelivery(id: string, version: number) {
 
 type Outcome = { ok: true } | { ok: false; message: string };
 
+const kindLabels: Record<string, string> = { weekly: "Rapport hebdomadaire", monthly: "Rapport mensuel", google_ads: "Rapport Google Ads", custom: "Rapport" };
+/** Contexte d'en-tête des PDF par agent (version client approuvée uniquement pour l'envoi). */
+export function documentPdfContext(report: Pick<ReportRecord, "kind" | "version" | "status" | "approved_version" | "period_start" | "period_end"> & { client: { name: string } | null }) {
+  return {
+    clientName: report.client?.name ?? "Client", kindLabel: kindLabels[report.kind] ?? "Rapport",
+    periodLabel: periodLabel(report.kind, { start: report.period_start, end: report.period_end }), version: report.version,
+    finalized: report.approved_version === report.version && ["approved", "sent", "archived"].includes(report.status),
+  };
+}
+/** Pièces jointes : un PDF par agent pour un rapport complet, sinon le PDF client historique. */
+export function reportAttachments(report: ReportRecord) {
+  const documents = clientDocuments(report.client_content);
+  if (!documents.length) return [{ filename: clientReportPdfFilename(report), base64: renderClientReportPdf(report).toString("base64") }];
+  const context = documentPdfContext(report);
+  return documents.map((document) => ({ filename: documentPdfFilename(context, document, report.period_start), base64: renderReportDocumentPdf(context, document).toString("base64") }));
+}
+
 export async function approveReport(actor: Actor & { kind: "admin" }, id: string, expectedVersion: number): Promise<Outcome> {
   await requireAdmin();
   const report = await getReport(id);
@@ -205,10 +240,9 @@ export async function transportApprovedReport(actor: Actor, id: string, mode: "e
     const email = reportEmailPreview(report);
     if (email.digest !== preview.digest) return { ok: false, message: "Le contenu a changé : rechargez la prévisualisation." };
     // Render the same approved CLIENT version before claiming delivery. Never attach internal_content.
-    let attachment: { filename: string; base64: string };
+    let attachments: { filename: string; base64: string }[];
     try {
-      const pdf = renderClientReportPdf(report);
-      attachment = { filename: clientReportPdfFilename(report), base64: pdf.toString("base64") };
+      attachments = reportAttachments(report);
     } catch {
       return { ok: false, message: "PDF client indisponible : aucun e-mail envoyé. Vérifiez le contenu du rapport." };
     }
@@ -220,7 +254,7 @@ export async function transportApprovedReport(actor: Actor, id: string, mode: "e
     if (!claimed) return { ok: false, message: "Une tentative existe déjà ou la version a changé. Aucun nouvel e-mail envoyé." };
     let providerId: string;
     try {
-      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, attachment, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
+      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, attachments, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
     } catch (error) {
       // Network/timeouts and malformed success are ambiguous: never retry automatically.
       const definite = error instanceof ProviderError && ["unauthorized", "rate_limited", "rejected", "not_found"].includes(error.kind) && error.status !== null && error.status < 500 && error.status !== 409;

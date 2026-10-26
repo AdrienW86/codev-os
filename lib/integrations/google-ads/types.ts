@@ -25,6 +25,8 @@ export interface GoogleAdsReadClient {
   getCampaignPerformance(account: AdsAccount, period: AdsPeriod, managerId?: string): Promise<{ campaigns: AdsCampaign[]; totals: AdsMetrics }>;
   /** Lecture seule : inventaire, métriques par campagne, total du compte, leads Local Services (facultatifs). */
   getCampaignDashboard(account: AdsAccount, period: AdsPeriod, previous: AdsPeriod | null, managerId?: string): Promise<CampaignDashboardRaw>;
+  /** Lecture seule : métriques du compte jour par jour (graphiques des rapports clients). */
+  getDailyMetrics?(account: AdsAccount, period: AdsPeriod, managerId?: string): Promise<(AdsMetrics & { date: string })[]>;
 }
 export type GoogleAdsConnection = {
   id: string; client_id: string; provider: string; status: string; external_account_id: string | null;

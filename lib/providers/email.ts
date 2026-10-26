@@ -14,19 +14,23 @@ export function emailSendingStatus(env: Env = process.env): { enabled: true } | 
   return { enabled: true };
 }
 
-export async function sendEmail(message: { to: string; subject: string; text: string; idempotencyKey: string; attachment?: { filename: string; base64: string } }, env: Env = process.env, fetchImpl?: typeof fetch) {
+type Attachment = { filename: string; base64: string };
+const validAttachment = (item: Attachment) => /^[a-z0-9][a-z0-9._-]{1,125}\.pdf$/i.test(item.filename) && item.base64.length <= 4_700_000
+  && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(item.base64);
+
+export async function sendEmail(message: { to: string; subject: string; text: string; idempotencyKey: string; attachment?: Attachment; attachments?: Attachment[] }, env: Env = process.env, fetchImpl?: typeof fetch) {
   const status = emailSendingStatus(env);
   if (!status.enabled) throw new ProviderError("email", "not_configured");
   if (!address.test(message.to) || !address.test(env.EMAIL_FROM!.replace(/^.*<|>$/g, ""))) throw new ProviderError("email", "malformed");
-  // Small PDF attachments only: Resend JSON uses base64 content and a simple filename.
-  if (message.attachment && (!/^[a-z0-9][a-z0-9._-]{1,125}\.pdf$/i.test(message.attachment.filename)
-    || message.attachment.base64.length > 4_700_000
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(message.attachment.base64)))
+  // Small PDF attachments only (6 at most, 14 Mo encodés au total) : Resend JSON uses base64 content and a simple filename.
+  const attachments = [...(message.attachment ? [message.attachment] : []), ...(message.attachments ?? [])];
+  if (attachments.length > 6 || attachments.some((item) => !validAttachment(item)) || new Set(attachments.map((item) => item.filename)).size !== attachments.length
+    || attachments.reduce((sum, item) => sum + item.base64.length, 0) > 14_000_000)
     throw new ProviderError("email", "malformed");
   const data = await providerJson<{ id?: unknown }>("email", "https://api.resend.com/emails", {
     method: "POST", fetchImpl,
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": message.idempotencyKey.slice(0, 200) },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(message.attachment ? { attachments: [{ filename: message.attachment.filename, content: message.attachment.base64 }] } : {}) }),
+    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(attachments.length ? { attachments: attachments.map((item) => ({ filename: item.filename, content: item.base64 })) } : {}) }),
   });
   if (typeof data.id !== "string") throw new ProviderError("email", "malformed");
   return { id: data.id };

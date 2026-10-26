@@ -11,6 +11,10 @@ function dateClause(period: AdsPeriod) {
 export function campaignPerformanceQuery(period: AdsPeriod) {
   return `SELECT campaign.id, ${metrics} FROM campaign WHERE campaign.status != 'REMOVED' AND ${dateClause(period)}`;
 }
+/** Série quotidienne du compte (rapports clients) : une ligne par jour ayant de l'activité. */
+export function accountDailyQuery(period: AdsPeriod) {
+  return `SELECT segments.date, ${metrics} FROM customer WHERE ${dateClause(period)}`;
+}
 export function accountPerformanceQuery(period: AdsPeriod) {
   return `SELECT ${metrics} FROM customer WHERE ${dateClause(period)}`;
 }

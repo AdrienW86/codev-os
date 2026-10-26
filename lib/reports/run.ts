@@ -20,7 +20,7 @@ export const generateReportsRun: RunHandler = async ({ job, agent, actor, now })
   let created = 0, updated = 0, frozen = 0;
   const reportIds: string[] = [];
   for (const clientId of clientIds) {
-    const result = await generateReport(actor, { clientId, kind, today });
+    const result = await generateReport(actor, { clientId, kind, today, lease: job.worker_id ? { jobId: job.id, worker: job.worker_id } : undefined });
     reportIds.push(result.id);
     if (result.status === "created") created++; else if (result.status === "updated") updated++; else frozen++;
   }

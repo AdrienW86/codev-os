@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadTs } from "./helpers/load-ts.mjs";
 
-const preview = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts") });
+const preview = loadTs("lib/reports/email-preview.ts", { "./recipient": loadTs("lib/reports/recipient.ts"), "./documents/model": loadTs("lib/reports/documents/model.ts") });
 const pdfModule = loadTs("lib/reports/pdf.ts", { "./email-preview": preview });
 const report = {
   id: "11111111-1111-4111-8111-111111111111", title: "Rapport mensuel — Électricité & Toiture",
@@ -167,14 +167,14 @@ test("PDF route checks admin before reading and serves an uncached private attac
   const route = loadTs("app/api/reports/[id]/pdf/route.ts", {
     "@/lib/require-admin": { requireAdmin: async () => { throw Error("no admin"); } },
     "@/lib/reports/service": { getReport: async () => { reads++; return report; } },
-    "@/lib/reports/pdf": pdfModule,
+    "@/lib/reports/pdf": pdfModule, "@/lib/reports/documents/model": {}, "@/lib/reports/documents/pdf": {},
   }, { Response });
   await assert.rejects(() => route.GET({}, { params: Promise.resolve({ id: report.id }) }), /no admin/);
   assert.equal(reads, 0);
   const authorized = loadTs("app/api/reports/[id]/pdf/route.ts", {
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: "admin" }) },
-    "@/lib/reports/service": { getReport: async () => report },
-    "@/lib/reports/pdf": pdfModule,
+    "@/lib/reports/service": { getReport: async () => report, documentPdfContext: () => ({}) },
+    "@/lib/reports/pdf": pdfModule, "@/lib/reports/documents/model": { clientDocuments: () => [] }, "@/lib/reports/documents/pdf": {},
   }, { Response });
   const response = await authorized.GET({}, { params: Promise.resolve({ id: report.id }) });
   assert.equal(response.status, 200);
@@ -185,7 +185,7 @@ test("PDF route checks admin before reading and serves an uncached private attac
   const missing = loadTs("app/api/reports/[id]/pdf/route.ts", {
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: "admin" }) },
     "@/lib/reports/service": { getReport: async () => null },
-    "@/lib/reports/pdf": pdfModule,
+    "@/lib/reports/pdf": pdfModule, "@/lib/reports/documents/model": {}, "@/lib/reports/documents/pdf": {},
   }, { Response });
   assert.equal((await missing.GET({}, { params: Promise.resolve({ id: "missing" }) })).status, 404);
 });

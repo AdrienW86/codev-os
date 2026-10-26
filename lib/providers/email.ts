@@ -18,7 +18,11 @@ type Attachment = { filename: string; base64: string };
 const validAttachment = (item: Attachment) => /^[a-z0-9][a-z0-9._-]{1,125}\.pdf$/i.test(item.filename) && item.base64.length <= 4_700_000
   && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(item.base64);
 
-export async function sendEmail(message: { to: string; subject: string; text: string; idempotencyKey: string; attachment?: Attachment; attachments?: Attachment[] }, env: Env = process.env, fetchImpl?: typeof fetch) {
+type InlineImage = { filename: string; base64: string; contentId: string };
+const validInline = (item: InlineImage) => /^[a-z0-9][a-z0-9._-]{1,60}\.png$/i.test(item.filename) && /^[a-z0-9-]{1,60}$/i.test(item.contentId) && item.base64.length <= 200_000
+  && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(item.base64);
+
+export async function sendEmail(message: { to: string; subject: string; text: string; html?: string; inline?: InlineImage[]; idempotencyKey: string; attachment?: Attachment; attachments?: Attachment[] }, env: Env = process.env, fetchImpl?: typeof fetch) {
   const status = emailSendingStatus(env);
   if (!status.enabled) throw new ProviderError("email", "not_configured");
   if (!address.test(message.to) || !address.test(env.EMAIL_FROM!.replace(/^.*<|>$/g, ""))) throw new ProviderError("email", "malformed");
@@ -27,10 +31,15 @@ export async function sendEmail(message: { to: string; subject: string; text: st
   if (attachments.length > 6 || attachments.some((item) => !validAttachment(item)) || new Set(attachments.map((item) => item.filename)).size !== attachments.length
     || attachments.reduce((sum, item) => sum + item.base64.length, 0) > 14_000_000)
     throw new ProviderError("email", "malformed");
+  // Version HTML facultative (le texte brut reste toujours envoyé) et images intégrées (logo, cid) : PNG légers uniquement.
+  const inline = message.inline ?? [];
+  if (inline.length > 2 || inline.some((item) => !validInline(item)) || (message.html !== undefined && (!message.html.trim() || message.html.length > 200_000)))
+    throw new ProviderError("email", "malformed");
+  const files = [...attachments.map((item) => ({ filename: item.filename, content: item.base64 })), ...inline.map((item) => ({ filename: item.filename, content: item.base64, content_id: item.contentId }))];
   const data = await providerJson<{ id?: unknown }>("email", "https://api.resend.com/emails", {
     method: "POST", fetchImpl,
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": message.idempotencyKey.slice(0, 200) },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(attachments.length ? { attachments: attachments.map((item) => ({ filename: item.filename, content: item.base64 })) } : {}) }),
+    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(message.html ? { html: message.html } : {}), ...(files.length ? { attachments: files } : {}) }),
   });
   if (typeof data.id !== "string") throw new ProviderError("email", "malformed");
   return { id: data.id };

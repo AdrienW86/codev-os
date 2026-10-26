@@ -18,6 +18,7 @@ import { clientDocuments, reportDocumentLabels } from "@/lib/reports/documents/m
 import { reportKindLabels, reportStatusLabels } from "@/lib/reports/labels";
 import { periodLabel, type ReportContent } from "@/lib/reports/build";
 import { emailSendingStatus } from "@/lib/providers/email";
+import { EMAIL_LOGO_BASE64, EMAIL_LOGO_CID } from "@/lib/reports/email-logo";
 import { safeRead } from "@/lib/core/safe-read";
 import { formatDate } from "@/lib/format-date";
 import { getReportScope } from "@/lib/reports/google-ads-service";
@@ -143,7 +144,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
             {item.status !== "archived" && !sending && <MutationForm action={archiveReportAction} fields={{ id }} label="Archiver" variant="ghost" confirm="Archiver ce rapport ? Il reste consultable." disableOnSuccess />}
           </Panel>
 
-          {preview.data && <Panel className="p-5"><h2 className="font-semibold">Prévisualisation de l’e-mail · v{item.version}</h2><p className="mt-2 text-sm">Objet : {preview.data.subject}</p><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm">{preview.data.text}</pre><p className="mt-3 text-xs text-muted">Texte client uniquement. L’approbation et l’envoi sont deux actions distinctes.</p></Panel>}
+          {preview.data && <Panel className="p-5"><h2 className="font-semibold">Prévisualisation de l’e-mail · v{item.version}</h2><p className="mt-2 text-sm">Objet : {preview.data.subject}</p><iframe title="Aperçu de l’e-mail" sandbox="" srcDoc={preview.data.html.replaceAll(`cid:${EMAIL_LOGO_CID}`, `data:image/png;base64,${EMAIL_LOGO_BASE64}`)} className="mt-3 h-[640px] w-full rounded-lg border border-border bg-white" data-email-preview="html" /><details className="mt-3 text-sm"><summary className="cursor-pointer text-muted">Version texte (envoyée aussi, pour les messageries sans HTML)</summary><pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words">{preview.data.text}</pre></details><p className="mt-3 text-xs text-muted">Contenu client uniquement. L’approbation et l’envoi sont deux actions distinctes.</p></Panel>}
 
           {editable && (
             <Panel className="p-5">

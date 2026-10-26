@@ -11,6 +11,7 @@ import { clientReportPdfFilename, renderClientReportPdf } from "@/lib/reports/pd
 import { ProviderError } from "@/lib/providers/errors";
 import { requireReportVersionStorage } from "./version-storage";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
+import { EMAIL_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "@/lib/reports/email-logo";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ReportKind, ReportRow, ReportStatus } from "@/lib/supabase/core.types";
 import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
@@ -254,7 +255,7 @@ export async function transportApprovedReport(actor: Actor, id: string, mode: "e
     if (!claimed) return { ok: false, message: "Une tentative existe déjà ou la version a changé. Aucun nouvel e-mail envoyé." };
     let providerId: string;
     try {
-      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, attachments, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
+      providerId = (await sendEmail({ to: parsed.data, subject: email.subject, text: email.text, html: email.html, inline: [{ filename: EMAIL_LOGO_FILENAME, base64: EMAIL_LOGO_BASE64, contentId: EMAIL_LOGO_CID }], attachments, idempotencyKey: `report-${report.id}-v${report.version}` })).id;
     } catch (error) {
       // Network/timeouts and malformed success are ambiguous: never retry automatically.
       const definite = error instanceof ProviderError && ["unauthorized", "rate_limited", "rejected", "not_found"].includes(error.kind) && error.status !== null && error.status < 500 && error.status !== 409;

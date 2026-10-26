@@ -12,11 +12,13 @@ export async function notificationPreferences() {
 }
 export async function listNotifications() {
   const { userId } = await requireAdmin(); const prefs = await notificationPreferences();
-  const events = await db().from("admin_notifications").select("id,category,href,created_at").in("category", prefs.categories).order("created_at", { ascending: false }).limit(100);
-  const reads = await db().from("admin_notification_reads").select("notification_id").eq("user_id", userId).in("notification_id", (events.data ?? []).map((row) => row.id));
+  // Les notifications retirées (lues puis supprimées de la liste) sont exclues ; 100 visibles au plus.
+  const events = await db().from("admin_notifications").select("id,category,href,created_at").in("category", prefs.categories).order("created_at", { ascending: false }).limit(300);
+  const reads = await db().from("admin_notification_reads").select("notification_id,dismissed_at").eq("user_id", userId).in("notification_id", (events.data ?? []).map((row) => row.id));
   if (events.error || reads.error) throw new Error("Notifications indisponibles.");
   const seen = new Set(reads.data?.map((row) => row.notification_id));
-  return (events.data ?? []).map((row) => ({ ...row, read: seen.has(row.id) }));
+  const dismissed = new Set(reads.data?.filter((row) => row.dismissed_at).map((row) => row.notification_id));
+  return (events.data ?? []).filter((row) => !dismissed.has(row.id)).slice(0, 100).map((row) => ({ ...row, read: seen.has(row.id) }));
 }
 export async function unreadNotificationCount() {
   const { userId } = await requireAdmin();
@@ -28,6 +30,20 @@ export async function markNotificationRead(id: unknown) {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id)) throw new Error("Notification invalide.");
   const { error } = await db().from("admin_notification_reads").upsert({ notification_id: id, user_id: userId }, { onConflict: "notification_id,user_id", ignoreDuplicates: true });
   if (error) throw new Error("Lecture non enregistrée.");
+}
+/** Retire de la liste une notification déjà lue (jamais une non lue). */
+export async function dismissNotification(id: unknown) {
+  const { userId } = await requireAdmin();
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id)) throw new Error("Notification invalide.");
+  const { data, error } = await db().from("admin_notification_reads").update({ dismissed_at: new Date().toISOString() }).eq("user_id", userId).eq("notification_id", id).is("dismissed_at", null).select("notification_id");
+  if (error || !data?.length) throw new Error("Suppression non enregistrée.");
+}
+/** Retire de la liste toutes les notifications lues ; renvoie leur nombre. */
+export async function dismissReadNotifications() {
+  const { userId } = await requireAdmin();
+  const { data, error } = await db().from("admin_notification_reads").update({ dismissed_at: new Date().toISOString() }).eq("user_id", userId).is("dismissed_at", null).select("notification_id");
+  if (error) throw new Error("Suppression non enregistrée.");
+  return data?.length ?? 0;
 }
 export async function saveNotificationPreferences(input: unknown) {
   const { userId } = await requireAdmin(); const value = preferencesSchema.parse(input);

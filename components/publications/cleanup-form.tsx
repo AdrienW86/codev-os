@@ -11,7 +11,7 @@ export function CleanupForm({counts,clients}:{counts:Record<CleanupCategory,numb
  return <details className="mt-4 rounded-xl border border-border p-4 text-sm" data-board-cleanup="true">
   <summary className="cursor-pointer font-semibold">Nettoyer le tableau{counts?` (${total} publication${total>1?'s':''} terminée${total>1?'s':''})`:''}</summary>
   <form action={run} className="mt-3 grid gap-3">
-   <p className="text-xs text-muted">Archive en une fois les publications terminées. Elles disparaissent du tableau et du calendrier mais restent consultables (avec leur historique) dans la vue « Archivées ». Les envois en cours ne sont jamais touchés.</p>
+   <p className="text-xs text-muted">Archive en une fois les publications terminées. Elles disparaissent du tableau et du calendrier mais restent consultables (avec leur historique) dans la vue « Archivées ». Les envois programmés pas encore partis sont annulés ; rien n’est supprimé sur Facebook, Instagram ou la fiche Google.</p>
    <fieldset className="flex flex-wrap gap-4">{cleanupCategories.map(c=><label key={c} className="flex items-center gap-2">
     <input type="checkbox" name="category" value={c} defaultChecked={c!=='past'}/>{cleanupLabels[c]}{counts?` (${counts[c]})`:''}</label>)}</fieldset>
    <label className="flex flex-wrap items-center gap-2">Client

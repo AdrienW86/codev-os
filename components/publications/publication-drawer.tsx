@@ -175,9 +175,9 @@ function History({detail}:{detail:PublicationDetailData}){
 // Lot 4.3 P5: archive is explicit and one-way (confirmation checkbox, no modal); history stays readable.
 function ArchiveSection({detail}:{detail:PublicationDetailData}){
  const [state,archive,pending]=useActionState(archiveFromDrawerAction,{} as DrawerState);
- return <section className="rounded-lg border border-border p-4" data-archive="true"><h3 className="mb-2 text-sm font-semibold">Archiver</h3>
+ return <section className="rounded-lg border border-border p-4" data-archive="true"><h3 className="mb-2 text-sm font-semibold">Retirer du tableau (archiver)</h3>
   <form action={archive} className="space-y-2 text-sm"><input type="hidden" name="publication_id" value={detail.publicationId}/><input type="hidden" name="project_id" value={detail.projectId??''}/>
-   <p className="text-xs text-muted">La publication quitte le tableau actif mais reste consultable (vue « Archivées »), avec son historique. Aucune suppression.</p>
+   <p className="text-xs text-muted">Possible quel que soit son état. Les envois programmés pas encore partis sont annulés. Un post déjà publié reste en ligne sur Facebook, Instagram et la fiche Google : rien n’y est supprimé. La publication reste consultable dans la vue « Archivées ».</p>
    <label className="block"><input type="checkbox" name="confirm" required/> Je confirme l’archivage définitif.</label>
    <button disabled={pending} className="rounded-lg border border-border px-3 py-1.5">{pending?'Archivage…':'Archiver'}</button>
    {state.message&&<p role={state.ok?'status':'alert'} className={state.ok?'':'text-danger'}>{state.message}</p>}</form></section>;

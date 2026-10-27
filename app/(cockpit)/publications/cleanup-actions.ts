@@ -5,7 +5,7 @@ import {archiveFinishedPublications} from "@/lib/publications/cleanup";
 import {parseCleanupCategories} from "@/lib/publications/cleanup-rules";
 import {isPublicationUuid} from "@/lib/publications/validation";
 export type CleanupState={ok?:boolean;message?:string};
-// Bulk clean-up = audited soft archive (publication_archive), never a hard delete: history stays in « Archivées ».
+// Bulk clean-up = audited soft archive (publication_remove: pending sends cancelled), never a hard delete: history stays in « Archivées ».
 export async function cleanupBoardAction(_:CleanupState,form:FormData):Promise<CleanupState>{
  await requireAdmin();
  if(form.get("confirm")!=="on")return {ok:false,message:"Cochez la confirmation pour archiver."};

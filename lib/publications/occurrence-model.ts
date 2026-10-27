@@ -15,7 +15,7 @@ export type EnsureOccurrencesResult={created:number;existing:number;dst_conflict
 export const occurrenceStateLabels:Record<OccurrenceState,string>={open:'À préparer',missed:'Passée sans publication',linked:'Publication liée',skipped:'Ignorée'};
 export const PREPARE_WEEK_OPTIONS=[1,2,4] as const;
 export const DEFAULT_PREPARE_WEEKS=4;
-const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 
 export function occurrenceState(row:Pick<OccurrenceRow,'publication_id'|'skipped_at'|'scheduled_for'>,now:Date):OccurrenceState{
  if(row.skipped_at)return 'skipped';if(row.publication_id)return 'linked';return Date.parse(row.scheduled_for)<now.getTime()?'missed':'open';

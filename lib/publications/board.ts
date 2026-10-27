@@ -19,7 +19,7 @@ type AssetRow={id:string;storage_path:string};
 type DeliveryRow={publication_id:string;variant_id:string;platform:string;status:string};
 
 const CHUNK=100,PAGE=500,unavailable='Impossible de charger les publications. Réessayez dans quelques instants.';
-const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 const publicationColumns='id,client_id,project_id,platform,archived_at,status,current_revision_id,subject,target_date,editorial_week,creation_origin,updated_at,client:clients(name),project:projects(id,name)';
 
 async function all<T>(query:()=>Page<T>):Promise<T[]>{

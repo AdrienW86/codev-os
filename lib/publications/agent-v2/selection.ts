@@ -4,7 +4,7 @@ import type {PublicationPlatform} from '../types';
 import {aboutService,textSimilarity as similarity} from '../editorial-text';
 import {historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
 
-const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 const byTime=(a:OpenOccurrenceCandidate,b:OpenOccurrenceCandidate)=>a.scheduledFor.localeCompare(b.scheduledFor)||platformOrder.indexOf(a.platform)-platformOrder.indexOf(b.platform)||a.occurrenceId.localeCompare(b.occurrenceId);
 const day=86400000;
 

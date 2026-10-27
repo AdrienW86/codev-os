@@ -47,11 +47,11 @@ test('view model: legacy project shows inherited channels only, read-only, no sc
  assert.equal(v.legacy,true);assert.deepEqual(json(v.cards.map(c=>[c.label,c.state,c.schedule])),[['Facebook','legacy',null],['Instagram','legacy',null]]);
  assert.equal(v.suspended,null);assert.equal(v.calendarNotice,null);assert.equal(v.agentNotice,null);});
 
-test('view model: FB / IG / GBP cards, sorted enabled slots, inactive history, derived posts per week, states',()=>{
+test('view model: FB / IG / GBP / TikTok cards, sorted enabled slots, inactive history, derived posts per week, states',()=>{
  const explicit=[{platform:'facebook',enabled:true,accountConnected:true,rules:' Ton ',schedule:sched([slot(5,'12:00'),slot(1,'12:00'),slot(3,'18:00',false)])},
   {platform:'instagram',enabled:false,accountConnected:false,rules:null,schedule:sched([slot(2,'18:00'),slot(6,'11:00')],false)}];
  const v=model.buildChannelConfiguration(caps('configured',['facebook'],false),explicit);
- assert.deepEqual(json(v.cards.map(c=>[c.label,c.state,c.configured])),[['Facebook','active',true],['Instagram','inactive',true],['Google Business Profile','inactive',false]]);
+ assert.deepEqual(json(v.cards.map(c=>[c.label,c.state,c.configured])),[['Facebook','active',true],['Instagram','inactive',true],['Google Business Profile','inactive',false],['TikTok','inactive',false]]);
  const fb=v.cards[0];assert.deepEqual(json(fb.schedule.slots),[{weekday:1,localTime:'12:00'},{weekday:5,localTime:'12:00'}],'Monday → Sunday then time');
  assert.deepEqual(json(fb.schedule.inactiveSlots),[{weekday:3,localTime:'18:00'}]);assert.equal(fb.postsPerWeek,2);assert.equal(fb.rules,'Ton');assert.equal(fb.accountConnected,true);
  assert.equal(v.cards[1].schedule.enabled,false,'disabled channel keeps its (disabled) schedule');assert.equal(v.cards[2].schedule,null,'no schedule yet');
@@ -125,7 +125,7 @@ test('component: legacy banner, FB/IG/GBP cards, one save button per channel, sl
   {platform:'instagram',enabled:false,accountConnected:false,rules:null,schedule:sched([],false)},{platform:'google_business_profile',enabled:true,accountConnected:false,rules:null,schedule:null}];
  const html=renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:model.buildChannelConfiguration(caps('configured',['facebook','google_business_profile'],false),explicit)}));
  for(const label of ['Facebook','Instagram','Google Business Profile'])assert.match(html,new RegExp(`data-channel="[a-z_]+"[^>]*>[\\s\\S]*?${label}`));
- assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,9,'toggle + editorial rules + schedule form per card');
+ assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,10,'toggle + editorial rules + schedule form per card (TikTok non configuré : activation seule)');
  assert.ok(html.indexOf('value="1"')>-1);const fb=html.slice(html.indexOf('data-channel="facebook"'),html.indexOf('data-channel="instagram"'));
  assert.match(fb,/2 publications \/ semaine/);assert.match(fb,/Réactiver Mercredi 18:00/);assert.match(fb,/Compte connecté/);assert.match(fb,/Ton chaleureux/);assert.match(fb,/Europe\/Paris/);assert.match(fb,/>Actif</);
  assert.ok(fb.indexOf('<option value="1" selected')<fb.lastIndexOf('<option value="5" selected'),'Monday row before Friday row');

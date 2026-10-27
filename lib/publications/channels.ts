@@ -10,7 +10,7 @@ export type PublicationChannelSource='legacy'|'configured';
 // project type. Calendar v1 and Agent v1 only work in that case until their multi-channel migration (P3/P7).
 export type PublicationCapabilities={source:PublicationChannelSource;channels:PublicationProjectChannel[];platforms:PublicationPlatform[];legacyAligned:boolean};
 
-const displayOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const displayOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 
 // Enabled, known and distinct platforms, in a stable display order.
 // legacyAligned defaults to true; only the server boundary sets it for a configured project.

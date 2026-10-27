@@ -1,5 +1,5 @@
 import type {NextRequest} from "next/server";
-import {resolveMediaLink} from "@/lib/publications/media/public-link";
+import {resolveMediaLink} from "@/lib/integrations/publications-media-link";
 
 // Image de diffusion servie depuis le domaine de CODE-V OS (domaine vérifié chez TikTok). Public (TikTok récupère
 // l'image sans session) mais limité à un jeton signé et daté ; n'importe quelle autre requête reçoit un 404.

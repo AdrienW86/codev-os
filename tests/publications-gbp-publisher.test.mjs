@@ -227,7 +227,7 @@ test('P12 scope: nothing triggers publishing, OAuth transport still read-only, g
 test('Gate 4: the production lease outlasts the slowest provider call (completion is refused after the lease)',async()=>{
  const calls=[];const vaultModule=load('lib/publications/connections/vault.ts');
  const reg=load('lib/publications/delivery/registry.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>({})},
-  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null},'@/lib/integrations/publications-oauth/http':{},'@/lib/integrations/publications-meta-publish':{},
+  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null,tiktokOAuthConfig:()=>null,oauthBaseUrl:()=>null},'@/lib/integrations/publications-tiktok-publish':{},'../connections/tiktok':{},'./tiktok-publisher':{},'@/lib/integrations/publications-media-link':{},'@/lib/integrations/publications-oauth/http':{},'@/lib/integrations/publications-meta-publish':{},
   '@/lib/integrations/publications-gbp-publish':integration,'../connections/google-business-profile':{},'./gbp-publisher':gbp,'./meta-publisher':{},'../connections/vault':vaultModule,
   '../oauth/service':{productionOAuthDeps:()=>({vault:{readCredential:async()=>{throw Error('no read');}}})},'./engine':{runOnePublicationJob:async(worker,deps)=>{calls.push([worker,deps.leaseSeconds]);return {state:'idle'};}}});
  assert.deepEqual(json(await reg.runOnePublicationJobInProduction('worker-1')),{state:'idle'});

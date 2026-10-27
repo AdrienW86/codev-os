@@ -7,7 +7,7 @@ import {googleTransport,tiktokTransport} from '@/lib/integrations/publications-o
 import {tiktokPublishTransport} from '@/lib/integrations/publications-tiktok-publish';
 import {createTikTokConnectionProvider} from '../connections/tiktok';
 import {createTikTokPublisher,createTikTokReconciler} from './tiktok-publisher';
-import {publicMediaLink} from '../media/public-link';
+import {publicMediaLink} from '@/lib/integrations/publications-media-link';
 import {metaPublishTransport} from '@/lib/integrations/publications-meta-publish';
 import {gbpPublishTransport} from '@/lib/integrations/publications-gbp-publish';
 import {isPublicationUuid} from '../validation';

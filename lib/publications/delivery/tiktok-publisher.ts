@@ -59,7 +59,7 @@ export function tiktokTitle(text:string):string{
  return title.replace(/#[\p{L}\p{N}_]+/gu,'').trim();
 }
 export function createTikTokPublisher(transport:TikTokPublishTransport,options:TikTokPublisherOptions):PublicationPublisher{
- const now=options.now??Date.now,refresh=options.refresh??null,sleep=options.sleep??(ms=>new Promise(r=>setTimeout(r,ms)));
+ const now=options.now??Date.now,refresh=options.refresh??null,sleep=options.sleep??transport.wait?.bind(transport)??(async()=>{});
  const privacy=options.privacyLevel??'PUBLIC_TO_EVERYONE',checks=options.statusChecks??8,interval=options.statusIntervalMs??5000;
  return {async publish(input:PublishInput):Promise<PublishResult>{
   if(input.platform!=='tiktok')return fail('permanent','unsupported_platform');

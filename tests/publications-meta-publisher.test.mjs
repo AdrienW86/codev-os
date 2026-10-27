@@ -215,7 +215,7 @@ test('kill switches with the real Meta publisher: no claim, blocked context or r
 
 test('registry, production entry point, reconcile service and drawer actions: explicit only, fail closed, no secret',async()=>{
  const reg=load('lib/publications/delivery/registry.ts',{'@/lib/require-admin':{requireAdmin:async()=>({userId:'user_admin'})},'@/lib/supabase/server':{getSupabaseServerClient:()=>({})},
-  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null},'@/lib/integrations/publications-meta-publish':integration,'../oauth/service':{productionOAuthDeps:()=>({vault:null})},
+  '@/lib/integrations/publications-oauth/config':{metaOAuthConfig:()=>null,googleOAuthConfig:()=>null,tiktokOAuthConfig:()=>null,oauthBaseUrl:()=>null},'@/lib/integrations/publications-tiktok-publish':{},'../connections/tiktok':{},'./tiktok-publisher':{},'@/lib/integrations/publications-media-link':{},'@/lib/integrations/publications-meta-publish':integration,'../oauth/service':{productionOAuthDeps:()=>({vault:null})},
   '@/lib/integrations/publications-oauth/http':{},'@/lib/integrations/publications-gbp-publish':{},'../connections/google-business-profile':{},'./gbp-publisher':{},
   './meta-publisher':meta,'./engine':{runOnePublicationJob:async()=>{throw Error('must not run');}},'../connections/vault':vault});
  assert.deepEqual(json(await reg.registryPublisher({}).publish(input())),{ok:false,errorClass:'auth',errorCode:'provider_not_configured'});

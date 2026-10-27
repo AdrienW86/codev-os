@@ -10,11 +10,13 @@ export class TikTokPublishTransportError extends Error{constructor(readonly kind
 export const TIKTOK_PUBLISH_PATHS=['post/publish/creator_info/query','post/publish/content/init','post/publish/status/fetch'] as const;
 export type TikTokPublishPath=typeof TIKTOK_PUBLISH_PATHS[number];
 export type TikTokPublishRequest={path:TikTokPublishPath;body:Record<string,unknown>;token:string};
-export interface TikTokPublishTransport{request(request:TikTokPublishRequest):Promise<{status:number;body:unknown;retryAfterSeconds?:number}>}
+export interface TikTokPublishTransport{request(request:TikTokPublishRequest):Promise<{status:number;body:unknown;retryAfterSeconds?:number}>;
+ /** Attente entre deux lectures du statut (le publisher n'a ni minuterie ni réseau). */
+ wait?(ms:number):Promise<void>}
 const API='https://open.tiktokapis.com/v2/';
 const MAX_BODY=1_048_576,TIMEOUT_MS=20_000;
 export function tiktokPublishTransport(fetchImpl:FetchLike=fetch):TikTokPublishTransport{
- return {async request(r){
+ return {wait:ms=>new Promise(resolve=>setTimeout(resolve,Math.min(Math.max(ms,0),10_000))),async request(r){
   if(!(TIKTOK_PUBLISH_PATHS as readonly string[]).includes(r.path)||!r.token)throw new TikTokPublishTransportError('invalid_path');
   let response:Response;
   try{response=await fetchImpl(API+r.path+'/',{method:'POST',headers:{Authorization:`Bearer ${r.token}`,Accept:'application/json','Content-Type':'application/json; charset=UTF-8'},

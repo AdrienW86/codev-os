@@ -227,7 +227,7 @@ test('callback (Meta): state consumed BEFORE the exchange; vault stores the cred
  assert.equal((await h.deps.vault.readCredential(reg.p_credential_reference,'meta')).accessToken,'EAAB-long-lived-secret','secret in the vault only');
  assert.equal(h.store.rows.has('vault:connection/'+uid(9,7)),false,'replaced secret deleted');
  assert.deepEqual(h.rpcs('publication_accounts_sync')[0].p_accounts.map(a=>[a.platform,a.external_account_id]),[['facebook','101'],['facebook','102'],['instagram','201']]);
- assert.deepEqual(h.rpcs('publication_oauth_record')[0],{p_client_id:C,p_provider:'meta',p_outcome:'oauth_completed',p_code:null,p_counts:{accounts:3,facebook:2,instagram:1,google_business_profile:0},p_actor_id:'user_admin'});
+ assert.deepEqual(h.rpcs('publication_oauth_record')[0],{p_client_id:C,p_provider:'meta',p_outcome:'oauth_completed',p_code:null,p_counts:{accounts:3,facebook:2,instagram:1,google_business_profile:0,tiktok:0},p_actor_id:'user_admin'});
  assert.deepEqual(leaks(h.log.filter(x=>x[0]==='rpc')),[],'no token, code or secret sent to the database');assert.deepEqual(leaks(h.logs),[]);assert.deepEqual(h.logs,[]);});
 
 test('callback refusals: forged / replayed / expired state, provider error, missing code, exchange failures, register failure, discovery failure',async()=>{

@@ -8,7 +8,7 @@ const publisher = loadTs("lib/publications/delivery/tiktok-publisher.ts");
 const model = loadTs("lib/publications/connections/model.ts", { "../editor": { platformLabels: { tiktok: "TikTok" } } });
 const KEY = Buffer.alloc(32, 7).toString("base64");
 const env = { PUBLICATION_CREDENTIALS_KEY: KEY, NEXT_PUBLIC_SUPABASE_URL: "https://proj.supabase.co" };
-const link = loadTs("lib/publications/media/public-link.ts");
+const link = loadTs("lib/integrations/publications-media-link.ts");
 
 const credential = (over = {}) => ({ accessToken: "act.valid-token-123", refreshToken: "rft.refresh-123", expiresAt: new Date(Date.now() + 3600_000).toISOString(), scopes: ["user.info.basic", "video.publish"], provider: "tiktok", subject: "open-1", ...over });
 const input = (over = {}) => ({ platform: "tiktok", account: { externalAccountId: "open-1", parentExternalId: null }, text: "Toiture refaite à neuf ! Demandez votre devis. #toiture",

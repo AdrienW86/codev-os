@@ -236,7 +236,7 @@ test("L7 scheduled sending: 20 deliveries due at the same slot all leave within 
   const mixed = queue(["google_business_profile", "instagram", "facebook", "instagram"], { clock: c3 });
   const r1 = await reg.processScheduledDuePublications(enabled, { db: settingsDb, run: mixed.run }, { deadline: T0 + 285_000, clock: () => c3.now });
   assert.equal(r1.counts.published, 1, "after the GBP send, the Instagram job at the head waits for the next tick");
-  assert.deepEqual(json(mixed.claims), [null, ["google_business_profile", "facebook"]], "second claim restricted to the platforms that fit");
+  assert.deepEqual(json(mixed.claims), [null, ["google_business_profile", "facebook", "tiktok"]], "second claim restricted to the platforms that fit");
   c3.now = T0 + TICK;
   const r2 = await reg.processScheduledDuePublications(enabled, { db: settingsDb, run: mixed.run }, { deadline: c3.now + 285_000, clock: () => c3.now });
   assert.equal(r2.counts.published, 2, "next tick: Instagram first, then Facebook; the second Instagram waits again");

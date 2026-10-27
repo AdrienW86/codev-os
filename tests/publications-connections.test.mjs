@@ -30,8 +30,8 @@ const providers=load('lib/publications/connections/providers.ts');
 const fakes=load('lib/publications/connections/fakes.ts',{'./vault':vault,'./providers':providers});
 
 test('model: providers, platform matrix, labels; Meta / GBP normalization keeps ids and names only',()=>{
- assert.deepEqual(json(model.CONNECTION_PROVIDERS),['meta','google_business_profile']);
- assert.deepEqual(json(model.PROVIDER_PLATFORMS),{meta:['facebook','instagram'],google_business_profile:['google_business_profile']});
+ assert.deepEqual(json(model.CONNECTION_PROVIDERS),['meta','google_business_profile','tiktok']);
+ assert.deepEqual(json(model.PROVIDER_PLATFORMS),{meta:['facebook','instagram'],google_business_profile:['google_business_profile'],tiktok:['tiktok']});
  assert.equal(model.providerOfPlatform('instagram'),'meta');assert.equal(model.providerOfPlatform('google_business_profile'),'google_business_profile');
  assert.equal(model.connectFirstMessage('facebook'),'Connectez d’abord Meta');assert.equal(model.connectFirstMessage('google_business_profile'),'Connectez d’abord Google Business Profile');
  assert.equal(model.isConnectionProvider('facebook'),false,'Facebook is a platform, Meta the provider');
@@ -156,7 +156,7 @@ const leak=v=>{const s=JSON.stringify(v);return ['vault:','credential_reference'
 
 test('services: admin first, listings and project configuration without any secret, reference or external id',async()=>{
  const s=serviceWith();const list=await s.m.getClientConnections(C);assert.equal(s.log[0],'admin');
- assert.deepEqual(json(list.map(c=>[c.provider,c.status,c.connected,c.counts,c.canDisconnect])),[['meta','active',true,{facebook:2,instagram:1,google_business_profile:0},true],['google_business_profile','none',false,{facebook:0,instagram:0,google_business_profile:0},false]]);
+ assert.deepEqual(json(list.map(c=>[c.provider,c.status,c.connected,c.counts,c.canDisconnect])),[['meta','active',true,{facebook:2,instagram:1,google_business_profile:0,tiktok:0},true],['google_business_profile','none',false,{facebook:0,instagram:0,google_business_profile:0,tiktok:0},false],['tiktok','none',false,{facebook:0,instagram:0,google_business_profile:0,tiktok:0},false]]);
  assert.match(list[0].expiresLabel,/^Expire le 01\/12\/2026$/);
  const accounts=await s.m.getAvailablePublicationAccounts(C);assert.deepEqual(json(accounts.map(a=>[a.name,a.platform,a.statusLabel,a.assignable])),[['Toitures Dupont','facebook','Actif',true],['Toitures Dupont Lyon','facebook','Indisponible',false],['@toitures.dupont','instagram','Actif',true]]);
  await assert.rejects(()=>s.m.getClientConnections('nope'));
@@ -198,7 +198,7 @@ test('services: sync = vault read + provider + normalization + ONE RPC; unavaila
 
 test('services: assignment and disconnect (server-resolved client, vault purge, generic failure), Google Ads untouched',async()=>{
  const s=serviceWith();
- assert.equal((await s.m.assignPublicationAccountToChannel(P,'tiktok',FB1)).ok,false);assert.equal((await s.m.assignPublicationAccountToChannel(P,'facebook','x')).ok,false);
+ assert.equal((await s.m.assignPublicationAccountToChannel(P,'snapchat',FB1)).ok,false);assert.equal((await s.m.assignPublicationAccountToChannel(P,'facebook','x')).ok,false);
  assert.deepEqual(json(await s.m.assignPublicationAccountToChannel(P,'facebook',FB1)),{ok:true,message:'Compte de publication enregistré.'});
  assert.deepEqual(s.rpcs('publication_channel_assign_account'),[{p_project_id:P,p_platform:'facebook',p_account_id:FB1,p_actor_id:'user_admin'}]);
  assert.equal((await s.m.assignPublicationAccountToChannel(P,'facebook',null)).message,'Compte de publication retiré.');

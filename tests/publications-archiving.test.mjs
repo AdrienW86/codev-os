@@ -45,10 +45,10 @@ test('drawer: an archived publication is read-only and shows « Archivée »; th
 function mockDb(rpc){const log=[];return {log,rpc:async(name,args)=>{log.push([name,json(args)]);return rpc?rpc():{data:'2026-10-08T00:00:00Z',error:null};}};}
 test('archive service and action: admin first, one RPC, errors mapped, confirmation required, no delete',async()=>{
  const make=rpc=>{const db=mockDb(rpc),calls=[];return {db,calls,m:load('lib/publications/archive.ts',{'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');return {userId:'user_admin'};}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db}})};};
- const ok=make();assert.equal((await ok.m.archivePublication(PUB)).ok,true);assert.equal(ok.calls[0],'admin');assert.deepEqual(ok.db.log,[['publication_archive',{p_publication_id:PUB,p_actor_id:'user_admin'}]]);
+ const ok=make();assert.equal((await ok.m.archivePublication(PUB)).ok,true);assert.equal(ok.calls[0],'admin');assert.deepEqual(ok.db.log,[['publication_remove',{p_publication_id:PUB,p_actor_id:'user_admin'}]]);
  const bad=make();assert.equal((await bad.m.archivePublication('nope')).ok,false);assert.deepEqual(bad.db.log,[],'invalid id: no RPC');
  assert.match((await make(()=>({data:null,error:{code:'55000',message:'Publication already archived'}})).m.archivePublication(PUB)).message,/déjà archivée/);
- assert.match((await make(()=>({data:null,error:{code:'55000',message:'Resolve deliveries first'}})).m.archivePublication(PUB)).message,/envoi est encore actif/);
+ assert.match((await make(()=>({data:null,error:{code:'55000',message:'Delivery in progress'}})).m.archivePublication(PUB)).message,/envoi est en cours/);
  const calls=[];const actions=load('app/(cockpit)/publications/drawer-actions.ts',{'next/cache':{revalidatePath:p=>calls.push(['revalidate',p])},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},
   '@/lib/publications/workspace':{},'@/lib/publications/drawer':{deliveryLock:async()=>null},'@/lib/publications/archive':{archivePublication:async id=>{calls.push(['archive',id]);return {ok:true,message:'ok'};}}});
  const form=entries=>{const f=new FormData();for(const [k,v] of Object.entries(entries))f.set(k,v);return f;};

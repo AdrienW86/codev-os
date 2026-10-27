@@ -3,7 +3,7 @@ import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {cleanupCategories,cleanupCategory,type CleanupCategory} from './cleanup-rules';
 
-// Bulk clean-up of the board: one audited publication_archive call per publication (the RPC re-checks every guard).
+// Bulk clean-up of the board: one audited publication_remove call per publication (pending sends cancelled, nothing deleted on networks).
 const MAX=200;
 type Row={id:string;client_id:string;status:string;target_date:string|null;editorial_week:string};
 export type CleanupCounts=Record<CleanupCategory,number>;
@@ -40,11 +40,11 @@ export async function archiveFinishedPublications(categories:readonly CleanupCat
  try{list=(await candidates(clientId)).filter(c=>wanted.has(c.category));}catch{return {ok:false,message:'Lecture des publications impossible. Réessayez.',archived:0};}
  const db=getSupabaseServerClient();let archived=0,refused=0;
  for(const item of list.slice(0,MAX)){
-  const {error}=await db.rpc('publication_archive',{p_publication_id:item.id,p_actor_id:userId});
+  const {error}=await db.rpc('publication_remove',{p_publication_id:item.id,p_actor_id:userId});
   if(error)refused++;else archived++;
  }
  const rest=Math.max(0,list.length-MAX);
  const message=archived===0&&list.length===0?'Rien à archiver dans ces catégories.'
-  :`${archived} publication${archived>1?'s':''} archivée${archived>1?'s':''}${refused?`, ${refused} refusée${refused>1?'s':''} (envoi encore actif ou déjà archivée)`:''}${rest?`, ${rest} restante${rest>1?'s':''} : relancez`:''}. Elles restent consultables dans la vue « Archivées ».`;
+  :`${archived} publication${archived>1?'s':''} archivée${archived>1?'s':''}${refused?`, ${refused} refusée${refused>1?'s':''} (envoi en cours d’exécution ou déjà archivée)`:''}${rest?`, ${rest} restante${rest>1?'s':''} : relancez`:''}. Elles restent consultables dans la vue « Archivées ».`;
  return {ok:refused===0,message,archived};
 }

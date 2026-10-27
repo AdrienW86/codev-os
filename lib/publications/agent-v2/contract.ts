@@ -18,7 +18,9 @@ export type AgentV2GeneratorInput={client:{name:string;activity:string|null;zone
  channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[];
  previousPublications?:PreviousPublication[];priorityTopics?:string[];
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).
- editorial?:EditorialContext};
+ editorial?:EditorialContext;
+ // Relance après un refus du contrôle éditorial : motif du refus précédent, à corriger (jamais un fait).
+ retryFeedback?:string};
 export type AgentV2GeneratedPublication={occurrenceId:string;platform:PublicationPlatform;text:string;cta:string|null;mediaId:string|null};
 export type AgentV2GeneratorOutput={idea:{subject:string;angle:string};publications:AgentV2GeneratedPublication[]};
 export type AgentV2Usage={input_tokens:number;output_tokens:number;estimated_cost_eur:number;model:string};

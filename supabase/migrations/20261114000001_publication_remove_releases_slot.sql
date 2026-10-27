@@ -1,6 +1,7 @@
 -- Retirer une publication jamais diffusée libère son créneau à venir : l'agent (ou un humain) peut y préparer une
 -- nouvelle publication. Une publication diffusée (ou peut-être diffusée) garde son créneau : l'historique reste exact.
 -- 1) L'unicité publication ↔ occurrence ne porte plus que sur les publications actives (non archivées).
+alter table public.publications drop constraint if exists publications_occurrence_key;
 drop index if exists public.publications_occurrence_key;
 create unique index publications_occurrence_key on public.publications(occurrence_id) where archived_at is null;
 

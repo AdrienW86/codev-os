@@ -1,6 +1,7 @@
 // Agent Publications v2 — strict instructions, model payload and JSON schema (Lot 4.3 P7). Pure.
 import type {AgentV2GeneratorInput} from './contract';
 import {compactEditorial} from '../editorial-plan';
+import {forbiddenServiceTerms} from './selection';
 
 // Facts must come from the provided context only. The list is explicit on purpose (tested).
 export const FORBIDDEN_INVENTIONS=['prix','promotion','réduction ou offre','année de création ou d’existence','nombre d’années d’expérience','certification','qualification ou label',
@@ -40,12 +41,13 @@ export const AGENT_V2_INSTRUCTIONS=[
  'editorial_plan.cta_style : style d’appel à l’action à privilégier (contact, message, conseil, question, appel) ; avoid_ctas : appels à l’action déjà employés, à ne jamais reprendre ; phrases_to_avoid : formulations récurrentes interdites.',
  'Lieux : ne nomme une ville, une commune, un département ou une région que s’il figure dans allowed_places ou dans client/rules. Sinon aucun lieu.',
  'La photo choisie doit illustrer la prestation du sujet (services de la photo dans media_untrusted). Une photo de document (facture, devis, attestation, certificat, capture d’écran) n’illustre jamais une intervention.',
+ 'forbidden_terms : prestations que ce client ne propose pas. N’écris jamais aucun de ces mots, même au détour d’une phrase (ex. « charpente », « étanchéité ») : le texte serait refusé.',
  'Ne présente jamais un chantier ou une intervention comme réalisé (nous avons réalisé, nous sommes intervenus, hier, récemment, chez un client) sauf si ce fait figure mot pour mot dans rules.'].join('\n');
 
 // Payload sent to the model: only the provided facts, null when absent (never a fictitious default).
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
-  channel_rules:input.channelRules,previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
+  channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
   previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
   ...(input.editorial?compactEditorial(input.editorial):{}),
   occurrences:input.occurrences.map(o=>({occurrence_id:o.occurrenceId,platform:o.platform,date:o.date,time:o.time})),

@@ -56,6 +56,11 @@ export function factsOf(input:AgentV2GeneratorInput):string{
  return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules)].join('\n');
 }
 
+/** Termes métier que ce client ne propose pas (absents de ses faits) : nommés au modèle pour éviter des refus en série. */
+export function forbiddenServiceTerms(input:AgentV2GeneratorInput):string[]{
+ const facts=factsOf(input);return SERVICE_TERMS.filter(term=>!mentions(facts,term));
+}
+
 // --- Socle lots 4-5 : règles natives des plateformes et anti-répétition (pur) ---
 // Limites éditoriales, plus strictes que les plafonds techniques des publishers (GBP 1 500, Instagram 2 200).
 export const PLATFORM_TEXT_RULES:Record<PublicationPlatform,{maxLength:number;maxHashtags:number}>={facebook:{maxLength:3000,maxHashtags:3},instagram:{maxLength:2200,maxHashtags:8},google_business_profile:{maxLength:1500,maxHashtags:0}};

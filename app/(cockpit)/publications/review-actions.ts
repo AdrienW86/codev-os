@@ -5,6 +5,7 @@ import {currentRevision,saveDraft,submitOrReview} from "@/lib/publications/works
 import {workflowSucceeded} from "@/lib/publications/workflow-result";
 import {isPublicationUuid} from "@/lib/publications/validation";
 import {MAX_GROUP_APPROVALS} from "@/lib/publications/review-groups";
+import {copyTikTokFields} from "@/lib/publications/tiktok-settings";
 export type ReviewCardState={message?:string;ok?:boolean};
 const MIN_REASON=10;
 // Thin wrappers around the existing manual workflow: the review card never writes revisions or decisions itself.
@@ -34,7 +35,7 @@ export async function editFromCardAction(_state:ReviewCardState,form:FormData):P
 // Validation simplifiée : « Tout approuver » d'un post = la même décision humaine que « Valider », répétée pour chaque
 // publication sœur (un réseau chacune), chacune sur SA version courante et avec SES contrôles (média, verrou de canal).
 // Aucune approbation implicite : seules les publications affichées sur la carte et envoyées par le formulaire.
-const PLATFORM_LABELS:Record<string,string>={facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile"};
+const PLATFORM_LABELS:Record<string,string>={facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile",tiktok:"TikTok"};
 export async function approveGroupFromCardAction(_state:ReviewCardState,form:FormData):Promise<ReviewCardState>{
  await requireAdmin();
  const items=form.getAll("item").map(v=>typeof v==="string"?v.split("|"):[]);
@@ -44,6 +45,7 @@ export async function approveGroupFromCardAction(_state:ReviewCardState,form:For
  for(const [publication,revision,platform] of items){
   const one=new FormData();one.set("publication_id",publication);one.set("revision_id",revision);one.set("decision","approved");
   const project=form.get("project_id");if(typeof project==="string")one.set("project_id",project);
+  if(platform==="tiktok")copyTikTokFields(form,one,`__${publication}`);
   const result=await submitOrReview(one);if(!succeeded(result.message))failed.push(`${PLATFORM_LABELS[platform]} : ${result.message}`);
  }
  refresh(form);

@@ -7,7 +7,9 @@ import {ERROR_CLASSES,safeErrorCode,type DeliveryErrorClass,type PublishOutcome}
 // text, short-lived media URLs and the idempotency key. The credential is resolved by the engine from the vault and
 // handed over in memory only (never stored in a job, a delivery or a log). No real publisher exists in P10.
 export type PublishInput={platform:PublicationPlatform;account:{externalAccountId:string;parentExternalId:string|null};text:string;
- media:{url:string;mimeType:string}[];idempotencyKey:string;credential:ProviderCredential};
+ media:{url:string;mimeType:string}[];idempotencyKey:string;credential:ProviderCredential;
+ /** TikTok uniquement : réglages choisis à la validation humaine. */
+ tiktok?:{privacyLevel:string;allowComment:boolean;brandOrganic:boolean;brandContent:boolean}};
 // ok:false + uncertain:true: the provider may have performed the side effect (timeout / lost answer after a write):
 // never retried automatically, the delivery becomes uncertain and is reconciled (P11-b).
 export type PublishResult={ok:true;remoteId:string;simulated:boolean;requestId?:string|null}

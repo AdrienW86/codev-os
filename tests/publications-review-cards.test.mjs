@@ -135,6 +135,6 @@ test('« Tout approuver » repeats the human decision per publication, each on i
  assert.equal(r.ok,true);assert.equal(r.message,'2 publications approuvées.');assert.deepEqual(json(seen),['admin',[P1,R1,'approved'],[P2,R2,'approved']]);
  seen.length=0;outcomes[P2]='Média requis : instagram.';
  r=await a.approveGroupFromCardAction({},f(`${P1}|${R1}|facebook`,`${P2}|${R2}|instagram`));assert.equal(r.ok,false);assert.match(r.message,/1 approuvée\(s\) sur 2\. Instagram : Média requis/);
- for(const bad of [f(),f(`${P1}|${R1}|facebook`,`${P1}|${R1}|instagram`),f(`${P1}|nope|facebook`),f(`${P1}|${R1}|tiktok`),f(...Array.from({length:7},(_,i)=>`1111111${i}-1111-4111-8111-111111111111|${R1}|facebook`))]){
+ for(const bad of [f(),f(`${P1}|${R1}|facebook`,`${P1}|${R1}|instagram`),f(`${P1}|nope|facebook`),f(`${P1}|${R1}|snapchat`),f(...Array.from({length:7},(_,i)=>`1111111${i}-1111-4111-8111-111111111111|${R1}|facebook`))]){
   seen.length=0;r=await a.approveGroupFromCardAction({},bad);assert.equal(r.ok,false);assert.deepEqual(json(seen),['admin'],'invalid selection: no decision at all');}
 });

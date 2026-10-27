@@ -4,6 +4,7 @@ import {useRouter} from 'next/navigation';
 import Link from 'next/link';
 import {useActionState,useEffect,useRef,useState,type ReactNode} from 'react';
 import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
+import {TikTokPostSettings} from './tiktok-post-settings';
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
 import {DeliverySection} from './delivery-section';
@@ -158,7 +159,7 @@ function Decision({detail,dirty}:{detail:PublicationDetailData;dirty:boolean}){
  const [rejectState,reject,rejecting]=useActionState<DrawerState,FormData>(rejectFromDrawerAction,{});
  const blocked=dirty?'Enregistrez vos modifications avant de valider.':detail.missingMedia.length?'Média requis : ajoutez une photo avant de valider.':null;
  return <section className={`${section} space-y-4`} data-decision="true"><h3 className="font-semibold">Validation</h3>
-  <form action={approve} className="space-y-2"><Ids detail={detail}/><button disabled={Boolean(blocked)||approving} className="rounded-lg bg-accent-strong px-5 py-2 font-semibold text-accent-foreground disabled:opacity-50">{approving?'Validation…':'À publier'}</button>
+  <form action={approve} className="space-y-2"><Ids detail={detail}/>{!blocked&&detail.variants.some(v=>v.platform==='tiktok')&&<TikTokPostSettings publicationId={detail.publicationId}/>}<button disabled={Boolean(blocked)||approving} className="rounded-lg bg-accent-strong px-5 py-2 font-semibold text-accent-foreground disabled:opacity-50">{approving?'Validation…':'À publier'}</button>
    {blocked&&<p role="note" data-approve-blocked="true" className="text-sm text-danger">{blocked}</p>}{approveState.message&&<p role="status" className="text-sm">{approveState.message}</p>}</form>
   <details><summary className="cursor-pointer text-sm text-danger">Rejeter…</summary>
    <form action={reject} className="mt-2 space-y-2"><Ids detail={detail}/><label className="block text-sm">Motif du rejet<textarea className={input} name="reason" required minLength={10} maxLength={3000} rows={3} placeholder="Expliquez ce qui doit changer (10 caractères minimum)."/></label>

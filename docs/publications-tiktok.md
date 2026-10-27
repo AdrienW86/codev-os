@@ -12,10 +12,14 @@ ou plusieurs images, musique ajoutée automatiquement par TikTok).
    personne qui a donné son accord (un compte TikTok par client).
 2. **Canal TikTok** par projet : planning (jours / heures), règles éditoriales, compte affecté.
 3. **Agent** : texte natif TikTok (première phrase courte = titre, 3 à 5 hashtags).
-4. **Diffusion** (après approbation) : lecture des niveaux de confidentialité autorisés, publication directe
-   publique (`PUBLIC_TO_EVERYONE`), puis suivi du statut jusqu’à `PUBLISH_COMPLETE`. Un statut encore en cours après
+4. **Validation** (exigences TikTok « Direct Post ») : à l’approbation, l’écran affiche le compte qui publiera
+   et demande la confidentialité (aucune valeur par défaut), les commentaires (décochés par défaut), la divulgation
+   commerciale (« Votre marque » / « Contenu de marque », désactivée par défaut) et l’acceptation des conditions
+   TikTok. Ces réglages sont enregistrés par révision (`publication_tiktok_settings`).
+5. **Diffusion** (après approbation) : vérification que la confidentialité choisie est toujours proposée par le
+   compte, publication directe avec les réglages validés, puis suivi du statut jusqu’à `PUBLISH_COMPLETE`. Un statut encore en cours après
    environ 40 s reste « à vérifier » (jamais renvoyé automatiquement).
-5. **Images** : TikTok n’accepte que des images hébergées sur un domaine vérifié. CODE-V OS les sert lui-même via
+6. **Images** : TikTok n’accepte que des images hébergées sur un domaine vérifié. CODE-V OS les sert lui-même via
    `https://<domaine>/api/publications/media/<jeton>.jpg` (jeton signé et daté, une seule image, aucun accès sans
    jeton valide).
 

@@ -12,7 +12,7 @@ const link = loadTs("lib/integrations/publications-media-link.ts");
 
 const credential = (over = {}) => ({ accessToken: "act.valid-token-123", refreshToken: "rft.refresh-123", expiresAt: new Date(Date.now() + 3600_000).toISOString(), scopes: ["user.info.basic", "video.publish"], provider: "tiktok", subject: "open-1", ...over });
 const input = (over = {}) => ({ platform: "tiktok", account: { externalAccountId: "open-1", parentExternalId: null }, text: "Toiture refaite à neuf ! Demandez votre devis. #toiture",
-  media: [{ url: "https://proj.supabase.co/storage/v1/object/sign/x.jpg?token=a", mimeType: "image/jpeg" }], idempotencyKey: "k", credential: credential(), ...over });
+  media: [{ url: "https://proj.supabase.co/storage/v1/object/sign/x.jpg?token=a", mimeType: "image/jpeg" }], idempotencyKey: "k", credential: credential(), tiktok: { privacyLevel: "PUBLIC_TO_EVERYONE", allowComment: false, brandOrganic: false, brandContent: false }, ...over });
 function fakeTransport(script) {
   const calls = [];
   return { calls, async request(r) { calls.push(r.path); const next = script[r.path]; const value = typeof next === "function" ? next(r) : next; if (value instanceof Error) throw value; return value; } };
@@ -32,7 +32,7 @@ test("TikTok : identifiants exigés, scopes vérifiés, compte normalisé", () =
 
 test("TikTok : post photo public, statut suivi jusqu'à la publication", async () => {
   const t = fakeTransport({ "post/publish/creator_info/query": ok({ privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] }),
-    "post/publish/content/init": (r) => { assert.equal(r.body.post_info.privacy_level, "PUBLIC_TO_EVERYONE"); assert.equal(r.body.media_type, "PHOTO"); assert.match(r.body.source_info.photo_images[0], /^https:\/\/os\.code-v\.fr\//); assert.ok(r.body.post_info.title.length <= 90); return ok({ publish_id: "p_pub_url~v2.123" }); },
+    "post/publish/content/init": (r) => { assert.equal(r.body.post_info.privacy_level, "PUBLIC_TO_EVERYONE"); assert.equal(r.body.post_info.disable_comment, true); assert.equal(r.body.post_info.brand_organic_toggle, false); assert.equal(r.body.media_type, "PHOTO"); assert.match(r.body.source_info.photo_images[0], /^https:\/\/os\.code-v\.fr\//); assert.ok(r.body.post_info.title.length <= 90); return ok({ publish_id: "p_pub_url~v2.123" }); },
     "post/publish/status/fetch": ok({ status: "PUBLISH_COMPLETE", publicaly_available_post_id: [7123456789] }) });
   const r = await publisher.createTikTokPublisher(t, opts()).publish(input());
   assert.deepEqual(JSON.parse(JSON.stringify(r)), { ok: true, remoteId: "7123456789", simulated: false });
@@ -72,3 +72,25 @@ test("Lien public signé : seulement le stockage du projet, signature et échéa
   assert.equal(link.publicMediaLink("https://evil.example/a.jpg", "https://os.code-v.fr", 600, env), null, "autre hôte refusé");
   assert.equal(link.publicMediaLink(signed, "https://os.code-v.fr", 600, {}), null, "sans clé : aucun lien");
 });
+
+const settingsModule = loadTs("lib/publications/tiktok-settings.ts");
+test("Réglages TikTok : confidentialité choisie, divulgation commerciale cohérente, consentement exigé", async () => {
+  const f = (entries) => { const d = new FormData(); for (const [k, v] of Object.entries(entries)) d.set(k, v); return d; };
+  assert.match(settingsModule.parseTikTokSettings(f({ tiktok_consent: "on" })).message, /choisissez qui peut voir/);
+  assert.match(settingsModule.parseTikTokSettings(f({ tiktok_privacy: "PUBLIC_TO_EVERYONE" })).message, /accord/);
+  assert.match(settingsModule.parseTikTokSettings(f({ tiktok_privacy: "PUBLIC_TO_EVERYONE", tiktok_commercial: "on", tiktok_consent: "on" })).message, /promotion/);
+  assert.match(settingsModule.parseTikTokSettings(f({ tiktok_privacy: "SELF_ONLY", tiktok_commercial: "on", tiktok_brand_content: "on", tiktok_consent: "on" })).message, /privé/);
+  const ok = settingsModule.parseTikTokSettings(f({ tiktok_privacy__x: "MUTUAL_FOLLOW_FRIENDS", tiktok_allow_comment__x: "on", tiktok_consent__x: "on" }), "__x");
+  assert.deepEqual(JSON.parse(JSON.stringify(ok)), { ok: true, settings: { privacyLevel: "MUTUAL_FOLLOW_FRIENDS", allowComment: true, brandOrganic: false, brandContent: false } });
+  assert.equal(settingsModule.tiktokDisclosure(true, true).consent, "branded");
+  const missing = await publisher.createTikTokPublisher(fakeTransport({}), opts()).publish(input({ tiktok: undefined }));
+  assert.equal(missing.errorCode, "tiktok_settings_missing");
+  const chosen = fakeTransport({ "post/publish/creator_info/query": ok2({ privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] }),
+    "post/publish/content/init": (r) => { assert.equal(r.body.post_info.privacy_level, "SELF_ONLY"); assert.equal(r.body.post_info.disable_comment, false); assert.equal(r.body.post_info.brand_organic_toggle, true); return ok2({ publish_id: "p2~x" }); },
+    "post/publish/status/fetch": ok2({ status: "PUBLISH_COMPLETE" }) });
+  const done = await publisher.createTikTokPublisher(chosen, opts()).publish(input({ tiktok: { privacyLevel: "SELF_ONLY", allowComment: true, brandOrganic: true, brandContent: false } }));
+  assert.equal(done.ok, true);
+  const noComments = fakeTransport({ "post/publish/creator_info/query": ok2({ privacy_level_options: ["PUBLIC_TO_EVERYONE"], comment_disabled: true }) });
+  assert.equal((await publisher.createTikTokPublisher(noComments, opts()).publish(input({ tiktok: { privacyLevel: "PUBLIC_TO_EVERYONE", allowComment: true, brandOrganic: false, brandContent: false } }))).errorCode, "comments_disabled_by_creator");
+});
+function ok2(data) { return { status: 200, body: { data, error: { code: "ok" } } }; }

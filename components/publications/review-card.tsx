@@ -3,6 +3,7 @@
 import {useActionState,useState} from 'react';
 import {approveFromCardAction,approveGroupFromCardAction,editFromCardAction,rejectFromCardAction,type ReviewCardState} from '@/app/(cockpit)/publications/review-actions';
 import {AgentPrepareForm} from './agent-forms';
+import {TikTokPostSettings} from './tiktok-post-settings';
 import {DebugDetails} from '@/components/projects/debug-details';
 import type {ReviewCardData} from '@/lib/publications/review-cards';
 const input='mt-1 block w-full rounded-lg border border-border bg-background p-3 text-sm';
@@ -29,7 +30,7 @@ export function ReviewApproveForm({card}:{card:ReviewCardData}){
  const [state,action,pending]=useActionState<ReviewCardState,FormData>(approveFromCardAction,{});
  // Same rule as the server: every channel needs a media before approval. The server check remains authoritative.
  if(card.variants.some(v=>!v.assetIds.length))return <p role="note" data-media-required="true" className="max-w-xs text-sm text-danger">Média requis : ajoutez une photo avant de valider.</p>;
- return <form action={action}><Ids card={card}/><button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-accent-foreground">{pending?'Validation…':'Valider'}</button>{state.message&&<p role="status" className="mt-2 text-sm">{state.message}</p>}</form>;
+ return <form action={action} className="space-y-3"><Ids card={card}/>{card.variants.some(v=>v.platform==='tiktok')&&<TikTokPostSettings publicationId={card.publicationId}/>}<button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-accent-foreground">{pending?'Validation…':'Valider'}</button>{state.message&&<p role="status" className="mt-2 text-sm">{state.message}</p>}</form>;
 }
 // Validation simplifiée : un seul bouton pour toutes les publications sœurs d'un post (une par réseau). Chaque
 // publication reste approuvée sur sa version courante, avec ses propres contrôles côté serveur.
@@ -41,6 +42,7 @@ export function ReviewGroupApproveForm({cards}:{cards:ReviewCardData[]}){
  if(missing.length)return <p role="note" data-media-required="true" className="text-sm text-danger">Média requis ({missing.join(', ')}) : ajoutez une photo avant de tout approuver.</p>;
  return <form action={action} data-approve-group="true" className="flex flex-wrap items-center gap-3"><input type="hidden" name="project_id" value={pendingCards[0].projectId}/>
   {pendingCards.map(c=><input key={c.publicationId} type="hidden" name="item" value={`${c.publicationId}|${c.revisionId}|${c.variants[0]?.platform??''}`}/>)}
+  {pendingCards.filter(c=>c.variants[0]?.platform==='tiktok').map(c=><div key={c.publicationId} className="w-full"><TikTokPostSettings publicationId={c.publicationId} suffix={`__${c.publicationId}`}/></div>)}
   <button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-accent-foreground">{pending?'Validation…':`Tout approuver (${pendingCards.length})`}</button>
   {state.message&&<p role="status" className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</form>;
 }

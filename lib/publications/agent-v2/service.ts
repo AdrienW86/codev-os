@@ -25,7 +25,7 @@ import {publicationPlatforms,type PublicationPlatform} from '../types';
 // P8: when a media was selected, finish reserves it and the compensable media step attaches it (media.ts). A media
 // failure keeps the drafts (explicit needs_media, never reported as a full success) and can be retried without AI.
 // refused : contenu refusé par les gardes (run échoué et enregistré, réservations libérées) ; une relance est sûre.
-export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean;recoverable?:boolean;refused?:boolean};
+export type AgentV2Result={ok:boolean;message:string;publications:{id:string;platform:PublicationPlatform;label:string}[];withMedia:boolean;runId?:string;media?:AgentV2MediaView;mediaMissing?:boolean;missingNotified?:boolean;recoverable?:boolean;refusalDetail?:string;refused?:boolean};
 export type AgentV2MediaOptions={mediaSource?:PublicationMediaSource;adapt?:ImageAdapter};
 const result=(ok:boolean,message:string,extra:Partial<AgentV2Result>={}):AgentV2Result=>({ok,message,publications:[],withMedia:false,...extra});
 const mediaDeps=(db:unknown,options:AgentV2MediaOptions)=>({db:db as AgentV2MediaDb,source:options.mediaSource??driveMediaSource(),adapt:options.adapt??adaptImage});
@@ -84,7 +84,7 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
 }
 export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';
 // excludeOccurrenceIds (planificateur) : occurrences dont la préparation a trop échoué, laissées à un humain.
-export type PrepareOptions={allowRealAI:boolean;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number;excludeOccurrenceIds?:readonly string[]}&AgentV2MediaOptions;
+export type PrepareOptions={allowRealAI:boolean;retryFeedback?:string;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number;excludeOccurrenceIds?:readonly string[]}&AgentV2MediaOptions;
 export async function prepareNextPublications(projectId:unknown,options:PrepareOptions):Promise<AgentV2Result>{
  const {userId}=await requireAdmin();return prepareNextPublicationsAs(userId,projectId,options);
 }
@@ -123,7 +123,8 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
   const f=await db.rpc('publication_agent_v2_fail',{p_run_id:run,p_error_code:code,p_usage:json(safeUsage(usage??(code==='generation_failed'?null:zeroUsage))),p_actor_id:userId});
   return result(false,f.error?'Échec non confirmé : vérifiez le run avant toute reprise.':message);};
  let raw:unknown;
- try{const generated=await (options.generator??openaiAgentV2Generator()).generate(context.input);raw=generated.output;usage=generated.usage;}
+ const genInput=options.retryFeedback?{...context.input,retryFeedback:options.retryFeedback.slice(0,400)}:context.input;
+ try{const generated=await (options.generator??openaiAgentV2Generator()).generate(genInput);raw=generated.output;usage=generated.usage;}
  catch{console.error('[publications-agent-v2] generation failed',{run_id:run});return fail('generation_failed','Génération indisponible. Aucun brouillon créé.');}
  const checked=validateGeneratorOutput(context.input,raw);
  if(!checked.ok){
@@ -131,7 +132,7 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
   const message=refusals[checked.reason]??'Contenu généré invalide. Aucun brouillon créé.';
   const text=checked.detail?`${message} Motif : ${checked.detail}.`:message;
   const failed=await fail(checked.reason==='unsupported_claim'?'unsupported_claim':'invalid_output',text);
-  return failed.message===text?{...failed,refused:true}:failed;}
+  return failed.message===text?{...failed,refused:true,refusalDetail:checked.detail??message}:failed;}
  const value=checked.value,mediaId=value.publications[0]?.mediaId??null;
  await recordJustification(db,run,userId,buildEditorialJustification(context.input,{value},now));
  const finishArgs={p_run_id:run,p_output:json({idea:value.idea,publications:value.publications.map(p=>({occurrence_id:p.occurrenceId,text:p.text,cta:p.cta}))}),

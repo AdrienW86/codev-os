@@ -23,7 +23,7 @@ export const AGENT_V2_INSTRUCTIONS=[
  `Interdit sauf si le fait figure mot pour mot dans le contexte : ${FORBIDDEN_INVENTIONS.join(', ')}.`,
  'Si une information manque, reste générique et factuel ; n’écris aucun chiffre, aucun prix, aucune promesse, aucun avis, aucune garantie, aucun délai, aucune ville non fournie.',
  // Mots refusés automatiquement par le contrôle anti-invention (selection.ts) : les nommer évite des refus en série.
- `Mots refusés automatiquement s’ils ne figurent pas mot pour mot dans le contexte : ${BLOCKED_WORDS.join(', ')}. Pour l’appel à l’action, écris par exemple « Demandez votre devis » sans qualificatif.`,
+ `Mots refusés automatiquement s’ils ne figurent pas mot pour mot dans le contexte : ${BLOCKED_WORDS.join(', ')}. Pour l’appel à l’action, reste sobre et sans qualificatif, et varie sa formulation (jamais un appel listé dans avoid_ctas).`,
  'Une seule idée éditoriale commune (idea.subject et idea.angle), différente des previous_subjects, déclinée en un texte natif et DIFFÉRENT pour chaque occurrence fournie.',
  'Chaque plateforme a son propre texte (accroche, structure et longueur adaptées) : jamais la même phrase reprise ou à peine retouchée d’une plateforme à l’autre. Seuls les faits sont communs.',
  'Prestations : ne cite que des prestations présentes dans services. Si les previous_publications portent toutes sur la même prestation, choisis une autre prestation de services illustrée par une photo disponible.',
@@ -41,13 +41,14 @@ export const AGENT_V2_INSTRUCTIONS=[
  'editorial_plan.cta_style : style d’appel à l’action à privilégier (contact, message, conseil, question, appel) ; avoid_ctas : appels à l’action déjà employés, à ne jamais reprendre ; phrases_to_avoid : formulations récurrentes interdites.',
  'Lieux : ne nomme une ville, une commune, un département ou une région que s’il figure dans allowed_places ou dans client/rules. Sinon aucun lieu.',
  'La photo choisie doit illustrer la prestation du sujet (services de la photo dans media_untrusted). Une photo de document (facture, devis, attestation, certificat, capture d’écran) n’illustre jamais une intervention.',
+ 'previous_attempt_refused (si présent) : ta tentative précédente a été refusée pour ce motif. Corrige précisément ce point (autre accroche, autre style, autre appel à l’action, autre formulation) sans rien inventer.',
  'forbidden_terms : prestations que ce client ne propose pas. N’écris jamais aucun de ces mots, même au détour d’une phrase (ex. « charpente », « étanchéité ») : le texte serait refusé.',
  'Ne présente jamais un chantier ou une intervention comme réalisé (nous avons réalisé, nous sommes intervenus, hier, récemment, chez un client) sauf si ce fait figure mot pour mot dans rules.'].join('\n');
 
 // Payload sent to the model: only the provided facts, null when absent (never a fictitious default).
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
-  channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
+  channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),...(input.retryFeedback?{previous_attempt_refused:input.retryFeedback}:{}),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
   previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
   ...(input.editorial?compactEditorial(input.editorial):{}),
   occurrences:input.occurrences.map(o=>({occurrence_id:o.occurrenceId,platform:o.platform,date:o.date,time:o.time})),

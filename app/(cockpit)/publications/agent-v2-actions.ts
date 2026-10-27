@@ -18,7 +18,7 @@ export async function prepareNextPublicationsAction(_state:AgentV2State,form:For
  let result:AgentV2Result,retried=false;
  try{
   result=await prepareNextPublications(project,{allowRealAI:true});
-  if(!result.ok&&result.refused){retried=true;result=await prepareNextPublications(project,{allowRealAI:true});}
+  if(!result.ok&&result.refused){retried=true;result=await prepareNextPublications(project,{allowRealAI:true,retryFeedback:result.refusalDetail});}
  }catch{return {ok:false,message:"Préparation indisponible. Aucun brouillon créé."};}
  let message=result.message;
  if(result.ok&&result.withMedia){

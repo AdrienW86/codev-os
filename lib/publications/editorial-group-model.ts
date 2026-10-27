@@ -9,7 +9,7 @@ export type PublicationKind='legacy'|'mono_platform';
 export type SisterPublication={publicationId:string;platform:PublicationPlatform;platformLabel:string;subject:string;status:string;bound:boolean};
 export type EditorialGroupView={groupId:string;subject:string;origin:'manual'|'agent';sisters:SisterPublication[];missingPlatforms:PublicationPlatform[]};
 
-const order:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const order:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 // A publication with a platform is mono-platform (target model); without one it is a legacy multi-variant publication.
 export function publicationKind(p:{platform?:PublicationPlatform|null}):PublicationKind{return p.platform?'mono_platform':'legacy';}
 // Sisters sorted Facebook, Instagram, Google Business Profile; publications of other groups or without a platform are ignored.

@@ -13,7 +13,7 @@ export type EditorialHistoryItem={subject:string;date:string|null;platforms:Publ
  openings:string[];ctas:string[];texts:string[];photos:{source:'library'|'catalog';id:string}[];publicationIds:string[]};
 
 export const HISTORY_MAX_IDEAS=30;
-const PLATFORMS:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const PLATFORMS:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 // Une publication réellement proposée : jamais une refusée ni un brouillon archivé (une approuvée puis archivée compte).
 export const proposedPublication=(p:{status?:string|null;archived_at?:string|null})=>p.status!=='rejected'&&(!p.archived_at||p.status==='approved');
 const ctaOf=(metadata:unknown)=>{const c=(metadata as {cta?:unknown}|null)?.cta;return typeof c==='string'&&c.trim()?c.trim():null;};

@@ -14,7 +14,7 @@ export type ChannelCard={platform:PublicationPlatform;label:string;state:Channel
 export type ChannelConfigurationView={legacy:boolean;suspended:string|null;calendarNotice:string|null;agentNotice:string|null;cards:ChannelCard[]};
 export type ExplicitChannelInput={platform:PublicationPlatform;enabled:boolean;accountConnected:boolean;rules:string|null;schedule:ChannelSchedule|null};
 
-const order:PublicationPlatform[]=['facebook','instagram','google_business_profile'];
+const order:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
 export function buildChannelConfiguration(capabilities:PublicationCapabilities,explicit:readonly ExplicitChannelInput[]):ChannelConfigurationView{
  const legacy=capabilities.source==='legacy';
  const cards=order.filter(p=>(publicationPlatforms as readonly string[]).includes(p)).map(platform=>{

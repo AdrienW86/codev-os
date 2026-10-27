@@ -12,7 +12,8 @@ export const BLOCKED_WORDS=['gratuit','offert','promotion','remise','réduction'
 export const PLATFORM_GUIDELINES={
  facebook:'Facebook : ton conversationnel et lisible, paragraphes courts, 0 à 2 hashtags au maximum.',
  instagram:'Instagram : accroche courte et visuelle en première ligne, puis texte bref ; 3 à 6 hashtags pertinents maximum, jamais de liste spammy.',
- google_business_profile:'Google Business Profile : factuel et direct, mention locale uniquement si la zone est fournie, aucun hashtag.'} as const;
+ google_business_profile:'Google Business Profile : factuel et direct, mention locale uniquement si la zone est fournie, aucun hashtag.',
+ tiktok:'TikTok : post photo ; première phrase très courte et accrocheuse (elle sert de titre, 90 caractères au plus), ton direct et vivant, phrases brèves, 3 à 5 hashtags pertinents en fin de texte.'} as const;
 
 export const AGENT_V2_INSTRUCTIONS=[
  'Tu rédiges des brouillons de publications en français pour une entreprise. Ils seront relus et validés par un humain avant toute diffusion.',

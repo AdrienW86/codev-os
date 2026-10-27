@@ -7,7 +7,7 @@ import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { FICTITIOUS_NOTICE, OUTCOME_LABELS, SIMULATED_OUTCOMES, SIMULATION_PLATFORMS, type ScenarioSummary, type SimulatedOutcomes, type SimulationReport, type SimulationRunState } from "@/lib/publications/simulation/model";
 import type { PublicationPlatform } from "@/lib/publications/types";
 
-const platformNames: Record<PublicationPlatform, string> = { facebook: "Facebook", instagram: "Instagram", google_business_profile: "Google Business Profile" };
+const platformNames: Record<PublicationPlatform, string> = { facebook: "Facebook", instagram: "Instagram", google_business_profile: "Google Business Profile", tiktok: "TikTok" };
 const deliveryTones: Record<string, StatusTone> = { simulated: "green", retryable_error: "amber", blocked: "red", failed: "red", uncertain: "amber" };
 const validationTones = { ok: { label: "OK", tone: "green" }, blocked: { label: "Bloquant", tone: "red" }, info: { label: "Rappel", tone: "neutral" } } as const;
 const slotFormatter = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });

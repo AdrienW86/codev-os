@@ -53,7 +53,7 @@ export function mockGenerator(scenario:FixtureScenario):PublicationsAgentV2Gener
 }
 
 // Publisher simulé : le résultat est celui choisi par l'administrateur pour la plateforme. Jamais de réseau.
-export function simulatedPublisher(outcomes:Record<PublicationPlatform,SimulatedOutcome>,scenarioId:string):PublicationPublisher&{calls:PublicationPlatform[]}{
+export function simulatedPublisher(outcomes:Partial<Record<PublicationPlatform,SimulatedOutcome>>,scenarioId:string):PublicationPublisher&{calls:PublicationPlatform[]}{
  const calls:PublicationPlatform[]=[];
  return {calls,async publish(input:PublishInput):Promise<PublishResult>{
   calls.push(input.platform);const outcome=outcomes[input.platform];

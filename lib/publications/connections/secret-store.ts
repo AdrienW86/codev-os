@@ -12,7 +12,7 @@ export function supabaseSecretStore():SecretStore{
   async insert(row){const {error}=await table().insert({reference:row.reference,provider:row.provider,key_id:row.key_id,iv:hex(row.iv),ciphertext:hex(row.ciphertext),auth_tag:hex(row.auth_tag)});if(error)throw Error('store');},
   async get(reference){const {data,error}=await table().select('reference,provider,key_id,iv,ciphertext,auth_tag').eq('reference',reference).maybeSingle();if(error)throw Error('store');
    if(!data)return null;const d=data as Record<string,unknown>;
-   if(d.provider!=='meta'&&d.provider!=='google_business_profile')throw Error('store');
+   if(d.provider!=='meta'&&d.provider!=='google_business_profile'&&d.provider!=='tiktok')throw Error('store');
    return {reference:String(d.reference),provider:d.provider,key_id:String(d.key_id),iv:bytes(d.iv),ciphertext:bytes(d.ciphertext),auth_tag:bytes(d.auth_tag)};},
   async remove(reference){const {error}=await table().delete().eq('reference',reference);if(error)throw Error('store');},
  };

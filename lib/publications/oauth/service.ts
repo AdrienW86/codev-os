@@ -2,12 +2,13 @@ import 'server-only';
 import {createHash,createHmac,randomBytes} from 'node:crypto';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {credentialKeyring,googleOAuthConfig,metaOAuthConfig,type GoogleOAuthConfig,type MetaOAuthConfig} from '@/lib/integrations/publications-oauth/config';
-import {googleAuthorizeUrl,googleTransport,metaAuthorizeUrl,metaTransport} from '@/lib/integrations/publications-oauth/http';
+import {credentialKeyring,googleOAuthConfig,metaOAuthConfig,tiktokOAuthConfig,type GoogleOAuthConfig,type MetaOAuthConfig,type TikTokOAuthConfig} from '@/lib/integrations/publications-oauth/config';
+import {googleAuthorizeUrl,googleTransport,metaAuthorizeUrl,metaTransport,tiktokAuthorizeUrl,tiktokTransport} from '@/lib/integrations/publications-oauth/http';
 import {isPublicationUuid} from '../validation';
-import {isConnectionProvider,normalizeGbpAccounts,normalizeMetaAccounts,syncPayload,type ConnectionProvider,type ExternalPublicationAccount} from '../connections/model';
+import {isConnectionProvider,normalizeGbpAccounts,normalizeMetaAccounts,normalizeTikTokAccounts,syncPayload,type ConnectionProvider,type ExternalPublicationAccount} from '../connections/model';
 import {CredentialVaultError,isCredentialReference,type CredentialVault,type ProviderCredential} from '../connections/vault';
-import {ConnectionProviderError,type GoogleBusinessProfileConnectionProvider,type MetaConnectionProvider} from '../connections/providers';
+import {ConnectionProviderError,type GoogleBusinessProfileConnectionProvider,type MetaConnectionProvider,type TikTokConnectionProvider} from '../connections/providers';
+import {createTikTokConnectionProvider} from '../connections/tiktok';
 import {createMetaConnectionProvider} from '../connections/meta';
 import {createGoogleBusinessProfileConnectionProvider} from '../connections/google-business-profile';
 import {createEncryptedCredentialVault} from '../connections/encrypted-vault';
@@ -22,6 +23,7 @@ import {oauthReturnPath,type OAuthOutcome,type OAuthReturnView} from './model';
 type Rpc=(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message?:string}|null}>;
 export type OAuthDb={rpc:Rpc;from(table:string):{select(columns:string):{eq(column:string,value:string):{eq(column:string,value:string):{maybeSingle():PromiseLike<{data:unknown;error:unknown}>};maybeSingle():PromiseLike<{data:unknown;error:unknown}>}}}};
 export type OAuthDeps={db:OAuthDb;meta:{config:MetaOAuthConfig;provider:MetaConnectionProvider}|null;google:{config:GoogleOAuthConfig;provider:GoogleBusinessProfileConnectionProvider}|null;
+ tiktok?:{config:TikTokOAuthConfig;provider:TikTokConnectionProvider}|null;
  vault:CredentialVault|null;pkceKey:Uint8Array|null;random?:()=>string;now?:()=>number};
 const log=(provider:string,step:string,error?:unknown)=>console.error('[publications-oauth]',{provider,step,kind:error instanceof ConnectionProviderError||error instanceof CredentialVaultError?error.kind:error?'internal':'none'});
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -30,15 +32,16 @@ const STATE=/^[A-Za-z0-9_-]{43}$/;
 
 // Production dependencies from the server environment; each missing piece disables the matching feature (fail closed).
 export function productionOAuthDeps():OAuthDeps{
- const keyring=credentialKeyring(),meta=metaOAuthConfig(),google=googleOAuthConfig();
+ const keyring=credentialKeyring(),meta=metaOAuthConfig(),google=googleOAuthConfig(),tiktok=tiktokOAuthConfig();
  return {db:getSupabaseServerClient() as unknown as OAuthDb,
   vault:keyring?createEncryptedCredentialVault(supabaseSecretStore(),keyring):null,
   pkceKey:keyring?createHmac('sha256',keyring.current.key).update('codev:publications-oauth:pkce:v1').digest():null,
   meta:meta?{config:meta,provider:createMetaConnectionProvider(metaTransport(meta),{appId:meta.appId})}:null,
-  google:google?{config:google,provider:createGoogleBusinessProfileConnectionProvider(googleTransport(google))}:null};
+  google:google?{config:google,provider:createGoogleBusinessProfileConnectionProvider(googleTransport(google))}:null,
+  tiktok:tiktok?{config:tiktok,provider:createTikTokConnectionProvider(tiktokTransport(tiktok))}:null};
 }
-export function oauthReadiness(deps:Pick<OAuthDeps,'meta'|'google'|'vault'|'pkceKey'>):Record<ConnectionProvider,boolean>{
- return {meta:Boolean(deps.meta&&deps.vault),google_business_profile:Boolean(deps.google&&deps.vault&&deps.pkceKey)};
+export function oauthReadiness(deps:Pick<OAuthDeps,'meta'|'google'|'tiktok'|'vault'|'pkceKey'>):Record<ConnectionProvider,boolean>{
+ return {meta:Boolean(deps.meta&&deps.vault),google_business_profile:Boolean(deps.google&&deps.vault&&deps.pkceKey),tiktok:Boolean(deps.tiktok&&deps.vault)};
 }
 // PKCE verifier derived on the server from the state (HMAC with a server key): never stored, never sent to the browser.
 function pkceVerifier(pkceKey:Uint8Array,state:string):string{return base64url(createHmac('sha256',pkceKey).update('pkce:'+state).digest());}
@@ -60,6 +63,7 @@ export async function startOAuth(provider:unknown,projectId:unknown,deps:OAuthDe
   const created=await deps.db.rpc('publication_oauth_state_create',{p_provider:provider,p_client_id:project.client_id,p_project_id:project.id,p_state_hash:hash(state),p_actor_id:userId});
   if(created.error)throw Error('state');
   if(provider==='meta')return {ok:true,url:metaAuthorizeUrl(deps.meta!.config,state)};
+  if(provider==='tiktok')return {ok:true,url:tiktokAuthorizeUrl(deps.tiktok!.config,state)};
   const challenge=base64url(createHash('sha256').update(pkceVerifier(deps.pkceKey!,state)).digest());
   return {ok:true,url:googleAuthorizeUrl(deps.google!.config,state,challenge)};
  }catch(error){log(provider,'start',error);return {ok:false,message:'Connexion impossible pour le moment'};}
@@ -68,11 +72,12 @@ export async function startOAuth(provider:unknown,projectId:unknown,deps:OAuthDe
 // Account discovery for one credential (official APIs only), normalized for publication_accounts_sync.
 export async function discoverAccounts(provider:ConnectionProvider,credential:ProviderCredential,deps:OAuthDeps):Promise<ExternalPublicationAccount[]>{
  if(provider==='meta'){const meta=deps.meta!.provider;return normalizeMetaAccounts(await meta.listFacebookPages(credential),await meta.listInstagramAccounts(credential));}
+ if(provider==='tiktok')return normalizeTikTokAccounts(await deps.tiktok!.provider.currentUser(credential));
  const gbp=deps.google!.provider;const locations=[];for(const account of await gbp.listAccounts(credential))locations.push(...await gbp.listLocations(credential,account.name));
  return normalizeGbpAccounts(locations);
 }
 const counts=(accounts:ExternalPublicationAccount[])=>({accounts:accounts.length,facebook:accounts.filter(a=>a.platform==='facebook').length,instagram:accounts.filter(a=>a.platform==='instagram').length,
- google_business_profile:accounts.filter(a=>a.platform==='google_business_profile').length});
+ google_business_profile:accounts.filter(a=>a.platform==='google_business_profile').length,tiktok:accounts.filter(a=>a.platform==='tiktok').length});
 async function record(deps:OAuthDeps,clientId:string,provider:ConnectionProvider,outcome:'oauth_completed'|'oauth_failed'|'connection_refreshed',code:string|null,actor:string,c:Record<string,number>|null=null){
  try{const r=await deps.db.rpc('publication_oauth_record',{p_client_id:clientId,p_provider:provider,p_outcome:outcome,p_code:code,p_counts:c,p_actor_id:actor});if(r.error)log(provider,'audit');}
  catch{log(provider,'audit');}
@@ -107,6 +112,7 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  // Code exchange (single attempt: an OAuth code is consumable) and credential validation.
  let credential:ProviderCredential;
  try{credential=provider==='meta'?await deps.meta!.provider.exchangeCode(code,deps.meta!.config.redirectUri)
+   :provider==='tiktok'?await deps.tiktok!.provider.exchangeCode(code,deps.tiktok!.config.redirectUri)
    :await deps.google!.provider.exchangeCode(code,deps.google!.config.redirectUri,pkceVerifier(deps.pkceKey!,state));}
  catch(error){log(provider,'exchange',error);await record(deps,s.client_id,provider,'oauth_failed','exchange_'+providerCode(error),userId);return back(outcomeOfError(error,'exchange'));}
  let reference:string;
@@ -135,12 +141,12 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
 // one hour but are renewed from the refresh token (explicit verification, in memory at publication time): the
 // connection itself does not expire then. Meta long-lived user tokens do expire (about 60 days): kept.
 export function connectionExpiry(provider:ConnectionProvider,credential:Pick<ProviderCredential,'expiresAt'|'refreshToken'>):string|null{
- return provider==='google_business_profile'&&credential.refreshToken?null:credential.expiresAt;
+ return (provider==='google_business_profile'||provider==='tiktok')&&credential.refreshToken?null:credential.expiresAt;
 }
 // 3. Explicit verification: refresh when needed (rotation to a new reference), validation, resync. No cron.
 // Network / rate-limit errors never change the status; a provider revocation or expiry is recorded as such;
 // an ambiguous provider answer (permission, invalid) is recorded as error.
-const REFRESH_MARGIN_MS:Record<ConnectionProvider,number>={meta:10*86400_000,google_business_profile:5*60_000};
+const REFRESH_MARGIN_MS:Record<ConnectionProvider,number>={meta:10*86400_000,google_business_profile:5*60_000,tiktok:2*3600_000};
 export async function verifyConnection(projectId:unknown,provider:unknown,deps:OAuthDeps=productionOAuthDeps()):Promise<{ok:boolean;message:string}>{
  const {userId}=await requireAdmin();
  if(!isConnectionProvider(provider))return {ok:false,message:'Connexion invalide.'};
@@ -153,7 +159,7 @@ export async function verifyConnection(projectId:unknown,provider:unknown,deps:O
   if(row.error)throw Error('connection');
   if(!c||c.status==='disabled'||!isCredentialReference(c.credential_reference))return {ok:false,message:'Aucune connexion active : connectez d’abord le compte.'};
   let credential=await deps.vault.readCredential(c.credential_reference,provider);
-  const source=provider==='meta'?deps.meta!.provider:deps.google!.provider;
+  const source=provider==='meta'?deps.meta!.provider:provider==='tiktok'?deps.tiktok!.provider:deps.google!.provider;
   const setStatus=(status:'active'|'expired'|'revoked'|'error',reference:string|null=null,expiresAt:string|null=null)=>
    deps.db.rpc('publication_connection_set_status',{p_connection_id:c.id,p_status:status,p_credential_reference:reference,p_expires_at:expiresAt,p_actor_id:userId});
   try{

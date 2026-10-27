@@ -29,7 +29,7 @@ export function projectAllowsPlatform(capabilities:PublicationCapabilities,platf
 // enforces it at approval (Brouillon → À publier). Current product rule kept: every platform requires a media.
 // Instagram cannot publish without one; Facebook / Google Business Profile keep the stricter historical rule.
 // Making a platform text-only means changing BOTH this table and the SQL function (a new migration).
-export const PLATFORM_MEDIA_REQUIREMENT:Readonly<Record<PublicationPlatform,boolean>>={facebook:true,instagram:true,google_business_profile:true};
+export const PLATFORM_MEDIA_REQUIREMENT:Readonly<Record<PublicationPlatform,boolean>>={facebook:true,instagram:true,google_business_profile:true,tiktok:true};
 export function platformRequiresMedia(platform:string):boolean{return (publicationPlatforms as readonly string[]).includes(platform)&&PLATFORM_MEDIA_REQUIREMENT[platform as PublicationPlatform];}
 
 export const SUSPENDED_PUBLICATIONS_MESSAGE='Publications suspendues : aucun canal actif.';

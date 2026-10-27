@@ -1,7 +1,7 @@
 import type { Json } from "@/lib/supabase/database.types";
 import type {PublicationsAgentProject,PublicationsAIRun,DriveMedia,MediaUse,GenerationDetails} from './agent-types';
 
-export const publicationPlatforms = ["google_business_profile", "facebook", "instagram"] as const;
+export const publicationPlatforms = ["google_business_profile", "facebook", "instagram", "tiktok"] as const;
 export const publicationStatuses = ["draft", "pending_review", "approved", "rejected"] as const;
 export const deliveryStatuses = ["scheduled", "processing", "published", "retryable_error", "uncertain", "blocked", "cancelled", "simulated", "failed"] as const;
 export const jobTypes = ["generate", "regenerate", "deliver", "reconcile"] as const;

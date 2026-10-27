@@ -1,7 +1,7 @@
 import 'server-only';
 import {createHmac} from 'node:crypto';
 import type {ProviderRequest,ProviderTransport} from '@/lib/publications/connections/providers';
-import {META_GRAPH_VERSION,type GoogleOAuthConfig,type MetaOAuthConfig} from './config';
+import {META_GRAPH_VERSION,type GoogleOAuthConfig,type MetaOAuthConfig,type TikTokOAuthConfig} from './config';
 
 // Provider HTTP transports (Lot 4.3 P11-a). Official endpoints are constants; a request only chooses a validated
 // relative path. Every call: timeout, no redirect, bounded body, JSON only, never logged, never retried here (an
@@ -17,6 +17,11 @@ const GOOGLE_ACCOUNTS='https://mybusinessaccountmanagement.googleapis.com/v1/acc
 const GOOGLE_INFORMATION='https://mybusinessbusinessinformation.googleapis.com/v1/';
 export const META_AUTHORIZE=`https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`;
 export const GOOGLE_AUTHORIZE='https://accounts.google.com/o/oauth2/v2/auth';
+// TikTok Login Kit (web) et API v2 : jeton d'accès 24 h, jeton de rafraîchissement 365 jours.
+export const TIKTOK_AUTHORIZE='https://www.tiktok.com/v2/auth/authorize/';
+const TIKTOK_API='https://open.tiktokapis.com/v2/';
+// Scopes minimum : identité du compte (nom affiché) et publication directe. Rien d'autre (ni vidéos, ni statistiques).
+export const TIKTOK_SCOPES=['user.info.basic','video.publish'] as const;
 export const GOOGLE_BUSINESS_SCOPE='https://www.googleapis.com/auth/business.manage';
 // Minimum Meta permissions (official permission reference): list the managed Pages, read the Page / its linked
 // Instagram professional account, and the two publishing permissions needed later (P11-b) so that no second consent
@@ -71,6 +76,19 @@ export function googleTransport(config:GoogleOAuthConfig,fetchImpl:FetchLike=fet
   return call(fetchImpl,GOOGLE_INFORMATION+path+'?'+query(r.params),{method:'GET',headers});
  }};
 }
+export function tiktokTransport(config:TikTokOAuthConfig,fetchImpl:FetchLike=fetch):ProviderTransport{
+ return {async request(r:ProviderRequest){
+  if(r.operation==='token'){
+   safePath(r.path,/^token$/);
+   const params:Record<string,string>={...r.params,client_key:config.clientKey,client_secret:config.clientSecret};
+   if(r.params.grant_type==='refresh_token'){if(!r.credential?.refreshToken)throw new TransportError('invalid_path');params.refresh_token=r.credential.refreshToken;}
+   else params.redirect_uri=config.redirectUri;
+   return call(fetchImpl,TIKTOK_API+'oauth/token/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:query(params)});}
+  if(r.operation!=='read'||!r.credential)throw new TransportError('invalid_path');
+  safePath(r.path,/^user\/info$/);
+  return call(fetchImpl,TIKTOK_API+'user/info/?'+query(r.params),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
+ }};
+}
 // Authorization URLs (official hosts only; the state / PKCE challenge come from the server).
 export function metaAuthorizeUrl(config:MetaOAuthConfig,state:string):string{
  // Facebook Login for Business: config_id replaces scope. Classic Facebook Login: explicit scope list.
@@ -80,4 +98,7 @@ export function metaAuthorizeUrl(config:MetaOAuthConfig,state:string):string{
 export function googleAuthorizeUrl(config:GoogleOAuthConfig,state:string,codeChallenge:string):string{
  return GOOGLE_AUTHORIZE+'?'+query({client_id:config.clientId,redirect_uri:config.redirectUri,response_type:'code',scope:GOOGLE_BUSINESS_SCOPE,access_type:'offline',
   prompt:'consent',include_granted_scopes:'false',state,code_challenge:codeChallenge,code_challenge_method:'S256'});
+}
+export function tiktokAuthorizeUrl(config:TikTokOAuthConfig,state:string):string{
+ return TIKTOK_AUTHORIZE+'?'+query({client_key:config.clientKey,redirect_uri:config.redirectUri,response_type:'code',scope:TIKTOK_SCOPES.join(','),state});
 }

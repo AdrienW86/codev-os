@@ -18,7 +18,7 @@ const platformLabels={facebook:'Facebook',instagram:'Instagram',google_business_
 const board=load('lib/publications/board-query.ts',{'./types':{publicationPlatforms:Object.keys(platformLabels)}});
 const details=load('lib/publications/publication-detail.ts',{'./editor':{platformLabels},'./board-query':board,
  './board-visibility-events':load('lib/publications/board-visibility-events.ts')});
-const workspaceComponent=load('components/publications/publication-drawer.tsx',{
+const workspaceComponent=load('components/publications/publication-drawer.tsx',{'./tiktok-post-settings':{TikTokPostSettings:()=>null},
  'react':React,'next/link':{default:({href,children})=>jsx.jsx('a',{href,children})},'next/navigation':{useRouter:()=>({replace:()=>{}})},
  '@/app/(cockpit)/publications/drawer-actions':Object.fromEntries(['approveFromDrawerAction','archiveFromDrawerAction','rejectFromDrawerAction','saveFromDrawerAction','stageMediaAction'].map(name=>[name,async()=>({})])),
  './agent-forms':{AgentPrepareForm:()=>null},'./board-visibility-form':{BoardVisibilityForm:()=>null},

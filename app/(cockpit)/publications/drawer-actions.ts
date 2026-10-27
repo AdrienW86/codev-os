@@ -6,6 +6,7 @@ import {isPublicationUuid} from "@/lib/publications/validation";
 import {workflowSucceeded} from "@/lib/publications/workflow-result";
 import {deliveryLock} from "@/lib/publications/drawer";
 import {archivePublication} from "@/lib/publications/archive";
+import {copyTikTokFields} from "@/lib/publications/tiktok-settings";
 
 // Drawer mutations: thin wrappers over the existing audited workflow (saveDraft, uploadImage, submitOrReview).
 // The status is never updated directly and an old revision is never modified.
@@ -16,7 +17,7 @@ function refresh(form:FormData){const project=form.get("project_id"),id=form.get
  if(isPublicationUuid(id))revalidatePath(`/publications/${id}`);if(isPublicationUuid(project))for(const tab of ["","/calendar","/review","/history"])revalidatePath(`/projects/${project}${tab}`);}
 // Read-only publications (any non-cancelled delivery) are refused before any workflow call.
 async function locked(form:FormData):Promise<string|null>{return deliveryLock(String(form.get("publication_id")??""));}
-function ids(form:FormData,decision:string){const f=new FormData();f.set("publication_id",String(form.get("publication_id")??""));f.set("revision_id",String(form.get("revision_id")??""));f.set("decision",decision);return f;}
+function ids(form:FormData,decision:string){const f=new FormData();f.set("publication_id",String(form.get("publication_id")??""));f.set("revision_id",String(form.get("revision_id")??""));f.set("decision",decision);copyTikTokFields(form,f);return f;}
 
 export async function saveFromDrawerAction(_state:DrawerState,form:FormData):Promise<DrawerState>{
  await requireAdmin();const lock=await locked(form);if(lock)return {ok:false,message:lock};const result=await saveDraft(form);if(!result.id)return {ok:false,message:result.message??"Sauvegarde non confirmée."};

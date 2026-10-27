@@ -53,12 +53,23 @@ export async function executeClaimedPublicationJob(claim:Claim,workerId:string,d
   if(signed.error||context.assets.some(a=>!urls.has(a.storage_path))){log('media');return {state:'aborted',step:'media'};}
   media=context.assets.map(a=>({url:urls.get(a.storage_path)!,mimeType:a.mime_type}));
  }
+ // TikTok : réglages choisis par l'humain qui a validé cette révision (confidentialité, commentaires, divulgation).
+ let tiktok:PublishInput['tiktok'];
+ if(context.platform==='tiktok'){
+  const d=await settle(()=>db.from('publication_deliveries').select('revision_id').eq('id',context.delivery_id).maybeSingle(),{data:null,error:'network'});
+  const revision=(d.data as {revision_id?:unknown}|null)?.revision_id;
+  if(typeof revision==='string'&&isPublicationUuid(revision)){
+   const s=await settle(()=>db.from('publication_tiktok_settings').select('privacy_level,allow_comment,brand_organic,brand_content').eq('revision_id',revision).maybeSingle(),{data:null,error:'network'});
+   const row=s.data as {privacy_level?:unknown;allow_comment?:unknown;brand_organic?:unknown;brand_content?:unknown}|null;
+   if(row&&typeof row.privacy_level==='string')tiktok={privacyLevel:row.privacy_level,allowComment:row.allow_comment===true,brandOrganic:row.brand_organic===true,brandContent:row.brand_content===true};
+  }
+ }
  const dispatched=await settle(()=>db.rpc('publication_job_dispatch',held),{data:null,error:{code:'network'}});
  if(dispatched.error)return {state:'stale'};
  if(dispatched.data!==true)return {state:'blocked',reason:'not_ready'};
  const started=clock();let outcome:PublishOutcome;let requestId:string|null=null;
  try{const result=await publisher.publish({platform:context.platform,account:{externalAccountId:context.account.external_account_id,parentExternalId:context.account.parent_external_id},
-   text:context.text,media,idempotencyKey:context.idempotency_key,credential});outcome=outcomeOf(result);requestId=typeof result.requestId==='string'?result.requestId:null;}
+   text:context.text,media,idempotencyKey:context.idempotency_key,credential,...(tiktok?{tiktok}:{})});outcome=outcomeOf(result);requestId=typeof result.requestId==='string'?result.requestId:null;}
  catch(error){outcome=outcomeOfError(error);}
  let payload:Record<string,unknown>;
  try{payload=outcomePayload(outcome,clock()-started,requestId);}catch{outcome={result:'uncertain',errorCode:'invalid_publisher_result'};payload=outcomePayload(outcome,clock()-started);}

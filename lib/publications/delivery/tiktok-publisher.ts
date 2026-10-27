@@ -6,8 +6,8 @@ import type {DeliveryErrorClass} from './model';
 
 // Publication TikTok (Content Posting API v2, post photo en publication directe), contrat P10.
 // 1. Jeton : celui du coffre s'il vaut encore deux minutes, sinon rafraîchi EN MÉMOIRE (jamais réécrit ici).
-// 2. creator_info : niveaux de confidentialité permis pour ce compte ; le niveau voulu (public par défaut) doit y
-//    figurer, sinon refus explicite avant toute écriture (application non auditée = comptes privés seulement).
+// 2. creator_info : niveaux de confidentialité permis pour ce compte ; le niveau CHOISI à la validation humaine doit y
+//    figurer, sinon refus explicite avant toute écriture. Commentaires et divulgation commerciale : choix de l'humain.
 // 3. content/init (écriture, au plus une fois : marqueur d'envoi posé par le moteur) → publish_id.
 // 4. status/fetch, quelques lectures bornées : PUBLISH_COMPLETE → publié ; FAILED → refusé ; sinon incertain
 //    (jamais renvoyé automatiquement). Les images sont servies par CODE-V OS (domaine vérifié chez TikTok).
@@ -39,7 +39,7 @@ export function classifyTikTokError(status:number,body:unknown,phase:Phase):Fail
 export type TikTokTokenRefresher=(credential:ProviderCredential)=>Promise<ProviderCredential>;
 export type TikTokPublisherOptions={refresh?:TikTokTokenRefresher|null;now?:()=>number;sleep?:(ms:number)=>Promise<void>;
  /** Lien public (domaine vérifié) d'une image de diffusion ; null si la configuration manque. */
- mediaLink:(signedUrl:string)=>string|null;privacyLevel?:typeof TIKTOK_PRIVACY_LEVELS[number];statusChecks?:number;statusIntervalMs?:number};
+ mediaLink:(signedUrl:string)=>string|null;statusChecks?:number;statusIntervalMs?:number};
 async function accessTokenOf(credential:ProviderCredential|undefined,refresh:TikTokTokenRefresher|null,now:()=>number):Promise<{ok:true;token:string}|Failure>{
  if(!credential||!opaque(credential.accessToken)||(credential.provider!==undefined&&credential.provider!=='tiktok'))return fail('auth','credential_invalid');
  const expires=credential.expiresAt?Date.parse(credential.expiresAt):NaN;
@@ -60,7 +60,7 @@ export function tiktokTitle(text:string):string{
 }
 export function createTikTokPublisher(transport:TikTokPublishTransport,options:TikTokPublisherOptions):PublicationPublisher{
  const now=options.now??Date.now,refresh=options.refresh??null,sleep=options.sleep??transport.wait?.bind(transport)??(async()=>{});
- const privacy=options.privacyLevel??'PUBLIC_TO_EVERYONE',checks=options.statusChecks??8,interval=options.statusIntervalMs??5000;
+ const checks=options.statusChecks??8,interval=options.statusIntervalMs??5000;
  return {async publish(input:PublishInput):Promise<PublishResult>{
   if(input.platform!=='tiktok')return fail('permanent','unsupported_platform');
   const description=input.text.trim();
@@ -69,6 +69,7 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
   if(!input.media.length)return fail('invalid_payload','media_required');
   if(input.media.length>TIKTOK_MAX_PHOTOS)return fail('invalid_payload','too_many_media');
   if(input.media.some(m=>!['image/jpeg','image/webp'].includes(m.mimeType)||!/^https:\/\//.test(m.url)))return fail('invalid_payload','invalid_media');
+  const settings=input.tiktok;if(!settings)return fail('invalid_payload','tiktok_settings_missing');
   const photos=input.media.map(m=>options.mediaLink(m.url));
   if(photos.some(p=>!p))return fail('auth','media_link_not_configured');
   const token=await accessTokenOf(input.credential,refresh,now);if(!token.ok)return token;
@@ -78,9 +79,10 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
   catch{return fail('provider_unavailable','network_before_dispatch');}
   if(info.status!==200||String(record(record(info.body).error).code??'ok')!=='ok')return classifyTikTokError(info.status,info.body,'read');
   const options_=record(record(info.body).data).privacy_level_options;
-  if(!Array.isArray(options_)||!options_.includes(privacy))return fail('invalid_payload',Array.isArray(options_)&&options_.length===1&&options_[0]==='SELF_ONLY'?'app_not_audited':'privacy_level_unavailable');
+  if(!Array.isArray(options_)||!options_.includes(settings.privacyLevel))return fail('invalid_payload',Array.isArray(options_)&&options_.length===1&&options_[0]==='SELF_ONLY'?'app_not_audited':'privacy_level_unavailable');
+  if(settings.allowComment&&record(record(info.body).data).comment_disabled===true)return fail('invalid_payload','comments_disabled_by_creator');
   const body={media_type:'PHOTO',post_mode:'DIRECT_POST',
-   post_info:{title:tiktokTitle(description),description,privacy_level:privacy,disable_comment:false,auto_add_music:true,brand_content_toggle:false,brand_organic_toggle:false},
+   post_info:{title:tiktokTitle(description),description,privacy_level:settings.privacyLevel,disable_comment:!settings.allowComment,auto_add_music:true,brand_content_toggle:settings.brandContent,brand_organic_toggle:settings.brandOrganic},
    source_info:{source:'PULL_FROM_URL',photo_images:photos,photo_cover_index:0}};
   let r;
   try{r=await transport.request({path:'post/publish/content/init',body,token:token.token});}

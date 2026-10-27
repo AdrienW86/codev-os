@@ -178,6 +178,7 @@ export type PublicationFunctions = {
   publication_editorial_justification_record:{Args:{p_run_id:string;p_justification:Json;p_actor_id:string};Returns:Json};
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_remove:{Args:{p_publication_id:string;p_actor_id:string};Returns:number};
+  publication_tiktok_settings_save:{Args:{p_publication_id:string;p_revision_id:string;p_privacy_level:string;p_allow_comment:boolean;p_brand_organic:boolean;p_brand_content:boolean;p_actor_id:string};Returns:undefined};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};
   publication_channel_occurrences_ensure:{Args:{p_project_id:string;p_start_date:string;p_end_date:string;p_actor_id:string};Returns:Json};

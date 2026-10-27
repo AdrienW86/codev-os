@@ -7,6 +7,7 @@ import {reviewDecisions} from "./review-decisions";
 import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from "./media-rule";
 import {getPublicationProjectChannels,publicationChannelLock} from "./project-channels";
 import {projectAllowsPlatform} from "./channels";
+import {parseTikTokSettings} from "./tiktok-settings";
 import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm,platformLabels} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
@@ -74,6 +75,18 @@ export async function submitOrReview(form:FormData):Promise<{message:string}>{
  const db=getSupabaseServerClient();
  if(decision==="approved"){const lock=await publicationChannelLock(id);if(lock)return {message:lock};}
  if(decision==="approved"){const missing=await revisionChannelsWithoutMedia(db as unknown as MediaRuleDb,revision);if(missing===null)return {message:failed};if(missing.length)return {message:missingMediaMessage(missing)};}
+ // TikTok : les réglages imposés par TikTok (confidentialité choisie, commentaires, divulgation, consentement) sont
+ // enregistrés pour cette révision par l'humain qui valide, juste avant l'approbation ; sans eux, aucune approbation.
+ if(decision==="approved"){
+  const pub=await db.from("publications").select("platform").eq("id",id).maybeSingle();
+  if(pub.error)return {message:failed};
+  if((pub.data as {platform?:string|null}|null)?.platform==="tiktok"){
+   const parsed=parseTikTokSettings(form);if(!parsed.ok)return {message:parsed.message};
+   const s=parsed.settings;
+   const saved=await db.rpc("publication_tiktok_settings_save",{p_publication_id:id,p_revision_id:revision,p_privacy_level:s.privacyLevel,p_allow_comment:s.allowComment,p_brand_organic:s.brandOrganic,p_brand_content:s.brandContent,p_actor_id:userId});
+   if(saved.error)return {message:saved.error.code==="55000"?"Révision périmée. Rechargez la publication.":"Réglages TikTok non enregistrés. Réessayez."};
+  }
+ }
  const result=decision==="submit"?await db.rpc("publication_submit_manual",{p_publication_id:id,p_revision_id:revision,p_actor_id:userId}):await db.rpc("publication_review_manual",{p_publication_id:id,p_revision_id:revision,p_decision:String(decision),p_reason:typeof reason==="string"?reason.trim()||null:null,p_actor_id:userId});
  // The database enforces the media invariant itself (P8): a media removed meanwhile is refused with the same message.
  if(result.error&&decision==="approved"&&result.error.code==="23514"&&/media required/i.test(result.error.message??""))return {message:missingMediaMessage([])};

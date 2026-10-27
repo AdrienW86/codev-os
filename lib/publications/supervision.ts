@@ -38,7 +38,7 @@ export async function getSupervision(now=new Date(),options:{scheduledDelivery?:
   db.from('publication_client_settings').select('client_id,auto_prepare_enabled,generation_enabled,prepare_lead_days,media_reuse_allowed,media_reuse_after_days').limit(MAX_ROWS),
   db.from('publication_agent_projects').select('project_id,client_id,enabled,rights_confirmed').limit(MAX_ROWS),
   db.from('publication_accounts').select('id,client_id,platform,display_name,status,enabled,connection_id').not('connection_id','is',null).limit(MAX_ROWS),
-  db.from('client_connections').select('id,client_id,provider,status,expires_at').in('provider',['meta','google_business_profile']).limit(MAX_ROWS),
+  db.from('client_connections').select('id,client_id,provider,status,expires_at').in('provider',['meta','google_business_profile','tiktok']).limit(MAX_ROWS),
   db.from('publications').select('id,client_id,project_id,platform,subject,status,current_revision_id,occurrence_id').is('archived_at',null)
    .not('occurrence_id','is',null).in('status',['draft','pending_review','approved']).order('updated_at',{ascending:false}).limit(MAX_ROWS),
   db.from('publication_channel_occurrences').select('id,client_id,project_id,platform,scheduled_for,publication_id,skipped_at').gte('scheduled_for',since).lte('scheduled_for',horizon).order('scheduled_for').limit(2000),

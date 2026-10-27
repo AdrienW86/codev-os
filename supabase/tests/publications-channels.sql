@@ -141,7 +141,7 @@ set local role service_role;
 do $$
 declare s uuid:=(select id from p1_ids where name='social');g uuid:=(select id from p1_ids where name='gbp');w uuid:=(select id from p1_ids where name='web');
 begin
- perform pg_temp.replay_failure(format('select public.publication_channel_save(%L,''tiktok'',true,null,null,''user_local'')',g),'22023','unknown platform');
+ perform pg_temp.replay_failure(format('select public.publication_channel_save(%L,''snapchat'',true,null,null,''user_local'')',g),'22023','unknown platform');
  perform pg_temp.replay_failure(format('select public.publication_channel_save(%L,null,true,null,null,''user_local'')',g),'22023','NULL platform');
  perform pg_temp.replay_failure(format('select public.publication_channel_save(%L,''facebook'',null,null,null,''user_local'')',g),'22023','NULL enabled');
  perform pg_temp.replay_failure(format('select public.publication_channel_save(%L,''facebook'',true,null,null,''admin'')',g),'22023','invalid actor');
@@ -231,7 +231,7 @@ do $$
 declare cl uuid:=(select id from p1_ids where name='client');other uuid:=(select id from p1_ids where name='other_client');g uuid:=(select id from p1_ids where name='gbp');w uuid:=(select id from p1_ids where name='web');ch uuid;
 begin
  select id into ch from public.publication_project_channels where project_id=g and platform='facebook';
- perform pg_temp.replay_failure(format('insert into public.publication_project_channels(client_id,project_id,platform) values(%L,%L,''tiktok'')',cl,w),'23514','direct unknown platform');
+ perform pg_temp.replay_failure(format('insert into public.publication_project_channels(client_id,project_id,platform) values(%L,%L,''snapchat'')',cl,w),'23514','direct unknown platform');
  perform pg_temp.replay_failure(format('insert into public.publication_project_channels(client_id,project_id,platform) values(%L,%L,''facebook'')',other,w),'23503','direct project of another client');
  perform pg_temp.replay_failure(format('insert into public.publication_project_channels(client_id,project_id,platform,publication_account_id) values(%L,%L,''facebook'',%L)',cl,w,(select id from p1_ids where name='account_other_client')),'23503','direct account of another client');
  perform pg_temp.replay_failure(format('insert into public.publication_project_channels(client_id,project_id,platform,publication_account_id) values(%L,%L,''facebook'',%L)',cl,w,(select id from p1_ids where name='account_ig')),'23503','direct account of another platform');

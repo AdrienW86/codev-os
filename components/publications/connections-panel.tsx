@@ -29,6 +29,7 @@ function ConnectionCard({projectId,connection:c,oauthMessage,ready,returnView,ac
   <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{c.label}</h3><Badge tone={tones[c.status]}>{c.statusLabel}</Badge></div>
   <p className="mt-2">{c.connected?'Connecté':'Non connecté'}{c.connectedLabel?` · ${c.connectedLabel}`:''}{c.expiresLabel?` · ${c.expiresLabel}`:''}</p>
   {c.provider==='meta'?<p className="mt-1 text-muted">{c.counts.facebook} page(s) Facebook · {c.counts.instagram} compte(s) Instagram</p>
+   :c.provider==='tiktok'?<p className="mt-1 text-muted">{c.counts.tiktok} compte(s) TikTok</p>
    :<p className="mt-1 text-muted">{c.counts.google_business_profile} fiche(s) Google Business Profile</p>}
   {reconnect&&<p role="status" data-needs-reconnection="true" className="mt-2 rounded-lg border border-warning/60 p-2 text-xs">Reconnexion nécessaire : les publications de ces comptes sont bloquées tant que l’accès n’est pas renouvelé.</p>}
   {accounts&&accounts.length>0&&<ul className="mt-2 space-y-1 text-xs" data-connection-accounts="true">{accounts.map(a=><li key={a.id}>{platformLabels[a.platform]} · <span className="text-foreground">{a.name}</span> · {a.usedByOtherClient?'Déjà utilisé par un autre client':a.statusLabel}</li>)}</ul>}

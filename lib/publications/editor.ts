@@ -1,6 +1,6 @@
 import { isEditorialWeek, isPublicationUuid } from "./validation";
 import { publicationPlatforms, type PublicationPlatform } from "./types";
-export const platformLabels: Record<PublicationPlatform,string> = {facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile"};
+export const platformLabels: Record<PublicationPlatform,string> = {facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile",tiktok:"TikTok"};
 export type EditorialVariant={platform:PublicationPlatform;text_content:string;asset_ids:string[];metadata:{title?:string;cta?:string}};
 export type EditorialDraft={publication_id:string|null;expected_revision_id:string|null;client_id:string;project_id:string;title:string;angle:string;source:string;target_date:string|null;week:string|null;slot:1|2|null;variants:EditorialVariant[]};
 function date(value:string){const d=new Date(value+"T00:00:00Z");return /^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===value;}

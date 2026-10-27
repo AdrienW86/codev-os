@@ -7,7 +7,7 @@ export const SIMULATION_PLATFORMS:readonly PublicationPlatform[]=['facebook','in
 // Résultat de diffusion choisi par l'administrateur pour chaque plateforme (toujours simulé).
 export const SIMULATED_OUTCOMES=['success','refused','expired','down'] as const;
 export type SimulatedOutcome=typeof SIMULATED_OUTCOMES[number];
-export type SimulatedOutcomes=Record<PublicationPlatform,SimulatedOutcome>;
+export type SimulatedOutcomes=Partial<Record<PublicationPlatform,SimulatedOutcome>>;
 export const OUTCOME_LABELS:Record<SimulatedOutcome,string>={success:'Succès',refused:'Refusée par la plateforme',expired:'Connexion expirée',down:'Plateforme indisponible'};
 export const FICTITIOUS_NOTICE='Clients, photos et historiques entièrement fictifs : aucune donnée réelle, aucune intervention réelle.';
 export const SIMULATION_GUARANTEES=[

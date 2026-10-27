@@ -9,14 +9,14 @@ import type {SimulatedOutcomes} from './model';
 export type FixtureVision={verdict:string;business_relevance:number;publishability:number;sensitive:string[];confidential:boolean;description:string;topics:string[];quality:string;quality_issues:string[]};
 export type FixturePhoto={id:string;label:string;caption:string|null;libraryStatus:string;width:number;height:number;importedDaysAgo:number;vision:FixtureVision};
 // Idée qu'écrit le modèle de rédaction simulé pour une prestation (déclinaisons natives par plateforme).
-export type FixtureTemplate={service:string;keywords:string[];subject:string;angle:string;texts:Record<PublicationPlatform,string>;cta:string|null};
+export type FixtureTemplate={service:string;keywords:string[];subject:string;angle:string;texts:Partial<Record<PublicationPlatform,string>>;cta:string|null};
 export type FixtureHistory={id:string;subject:string;texts:{platform:PublicationPlatform;text:string}[];media:string|null};
 // Comportement du modèle de rédaction simulé au premier essai : conforme, ou erreur typique qu'un garde-fou doit arrêter.
 export type MockFirstAttempt='compliant'|'repeat_service'|'pick_media';
 export type FixtureScenario={id:string;name:string;description:string;negative:boolean;
  client:{name:string;activity:string;zone:string};project:{name:string};profile:MediaProfile;verifiedServices:string[];editorialRules:string;
  channelRules:{platform:PublicationPlatform;rules:string}[];reuse:{allowed:boolean;afterDays:number};timezone:string;
- schedule:Record<PublicationPlatform,{weekday:number;localTime:string}[]>;photos:FixturePhoto[];uses:{assetId:string;publicationId:string;usedDaysAgo:number}[];
+ schedule:Partial<Record<PublicationPlatform,{weekday:number;localTime:string}[]>>;photos:FixturePhoto[];uses:{assetId:string;publicationId:string;usedDaysAgo:number}[];
  history:FixtureHistory[];templates:FixtureTemplate[];fallback:FixtureTemplate;firstAttempt:MockFirstAttempt;adversarialMediaId?:string;defaultOutcomes:SimulatedOutcomes};
 
 const profile=(p:Partial<MediaProfile>):MediaProfile=>({...DEFAULT_MEDIA_PROFILE,aiClassificationEnabled:true,version:1,saved:true,...p});

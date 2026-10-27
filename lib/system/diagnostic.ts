@@ -356,21 +356,21 @@ export async function mediaStatus(db: DiagnosticDb, now: Date, env: Env): Promis
 }
 
 /** Connexions sociales (expirées, révoquées, en erreur) et diffusions bloquées. */
-const PROVIDER_PLATFORMS: Record<string, readonly string[]> = { meta: ["facebook", "instagram"], google_business_profile: ["google_business_profile"] };
+const PROVIDER_PLATFORMS: Record<string, readonly string[]> = { meta: ["facebook", "instagram"], google_business_profile: ["google_business_profile"], tiktok: ["tiktok"] };
 export async function connectionsStatus(db: DiagnosticDb, now: Date, env: Env): Promise<StatusGroup> {
   const month = new Date(now.getTime() - MONTH).toISOString();
   const [connections, issues, published, settings] = await Promise.all([
-    rows<{ provider: string; status: string; expires_at: string | null; last_checked_at: string | null }>(db.from("client_connections").select("provider,status,expires_at,last_checked_at").in("provider", ["meta", "google_business_profile"]).limit(DIAGNOSTIC_LIMIT)),
+    rows<{ provider: string; status: string; expires_at: string | null; last_checked_at: string | null }>(db.from("client_connections").select("provider,status,expires_at,last_checked_at").in("provider", ["meta", "google_business_profile", "tiktok"]).limit(DIAGNOSTIC_LIMIT)),
     rows<{ status: string; updated_at: string }>(db.from("publication_deliveries").select("status,updated_at").in("status", DELIVERY_ISSUE_STATUSES).order("updated_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
     // Preuve d'une diffusion réelle : statut « published » (jamais « simulated ») avec identifiant distant.
     rows<{ platform: string; updated_at: string }>(db.from("publication_deliveries").select("platform,updated_at").eq("status", "published").not("remote_id", "is", null).gte("updated_at", month).order("updated_at", { ascending: false }).limit(DIAGNOSTIC_LIMIT)),
     db.from("publication_settings").select("emergency_stop,publishing_enabled").limit(1).maybeSingle(),
   ]);
   const expired = (c: { status: string; expires_at: string | null }) => c.status === "expired" || c.status === "revoked" || c.status === "error" || (c.status === "active" && c.expires_at !== null && Date.parse(c.expires_at) <= now.getTime());
-  const items = (["meta", "google_business_profile"] as const).map((provider) => {
+  const items = (["meta", "google_business_profile", "tiktok"] as const).map((provider) => {
     const own = connections.filter((c) => c.provider === provider), broken = own.filter(expired), active = own.filter((c) => c.status === "active" && !expired(c));
     const lastPublished = first(published.filter((d) => PROVIDER_PLATFORMS[provider].includes(d.platform)).map((d) => d.updated_at));
-    return classifyMechanism({ id: `connections:${provider}`, label: `Connexions ${PROVIDER_LABELS[provider]}`, configured: isProviderConfigured(provider === "meta" ? "meta" : "google-business-profile", env), now, freshMs: MONTH,
+    return classifyMechanism({ id: `connections:${provider}`, label: `Connexions ${PROVIDER_LABELS[provider]}`, configured: isProviderConfigured(provider === "meta" ? "meta" : provider === "tiktok" ? "tiktok" : "google-business-profile", env), now, freshMs: MONTH,
       disabledReason: "Application OAuth non configurée sur le serveur.", openIssues: broken.length,
       issueLabel: `${broken.length} connexion${broken.length > 1 ? "s" : ""} expirée${broken.length > 1 ? "s" : ""}, révoquée${broken.length > 1 ? "s" : ""} ou en erreur · à reconnecter`,
       lastSuccessAt: lastPublished, successLabel: `${active.length} connexion${active.length > 1 ? "s" : ""} active${active.length > 1 ? "s" : ""} · dernière diffusion confirmée`,

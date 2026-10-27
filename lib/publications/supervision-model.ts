@@ -100,4 +100,4 @@ export function agentRunView(run:{status:string;error_code:string|null;created_a
  return {state:'running',label:'Préparation en cours',reason:null,at:run.created_at};
 }
 // Plateforme → fournisseur de connexion (reconnexion OAuth existante).
-export const providerOfPlatform=(platform:PublicationPlatform):'meta'|'google_business_profile'=>platform==='google_business_profile'?'google_business_profile':'meta';
+export const providerOfPlatform=(platform:PublicationPlatform):'meta'|'google_business_profile'|'tiktok'=>platform==='google_business_profile'?'google_business_profile':platform==='tiktok'?'tiktok':'meta';

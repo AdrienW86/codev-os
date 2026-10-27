@@ -63,7 +63,7 @@ export function forbiddenServiceTerms(input:AgentV2GeneratorInput):string[]{
 
 // --- Socle lots 4-5 : règles natives des plateformes et anti-répétition (pur) ---
 // Limites éditoriales, plus strictes que les plafonds techniques des publishers (GBP 1 500, Instagram 2 200).
-export const PLATFORM_TEXT_RULES:Record<PublicationPlatform,{maxLength:number;maxHashtags:number}>={facebook:{maxLength:3000,maxHashtags:3},instagram:{maxLength:2200,maxHashtags:8},google_business_profile:{maxLength:1500,maxHashtags:0}};
+export const PLATFORM_TEXT_RULES:Record<PublicationPlatform,{maxLength:number;maxHashtags:number}>={facebook:{maxLength:3000,maxHashtags:3},instagram:{maxLength:2200,maxHashtags:8},google_business_profile:{maxLength:1500,maxHashtags:0},tiktok:{maxLength:2000,maxHashtags:5}};
 const hashtags=(text:string)=>text.match(/(?<![\p{L}\p{N}&])#[\p{L}\p{N}_]+/gu)?.length??0;
 export function platformRuleViolation(platform:PublicationPlatform,text:string):string|null{
  const rule=PLATFORM_TEXT_RULES[platform];

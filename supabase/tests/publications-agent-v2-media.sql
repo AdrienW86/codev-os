@@ -56,7 +56,7 @@ select pg_temp.replay_assert((select status='approved' from public.publications 
  and not exists(select 1 from public.publication_variant_assets va join public.publication_variants v on v.id=va.variant_id where v.publication_id=(select id from p8_ids where name='legacy_approved')),
  'legacy approval without media kept as is');
 select pg_temp.replay_assert(publications_private.platform_requires_media('facebook') and publications_private.platform_requires_media('instagram')
- and publications_private.platform_requires_media('google_business_profile') and not publications_private.platform_requires_media('tiktok') and not publications_private.platform_requires_media(null),
+ and publications_private.platform_requires_media('google_business_profile') and not publications_private.platform_requires_media('snapchat') and not publications_private.platform_requires_media(null),
  'media capability: required on every platform (kept product rule), unknown platform false');
 
 -- 3. Approval invariant (SQL), whatever the platform; valid asset = same client, confirmed rights.

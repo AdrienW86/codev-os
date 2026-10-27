@@ -22,7 +22,7 @@ do $$declare a jsonb;b jsonb;p uuid;begin
  p:=(a->>'project_id')::uuid;
  perform pg_temp.replay_assert((a->>'created')::boolean and not (b->>'created')::boolean and (b->>'project_id')::uuid=p,'idempotent ensure');
  perform pg_temp.replay_assert((select type='Réseaux sociaux' and client_id='c5000000-0000-4000-8000-000000000001' and name='Publications — Protection Nuisibles' from public.projects where id=p),'project created for the client');
- perform pg_temp.replay_assert((select count(*)=3 and bool_and(not enabled) and bool_and(publication_account_id is null) from public.publication_project_channels where project_id=p),'three channels, all disabled, no account');
+ perform pg_temp.replay_assert((select count(*)=4 and bool_and(not enabled) and bool_and(publication_account_id is null) from public.publication_project_channels where project_id=p),'four channels (FB, IG, GBP, TikTok), all disabled, no account');
  perform pg_temp.replay_assert((select count(*) from public.projects where client_id='c5000000-0000-4000-8000-000000000001')=1,'no duplicate project');
  perform pg_temp.replay_assert(exists(select 1 from public.publication_events where resource_id=p and action='publication.client_project_created'),'creation audited');
 end $$;

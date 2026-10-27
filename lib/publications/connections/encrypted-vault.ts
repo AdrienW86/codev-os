@@ -7,7 +7,7 @@ import {CredentialVaultError,isCredentialReference,isProviderCredential,newCrede
 // provider fails authentication). The key only exists in the server environment; the database (table
 // publication_credential_secrets, server role only) never sees a plaintext or a key. Rows are immutable: a rotation
 // stores a new reference and deletes the old one. Errors carry a kind only, never data.
-export type CredentialProvider='meta'|'google_business_profile';
+export type CredentialProvider='meta'|'google_business_profile'|'tiktok';
 export type SecretRow={reference:string;provider:CredentialProvider;key_id:string;iv:Uint8Array;ciphertext:Uint8Array;auth_tag:Uint8Array};
 export interface SecretStore{
  insert(row:SecretRow):Promise<void>;
@@ -21,7 +21,7 @@ const aad=(reference:string,provider:CredentialProvider)=>Buffer.from(`codev:pub
 export function createEncryptedCredentialVault(store:SecretStore,keyring:VaultKeyring,ids:()=>string=randomUUID):CredentialVault{
  if(keyring.current.key.length!==32||(keyring.previous&&keyring.previous.key.length!==32))throw new CredentialVaultError('unconfigured');
  const keyFor=(id:string)=>id===keyring.current.id?keyring.current.key:keyring.previous&&id===keyring.previous.id?keyring.previous.key:null;
- const providerOf=(secret:ProviderCredential):CredentialProvider=>{if(secret.provider!=='meta'&&secret.provider!=='google_business_profile')throw new CredentialVaultError('invalid_secret');return secret.provider;};
+ const providerOf=(secret:ProviderCredential):CredentialProvider=>{if(secret.provider!=='meta'&&secret.provider!=='google_business_profile'&&secret.provider!=='tiktok')throw new CredentialVaultError('invalid_secret');return secret.provider;};
  async function store_(secret:ProviderCredential):Promise<string>{
   if(!isProviderCredential(secret))throw new CredentialVaultError('invalid_secret');
   const provider=providerOf(secret),reference=newCredentialReference(ids),iv=randomBytes(12);

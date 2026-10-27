@@ -51,9 +51,9 @@ test('binary validation: JPEG / PNG / WebP accepted with SHA-256; empty, oversiz
 
 test('media capability: centralized (every platform requires a media, kept product rule), mirrored by the SQL function, used by the media rule',()=>{
  const channels=load('lib/publications/channels.ts'),rule=load('lib/publications/media-rule.ts');
- assert.deepEqual(json(channels.PLATFORM_MEDIA_REQUIREMENT),{facebook:true,instagram:true,google_business_profile:true});
- assert.equal(channels.platformRequiresMedia('instagram'),true);assert.equal(channels.platformRequiresMedia('tiktok'),false);assert.equal(channels.platformRequiresMedia(''),false);
- const sql=src('supabase/migrations/20261008050000_publications_agent_v2_media.sql');
+ assert.deepEqual(json(channels.PLATFORM_MEDIA_REQUIREMENT),{facebook:true,instagram:true,google_business_profile:true,tiktok:true});
+ assert.equal(channels.platformRequiresMedia('instagram'),true);assert.equal(channels.platformRequiresMedia('snapchat'),false);assert.equal(channels.platformRequiresMedia(''),false);
+ const sql=src('supabase/migrations/20261115000000_publications_tiktok.sql'); // dernière définition de platform_requires_media
  const listed=sql.match(/platform_requires_media\(p_platform text\)[\s\S]*?p_platform in\(([^)]*)\)/)[1].split(',').map(s=>s.trim().replace(/'/g,'')).sort();
  assert.deepEqual(listed,Object.entries(json(channels.PLATFORM_MEDIA_REQUIREMENT)).filter(([,v])=>v).map(([k])=>k).sort(),'TS capability and SQL invariant in sync');
  assert.deepEqual(json(rule.channelsWithoutMedia([{id:'a',platform:'facebook'},{id:'b',platform:'instagram'},{id:'c',platform:'google_business_profile'}],[{variant_id:'a'}])),['instagram','google_business_profile']);

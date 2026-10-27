@@ -91,7 +91,7 @@ test('channel activation: account and rules preserved, last channel can be disab
  assert.deepEqual(s.db.log,[['publication_channel_save',{p_project_id:P,p_platform:'facebook',p_enabled:false,p_publication_account_id:ACC,p_editorial_rules:'Ton chaleureux',p_actor_id:'user_admin'}]],'existing account and rules sent back');
  const gbp=serviceWith(configuredTables());await gbp.m.setChannelEnabled(P,'google_business_profile',true);assert.deepEqual(gbp.db.log[0][1].p_platform,'google_business_profile');assert.equal(gbp.db.log[0][1].p_publication_account_id,null);
  const legacy=serviceWith({publication_project_channels:[]});assert.deepEqual(json(await legacy.m.setChannelEnabled(P,'facebook',false)),{ok:false,message:'Confirmez d’abord les canaux hérités.'});assert.deepEqual(legacy.db.log,[]);
- for(const [platform,enabled] of [['tiktok',true],['facebook','yes']]){const x=serviceWith(configuredTables());assert.equal((await x.m.setChannelEnabled(P,platform,enabled)).ok,false);assert.deepEqual(x.db.log,[]);}});
+ for(const [platform,enabled] of [['snapchat',true],['facebook','yes']]){const x=serviceWith(configuredTables());assert.equal((await x.m.setChannelEnabled(P,platform,enabled)).ok,false);assert.deepEqual(x.db.log,[]);}});
 
 test('schedule save per channel: channel resolved server-side, P2-a RPC only, independent failures',async()=>{
  const s=serviceWith(configuredTables());const slots=[{weekday:1,local_time:'12:00',enabled:true}];

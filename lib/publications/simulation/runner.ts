@@ -48,7 +48,7 @@ const percent=(n:number)=>n.toLocaleString('fr-FR',{maximumFractionDigits:2});
 export function simulatedOccurrences(scenario:FixtureScenario,now:Date,horizonDays=SIMULATION_HORIZON_DAYS):OpenOccurrenceCandidate[]{
  const today=parisToday(now),result:OpenOccurrenceCandidate[]=[];
  for(const platform of SIMULATION_PLATFORMS){
-  const slots=normalizeScheduleSlots(scenario.schedule[platform].map(s=>({weekday:s.weekday,local_time:s.localTime,enabled:true})));if(!slots)continue;
+  const slots=normalizeScheduleSlots((scenario.schedule[platform]??[]).map(s=>({weekday:s.weekday,local_time:s.localTime,enabled:true})));if(!slots)continue;
   const ordered=sortScheduleSlots(slots.map(s=>({weekday:s.weekday,localTime:s.local_time})));
   for(let d=0;d<horizonDays;d++){const date=addDays(today,d),iso=new Date(`${date}T00:00:00Z`).getUTCDay()||7;
    for(const s of ordered){if(s.weekday!==iso)continue;const at=localInstant(date,s.localTime,scenario.timezone);if(!at)continue;
@@ -158,7 +158,7 @@ export async function runPublicationSimulation(request:{scenarioId:string;outcom
  // normalisation du moteur (outcomeOf, outcomePayload) et le statut final de publication_job_complete.
  const deliveries:DeliveryReport[]=[];
  if(approvable)for(const v of variants){
-  const outcome=request.outcomes[v.platform],base={platform:v.platform,platformLabel:v.platformLabel,outcome,outcomeLabel:OUTCOME_LABELS[outcome],simulated:true as const};
+  const outcome=request.outcomes[v.platform]??'success',base={platform:v.platform,platformLabel:v.platformLabel,outcome,outcomeLabel:OUTCOME_LABELS[outcome],simulated:true as const};
   const p=publishability[v.platform];
   if(p!=='publishable'){deliveries.push({...base,status:'blocked',statusLabel:DELIVERY_STATUS_LABELS.blocked,detail:`Motif : ${PUBLISHABILITY_LABELS[p]}. Aucun envoi tenté ; reconnexion du compte requise.`,nextRetry:null,publisherCalled:false});continue;}
   let result:PublishOutcome;

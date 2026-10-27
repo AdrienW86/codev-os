@@ -11,7 +11,7 @@ export type AgentType = "report" | "seo" | "google-ads" | "publications" | "moni
 export type AgentScope = "global" | "client" | "project";
 export type ProviderId =
   | "internal" | "openai" | "anthropic" | "search-console" | "pagespeed" | "http" | "vercel" | "github"
-  | "google-ads" | "meta" | "google-business-profile" | "google-drive" | "email" | "rss";
+  | "google-ads" | "meta" | "google-business-profile" | "tiktok" | "google-drive" | "email" | "rss";
 
 /** read : lire / analyser. prepare : créer une recommandation, un brouillon ou une action à valider. execute : effet réel. */
 export type Permission = "read" | "prepare" | "execute";
@@ -51,7 +51,7 @@ export const capabilities: Record<CapabilityId, CapabilityDefinition> = {
   prepare_publication: { id: "prepare_publication", label: "Préparer les publications", permission: "prepare", providers: ["openai"] },
   select_media: { id: "select_media", label: "Sélectionner les médias", permission: "read", providers: ["google-drive"] },
   schedule_publication: { id: "schedule_publication", label: "Planifier", permission: "prepare", providers: ["internal"] },
-  publish: { id: "publish", label: "Publier (après validation)", permission: "execute", providers: ["meta", "google-business-profile"], externalEffect: true },
+  publish: { id: "publish", label: "Publier (après validation)", permission: "execute", providers: ["meta", "google-business-profile", "tiktok"], externalEffect: true },
   check_http: { id: "check_http", label: "Disponibilité et temps de réponse", permission: "read", providers: ["http"] },
   read_deployments: { id: "read_deployments", label: "Déploiements et builds Vercel", permission: "read", providers: ["vercel"] },
   read_repository: { id: "read_repository", label: "Derniers changements du code", permission: "read", providers: ["github"] },

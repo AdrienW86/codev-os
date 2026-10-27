@@ -100,7 +100,7 @@ begin
  perform pg_temp.replay_failure(format('insert into public.publications(client_id,editorial_week,slot,subject,platform,editorial_group_id) values(%L,''2026-10-19'',1,''x'',''facebook'',%L)',cl,g),'23514','group requires a project');
  perform pg_temp.replay_failure(format('insert into public.publications(client_id,project_id,editorial_week,slot,subject,editorial_group_id) values(%L,%L,''2026-10-19'',1,''x'',%L)',cl,s,g),'23514','group requires a platform');
  perform pg_temp.replay_failure(format('insert into public.publications(client_id,project_id,editorial_week,slot,subject,occurrence_id) values(%L,%L,''2026-10-19'',1,''x'',%L)',cl,s,(select id from p4_ids where name='occ_facebook_1019')),'23514','occurrence requires a platform');
- perform pg_temp.replay_failure(format('insert into public.publications(client_id,project_id,editorial_week,slot,subject,platform) values(%L,%L,''2026-10-19'',1,''x'',''tiktok'')',cl,s),'23514','unknown platform');
+ perform pg_temp.replay_failure(format('insert into public.publications(client_id,project_id,editorial_week,slot,subject,platform) values(%L,%L,''2026-10-19'',1,''x'',''snapchat'')',cl,s),'23514','unknown platform');
 end $$;
 
 -- 5. One-way bindings, skipped / already linked occurrences, mirror from the publication side only.

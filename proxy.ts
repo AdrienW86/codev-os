@@ -12,6 +12,8 @@ export default clerkMiddleware(async (auth, request) => {
   // Le webhook vérifie la signature Meta sur le corps brut avant tout accès au stockage.
   if (path === "/api/webhooks/whatsapp") return;
   if (path === "/api/internal/whatsapp/process") return;
+  // Images de diffusion pour TikTok (jeton signé et daté, vérifié par la route ; aucune donnée sans jeton valide).
+  if (path.startsWith("/api/publications/media/") && ["GET", "HEAD"].includes(request.method)) return;
   // Autre exemption : le déclencheur planifié s'authentifie lui-même par CRON_SECRET (voir la route).
   if (path === "/api/internal/scheduler/tick") return;
 

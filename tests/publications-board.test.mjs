@@ -85,7 +85,7 @@ const comboId=name=>uid(5,Object.keys(combos).indexOf(name)+1);
 
 test('query params: defaults, strict parsing of unknown values and canonical URLs',()=>{
  assert.deepEqual(json(q()),{q:'',client:'',project:'',status:'',platform:'',origin:'',media:'',from:'',to:'',sort:'date_asc',published:false,hidden:false,page:1,debug:false,publication:'',archived:false});
- const bad=q({client:'not-a-uuid',status:'approved',platform:'tiktok',origin:'system',media:'maybe',from:'2026-13-45',sort:'drop table',page:'-2',published:'yes',hidden:'true',q:['a','b']});
+ const bad=q({client:'not-a-uuid',status:'approved',platform:'snapchat',origin:'system',media:'maybe',from:'2026-13-45',sort:'drop table',page:'-2',published:'yes',hidden:'true',q:['a','b']});
  assert.deepEqual(json(bad),json(q()));
  const parsed=q({q:' toiture ',client:C1,status:'ready',platform:'instagram',origin:'agent',media:'with',from:'2026-10-01',to:'2026-10-31',sort:'updated',published:'1',hidden:'1',page:'3',debug:'1'});
  assert.equal(parsed.q,'toiture');assert.equal(parsed.page,3);assert.equal(parsed.published,true);assert.equal(parsed.hidden,true);

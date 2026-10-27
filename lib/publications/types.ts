@@ -1,7 +1,7 @@
 import type { Json } from "@/lib/supabase/database.types";
 import type {PublicationsAgentProject,PublicationsAIRun,DriveMedia,MediaUse,GenerationDetails} from './agent-types';
 
-export const publicationPlatforms = ["google_business_profile", "facebook", "instagram"] as const;
+export const publicationPlatforms = ["google_business_profile", "facebook", "instagram", "tiktok"] as const;
 export const publicationStatuses = ["draft", "pending_review", "approved", "rejected"] as const;
 export const deliveryStatuses = ["scheduled", "processing", "published", "retryable_error", "uncertain", "blocked", "cancelled", "simulated", "failed"] as const;
 export const jobTypes = ["generate", "regenerate", "deliver", "reconcile"] as const;
@@ -131,8 +131,8 @@ export type PublicationAgentV2RunRow = {
 // Socle lot 6 : préparation planifiée dont l'étape média ou la soumission reste à reprendre (sans IA).
 export type PublicationScheduledRunRow = { run_id: string; client_id: string; state: "open" | "done" | "gave_up"; created_at: string; updated_at: string };
 // Lot 4.3 P11-a: encrypted credential store (server role only; ciphertext as PostgreSQL hex bytea) and OAuth states.
-export type PublicationCredentialSecretRow = { reference: string; provider: "meta" | "google_business_profile"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
-export type PublicationOAuthStateRow = { id: string; state_hash: string; provider: "meta" | "google_business_profile"; client_id: string; project_id: string | null; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
+export type PublicationCredentialSecretRow = { reference: string; provider: "meta" | "google_business_profile" | "tiktok"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
+export type PublicationOAuthStateRow = { id: string; state_hash: string; provider: "meta" | "google_business_profile" | "tiktok"; client_id: string; project_id: string | null; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
 export type PublicationTables = {
   publication_credential_secrets: Table<PublicationCredentialSecretRow, "reference" | "provider" | "key_id" | "iv" | "ciphertext" | "auth_tag", never>;
   publication_oauth_states: Table<PublicationOAuthStateRow, never, never>;

@@ -26,7 +26,7 @@ const unavailable='Connexions indisponibles.';
 type Result={ok:boolean;message:string};
 type ListedConnection={id:string;provider:string;status:string;connected_at:string|null;expires_at:string|null;has_credential:boolean;accounts:Record<string,unknown>};
 // Whether each provider can be connected from this server (configuration complete). Booleans only, never values.
-function readiness():Record<ConnectionProvider,boolean>{try{return oauthReadiness(productionOAuthDeps());}catch{return {meta:false,google_business_profile:false};}}
+function readiness():Record<ConnectionProvider,boolean>{try{return oauthReadiness(productionOAuthDeps());}catch{return {meta:false,google_business_profile:false,tiktok:false};}}
 type ListedAccount={id:string;platform:string;display_name:string|null;status:string;enabled:boolean;connection_status:string;assignable:boolean;used_by_other_client?:boolean};
 const isPlatform=(v:unknown):v is PublicationPlatform=>typeof v==='string'&&(publicationPlatforms as readonly string[]).includes(v);
 // Generic server log: operation and error kind only, never a provider message (it may echo a token).
@@ -97,7 +97,7 @@ export async function getChannelPublishability(projectId:string,platform:Publica
 // then ONE atomic RPC. Provider revocation / expiry is recorded on the connection. Unavailable in P9 production.
 export async function syncPublicationAccounts(projectId:unknown,provider:unknown,deps:ConnectionDeps=productionConnectionDeps()):Promise<Result&{counts?:{inserted:number;updated:number;unavailable:number}}>{
  const {userId}=await requireAdmin();if(!isConnectionProvider(provider))return {ok:false,message:'Connexion invalide.'};
- const source=provider==='meta'?deps.meta:deps.gbp;if(!source)return {ok:false,message:OAUTH_PENDING_MESSAGE};
+ const source=provider==='meta'?deps.meta:provider==='tiktok'?null:deps.gbp;if(!source)return {ok:false,message:OAUTH_PENDING_MESSAGE};
  try{
   const project=await projectRef(projectId);if(!project)return {ok:false,message:'Projet invalide.'};
   const db=getSupabaseServerClient();

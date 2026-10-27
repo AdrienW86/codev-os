@@ -7,10 +7,10 @@ import {randomUUID} from 'node:crypto';
 // refuses: fail closed); tests use the deterministic in-memory fake (fakes.ts).
 // provider: the connection provider the secret was issued for (a read for another provider is refused).
 // subject: provider user id when strictly needed (Meta app-scoped user id for /{user}/accounts).
-export type ProviderCredential={accessToken:string;refreshToken:string|null;expiresAt:string|null;scopes:string[];provider?:'meta'|'google_business_profile';subject?:string|null};
+export type ProviderCredential={accessToken:string;refreshToken:string|null;expiresAt:string|null;scopes:string[];provider?:'meta'|'google_business_profile'|'tiktok';subject?:string|null};
 export interface CredentialVault{
  storeCredential(secret:ProviderCredential):Promise<string>;
- readCredential(reference:string,expectedProvider?:'meta'|'google_business_profile'):Promise<ProviderCredential>;
+ readCredential(reference:string,expectedProvider?:'meta'|'google_business_profile'|'tiktok'):Promise<ProviderCredential>;
  // Stores the new secret under a NEW reference and deletes the previous one.
  rotateCredential(reference:string,secret:ProviderCredential):Promise<string>;
  deleteCredential(reference:string):Promise<void>;
@@ -26,7 +26,7 @@ export function isProviderCredential(value:unknown):value is ProviderCredential{
  if(!value||typeof value!=='object')return false;const c=value as Record<string,unknown>;
  return opaque(c.accessToken,8192)&&(c.refreshToken===null||opaque(c.refreshToken,8192))&&(c.expiresAt===null||(typeof c.expiresAt==='string'&&!Number.isNaN(Date.parse(c.expiresAt))))
   &&Array.isArray(c.scopes)&&c.scopes.length<=50&&c.scopes.every(s=>typeof s==='string'&&s.length<=300)
-  &&(c.provider===undefined||c.provider==='meta'||c.provider==='google_business_profile')&&(c.subject===undefined||c.subject===null||(typeof c.subject==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(c.subject)));
+  &&(c.provider===undefined||c.provider==='meta'||c.provider==='google_business_profile'||c.provider==='tiktok')&&(c.subject===undefined||c.subject===null||(typeof c.subject==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(c.subject)));
 }
 // Production default for P9: no secret store is wired yet, so nothing can be stored or read (fail closed).
 export function unconfiguredCredentialVault():CredentialVault{

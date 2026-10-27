@@ -16,6 +16,10 @@ export function VariantPreview({variant,accountName}:{variant:SupervisionVariant
   <figcaption className="flex items-center gap-2 p-2.5"><Avatar name={accountName}/><span className="truncate text-sm font-semibold">{accountName}</span></figcaption>
   <Photo variant={variant} className="aspect-square"/>
   <p className="p-3 text-sm break-words whitespace-pre-wrap"><span className="font-semibold">{accountName}</span> {variant.text}</p></figure>;
+ if(variant.platform==='tiktok')return <figure className="relative overflow-hidden rounded-xl border border-border bg-black text-white" data-preview="tiktok">
+  <Photo variant={variant} className="aspect-[9/16] object-contain"/>
+  <figcaption className="absolute inset-x-0 bottom-0 space-y-1 bg-gradient-to-t from-black/85 to-transparent p-3 text-sm"><span className="block font-semibold">{accountName}</span>
+   <span className="block line-clamp-4 break-words whitespace-pre-wrap">{variant.text}</span></figcaption></figure>;
  if(variant.platform==='google_business_profile')return <figure className="overflow-hidden rounded-xl border border-border bg-surface" data-preview="google_business_profile">
   <figcaption className="flex items-center gap-2 p-2.5"><Avatar name={accountName}/><span className="min-w-0"><span className="block truncate text-sm font-semibold">{accountName}</span><span className="block text-xs text-muted">Fiche Google · Nouveauté</span></span></figcaption>
   <Photo variant={variant} className="aspect-[4/3]"/>

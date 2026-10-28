@@ -9,6 +9,7 @@ import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
 import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/publications/automation/scheduled";
+import { runAutoApproval } from "@/lib/publications/automation/auto-approval";
 import { processScheduledDuePublications } from "@/lib/publications/delivery/registry";
 import { purgeExportImports } from "@/lib/whatsapp/export-import";
 
@@ -20,7 +21,7 @@ export const maxDuration = 300;
 // moins, elle est sautée (« skipped ») plutôt que coupée par la plateforme. Marge pour répondre et écrire le battement.
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
-  whatsapp_exports: 0, automations: 0, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
+  whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
   search_console: 60_000, whatsapp: 75_000, media_intelligence: 60_000, publication_preparation: 120_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
@@ -62,6 +63,9 @@ async function handle(request: Request) {
   const summary = await step("automations", () => runTick(`cron-${randomUUID().slice(0, 8)}`, new Date(), { ensureGlobal: (actor) => ensureGlobalAgents(actor), jobDeadline: Math.min(deadline, startedAt.getTime() + AUTOMATIONS_BUDGET_MS) }), "Automatisations différées.");
   // Publications (socle lot 6), avant les étapes lourdes pour tenir l'heure prévue : diffusions des publications
   // approuvées par un humain, puis un envoi dû au plus. Désactivé tant que PUBLICATIONS_SCHEDULED_DELIVERY ≠ « enabled ».
+  // Validation automatique des clients qui l'ont activée (défaut d'accord N heures avant le créneau), juste avant la
+  // préparation des diffusions pour qu'une publication validée ainsi parte dans le même passage si son heure est venue.
+  const autoApproval = await step("publication_auto_approval", () => runAutoApproval(new Date()), "Validation automatique des publications différée.");
   const delivery = await step("publication_delivery_prepare", () => prepareApprovedDeliveries(process.env), "Diffusion des publications différée.");
   // Envois dus bornés par l'échéance du passage (#47) : premier envoi libre, suivants seulement s'ils tiennent dans le temps restant.
   const due = await step("publication_delivery_send", () => processScheduledDuePublications(process.env, undefined, { deadline }), "Envoi des publications différé.");
@@ -77,7 +81,7 @@ async function handle(request: Request) {
   const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(new Date(), undefined, { deadline }), "Préparation des publications différée.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { delivery, due }, publicationPreparation, whatsappExports, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, publicationPreparation, whatsappExports, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

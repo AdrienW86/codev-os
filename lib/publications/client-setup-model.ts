@@ -1,9 +1,10 @@
 // Socle Publications, lot 1 : réglages Publications d'un client (onglet « Publications » de la fiche client).
 // Pur et utilisable côté client : aucune donnée de compte autre que des libellés, aucun secret.
 export type ClientPublicationSettings={timezone:string;publishingEnabled:boolean;generationEnabled:boolean;autoPrepareEnabled:boolean;prepareLeadDays:number;
- mediaReuseAllowed:boolean;mediaReuseAfterDays:number;editorialBrief:string;requireHumanApproval:true;saved:boolean};
+ mediaReuseAllowed:boolean;mediaReuseAfterDays:number;editorialBrief:string;requireHumanApproval:true;
+ autoApproveEnabled:boolean;autoApproveHoursBefore:number;saved:boolean};
 export const DEFAULT_CLIENT_PUBLICATION_SETTINGS:ClientPublicationSettings={timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,
- prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,saved:false};
+ prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false};
 // Fuseaux proposés (France, DOM-TOM, voisins). Le fuseau courant reste proposé même s'il n'est pas dans la liste.
 export const COMMON_TIMEZONES=['Europe/Paris','Europe/Brussels','Europe/Luxembourg','Europe/Zurich','Europe/Monaco','Europe/London','Europe/Madrid','Europe/Lisbon',
  'America/Guadeloupe','America/Martinique','America/Cayenne','Indian/Reunion','Indian/Mayotte','Pacific/Noumea','Pacific/Tahiti','America/Montreal'] as const;
@@ -21,14 +22,15 @@ export function timezoneOptions(current:string|null|undefined):string[]{return c
 const TIMEZONE=/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/;
 
 type Row={timezone?:unknown;publishing_enabled?:unknown;generation_enabled?:unknown;auto_prepare_enabled?:unknown;prepare_lead_days?:unknown;
- media_reuse_allowed?:unknown;media_reuse_after_days?:unknown;editorial_brief?:unknown}|null;
+ media_reuse_allowed?:unknown;media_reuse_after_days?:unknown;editorial_brief?:unknown;auto_approve_enabled?:unknown;auto_approve_hours_before?:unknown}|null;
 // Ligne absente (aucun réglage enregistré) : valeurs par défaut sûres, tout désactivé.
 export function clientSettingsFromRow(row:Row):ClientPublicationSettings{
  if(!row)return DEFAULT_CLIENT_PUBLICATION_SETTINGS;
  const d=DEFAULT_CLIENT_PUBLICATION_SETTINGS,bool=(v:unknown,f:boolean)=>typeof v==='boolean'?v:f,int=(v:unknown,f:number)=>typeof v==='number'&&Number.isInteger(v)?v:f;
  return {timezone:typeof row.timezone==='string'?row.timezone:d.timezone,publishingEnabled:bool(row.publishing_enabled,false),generationEnabled:bool(row.generation_enabled,false),
   autoPrepareEnabled:bool(row.auto_prepare_enabled,false),prepareLeadDays:int(row.prepare_lead_days,d.prepareLeadDays),mediaReuseAllowed:bool(row.media_reuse_allowed,false),
-  mediaReuseAfterDays:int(row.media_reuse_after_days,d.mediaReuseAfterDays),editorialBrief:typeof row.editorial_brief==='string'?row.editorial_brief:'',requireHumanApproval:true,saved:true};
+  mediaReuseAfterDays:int(row.media_reuse_after_days,d.mediaReuseAfterDays),editorialBrief:typeof row.editorial_brief==='string'?row.editorial_brief:'',requireHumanApproval:true,
+  autoApproveEnabled:bool(row.auto_approve_enabled,false),autoApproveHoursBefore:int(row.auto_approve_hours_before,d.autoApproveHoursBefore),saved:true};
 }
 // Formulaire → charge utile de publication_client_settings_save (clés fermées, valeurs typées). null = invalide.
 export function clientSettingsPayload(form:{get(name:string):unknown}):{payload:Record<string,string|number|boolean>}|{error:string}{
@@ -41,9 +43,16 @@ export function clientSettingsPayload(form:{get(name:string):unknown}):{payload:
  return {payload:{timezone,publishing_enabled:on('publishing_enabled'),generation_enabled:on('auto_prepare_enabled')||on('generation_enabled'),auto_prepare_enabled:on('auto_prepare_enabled'),
   prepare_lead_days:lead,media_reuse_allowed:on('media_reuse_allowed'),media_reuse_after_days:reuseDays,editorial_brief:brief}};
 }
+// Validation automatique : case et délai (heures avant le créneau). null = délai invalide.
+export function autoApprovalPayload(form:{get(name:string):unknown}):{enabled:boolean;hoursBefore:number}|{error:string}{
+ const raw=form.get('auto_approve_hours_before'),hours=raw===null||raw===undefined||raw===''?12:Number(raw);
+ if(!Number.isInteger(hours)||hours<1||hours>72)return {error:'Le délai de validation automatique doit être compris entre 1 et 72 heures.'};
+ return {enabled:form.get('auto_approve_enabled')==='on',hoursBefore:hours};
+}
 // Résumé lisible de l'état de la préparation automatique pour la fiche client.
 export function automationSummary(s:ClientPublicationSettings,globalStop:boolean):string{
  if(!s.autoPrepareEnabled)return 'Préparation automatique suspendue : l’agent ne prépare rien seul pour ce client.';
- const base=`L’agent prépare les publications ${s.prepareLeadDays} jour${s.prepareLeadDays>1?'s':''} avant chaque créneau, puis les soumet à votre validation.`;
+ const base=`L’agent prépare les publications ${s.prepareLeadDays} jour${s.prepareLeadDays>1?'s':''} avant chaque créneau, puis les soumet à votre validation.`+
+  (s.autoApproveEnabled?` Sans action de votre part, elles sont validées automatiquement ${s.autoApproveHoursBefore} h avant leur publication (sauf TikTok et les publications que vous avez modifiées).`:'');
  return globalStop?`${base} L’arrêt général est actif : aucune diffusion n’aura lieu tant qu’il n’est pas levé.`:base;
 }

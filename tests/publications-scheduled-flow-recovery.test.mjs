@@ -446,7 +446,7 @@ test("#10 heartbeat: one row per name, closed step statuses and integer counters
   assert.equal(row.ok, false); assert.equal(row.last_failure_at, later.toISOString()); assert.equal(row.last_success_at, end.toISOString(), "last success kept");
   const read = await hb.getSchedulerHeartbeat();
   assert.deepEqual(json(read), { name: "scheduler_tick", startedAt: later.toISOString(), finishedAt: later.toISOString(), ok: false, steps: { automations: { status: "failed", ms: 3 } }, lastSuccessAt: end.toISOString(), lastFailureAt: later.toISOString() });
-  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "whatsapp", "media_intelligence", "publication_preparation"]);
+  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "whatsapp", "media_intelligence", "publication_preparation"]);
   const down = createFakeSupabase({}, { failOn: () => true });
   assert.equal(await heartbeatModule(down).recordSchedulerHeartbeat({ startedAt: start, finishedAt: end, steps: {} }), false, "a failed write never breaks the tick");
 });
@@ -466,6 +466,7 @@ function routeWith(fake, overrides = {}) {
     "@/lib/media-intelligence/service": { runMediaIntelligenceTick: mark("media_intelligence", overrides.media ?? { classified: 1 }) },
     "@/lib/publications/automation/scheduled": { prepareApprovedDeliveries: mark("publication_delivery_prepare", env => ({ disabled: env.PUBLICATIONS_SCHEDULED_DELIVERY === "enabled" ? undefined : "flag", prepared: 0 })),
       runScheduledPreparation: mark("publication_preparation", { clients: 1, skipped: { no_delegated_admin: 1 } }) },
+    "@/lib/publications/automation/auto-approval": { runAutoApproval: mark("publication_auto_approval", { approved: 0, blocked: 0, noActor: 0 }) },
     "@/lib/publications/delivery/registry": { processScheduledDuePublications: mark("publication_delivery_send", { disabled: true }) },
     "@/lib/whatsapp/export-import": { purgeExportImports: mark("whatsapp_exports", { purged: 0, failed: 0, orphans: 0 }) },
   }, { process: { env: { CRON_SECRET: "secret" } } });
@@ -477,10 +478,10 @@ test("#10 tick: a failing runTick no longer skips the other steps; heartbeat rec
   const { route, ran } = routeWith(fake, { runTick: () => { throw Error("Texte sensible du job"); } });
   const res = await route.POST(request("Bearer secret"));
   assert.equal(res.init.status, 500);
-  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "media_intelligence", "publication_preparation"]);
+  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "media_intelligence", "publication_preparation"]);
   const row = fake.tables.scheduler_heartbeats[0];
   assert.equal(row.ok, false);
-  assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), { whatsapp_exports: "ok", automations: "failed", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "ok",
+  assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), { whatsapp_exports: "ok", automations: "failed", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "ok",
     search_console: "ok", whatsapp: "disabled", media_intelligence: "ok", publication_preparation: "ok" });
   assert.deepEqual(json(row.steps.publication_preparation.counts), { clients: 1, skipped_no_delegated_admin: 1 });
   assert.doesNotMatch(JSON.stringify(fake.tables.scheduler_heartbeats), /Texte|sensible/);
@@ -492,8 +493,8 @@ test("#10 tick: shared deadline (maxDuration) skips the heavy later steps when t
   const realNow = Date.now;
   const { route, ran } = routeWith(fake, { runTick: () => { const t = realNow(); Date.now = () => t + 250_000; return { processed: 1 }; } });
   try { await route.GET(request("Bearer secret")); } finally { Date.now = realNow; }
-  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_delivery_prepare", "push"], "35 s left: only the light steps run");
+  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "push"], "35 s left: only the light steps run");
   const statuses = Object.fromEntries(Object.entries(fake.tables.scheduler_heartbeats[0].steps).map(([k, v]) => [k, v.status]));
-  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", search_console: "skipped", whatsapp: "skipped", media_intelligence: "skipped", publication_preparation: "skipped" });
+  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", search_console: "skipped", whatsapp: "skipped", media_intelligence: "skipped", publication_preparation: "skipped" });
   assert.equal(fake.tables.scheduler_heartbeats[0].ok, true, "skipped is not a failure");
 });

@@ -283,12 +283,17 @@ test('P8 scope: one migration, no publisher / delivery / job / cron / security d
   assert.doesNotMatch(src(f).replace(/\/\/[^\n]*/g,''),/openai|setInterval|cron|publication_deliveries|publication_jobs|getPublicUrl|console\.log/i,f);
  for(const f of readdirSync(resolve(root,'lib/publications/agent-v2')))assert.doesNotMatch(src('lib/publications/agent-v2/'+f).replace(/\/\/[^\n]*/g,''),/publications-drive|google-drive|googleapis/i,`${f}: Drive only through the injectable media source`);});
 
-test('manual image: PNG and WebP become JPEG without crop or resize, JPEG stays untouched, junk refused',async()=>{
+test('manual image: PNG and WebP become JPEG without crop, at most 1080 px wide (TikTok), JPEG stays untouched, junk refused',async()=>{
  for(const format of ['png','webp']){
   const out=await transform.toPublishableJpeg(await image(format));
   assert.equal(out.mime_type,'image/jpeg');const meta=await sharp(Buffer.from(out.bytes)).metadata();
   assert.equal(meta.format,'jpeg');assert.equal(meta.width,96);assert.equal(meta.height,64);
  }
  const jpeg=await image('jpeg');assert.equal((await transform.toPublishableJpeg(jpeg)).bytes,jpeg,'already JPEG: same bytes');
+ for(const [format,width,height,ew,eh] of [['jpeg',1200,1500,1080,1350],['png',2000,1000,1080,540],['jpeg',800,2400,640,1920]]){
+  const big=new Uint8Array(await sharp({create:{width,height,channels:3,background:'#c84'}})[format]().toBuffer());
+  const meta=await sharp(Buffer.from((await transform.toPublishableJpeg(big)).bytes)).metadata();
+  assert.deepEqual([meta.format,meta.width,meta.height],['jpeg',ew,eh],`${format} ${width}×${height} fits 1080×1920`);
+ }
  await assert.rejects(()=>transform.toPublishableJpeg(new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12])));
 });

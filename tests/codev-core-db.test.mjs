@@ -60,3 +60,9 @@ test("concurrent workers never claim the same job", { skip }, async () => {
   assert.equal(new Set(ids).size, ids.length, "no job claimed twice");
   assert.equal(ids.length, 40, "all due jobs claimed exactly once");
 });
+
+test("audited mutations: write and audit log commit together, stale or refused writes leave no trace (audit P1-03/P1-04)", { skip }, () => {
+  const env = rebuild();
+  const result = psql(env, read("supabase/tests/audited-mutations.sql"));
+  assert.equal(result.status, 0, result.stderr);
+});

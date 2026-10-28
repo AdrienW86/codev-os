@@ -41,6 +41,14 @@ function setup({ deny = false, data = null, error = null, throwStorage = false, 
   const repository = load("lib/clients/data.ts", {
     "@/lib/require-admin": { requireAdmin: guard },
     "@/lib/audit-logs": { writeAuditLog: async (entry) => calls.push({ audit: entry }) },
+    // Création + journal en une transaction (audit P1-03) : même stockage simulé que les lectures.
+    "@/lib/core/audited-mutation": { auditedMutation: async (m) => {
+      calls.push("storage");
+      if (throwStorage) throw new Error("private raw error");
+      calls.push({ insert: m.values, audit: m.audit });
+      if (error) throw Object.assign(new Error("Écriture auditée refusée."), { code: "XX000" });
+      return data;
+    } },
     "@/lib/supabase/server": { getSupabaseServerClient: () => {
       calls.push("storage");
       if (throwStorage) throw new Error("private raw error");

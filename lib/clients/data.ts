@@ -2,7 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { writeAuditLog } from "@/lib/audit-logs";
+import { auditedMutation } from "@/lib/core/audited-mutation";
 import { validateClientForm, clientFieldLimits } from "./validation";
 import type { Client, ClientFormState } from "./types";
 
@@ -50,7 +50,7 @@ export async function getClientOrNotFound(id: string): Promise<Client> {
 export async function createClientRecord(formData: FormData): Promise<
   { ok: true; client: Client } | { ok: false; state: ClientFormState }
 > {
-  await requireAdmin();
+  const { userId } = await requireAdmin();
   const validation = validateClientForm(formData);
   const values: NonNullable<ClientFormState["values"]> = {};
   for (const field of Object.keys(clientFieldLimits) as (keyof typeof clientFieldLimits)[]) {
@@ -59,8 +59,10 @@ export async function createClientRecord(formData: FormData): Promise<
   }
   if (!validation.ok) return { ok: false, state: { values, errors: validation.errors, message: "Corrigez les champs indiqués." } };
   try {
-    const { data, error } = await getSupabaseServerClient().from("clients").insert(validation.data).select(columns).single();
-    if (error || !data) throw new Error();
+    // Création et journal dans la même transaction (audit P1-03).
+    const data = await auditedMutation<Client>({ table: "clients", operation: "insert", values: validation.data, columns: columns.split(","),
+      audit: { action: "client.created", resource_type: "client", actor_type: "admin", actor_id: userId } });
+    if (!data) throw new Error();
     return { ok: true, client: data };
   } catch {
     console.error("[clients] Échec du stockage (create).");
@@ -84,22 +86,9 @@ export async function updateClientRecord(formData: FormData): Promise<
   if (!validation.ok) return { ok: false, state: { values, errors: validation.errors, message: "Corrigez les champs indiqués." } };
 
   try {
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("clients").select(columns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, state: { message: "Client indisponible.", values } };
-    const { data: after, error: updateError } = await supabase.from("clients").update(validation.data).eq("id", id).select(columns).single();
-    if (updateError || !after) throw new Error();
-    await writeAuditLog({
-      action: "client.updated",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "client",
-      resource_id: id,
-      before_data: before,
-      after_data: after,
-      metadata: {},
-    });
+    const after = await auditedMutation<Client>({ table: "clients", operation: "update", id, values: validation.data, columns: columns.split(","), auditColumns: columns.split(","),
+      audit: { action: "client.updated", resource_type: "client", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!after) return { ok: false, state: { message: "Client indisponible.", values } };
     return { ok: true, client: after };
   } catch {
     console.error("[clients] Échec du stockage (update).");
@@ -111,22 +100,9 @@ export async function deleteClient(id: string): Promise<{ ok: true } | { ok: fal
   const { userId } = await requireAdmin();
   if (!uuid.test(id)) return { ok: false, message: "Impossible de supprimer ce client. Actualisez la liste et réessayez." };
   try {
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("clients").select(columns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, message: "Impossible de supprimer ce client. Actualisez la liste et réessayez." };
-    const { data: deleted, error: deleteError } = await supabase.from("clients").delete().eq("id", id).select("id").maybeSingle();
-    if (deleteError || !deleted) throw new Error();
-    await writeAuditLog({
-      action: "client.deleted",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "client",
-      resource_id: id,
-      before_data: before,
-      after_data: null,
-      metadata: {},
-    });
+    const deleted = await auditedMutation({ table: "clients", operation: "delete", id, columns: ["id"], auditColumns: columns.split(","),
+      audit: { action: "client.deleted", resource_type: "client", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!deleted) return { ok: false, message: "Impossible de supprimer ce client. Actualisez la liste et réessayez." };
     return { ok: true };
   } catch {
     console.error("[clients] Échec du stockage (delete).");

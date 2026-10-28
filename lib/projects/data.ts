@@ -1,7 +1,7 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { writeAuditLog } from "@/lib/audit-logs";
+import { auditedMutation, plainColumns } from "@/lib/core/audited-mutation";
 import type { CreateProjectResult, DeleteProjectResult, ProjectRecord } from "./types";
 import { validateProjectForm } from "./validation";
 import {readAllRows} from '@/lib/supabase/pagination';
@@ -42,7 +42,7 @@ export async function getProjectById(id: string): Promise<ProjectRecord | null> 
 }
 
 export async function createProject(formData: FormData): Promise<CreateProjectResult> {
-  await requireAdmin();
+  const { userId } = await requireAdmin();
   const validation = validateProjectForm(formData);
   if (!validation.ok) return { ok: false, state: validation.state };
 
@@ -52,8 +52,10 @@ export async function createProject(formData: FormData): Promise<CreateProjectRe
     if (clientError) throw new Error();
     if (!client) return { ok: false, state: { errors: { client_id: "Ce client n’existe pas." }, values: validation.values } };
 
-    const { data, error } = await supabase.from("projects").insert(validation.data).select("id").single();
-    if (error || !data) throw new Error();
+    // Création et journal dans la même transaction (audit P1-03).
+    const data = await auditedMutation<{ id: string }>({ table: "projects", operation: "insert", values: validation.data, columns: ["id"], auditColumns: plainColumns(projectColumns),
+      audit: { action: "project.created", resource_type: "project", actor_type: "admin", actor_id: userId } });
+    if (!data) throw new Error();
     return { ok: true, id: data.id };
   } catch { storageFailure("create"); }
 }
@@ -68,22 +70,9 @@ export async function updateProject(formData: FormData): Promise<CreateProjectRe
 
   try {
     if (!await clientExists(validation.data.client_id)) return { ok: false, state: { errors: { client_id: "Ce client n’existe pas." }, values: validation.values } };
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("projects").select(projectColumns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, state: { errors: { id: "Projet indisponible." }, values: validation.values } };
-    const { data: after, error: updateError } = await supabase.from("projects").update(validation.data).eq("id", id).select(projectColumns).single();
-    if (updateError || !after) throw new Error();
-    await writeAuditLog({
-      action: "project.updated",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "project",
-      resource_id: id,
-      before_data: before,
-      after_data: after,
-      metadata: {},
-    });
+    const after = await auditedMutation({ table: "projects", operation: "update", id, values: validation.data, columns: ["id"], auditColumns: plainColumns(projectColumns),
+      audit: { action: "project.updated", resource_type: "project", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!after) return { ok: false, state: { errors: { id: "Projet indisponible." }, values: validation.values } };
     return { ok: true, id };
   } catch {
     console.error("[projects] Échec du stockage (update).");
@@ -95,22 +84,9 @@ export async function deleteProject(id: string): Promise<DeleteProjectResult> {
   const { userId } = await requireAdmin();
   if (!uuid.test(id)) return { ok: false, message: "Impossible de supprimer ce projet. Actualisez la liste et réessayez." };
   try {
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("projects").select(projectColumns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, message: "Impossible de supprimer ce projet. Actualisez la liste et réessayez." };
-    const { data: deleted, error: deleteError } = await supabase.from("projects").delete().eq("id", id).select("id").maybeSingle();
-    if (deleteError || !deleted) throw new Error();
-    await writeAuditLog({
-      action: "project.deleted",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "project",
-      resource_id: id,
-      before_data: before,
-      after_data: null,
-      metadata: {},
-    });
+    const deleted = await auditedMutation({ table: "projects", operation: "delete", id, columns: ["id"], auditColumns: plainColumns(projectColumns),
+      audit: { action: "project.deleted", resource_type: "project", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!deleted) return { ok: false, message: "Impossible de supprimer ce projet. Actualisez la liste et réessayez." };
     return { ok: true };
   } catch {
     console.error("[projects] Échec du stockage (delete).");

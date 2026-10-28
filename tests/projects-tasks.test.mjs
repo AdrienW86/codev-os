@@ -66,7 +66,7 @@ function setup({ deny = false, clients = [{ id: clientId }], projects = [], task
   const logs = [];
   const rows = { clients, projects, tasks };
   const inserts = {};
-  const guard = async () => { calls.push("auth"); if (deny) throw new Error("access-denied"); };
+  const guard = async () => { calls.push("auth"); if (deny) throw new Error("access-denied"); return { userId: "user_test_admin" }; };
 
   function queryFor(table) {
     const filters = [];
@@ -95,6 +95,9 @@ function setup({ deny = false, clients = [{ id: clientId }], projects = [], task
     "@/lib/require-admin": { requireAdmin: guard },
     "@/lib/audit-logs": { writeAuditLog: async (entry) => calls.push({ audit: entry }) },
     "@/lib/supabase/server": { getSupabaseServerClient: () => supabase },
+    // Création + journal en une transaction (audit P1-03).
+    "@/lib/core/audited-mutation": { plainColumns: (select) => select.split(",").filter((c) => /^[a-z_]+$/.test(c)),
+      auditedMutation: async (m) => { inserts[m.table] = m.values; calls.push(["insert", m.table, m.values], { audit: m.audit }); return { id: createdId }; } },
   };
   const projectRepository = load("lib/projects/data.ts", { ...commonMocks, "./validation": projectValidation }, logs);
   const taskRepository = load("lib/tasks/data.ts", { ...commonMocks, "./validation": taskValidation }, logs);

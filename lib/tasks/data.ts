@@ -1,7 +1,7 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { writeAuditLog } from "@/lib/audit-logs";
+import { auditedMutation, plainColumns } from "@/lib/core/audited-mutation";
 import type { CreateTaskResult, TaskRecord } from "./types";
 import { validateTaskForm } from "./validation";
 import {readAllRows} from '@/lib/supabase/pagination';
@@ -42,7 +42,7 @@ export async function listTasksByProject(projectId: string): Promise<TaskRecord[
 }
 
 export async function createTask(formData: FormData): Promise<CreateTaskResult> {
-  await requireAdmin();
+  const { userId } = await requireAdmin();
   const validation = validateTaskForm(formData);
   if (!validation.ok) return { ok: false, state: validation.state };
 
@@ -58,8 +58,10 @@ export async function createTask(formData: FormData): Promise<CreateTaskResult> 
       if (!project) return { ok: false, state: { errors: { project_id: "Ce projet n’appartient pas au client sélectionné." }, values: validation.values } };
     }
 
-    const { data, error } = await supabase.from("tasks").insert(validation.data).select("id").single();
-    if (error || !data) throw new Error();
+    // Création et journal dans la même transaction (audit P1-03).
+    const data = await auditedMutation<{ id: string }>({ table: "tasks", operation: "insert", values: validation.data, columns: ["id"], auditColumns: plainColumns(taskColumns),
+      audit: { action: "task.created", resource_type: "task", actor_type: "admin", actor_id: userId } });
+    if (!data) throw new Error();
     return { ok: true, id: data.id };
   } catch { storageFailure("create"); }
 }
@@ -106,23 +108,9 @@ export async function updateTask(formData: FormData): Promise<CreateTaskResult> 
       if (!agent) return { ok: false, state: { errors: { assignee_id: "L’agent associé est indisponible." }, values: validation.values } };
     }
 
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("tasks").select(taskColumns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, state: { errors: { id: "Tâche indisponible." }, values: validation.values } };
-    const updateData = { ...validation.data };
-    const { data: after, error: updateError } = await supabase.from("tasks").update(updateData).eq("id", id).select(taskColumns).single();
-    if (updateError || !after) throw new Error();
-    await writeAuditLog({
-      action: "task.updated",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "task",
-      resource_id: id,
-      before_data: before,
-      after_data: after,
-      metadata: {},
-    });
+    const after = await auditedMutation({ table: "tasks", operation: "update", id, values: validation.data, columns: ["id"], auditColumns: plainColumns(taskColumns),
+      audit: { action: "task.updated", resource_type: "task", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!after) return { ok: false, state: { errors: { id: "Tâche indisponible." }, values: validation.values } };
     return { ok: true, id };
   } catch {
     console.error("[tasks] Échec du stockage (update).");
@@ -134,22 +122,9 @@ export async function deleteTask(id: string): Promise<{ ok: true } | { ok: false
   const { userId } = await requireAdmin();
   if (!uuid.test(id)) return { ok: false, message: "Impossible de supprimer cette tâche. Actualisez la liste et réessayez." };
   try {
-    const supabase = getSupabaseServerClient();
-    const { data: before, error: readError } = await supabase.from("tasks").select(taskColumns).eq("id", id).maybeSingle();
-    if (readError) throw new Error();
-    if (!before) return { ok: false, message: "Impossible de supprimer cette tâche. Actualisez la liste et réessayez." };
-    const { data: deleted, error: deleteError } = await supabase.from("tasks").delete().eq("id", id).select("id").maybeSingle();
-    if (deleteError || !deleted) throw new Error();
-    await writeAuditLog({
-      action: "task.deleted",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "task",
-      resource_id: id,
-      before_data: before,
-      after_data: null,
-      metadata: {},
-    });
+    const deleted = await auditedMutation({ table: "tasks", operation: "delete", id, columns: ["id"], auditColumns: plainColumns(taskColumns),
+      audit: { action: "task.deleted", resource_type: "task", resource_id: id, actor_type: "admin", actor_id: userId } });
+    if (!deleted) return { ok: false, message: "Impossible de supprimer cette tâche. Actualisez la liste et réessayez." };
     return { ok: true };
   } catch {
     console.error("[tasks] Échec du stockage (delete).");

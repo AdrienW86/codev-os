@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { fakeAuditedMutationModule } from "./helpers/fake-audited-mutation.mjs";
 
 const clientId = "d94e386a-653e-478b-80f1-05d442baed92";
 const projectId = "2e3bf5a8-040e-4d12-91be-6a2da2f99ef0";
@@ -137,7 +138,9 @@ function setup({ deny = false, foreignProject = false, failDelete = null, client
 
   const supabase = { from: (table) => { calls.push(["from", table]); return queryFor(table); } };
   const audit = { writeAuditLog: async (entry) => audits.push(copy(entry)) };
-  const commonMocks = { "@/lib/require-admin": { requireAdmin: guard }, "@/lib/supabase/server": { getSupabaseServerClient: () => supabase }, "@/lib/audit-logs": audit, "@/lib/supabase/pagination":load("lib/supabase/pagination.ts") };
+  // Clients, projets et tâches écrivent mutation + journal en une transaction (audit P1-03) : double de la RPC.
+  const audited = fakeAuditedMutationModule(rows, audits, { fail: (m) => m.operation === "delete" && failDelete === m.table ? "23503" : false, onCall: (m) => calls.push(["from", m.table]) });
+  const commonMocks = { "@/lib/require-admin": { requireAdmin: guard }, "@/lib/supabase/server": { getSupabaseServerClient: () => supabase }, "@/lib/audit-logs": audit, "@/lib/core/audited-mutation": audited, "@/lib/supabase/pagination":load("lib/supabase/pagination.ts") };
   const clientRepository = load("lib/clients/data.ts", { ...commonMocks, "./validation": load("lib/clients/validation.ts"), "next/navigation": { notFound: () => { throw new Error("not-found"); } } }, logs);
   const projectRepository = load("lib/projects/data.ts", { ...commonMocks, "./validation": load("lib/projects/validation.ts") }, logs);
   const taskRepository = load("lib/tasks/data.ts", { ...commonMocks, "./validation": load("lib/tasks/validation.ts") }, logs);

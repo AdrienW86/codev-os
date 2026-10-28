@@ -7,7 +7,7 @@ import {loadChannelConfiguration} from './channel-configuration';
 import {getAvailablePublicationAccounts,getProjectConnectionConfiguration,type ProjectConnectionConfiguration} from './connections/service';
 import type {AccountOption} from './connections/model';
 import type {ChannelConfigurationView} from './channel-configuration-model';
-import {clientSettingsFromRow,clientSettingsPayload,type ClientPublicationSettings} from './client-setup-model';
+import {autoApprovalPayload,clientSettingsFromRow,clientSettingsPayload,type ClientPublicationSettings} from './client-setup-model';
 import type {PublicationsAgentProject} from './agent-types';
 import {isPublicationUuid} from './validation';
 
@@ -58,7 +58,10 @@ export async function ensureClientPublicationsProject(clientId:unknown):Promise<
 export async function saveClientPublicationSettings(clientId:unknown,form:FormData):Promise<{ok:boolean;message:string}>{
  const {userId}=await requireAdmin();if(!isPublicationUuid(clientId))return {ok:false,message:'Client invalide.'};
  const parsed=clientSettingsPayload(form);if('error' in parsed)return {ok:false,message:parsed.error};
+ const auto=autoApprovalPayload(form);if('error' in auto)return {ok:false,message:auto.error};
  const {error}=await getSupabaseServerClient().rpc('publication_client_settings_save',{p_client_id:clientId,p_settings:parsed.payload,p_actor_id:userId});
  if(error)return {ok:false,message:error.code==='23514'?'Valeur refusée (fuseau horaire ou délai invalide).':'Réglages non enregistrés. Réessayez.'};
+ const saved=await getSupabaseServerClient().rpc('publication_auto_approval_save',{p_client_id:clientId,p_enabled:auto.enabled,p_hours_before:auto.hoursBefore,p_actor_id:userId});
+ if(saved.error)return {ok:false,message:'Réglages enregistrés, mais pas la validation automatique. Réessayez.'};
  return {ok:true,message:'Réglages Publications enregistrés.'};
 }

@@ -10,7 +10,7 @@ const model=load('lib/publications/client-setup-model.ts');
 
 test('model: safe defaults without a row, typed parsing, human approval always required',()=>{
  const d=model.clientSettingsFromRow(null);
- assert.deepEqual(json(d),{timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,saved:false});
+ assert.deepEqual(json(d),{timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false});
  const s=model.clientSettingsFromRow({timezone:'Indian/Reunion',publishing_enabled:true,auto_prepare_enabled:'yes',prepare_lead_days:5,editorial_brief:'Ton sobre',require_human_approval:false});
  assert.equal(s.timezone,'Indian/Reunion');assert.equal(s.publishingEnabled,true);assert.equal(s.autoPrepareEnabled,false,'non-boolean ignored');assert.equal(s.prepareLeadDays,5);assert.equal(s.requireHumanApproval,true);assert.equal(s.saved,true);
  const ok=model.clientSettingsPayload(form({timezone:'Europe/Paris',prepare_lead_days:'4',media_reuse_after_days:'90',editorial_brief:'Brief',auto_prepare_enabled:'on'}));
@@ -18,6 +18,9 @@ test('model: safe defaults without a row, typed parsing, human approval always r
  assert.ok(!('require_human_approval' in ok.payload),'human approval is never sent');
  for(const [k,v] of [['timezone','../etc'],['prepare_lead_days','0'],['prepare_lead_days','15'],['prepare_lead_days','2.5'],['media_reuse_after_days','10'],['editorial_brief','x'.repeat(10001)]])
   assert.ok('error' in model.clientSettingsPayload(form({timezone:'Europe/Paris',prepare_lead_days:'3',media_reuse_after_days:'180',editorial_brief:'',[k]:v})),`${k}=${String(v).slice(0,10)} refused`);
+ assert.deepEqual(json(model.autoApprovalPayload(form({auto_approve_enabled:'on',auto_approve_hours_before:'24'}))),{enabled:true,hoursBefore:24});
+ for(const v of ['0','73','1.5','x'])assert.ok('error' in model.autoApprovalPayload(form({auto_approve_hours_before:v})),`hours=${v} refused`);
+ assert.match(model.automationSummary({...d,autoPrepareEnabled:true,autoApproveEnabled:true,autoApproveHoursBefore:12},false),/validées automatiquement 12 h avant.*sauf TikTok/);
  assert.deepEqual(json(model.timezoneOptions('Asia/Tokyo').slice(0,2)),['Asia/Tokyo','Europe/Paris']);assert.equal(model.timezoneOptions('Europe/Paris')[0],'Europe/Paris');
  assert.match(model.automationSummary({...d,autoPrepareEnabled:false},false),/suspendue/);
  assert.match(model.automationSummary({...d,autoPrepareEnabled:true,prepareLeadDays:2},true),/2 jours avant chaque créneau.*validation.*arrêt général est actif/s);
@@ -44,7 +47,8 @@ test('service: idempotent project ensure and audited settings save, actor from t
  h=service(()=>({data:uid(4,1),error:null}));
  const saved=await h.m.saveClientPublicationSettings(C,form({timezone:'Europe/Paris',prepare_lead_days:'3',media_reuse_after_days:'180',editorial_brief:'',publishing_enabled:'on',actor_id:'user_evil'}));
  assert.equal(saved.ok,true);assert.equal(h.calls[0][0],'publication_client_settings_save');assert.equal(h.calls[0][1].p_actor_id,'user_admin');assert.equal(h.calls[0][1].p_settings.publishing_enabled,true);
- assert.equal((await h.m.saveClientPublicationSettings(C,form({timezone:'x',prepare_lead_days:'3',media_reuse_after_days:'180',editorial_brief:''}))).ok,false);assert.equal(h.calls.length,1,'invalid form: no RPC');
+ assert.deepEqual(json(h.calls[1]),['publication_auto_approval_save',{p_client_id:C,p_enabled:false,p_hours_before:12,p_actor_id:'user_admin'}],'auto approval saved, off by default');
+ assert.equal((await h.m.saveClientPublicationSettings(C,form({timezone:'x',prepare_lead_days:'3',media_reuse_after_days:'180',editorial_brief:''}))).ok,false);assert.equal(h.calls.length,2,'invalid form: no RPC');
  h=service(()=>({data:null,error:{code:'23514'}}));assert.match((await h.m.saveClientPublicationSettings(C,form({timezone:'Europe/Paris',prepare_lead_days:'3',media_reuse_after_days:'180',editorial_brief:''}))).message,/Valeur refusée/);
 });
 
@@ -71,12 +75,12 @@ test('actions: refused during a simulation, ensure redirects to the client tab',
  await a.saveChannelRulesAction({},form({project_id:P,platform:'instagram',rules:'Pas de hashtag inventé'}));assert.deepEqual(json(calls.find(c=>c[0]==='rules')),['rules',P,'instagram','Pas de hashtag inventé']);
 });
 
-test('panel: start, settings with locked human approval, no identifier other than the client',()=>{
+test('panel: start, settings with opt-in auto approval (never TikTok), no identifier other than the client',()=>{
  const p=load('components/clients/client-publications-panel.tsx',{'@/app/(cockpit)/clients/[id]/publications-actions':{ensureClientPublicationsAction:async()=>({}),saveClientPublicationSettingsAction:async()=>({})}});
  const start=renderToStaticMarkup(jsx.jsx(p.ClientPublicationsSetupStart,{clientId:C}));
  assert.match(start,/Configurer les publications/);assert.match(start,/Rien n’est publié sans votre validation/);
  const html=renderToStaticMarkup(jsx.jsx(p.ClientPublicationSettingsForm,{clientId:C,settings:{...model.clientSettingsFromRow(null),autoPrepareEnabled:true},globalStop:true}));
- assert.match(html,/Validation humaine obligatoire/);assert.match(html,/type="checkbox" disabled="" readOnly="" checked=""/);assert.doesNotMatch(html,/name="require_human_approval"/);
+ assert.match(html,/Valider automatiquement si je n’agis pas/);assert.match(html,/name="auto_approve_enabled"/);assert.match(html,/name="auto_approve_hours_before"/);assert.match(html,/TikTok reste toujours en validation manuelle/);assert.doesNotMatch(html,/name="require_human_approval"/);
  assert.match(html,/Préparation automatique active/);assert.match(html,/Arrêt général actif/);assert.match(html,/name="prepare_lead_days"/);assert.match(html,/name="editorial_brief"/);
  const navigation=renderToStaticMarkup(jsx.jsx(p.ClientPublicationsProjectPicker,{clientId:C,projects:[{id:P,name:'A'}],current:P}));
  assert.doesNotMatch(navigation,/aria-label="Projet Publications"/,'one project needs no project switcher');

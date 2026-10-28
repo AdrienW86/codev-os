@@ -24,6 +24,8 @@ export type PublicationClientSettings = Updated & {
   client_id: string; timezone: string; generation_enabled: boolean;
   publishing_enabled: boolean; editorial_brief: string; weekly_slots: Json;
   auto_prepare_enabled: boolean; prepare_lead_days: number; media_reuse_allowed: boolean; media_reuse_after_days: number; require_human_approval: boolean;
+  // Validation automatique (défaut d'accord) : désactivée par défaut ; heures avant le créneau.
+  auto_approve_enabled: boolean; auto_approve_hours_before: number;
   // Socle lot 6 : rotation de la préparation automatique (écrit par le planificateur uniquement).
   last_auto_prepared_at: string | null;
 };
@@ -178,6 +180,9 @@ export type PublicationFunctions = {
   publication_editorial_justification_record:{Args:{p_run_id:string;p_justification:Json;p_actor_id:string};Returns:Json};
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_remove:{Args:{p_publication_id:string;p_actor_id:string};Returns:number};
+  publication_auto_approval_save:{Args:{p_client_id:string;p_enabled:boolean;p_hours_before:number;p_actor_id:string};Returns:undefined};
+  publication_auto_approval_candidates:{Args:{p_now:string;p_limit:number};Returns:{publication_id:string;revision_id:string;client_id:string;scheduled_for:string}[]};
+  publication_auto_approve:{Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_tiktok_settings_save:{Args:{p_publication_id:string;p_revision_id:string;p_privacy_level:string;p_allow_comment:boolean;p_brand_organic:boolean;p_brand_content:boolean;p_actor_id:string};Returns:undefined};
   publication_create_from_occurrence:{Args:{p_occurrence_id:string;p_editorial_group_id:string|null;p_new_group_subject:string|null;p_subject:string;p_text_content:string;p_metadata:Json;p_actor_id:string};Returns:Json};
   publication_occurrence_skip:{Args:{p_occurrence_id:string;p_reason:string;p_actor_id:string};Returns:string};

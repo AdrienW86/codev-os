@@ -8,6 +8,7 @@ import {missingMediaMessage,revisionChannelsWithoutMedia,type MediaRuleDb} from 
 import {getPublicationProjectChannels,publicationChannelLock} from "./project-channels";
 import {projectAllowsPlatform} from "./channels";
 import {parseTikTokSettings} from "./tiktok-settings";
+import {toPublishableJpeg} from "./media/transform";
 import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm,platformLabels} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
@@ -99,7 +100,10 @@ export async function uploadImage(form:FormData):Promise<{message:string;staged?
  if(!isPublicationUuid(id)||!isPublicationUuid(revision)||!(file instanceof File)||file.size<12||file.size>MAX_IMAGE_BYTES||form.get("rights")!=="on"||typeof provenance!=="string"||!provenance.trim()||provenance.length>2000)return {message:"Image requise (JPEG, PNG ou WebP, 768 Ko maximum), provenance et droits confirmés obligatoires."};
  const lock=await publicationChannelLock(id);if(lock)return {message:lock};
  const db=getSupabaseServerClient();const pub=await db.from("publications").select("client_id,current_revision_id").eq("id",id).single();if(pub.error||pub.data.current_revision_id!==revision)return {message:"Révision périmée. Rechargez la publication."};
- const bytes=new Uint8Array(await file.arrayBuffer());const mime=imageMime(bytes);if(!mime||mime!==file.type)return {message:"Le contenu du fichier ne correspond pas à un format image accepté."};
+ const original=new Uint8Array(await file.arrayBuffer());if(!imageMime(original)||imageMime(original)!==file.type)return {message:"Le contenu du fichier ne correspond pas à un format image accepté."};
+ // PNG et WebP convertis en JPEG : Instagram et TikTok n'acceptent pas le PNG à la diffusion.
+ let bytes:Uint8Array;try{bytes=(await toPublishableJpeg(original)).bytes;}catch{return {message:"Image illisible ou trop lourde une fois convertie : essayez un JPEG."};}
+ const mime="image/jpeg";
  const asset=randomUUID(),path=`${pub.data.client_id}/${id}/${asset}`;const upload=await db.storage.from(IMAGE_BUCKET).upload(path,bytes,{contentType:mime,upsert:false});if(upload.error)return {message:"Upload impossible. Vérifiez le stockage privé Publications."};
  const registered=await db.rpc("publication_register_image",{p_publication_id:id,p_revision_id:revision,p_asset_id:asset,p_path:path,p_hash:createHash("sha256").update(bytes).digest("hex"),p_mime:mime,p_provenance:provenance.trim(),p_actor_id:userId});
  if(registered.error){await db.storage.from(IMAGE_BUCKET).remove([path]);return {message:failed};}

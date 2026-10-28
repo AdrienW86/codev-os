@@ -205,11 +205,13 @@ test('Enregistrer: one saveDraft RPC with the expected revision creates a new ma
  for(const [error,message] of [[{code:'55000',message:'Explicit rescheduling required'},'Cette date est pilotée par le calendrier.'],[{code:'55000',message:'Resolve deliveries first'},'Un envoi est en cours ou terminé : modification impossible.'],[{code:'40001',message:'Stale draft'},'La publication a changé. Rechargez avant de modifier.']]){
   const failing=fakeDb({projects:[{id:P1,client_id:C1,type:'Réseaux sociaux'}]},{rpcError:error});const r=await realWorkspace(failing).saveDraft(draftForm());assert.equal(r.id,undefined);assert.equal(r.message,message);assert.ok(!r.message.includes(error.message));}});
 
-test('upload: private bucket, byte check, rights, returns assetId + short-lived preview + mime and never the storage path',async()=>{
- const png=new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0,0,0,0,0]);
+test('upload: private bucket, byte check, PNG converted to JPEG, rights, returns assetId + short-lived preview + mime and never the storage path',async()=>{
+ // Vraie image PNG : elle est convertie en JPEG à l'upload (Instagram et TikTok refusent le PNG).
+ const png=new Uint8Array(await native('sharp')({create:{width:8,height:8,channels:3,background:'#c84'}}).png().toBuffer());
  const form=(extra={})=>{const f=new FormData();f.set('publication_id',PUB);f.set('revision_id',R2);f.set('image',new File([png],'photo.png',{type:'image/png'}));f.set('provenance','Photo du client');f.set('rights','on');for(const [k,v] of Object.entries(extra))f.set(k,v);return f;};
  const fake=fakeDb({publications:[{id:PUB,client_id:C1,current_revision_id:R2}]});const result=await realWorkspace(fake).uploadImage(form());
- assert.deepEqual(json(result.staged),{assetId:ASSET,previewUrl:signed(storagePath)+'&ttl=120',mime:'image/png'});
+ assert.deepEqual(json(result.staged),{assetId:ASSET,previewUrl:signed(storagePath)+'&ttl=120',mime:'image/jpeg'});
+ assert.equal(fake.writes[1][2].p_mime,'image/jpeg','stored as JPEG');
  assert.deepEqual(fake.writes.map(w=>w.slice(0,2)),[['upload','publication-images'],['rpc','publication_register_image']]);assert.equal(fake.writes[1][2].p_path,storagePath);
  assert.ok(!JSON.stringify(Object.keys(result.staged)).includes('path'));
  const noRights=fakeDb({publications:[{id:PUB,client_id:C1,current_revision_id:R2}]});assert.equal((await realWorkspace(noRights).uploadImage(form({rights:''}))).staged,undefined);assert.equal(noRights.writes.length,0);

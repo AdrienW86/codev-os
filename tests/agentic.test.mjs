@@ -4,6 +4,7 @@ import { test } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import * as zod from "zod";
+import { fakeAuditedMutationModule } from "./helpers/fake-audited-mutation.mjs";
 
 const agentId = "c7d93a42-4db1-4eb3-9b0a-3dcbeb4bd879";
 const clientId = "d94e386a-653e-478b-80f1-05d442baed92";
@@ -105,7 +106,10 @@ function setup({ deny = false, missingAgent = false, missingClient = false, fail
   const recommendationRepository = load("lib/recommendations/data.ts", { ...common, "./validation": recommendationValidation }, logs);
   const messageRepository = load("lib/agent-messages/data.ts", { ...common, "@/lib/recommendations/validation": recommendationValidation }, logs);
   const runRepository = load("lib/agent-runs/data.ts", { ...common, "@/lib/recommendations/data": recommendationRepository, "@/lib/agents/validation": agentValidation }, logs);
-  const actionRepository = load("lib/actions/data.ts", { ...common, "./validation": actionValidation, "./registry": actionRegistry }, logs);
+  // Actions : mutation + journal en une transaction (audit P1-03) ; double en mémoire de la RPC sur les mêmes lignes.
+  const audited = fakeAuditedMutationModule(rows, audits, { newId: (m) => rowId[m.table], onCall: (m) => calls.push(["from", m.table]),
+    fail: (m) => failActionCompletion && m.table === "actions" && m.values?.status === "executed" ? "XX000" : false });
+  const actionRepository = load("lib/actions/data.ts", { ...common, "@/lib/core/audited-mutation": audited, "./validation": actionValidation, "./registry": actionRegistry }, logs);
   return { recommendationRepository, messageRepository, runRepository, actionRepository, calls, audits, logs, rows };
 }
 

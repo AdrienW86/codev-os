@@ -1,7 +1,7 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { writeAuditLog } from "@/lib/audit-logs";
+import { auditedMutation } from "@/lib/core/audited-mutation";
 import { validateAgentContext } from "@/lib/agents/scope";
 import type { InternalActionRecord, ActionResult } from "./types";
 import { canTransitionAction, isActionUuid, isValidActionParameters, validateCreateActionInput } from "./validation";
@@ -15,19 +15,18 @@ function storageFailure(operation: "list" | "detail" | "create" | "transition" |
   throw new Error("Le stockage des actions est indisponible. Réessayez plus tard.");
 }
 
-function auditSnapshot(action: InternalActionRecord) {
-  return {
-    id: action.id,
-    recommendation_id: action.recommendation_id,
-    agent_id: action.agent_id,
-    client_id: action.client_id,
-    project_id: action.project_id,
-    action_type: action.action_type,
-    status: action.status,
-    requires_approval: action.requires_approval,
-    approved_at: action.approved_at,
-    executed_at: action.executed_at,
-  };
+
+// Colonnes conservées dans le journal d’audit (identifiants, statut, dates ; jamais les paramètres).
+const AUDIT_COLUMNS = ["id", "recommendation_id", "agent_id", "client_id", "project_id", "action_type", "status", "requires_approval", "approved_at", "executed_at"] as const;
+async function readAction(id: string): Promise<InternalActionRecord | null> {
+  const { data, error } = await getSupabaseServerClient().from("actions").select(columns).eq("id", id).maybeSingle();
+  if (error) throw new Error();
+  return data;
+}
+/** Mise à jour d'action + journal dans une seule transaction (audit P1-03), seulement si le statut attendu est toujours vrai. */
+async function auditedActionUpdate(id: string, expectedStatus: string, values: Record<string, unknown>, audit: Parameters<typeof auditedMutation>[0]["audit"]) {
+  const row = await auditedMutation<{ id: string }>({ table: "actions", operation: "update", id, values, expected: { status: expectedStatus }, columns: ["id"], auditColumns: AUDIT_COLUMNS, audit });
+  return row ? readAction(id) : null;
 }
 
 async function hasValidActionContext(supabase: ReturnType<typeof getSupabaseServerClient>, action: InternalActionRecord) {
@@ -107,27 +106,19 @@ export async function createAction(input: unknown): Promise<ActionResult> {
     const { data: existingActions, error: existingError } = await supabase.from("actions").select("id,status").eq("recommendation_id", recommendation.id).eq("action_type", validInput.action_type);
     if (existingError) throw new Error();
     if ((existingActions ?? []).some((item) => item.status !== "cancelled")) return { ok: false, message: genericError };
-    const { data, error } = await supabase.from("actions").insert({
-      recommendation_id: recommendation.id,
-      agent_id: recommendation.agent_id,
-      client_id: recommendation.client_id,
-      project_id: recommendation.project_id??null,
-      action_type: validInput.action_type,
-      parameters: validInput.parameters,
-      status: "pending_approval",
-      requires_approval: true,
-    }).select(columns).single();
-    if (error || !data) throw new Error();
-    await writeAuditLog({
-      action: "action.created",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "action",
-      resource_id: data.id,
-      before_data: null,
-      after_data: auditSnapshot(data),
-      metadata: { action_type: data.action_type },
-    });
+    // Création + journal dans une transaction (P1-03) ; l'unicité SQL (P1-04) refuse un doublon concurrent.
+    let created: { id: string } | null;
+    try {
+      created = await auditedMutation<{ id: string }>({ table: "actions", operation: "insert", columns: ["id"], auditColumns: AUDIT_COLUMNS,
+        values: { recommendation_id: recommendation.id, agent_id: recommendation.agent_id, client_id: recommendation.client_id, project_id: recommendation.project_id ?? null,
+          action_type: validInput.action_type, parameters: validInput.parameters, status: "pending_approval", requires_approval: true },
+        audit: { action: "action.created", resource_type: "action", actor_type: "admin", actor_id: userId, metadata: { action_type: validInput.action_type } } });
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") return { ok: false, message: genericError };
+      throw error;
+    }
+    const data = created ? await readAction(created.id) : null;
+    if (!data) throw new Error();
     return { ok: true, action: data };
   } catch { storageFailure("create"); }
 }
@@ -155,37 +146,17 @@ async function transitionAction(id: string, target: "approved" | "cancelled" | "
     if (!before || !canTransitionAction(before.status, target)) return { ok: false, message: genericError };
     if (target === "approved" && (!before.requires_approval || !await hasValidActionContext(supabase, before))) return { ok: false, message: genericError };
     const patch = target === "approved" ? { status: target, approved_at: new Date().toISOString(), approved_by: userId } : { status: target };
-    const { data: after, error: updateError } = await supabase.from("actions").update(patch).eq("id", id).eq("status", before.status).select(columns).maybeSingle();
-    if (updateError) throw new Error();
-    if (!after) return { ok: false, message: genericError };
-    await writeAuditLog({
+    const after = await auditedActionUpdate(id, before.status, patch, {
       action: target === "approved" ? "action.approved" : target === "rejected" ? "action.rejected" : "action.cancelled",
-      actor_type: "admin",
-      actor_id: userId,
-      resource_type: "action",
-      resource_id: id,
-      before_data: auditSnapshot(before),
-      after_data: auditSnapshot(after),
-      metadata: { payload_hash: after.payload_hash ?? null },
-    });
+      resource_type: "action", resource_id: id, actor_type: "admin", actor_id: userId, metadata: { payload_hash: before.payload_hash ?? null } });
+    if (!after) return { ok: false, message: genericError };
     return { ok: true, action: after };
   } catch { storageFailure("transition"); }
 }
 
 async function setExecutionFailed(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { data: failed, error } = await supabase.from("actions").update({ status: "failed", error_message: "Échec de l’exécution simulée." }).eq("id", id).eq("status", "executing").select(columns).maybeSingle();
-  if (error || !failed) return;
-  await writeAuditLog({
-    action: "action.failed",
-    actor_type: "system",
-    actor_id: null,
-    resource_type: "action",
-    resource_id: id,
-    before_data: null,
-    after_data: auditSnapshot(failed),
-    metadata: {},
-  });
+  await auditedActionUpdate(id, "executing", { status: "failed", error_message: "Échec de l’exécution simulée." },
+    { action: "action.failed", resource_type: "action", resource_id: id, actor_type: "system" }).catch(() => null);
 }
 
 export async function executeAction(id: string): Promise<ActionResult> {
@@ -199,45 +170,20 @@ export async function executeAction(id: string): Promise<ActionResult> {
       || (current.approved_payload_hash !== undefined && current.approved_payload_hash !== current.payload_hash) || !await hasValidActionContext(supabase, current)) {
       return { ok: false, message: genericError };
     }
-    const { data: executing, error: startError } = await supabase.from("actions").update({ status: "executing" }).eq("id", id).eq("status", "approved").select(columns).maybeSingle();
-    if (startError) throw new Error();
+    // Démarrage + journal dans une transaction : si le journal échoue, l'action reste « approuvée ».
+    const executing = await auditedActionUpdate(id, "approved", { status: "executing" },
+      { action: "action.execution_started", resource_type: "action", resource_id: id, actor_type: "system", metadata: { action_type: "internal.test" } });
     if (!executing) return { ok: false, message: genericError };
-    try {
-      await writeAuditLog({
-        action: "action.execution_started",
-        actor_type: "system",
-        actor_id: null,
-        resource_type: "action",
-        resource_id: id,
-        before_data: auditSnapshot(current),
-        after_data: auditSnapshot(executing),
-        metadata: { action_type: "internal.test" },
-      });
-    } catch {
-      await setExecutionFailed(id);
-      return { ok: false, message: genericError };
-    }
     const result = { success: true, message: "Action de test exécutée" };
-    const { data: executed, error: completionError } = await supabase.from("actions").update({ status: "executed", executed_at: new Date().toISOString(), result, error_message: null }).eq("id", id).eq("status", "executing").select(columns).maybeSingle();
-    if (completionError) {
+    let executed: InternalActionRecord | null;
+    try {
+      executed = await auditedActionUpdate(id, "executing", { status: "executed", executed_at: new Date().toISOString(), result, error_message: null },
+        { action: "action.executed", resource_type: "action", resource_id: id, actor_type: "system", metadata: { action_type: "internal.test" } });
+    } catch {
       await setExecutionFailed(id);
       return { ok: false, message: genericError };
     }
     if (!executed) return { ok: false, message: genericError };
-    try {
-      await writeAuditLog({
-        action: "action.executed",
-        actor_type: "system",
-        actor_id: null,
-        resource_type: "action",
-        resource_id: id,
-        before_data: auditSnapshot(executing),
-        after_data: auditSnapshot(executed),
-        metadata: { action_type: "internal.test" },
-      });
-    } catch {
-      return { ok: false, message: genericError };
-    }
     return { ok: true, action: executed };
   } catch { storageFailure("execute"); }
 }
@@ -256,10 +202,9 @@ export async function completeManualAction(id: string): Promise<ActionResult> {
     if (readError) throw new Error();
     if (!current || current.status !== "approved" || getActionType(current.action_type)?.executionMode !== "manual"
       || (current.approved_payload_hash ?? null) !== (current.payload_hash ?? null)) return { ok: false, message: genericError };
-    const { data: done, error } = await supabase.from("actions").update({ status: "executed", executed_at: new Date().toISOString(), result: { manual: true, confirmed_by: userId } }).eq("id", id).eq("status", "approved").select(columns).maybeSingle();
-    if (error) throw new Error();
+    const done = await auditedActionUpdate(id, "approved", { status: "executed", executed_at: new Date().toISOString(), result: { manual: true, confirmed_by: userId } },
+      { action: "action.completed_manually", resource_type: "action", resource_id: id, actor_type: "admin", actor_id: userId, metadata: { payload_hash: current.payload_hash ?? null } });
     if (!done) return { ok: false, message: genericError };
-    await writeAuditLog({ action: "action.completed_manually", actor_type: "admin", actor_id: userId, resource_type: "action", resource_id: id, before_data: auditSnapshot(current), after_data: auditSnapshot(done), metadata: { payload_hash: done.payload_hash ?? null } });
     return { ok: true, action: done };
   } catch { storageFailure("execute"); }
 }

@@ -511,6 +511,7 @@ export type Database = {
     };
     Views: { [key: string]: never };
     Functions: PublicationFunctions & CoreFunctions & AdsWorkspaceFunctions & WhatsAppFunctions & {
+      audited_mutation: { Args:{p_table:string;p_operation:string;p_id:string|null;p_values:Json|null;p_expected:Json|null;p_columns:string[]|null;p_audit:Json;p_audit_columns:string[]|null};Returns:Json };
       agent_set_scope: { Args:{p_agent_id:string;p_scope:"client"|"project";p_actor_id:string};Returns:undefined };
       agent_project_assignment_set: { Args:{p_agent_id:string;p_project_id:string;p_enabled:boolean;p_actor_id:string};Returns:undefined };
     };

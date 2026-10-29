@@ -104,8 +104,8 @@ test("buildWorkItems maps every source to a business section and an existing rou
 test("V2 navigation lists the daily-use entries and keeps legacy routes reachable", () => {
   const navigation = read("components/layout/navigation.tsx");
   const hrefs = [...navigation.matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
-  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/clients", "Clients"], ["/analytics", "Données et performances"], ["/advertising", "Campagnes publicitaires"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/publications", "Publications"], ["/acquisition", "Acquisition"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
-  for (const route of ["projects", "tasks", "recommendations", "actions", "dashboard", "clients", "publications", "agents", "settings", "work", "agenda", "reports", "analytics"]) {
+  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/clients", "Clients"], ["/analytics", "Données et performances"], ["/advertising", "Campagnes publicitaires"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/publications", "Publications"], ["/motion", "Studio Motion"], ["/acquisition", "Acquisition"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
+  for (const route of ["projects", "tasks", "recommendations", "actions", "dashboard", "clients", "publications", "motion", "agents", "settings", "work", "agenda", "reports", "analytics"]) {
     assert.ok(existsSync(new URL(`../app/(cockpit)/${route}/page.tsx`, import.meta.url)), `${route} page exists`);
   }
   assert.doesNotMatch(navigation, /Prototype|Version 0\.2/);
@@ -113,7 +113,7 @@ test("V2 navigation lists the daily-use entries and keeps legacy routes reachabl
 });
 
 test("new pages stay behind the admin guard; the assistant box only talks to its same-origin API", () => {
-  for (const route of ["work", "agenda", "reports", "dashboard"]) assert.match(read(`app/(cockpit)/${route}/page.tsx`), /await requireAdmin\(\);/);
+  for (const route of ["work", "agenda", "reports", "dashboard", "motion"]) assert.match(read(`app/(cockpit)/${route}/page.tsx`), /await requireAdmin\(\);/);
   const box = read("components/dashboard/assistant-command-box.tsx");
   // Aucun fournisseur ni clé côté navigateur : uniquement /api/assistant (session admin, même origine).
   assert.doesNotMatch(box, /openai|anthropic|api_key|NEXT_PUBLIC|@\/app\//i);

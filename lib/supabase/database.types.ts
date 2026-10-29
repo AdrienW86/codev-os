@@ -5,6 +5,7 @@ import type { CoreFunctions, CoreTables } from "@/lib/supabase/core.types";
 import type { AdsWorkspaceTables, AdsWorkspaceFunctions } from "@/lib/supabase/ads-workspace.types";
 import type { SearchConsoleTables } from "@/lib/supabase/search-console.types";
 import type { SeoOpportunityTables } from "@/lib/supabase/seo-opportunities.types";
+import type { MotionTables, MotionFunctions } from "@/lib/supabase/motion.types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -304,7 +305,7 @@ export type ClientServiceInsert = {
 
 export type Database = {
   public: {
-    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & SearchConsoleTables & SeoOpportunityTables & {
+    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & SearchConsoleTables & SeoOpportunityTables & MotionTables & {
       agent_project_assignments: {
         Row: {agent_id:string;client_id:string;project_id:string;enabled:boolean;created_at:string;updated_at:string};
         Insert: {agent_id:string;client_id:string;project_id:string;enabled?:boolean;created_at?:string;updated_at?:string};
@@ -510,7 +511,7 @@ export type Database = {
       };
     };
     Views: { [key: string]: never };
-    Functions: PublicationFunctions & CoreFunctions & AdsWorkspaceFunctions & WhatsAppFunctions & {
+    Functions: PublicationFunctions & CoreFunctions & AdsWorkspaceFunctions & WhatsAppFunctions & MotionFunctions & {
       audited_mutation: { Args:{p_table:string;p_operation:string;p_id:string|null;p_values:Json|null;p_expected:Json|null;p_columns:string[]|null;p_audit:Json;p_audit_columns:string[]|null};Returns:Json };
       agent_set_scope: { Args:{p_agent_id:string;p_scope:"client"|"project";p_actor_id:string};Returns:undefined };
       agent_project_assignment_set: { Args:{p_agent_id:string;p_project_id:string;p_enabled:boolean;p_actor_id:string};Returns:undefined };

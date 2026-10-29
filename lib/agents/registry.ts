@@ -7,7 +7,7 @@
 
 import type { ServiceId } from "@/lib/services/catalog";
 
-export type AgentType = "report" | "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "veille";
+export type AgentType = "report" | "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "veille" | "developer";
 export type AgentScope = "global" | "client" | "project";
 export type ProviderId =
   | "internal" | "openai" | "anthropic" | "search-console" | "pagespeed" | "http" | "vercel" | "github"
@@ -23,7 +23,8 @@ export type CapabilityId =
   | "prepare_publication" | "select_media" | "schedule_publication" | "publish"
   | "check_http" | "read_deployments" | "read_repository" | "propose_fix" | "apply_fix"
   | "run_workflow"
-  | "fetch_news" | "build_digest";
+  | "fetch_news" | "build_digest"
+  | "review_developer_pr" | "prepare_development" | "open_developer_pr";
 
 export type CapabilityDefinition = {
   id: CapabilityId;
@@ -60,6 +61,9 @@ export const capabilities: Record<CapabilityId, CapabilityDefinition> = {
   run_workflow: { id: "run_workflow", label: "Exécution de workflows", permission: "execute", providers: ["internal"], externalEffect: true },
   fetch_news: { id: "fetch_news", label: "Collecte des flux publics", permission: "read", providers: ["rss"] },
   build_digest: { id: "build_digest", label: "Digest quotidien et hebdomadaire", permission: "prepare", providers: ["internal"] },
+  review_developer_pr: { id: "review_developer_pr", label: "Examiner une pull request", permission: "read", providers: ["github"] },
+  prepare_development: { id: "prepare_development", label: "Préparer une mission de développement", permission: "prepare", providers: ["internal"] },
+  open_developer_pr: { id: "open_developer_pr", label: "Créer une branche et une PR brouillon", permission: "execute", providers: ["github"], externalEffect: true },
 };
 
 /** Types d'exécution planifiables (jobs). Chacun appartient à un agent et exige une capacité. */
@@ -139,6 +143,11 @@ export const agentDefinitions: Record<AgentType, AgentDefinition> = {
   veille: {
     type: "veille", name: "Agent Veille", description: "Veille tech, IA, SEO et Ads à partir de flux publics fiables.",
     scopes: ["global"], services: [], capabilities: ["fetch_news", "build_digest"], tools: ["list_news"], runTypes: ["news.fetch"], defaultAutonomy: 0, global: true,
+  },
+  developer: {
+    type: "developer", name: "Agent Développeur", description: "Prépare les missions de code et permet la revue des PR et previews ; exécution cloud à raccorder.",
+    scopes: ["client", "project"], services: [], capabilities: ["review_developer_pr", "prepare_development", "open_developer_pr"],
+    tools: [], runTypes: [], defaultAutonomy: 1,
   },
 };
 

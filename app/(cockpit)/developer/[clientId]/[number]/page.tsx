@@ -40,16 +40,16 @@ export default async function DeveloperReviewPage({ params }: { params: Promise<
             <>
               <p className="mt-3 text-sm text-muted">Déploiement de prévisualisation confirmé pour le commit affiché.</p>
               <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-block break-all text-sm text-accent hover:underline">Ouvrir la prévisualisation réelle</a>
-              <p className="mt-3 text-xs text-muted">L'accès peut nécessiter une authentification Vercel.</p>
+              <p className="mt-3 text-xs text-muted">L&apos;accès peut nécessiter une authentification Vercel.</p>
             </>
           ) : (
-            <p className="mt-3 text-sm text-muted">Aucune URL Vercel vérifiée pour ce commit. Nous n'affichons pas de capture ni de lien supposé.</p>
+            <p className="mt-3 text-sm text-muted">Aucune URL Vercel vérifiée pour ce commit. Nous n&apos;affichons pas de capture ni de lien supposé.</p>
           )}
         </section>
       </div>
       <section className="mt-5 rounded-xl border border-border p-5">
         <h2 className="font-semibold">Décision humaine obligatoire</h2>
-        <p className="mt-2 text-sm text-muted">Cette première version permet uniquement de consulter. Aucun bouton de validation n'est activé : la demande de correction, l'approbation et la fusion s'effectuent encore dans GitHub. Le futur circuit CODE-V OS sera lié au SHA affiché pour empêcher l'approbation d'un code modifié après lecture.</p>
+        <p className="mt-2 text-sm text-muted">Cette première version permet uniquement de consulter. Aucun bouton de validation n&apos;est activé : la demande de correction, l&apos;approbation et la fusion s&apos;effectuent encore dans GitHub. Le futur circuit CODE-V OS sera lié au SHA affiché pour empêcher l'approbation d&apos;un code modifié après lecture.</p>
       </section>
     </>
   );

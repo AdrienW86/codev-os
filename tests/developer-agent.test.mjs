@@ -79,7 +79,11 @@ test("GitHub reader only calls GET endpoints and ignores untrusted PRs", async (
 
 test("Developer has no automatic deployment, push, or merge permission", () => {
   const { registry } = loadRegistry();
-  // The first deliverable is read-only. The actual developer agent is registered in a following lot.
-  assert.equal(registry.capabilities.modify_site.permission, "execute");
-  assert.equal(registry.capabilities.modify_site.externalEffect, true);
+  const agent = registry.agentDefinitions.developer;
+  assert.equal(agent.defaultAutonomy, 1);
+  assert.equal(agent.runTypes.length, 0);
+  assert.equal(agent.tools.length, 0);
+  assert.equal(registry.capabilities.review_developer_pr.permission, "read");
+  assert.equal(registry.capabilities.open_developer_pr.permission, "execute");
+  assert.equal(registry.capabilities.open_developer_pr.externalEffect, true);
 });

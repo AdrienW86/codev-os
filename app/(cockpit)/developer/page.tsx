@@ -23,7 +23,7 @@ export default async function DeveloperReviewsPage() {
       </div>}
       {!requests.length ? (
         <section className="rounded-xl border border-border p-8">
-          <h2 className="font-semibold">Aucune PR de l'agent détectée</h2>
+          <h2 className="font-semibold">Aucune PR de l&apos;agent détectée</h2>
           <p className="mt-2 text-sm text-muted">Les PR d&apos;autres auteurs ou sans préfixe CODE-V ne sont pas considérées comme des missions de développement.</p>
         </section>
       ) : (

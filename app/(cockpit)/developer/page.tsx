@@ -16,7 +16,7 @@ export default async function DeveloperReviewsPage() {
         description="Pull requests brouillon de l'agent, séparées de la production. Le déclenchement autonome et la validation dans CODE-V OS seront ajoutés dans les prochains lots." />
       <div className="mb-6 rounded-xl border border-border bg-surface-raised p-4 text-sm text-muted">
         <p>{repositories.length} connexion(s) GitHub client détectée(s). Seules les branches commençant par <code>codev-dev/</code> apparaissent ici.</p>
-        <p className="mt-2">Aucune proposition n'est fusionnée depuis cet écran. Les approbations et corrections sont encore gérées manuellement dans GitHub.</p>
+        <p className="mt-2">Aucune proposition n&apos;est fusionnée depuis cet écran. Les approbations et corrections sont encore gérées manuellement dans GitHub.</p>
       </div>
       {errors.length > 0 && <div role="status" className="mb-5 rounded-xl border border-border p-4 text-sm">
         {errors.map((error, index) => <p key={index}>{error}</p>)}
@@ -24,7 +24,7 @@ export default async function DeveloperReviewsPage() {
       {!requests.length ? (
         <section className="rounded-xl border border-border p-8">
           <h2 className="font-semibold">Aucune PR de l'agent détectée</h2>
-          <p className="mt-2 text-sm text-muted">Les PR d'autres auteurs ou sans préfixe CODE-V ne sont pas considérées comme des missions de développement.</p>
+          <p className="mt-2 text-sm text-muted">Les PR d&apos;autres auteurs ou sans préfixe CODE-V ne sont pas considérées comme des missions de développement.</p>
         </section>
       ) : (
         <ul className="grid gap-4">

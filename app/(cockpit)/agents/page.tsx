@@ -44,6 +44,7 @@ export default async function AgentsPage() {
         <CapabilityLegend />
       </div>
 
+      <div className="mb-6 text-sm"><Link href="/developer" className="text-accent hover:underline">Agent Développeur : consulter les propositions GitHub et les prévisualisations</Link></div>
       <h2 className="sr-only">Agents du registre</h2>
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {agentCatalog.map((blueprint) => {

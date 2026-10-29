@@ -1,7 +1,7 @@
 // Registre frontend des agents CODE-V (actuels et futurs). Configuration statique : aucune table associée.
 import { normalizeLabel, type ServiceId } from "@/lib/services/catalog";
 
-export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report" | "veille";
+export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report" | "veille" | "developer";
 export type AgentPortee = "global" | "client" | "project";
 /** État d’un agent tant qu’aucun agent configuré en base ne lui correspond. */
 export type BlueprintReadiness = "to-connect" | "coming-soon";
@@ -31,6 +31,17 @@ export type AgentBlueprint = {
 const nameHas = (pattern: RegExp) => (agent: { name: string }) => pattern.test(normalizeLabel(agent.name));
 
 export const agentCatalog: readonly AgentBlueprint[] = [
+  {
+    id: "developer", name: "Agent Développeur", role: "Suit les PR, leurs tests et les prévisualisations Vercel. Exécution cloud et validation à intégrer.",
+    scope: "project", services: [], readiness: "coming-soon", plannedAutonomy: 1,
+    capabilities: [
+      { label: "Revue GitHub et prévisualisation", existsInApp: true },
+      { label: "Création autonome de PR" },
+      { label: "Corrections itératives" },
+      { label: "Approbation avant publication" },
+    ],
+    matches: nameHas(/developpeur|developer|codex/),
+  },
   {
     id: "seo", name: "Agent SEO & Site", role: "Analyse le référencement et propose des améliorations du site.",
     scope: "project", services: ["seo"], readiness: "coming-soon", plannedAutonomy: 1,

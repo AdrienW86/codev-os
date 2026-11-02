@@ -8,6 +8,12 @@ import {unsupportedPlaces} from './editorial-places';
 import type {EditorialContext} from './editorial-plan';
 import type {AgentMediaCandidate,AgentV2GeneratorOutput} from './agent-v2/contract';
 
+// Consigne concrète pour le nouvel essai : un style nommé (« constat ») ne suffisait pas, le modèle le répétait.
+const INTRO_FIX:Record<string,string>={constat:'commence au moins un texte par une question (« Votre toiture… ? »), un conseil à l’impératif (« Pensez à… », « Vérifiez… ») ou « Voici… »',
+ question:'ne commence pas par une question : ouvre sur un conseil à l’impératif (« Pensez à… ») ou sur « Voici… »',
+ conseil:'n’ouvre pas sur un impératif : commence par une question ou par « Voici… »',
+ presentation:'ne commence pas par « Voici / Zoom / Focus » : ouvre sur une question ou un conseil',
+ exclamation:'évite l’exclamation d’ouverture : commence par une question ou un conseil à l’impératif'};
 export type EditorialRefusal={reason:'place_not_allowed'|'repetition'|'intro_repetition'|'cta_repetition'|'phrase_repetition'|'photo_mismatch'|'document_photo';detail:string};
 export const SUBJECT_SIMILARITY_THRESHOLD=.6;
 const WORDING_THRESHOLD=.5;
@@ -40,7 +46,7 @@ export function historyRefusal(value:AgentV2GeneratorOutput,ctx:EditorialContext
  const openings=new Set(history.flatMap(h=>h.openings).filter(o=>o.split(' ').length>=6));
  for(const t of texts){const o=openingOf(t);if(o.split(' ').length>=6&&openings.has(o))return {reason:'intro_repetition',detail:`accroche déjà employée : « ${o} »`};}
  const styles=texts.map(introStyleOf),recentIntros=history.slice(0,3).map(mainIntroStyle);
- if(recentIntros.length===3&&styles.every(s=>s===styles[0])&&recentIntros.every(s=>s===styles[0]))return {reason:'intro_repetition',detail:`même style d’accroche (${styles[0]}) que les 3 dernières publications`};
+ if(recentIntros.length===3&&styles.every(s=>s===styles[0])&&recentIntros.every(s=>s===styles[0]))return {reason:'intro_repetition',detail:`même style d’accroche (${styles[0]}) que les 3 dernières publications ; ${INTRO_FIX[styles[0]]??'change le style de la première phrase'}`};
  const ctas=value.publications.map(p=>p.cta).filter((c):c is string=>Boolean(c));
  const usedCtas=new Set(history.slice(0,10).flatMap(h=>h.ctas).map(normalizeText));
  const reused=ctas.find(c=>usedCtas.has(normalizeText(c)));

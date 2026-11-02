@@ -73,9 +73,13 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
    if(user.organization){try{others=snapchatProfilesOf(await call({operation:'read',path:`organizations/${user.organization}/public_profiles`,params:{limit:'50'},credential}));}catch{others=[];}}
    const seen=new Set<string>();return [...user.profile,...others].filter(p=>!seen.has(p.id)&&Boolean(seen.add(p.id)));},
   async diagnose(credential){
-   const status=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});return String(Math.min(Math.max(r.status|0,0),999));}catch{return 'x';}};
+   // Statut HTTP et code d'erreur Snap (error_code, valeur d'énumération) : jamais le corps, jamais le jeton.
+   const status=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});
+     const b=record(r.body),code=typeof b.error_code==='string'?b.error_code:typeof b.error==='string'?b.error:'';
+     return {status:String(Math.min(Math.max(r.status|0,0),999)),code:code.toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,40)};}
+    catch{return {status:'x',code:''};}};
    const [me,pub]=await Promise.all([status('public_profiles/my_profile'),status('probe:public_search')]);
-   return `me${me}_pub${pub}`;},
+   return `me${me.status}_pub${pub.status}${me.code?'_'+me.code:''}`;},
  };
  return provider;
 }

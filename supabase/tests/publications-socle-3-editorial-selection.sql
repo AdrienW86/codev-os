@@ -37,19 +37,19 @@ do $$declare cl uuid:=gen_random_uuid();other uuid:=gen_random_uuid();begin
 end $$;
 insert into es_ids select 'catalog',id from public.publication_drive_media where drive_file_id='catalogfile0001';
 do $$declare cl uuid:=pg_temp.es_id('client');n integer:=0;name text;begin
- foreach name in array array['valid','ai_relevant','ai_face','confidential','quarantined','rejected','archived','video','foreign','used_recent','used_old','manual_off','purged','spare'] loop
+ foreach name in array array['valid','ai_relevant','ai_minor','confidential','quarantined','rejected','archived','video','foreign','used_recent','used_old','manual_off','purged','spare'] loop
   n:=n+1;
   insert into es_ids values(name,gen_random_uuid());
   insert into public.whatsapp_assets(id,client_id,drive_folder_id,sha256,md5,drive_file_id,mime_type,size,media_kind,imported_at,library_status,status_changed_by,origin)
   values(pg_temp.es_id(name),case when name='foreign' then pg_temp.es_id('other') else cl end,'folder_wa_'||left(cl::text,8),lpad(to_hex(n),64,'0'),lpad(to_hex(n),32,'0'),
    'drive_file_es_'||n,case when name='video' then 'video/mp4' else 'image/jpeg' end,2000+n,case when name='video' then 'video' else 'image' end,now(),
-   case name when 'quarantined' then 'quarantined' when 'rejected' then 'rejected' when 'archived' then 'archived' when 'ai_relevant' then 'received' when 'ai_face' then 'received' else 'validated' end,
+   case name when 'quarantined' then 'quarantined' when 'rejected' then 'rejected' when 'archived' then 'archived' when 'ai_relevant' then 'received' when 'ai_minor' then 'received' else 'validated' end,
    'user_local',case when name='spare' then 'drive' else 'whatsapp' end);
  end loop;
  update public.whatsapp_assets set purged_at=now(),library_status='rejected' where id=pg_temp.es_id('purged');
  insert into public.whatsapp_asset_assessments(asset_id,client_id,verdict,business_relevance,publishability,sensitive,confidential,description,topics,quality,quality_issues,profile_version,model,estimated_cost_eur,manual_verdict)
  values(pg_temp.es_id('ai_relevant'),cl,'relevant',0.9,0.8,'{}',false,'Toiture en ardoise refaite.','{toiture}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
-  (pg_temp.es_id('ai_face'),cl,'relevant',0.9,0.8,'{face}',false,'Couvreur sur un toit.','{toiture}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
+  (pg_temp.es_id('ai_minor'),cl,'relevant',0.9,0.8,'{face,minor}',false,'Couvreur et un enfant sur un toit.','{toiture}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,null),
   (pg_temp.es_id('confidential'),cl,'to_review',0.7,0.1,'{invoice}',true,'Document sur une table.','{}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,'relevant'),
   (pg_temp.es_id('manual_off'),cl,'relevant',0.9,0.8,'{}',false,'Gouttière.','{}','good','{}',1,'gpt-4.1-mini-2025-04-14',0.001,'off_topic');
 end $$;
@@ -105,7 +105,7 @@ grant execute on function pg_temp.es_run(uuid,text[]),pg_temp.es_refused(uuid) t
 set local role service_role;
 -- 3. The photothèque rules are the server's: every unsafe, foreign, unpublishable or recently used photo is refused.
 do $$declare name text;begin
- foreach name in array array['ai_face','confidential','quarantined','rejected','archived','video','foreign','used_recent','manual_off','purged'] loop
+ foreach name in array array['ai_minor','confidential','quarantined','rejected','archived','video','foreign','used_recent','manual_off','purged'] loop
   perform pg_temp.replay_assert(pg_temp.es_refused(pg_temp.es_id(name))='22023','refused at finish: '||name);
  end loop;
  perform pg_temp.replay_assert(pg_temp.es_refused(gen_random_uuid())='22023','unknown media refused');

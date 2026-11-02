@@ -16,7 +16,7 @@ test("photothèque pool: only publishable, well-formed, unreserved photos, never
   const rows = [row(1), row(2, { library_status: "quarantined" }), row(3, { library_status: "rejected" }), row(4), row(5), row(6), row(7, { width: 400, height: 300 }),
     row(8, { width: 4000, height: 1000 }), row(9, { claimed_agent_v2_run_id: uid("8", 1) }), row(10, { media_kind: "video", mime_type: "video/mp4" }), row(11), row(12), row(13, { library_status: "received" }), row(14, { library_status: "received" }), row(15, { purged_at: "2026-10-01T00:00:00Z" })];
   const assessed = [assessment(4, { confidential: true, verdict: "to_review", manual_verdict: "relevant" }), assessment(5, { quality: "poor" }), assessment(6, { quality_issues: ["screenshot"] }),
-    assessment(12, { manual_verdict: "off_topic" }), assessment(13), assessment(14, { sensitive: ["face"] })];
+    assessment(12, { manual_verdict: "off_topic" }), assessment(13), assessment(14, { sensitive: ["minor"] })];
   const uses = [{ asset_id: A(11), publication_id: PUB(9), used_at: "2026-09-01T00:00:00Z" }];
   const ids = pool.libraryCandidates(rows, assessed, uses, noReuse, new Set(), now).map(c => c.id);
   assert.deepEqual(json(ids.sort()), [A(1), A(13)].sort());

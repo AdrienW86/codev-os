@@ -60,7 +60,7 @@ test("Couverture Catalane : un quatrième démoussage est refusé par le validat
   assert.equal(r.idea.subject, "Réparation de faîtage avant les pluies");
   assert.equal(r.selected.photoId, "sim-photo-catalane-2");
   assert.match(r.selected.reason, /Faîtage en tuiles canal.*Première proposition \(« Le démoussage avant l’hiver »\) écartée/);
-  assert.equal(r.photos.find(p => p.id === "sim-photo-catalane-3").exclusion, "Visage ou mineur identifiable : examen humain obligatoire avant tout usage.");
+  assert.equal(r.photos.find(p => p.id === "sim-photo-catalane-3").exclusion, "Mineur identifiable : examen humain obligatoire avant tout usage.");
   assert.deepEqual(json(r.variants.map(v => v.platform)), ["facebook", "instagram", "google_business_profile"]);
   assert.ok(r.variants.every(v => v.ruleOk && v.slot));
   assert.equal(r.approval.possible, true);
@@ -92,9 +92,9 @@ test("Protection Nuisibles (négatif) : la facture ne peut jamais illustrer, mê
   assert.deepEqual(json(publisher.calls), [], "publisher never called");
 });
 
-test("JRenov : visage et photo récente écartés ; succès simulé, refus et panne selon les résultats choisis", async () => {
+test("JRenov : mineur et photo récente écartés ; succès simulé, refus et panne selon les résultats choisis", async () => {
   const r = await run("jrenov-mixed");
-  assert.match(r.photos.find(p => p.id === "sim-photo-jrenov-2").exclusion, /Visage/);
+  assert.match(r.photos.find(p => p.id === "sim-photo-jrenov-2").exclusion, /Mineur/);
   assert.match(r.photos.find(p => p.id === "sim-photo-jrenov-3").exclusion, /dernières publications|Déjà utilisée/);
   assert.equal(r.selected.photoId, "sim-photo-jrenov-1");
   assert.deepEqual(json(r.deliveries.map(d => [d.platform, d.status, d.publisherCalled])),

@@ -12,11 +12,11 @@ const CLIENT = uid("c", 1), OTHER = uid("c", 2);
 const asset = n => uid("a", n);
 const answer = (extra = {}) => ({ verdict: "relevant", business_relevance: 0.9, publishability: 0.8, sensitive: [], confidential: false, description: "Toiture en ardoise refaite.", topics: ["toiture"], quality: "good", quality_issues: [], ...extra });
 
-test("model safety rules override the classifier: confidential is never relevant, faces and low scores need review", () => {
+test("model safety rules override the classifier: confidential is never relevant, minors and low scores need review, adult faces pass", () => {
   assert.equal(model.normalizeAssessment(answer(), 3).verdict, "relevant");
   const invoice = model.normalizeAssessment(answer({ sensitive: ["invoice"], confidential: false, publishability: 0.9 }), 3);
   assert.equal(invoice.confidential, true); assert.equal(invoice.verdict, "to_review"); assert.ok(invoice.publishability <= 0.1);
-  assert.equal(model.normalizeAssessment(answer({ sensitive: ["face"] }), 1).verdict, "to_review");
+  assert.equal(model.normalizeAssessment(answer({ sensitive: ["face"] }), 1).verdict, "relevant", "équipe du client visible : accord des clients");
   assert.equal(model.normalizeAssessment(answer({ sensitive: ["minor"] }), 1).verdict, "to_review");
   assert.equal(model.normalizeAssessment(answer({ quality: "poor" }), 1).verdict, "to_review");
   assert.equal(model.normalizeAssessment(answer({ publishability: 0.4 }), 1).verdict, "to_review");
@@ -53,7 +53,14 @@ test("publication candidates and writing prompts never include confidential, qua
   const ai = (extra = {}) => ({ verdict: "relevant", confidential: false, sensitive: [], manual_verdict: null, ...extra });
   const candidate = (libraryStatus, assessment, extra = {}) => model.isPublicationCandidate({ libraryStatus, mediaKind: "image", purged: false, assessment, ...extra });
   assert.equal(candidate("to_review", ai()), true);
-  assert.equal(candidate("to_review", ai({ sensitive: ["face"] })), false);
+  // Ancienne évaluation « à examiner » pour le seul visage : retenue si scores et qualité suffisent ; jamais un mineur.
+  const faceOnly = ai({ verdict: "to_review", sensitive: ["face"], business_relevance: 0.9, publishability: 0.8, quality: "good", quality_issues: [] });
+  assert.equal(candidate("to_review", faceOnly), true);
+  assert.equal(candidate("to_review", { ...faceOnly, publishability: 0.4 }), false, "score insuffisant");
+  assert.equal(candidate("to_review", { ...faceOnly, sensitive: ["face", "license_plate"] }), false, "autre donnée sensible");
+  assert.equal(candidate("to_review", { ...faceOnly, quality_issues: ["screenshot"] }), false, "capture d'écran");
+  assert.equal(candidate("to_review", ai({ sensitive: ["minor"] })), false, "mineur : jamais");
+  assert.equal(candidate("to_review", ai({ verdict: "to_review", sensitive: ["face"] })), false, "sans scores connus : prudence");
   assert.equal(candidate("to_review", null), false, "jamais classé : pas candidat sans validation humaine");
   assert.equal(candidate("validated", null), true);
   assert.equal(candidate("validated", ai({ confidential: true, verdict: "to_review", manual_verdict: "relevant" })), false);

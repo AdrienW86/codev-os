@@ -274,7 +274,9 @@ test("« Pourquoi écartée ? » explains every exclusion and agrees with the ag
   assert.deepEqual(codes({ libraryStatus: "received", assessment: ai({ quality_issues: ["screenshot", "text_heavy"] }) }), ["quality"]);
   assert.match(exclusion.exclusionReasons({ ...base, assessment: ai({ quality_issues: ["screenshot"] }) }).reasons[0].label, /capture d’écran/);
   assert.deepEqual(codes({ libraryStatus: "received" }), ["not_assessed"]);
-  assert.deepEqual(codes({ libraryStatus: "to_review", assessment: ai({ verdict: "to_review", sensitive: ["face"] }) }), ["ai_to_review", "face_or_minor"]);
+  assert.deepEqual(codes({ libraryStatus: "to_review", assessment: ai({ verdict: "to_review", sensitive: ["face"] }) }), [], "visage d'adulte seul : publiable");
+  assert.equal(exclusion.exclusionReasons({ ...base, libraryStatus: "to_review", assessment: ai({ verdict: "to_review", sensitive: ["face"] }) }).eligible, true);
+  assert.deepEqual(codes({ libraryStatus: "to_review", assessment: ai({ verdict: "to_review", sensitive: ["minor"] }) }), ["ai_to_review", "minor"]);
   assert.deepEqual(codes({ mediaKind: "video", mimeType: "video/mp4" }), ["video"]);
   assert.deepEqual(codes({ width: 400, height: 300 }), ["dimensions"]);
   assert.deepEqual(codes({ claimed: true }), ["claimed"]);

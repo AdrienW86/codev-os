@@ -35,7 +35,7 @@ export async function editFromCardAction(_state:ReviewCardState,form:FormData):P
 // Validation simplifiée : « Tout approuver » d'un post = la même décision humaine que « Valider », répétée pour chaque
 // publication sœur (un réseau chacune), chacune sur SA version courante et avec SES contrôles (média, verrou de canal).
 // Aucune approbation implicite : seules les publications affichées sur la carte et envoyées par le formulaire.
-const PLATFORM_LABELS:Record<string,string>={facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile",tiktok:"TikTok"};
+const PLATFORM_LABELS:Record<string,string>={facebook:"Facebook",instagram:"Instagram",google_business_profile:"Google Business Profile",tiktok:"TikTok",snapchat:"Snapchat"};
 export async function approveGroupFromCardAction(_state:ReviewCardState,form:FormData):Promise<ReviewCardState>{
  await requireAdmin();
  const items=form.getAll("item").map(v=>typeof v==="string"?v.split("|"):[]);

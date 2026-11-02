@@ -2,8 +2,11 @@ import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {isAuthorizedAdmin} from '@/lib/admin-policy';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {googleOAuthConfig,metaOAuthConfig,oauthBaseUrl,tiktokOAuthConfig} from '@/lib/integrations/publications-oauth/config';
-import {googleTransport,tiktokTransport} from '@/lib/integrations/publications-oauth/http';
+import {googleOAuthConfig,metaOAuthConfig,oauthBaseUrl,snapchatOAuthConfig,tiktokOAuthConfig} from '@/lib/integrations/publications-oauth/config';
+import {googleTransport,snapchatTransport,tiktokTransport} from '@/lib/integrations/publications-oauth/http';
+import {snapchatPublishTransport} from '@/lib/integrations/publications-snapchat-publish';
+import {createSnapchatConnectionProvider} from '../connections/snapchat';
+import {createSnapchatPublisher,createSnapchatReconciler} from './snapchat-publisher';
 import {tiktokPublishTransport} from '@/lib/integrations/publications-tiktok-publish';
 import {createTikTokConnectionProvider} from '../connections/tiktok';
 import {createTikTokPublisher,createTikTokReconciler} from './tiktok-publisher';
@@ -48,6 +51,11 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
  if(tiktok&&base){const provider=createTikTokConnectionProvider(tiktokTransport(tiktok));
   publishers.tiktok=createTikTokPublisher(tiktokPublishTransport(fetch,{mediaOrigin:storageOrigin()}),{refresh:credential=>provider.refresh(credential),mediaLink:url=>publicMediaLink(url,base)});
   reconcilers.tiktok=createTikTokReconciler();}
+ // Snapchat : fichier lu dans le stockage du projet, chiffré puis envoyé à Snap ; jeton rafraîchi en mémoire.
+ const snapchat=snapchatOAuthConfig();
+ if(snapchat){const provider=createSnapchatConnectionProvider(snapchatTransport(snapchat));
+  publishers.snapchat=createSnapchatPublisher(snapchatPublishTransport(fetch,{mediaOrigin:storageOrigin()}),{refresh:credential=>provider.refresh(credential)});
+  reconcilers.snapchat=createSnapchatReconciler();}
  return {publishers,reconcilers};
 }
 // Lease of a production job: the completion is refused once the lease is over (the delivery then becomes uncertain),
@@ -87,7 +95,8 @@ export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
 // passage, le premier envoi reste libre (comme avant) et les suivants ne réservent que les plateformes dont le pire cas
 // tient dans le temps restant (délais des transports : 20 s par requête Meta / GBP, 15 s par renouvellement OAuth, marge
 // pour le contexte, le coffre et les URL signées). Instagram (~290 s) n'est donc jamais qu'un premier envoi. Plafond fixe.
-export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000,tiktok:240_000};
+export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000,tiktok:240_000,snapchat:240_000};
+// Snapchat 240 s : lecture du fichier, envoi chiffré (jusqu'à 120 s par morceau) puis création de la Story / du Spotlight.
 // TikTok 240 s : une vidéo motion design est lue dans le stockage puis envoyée (jusqu'à 60 s + 90 s) avant le suivi du statut.
 export const MAX_SCHEDULED_DUE_WITH_DEADLINE=10;
 // reconcile : vérification automatique des posts Google « en cours de relecture » (voir reconcilePendingGoogleDeliveries).

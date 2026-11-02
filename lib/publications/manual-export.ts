@@ -21,6 +21,7 @@ const labels: Record<PublicationPlatform, string> = {
   instagram: "Instagram",
   google_business_profile: "Google Business Profile",
   tiktok: "TikTok",
+  snapchat: "Snapchat",
 };
 const slug = (value: string) => value.normalize("NFKD").replace(/\p{M}/gu, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48).replace(/-$/, "");

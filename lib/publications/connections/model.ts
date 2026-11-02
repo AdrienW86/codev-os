@@ -4,19 +4,19 @@ import {platformLabels} from '../editor';
 import type {PublicationPlatform} from '../types';
 
 // One provider per OAuth grant: Meta covers Facebook pages and Instagram business accounts.
-export const CONNECTION_PROVIDERS=['meta','google_business_profile','tiktok'] as const;
+export const CONNECTION_PROVIDERS=['meta','google_business_profile','tiktok','snapchat'] as const;
 export type ConnectionProvider=typeof CONNECTION_PROVIDERS[number];
 export const CONNECTION_STATUSES=['pending','active','expired','revoked','error','disabled'] as const;
 export type ConnectionStatus=typeof CONNECTION_STATUSES[number];
 export const ACCOUNT_STATUSES=['active','unavailable','revoked','disabled'] as const;
 export type AccountStatus=typeof ACCOUNT_STATUSES[number];
-export const PROVIDER_PLATFORMS:Readonly<Record<ConnectionProvider,readonly PublicationPlatform[]>>={meta:['facebook','instagram'],google_business_profile:['google_business_profile'],tiktok:['tiktok']};
-export const PROVIDER_LABELS:Record<ConnectionProvider,string>={meta:'Meta',google_business_profile:'Google Business Profile',tiktok:'TikTok'};
+export const PROVIDER_PLATFORMS:Readonly<Record<ConnectionProvider,readonly PublicationPlatform[]>>={meta:['facebook','instagram'],google_business_profile:['google_business_profile'],tiktok:['tiktok'],snapchat:['snapchat']};
+export const PROVIDER_LABELS:Record<ConnectionProvider,string>={meta:'Meta',google_business_profile:'Google Business Profile',tiktok:'TikTok',snapchat:'Snapchat'};
 export const CONNECTION_STATUS_LABELS:Record<ConnectionStatus|'none',string>={none:'Non connecté',pending:'En attente',active:'Connecté',expired:'Expiré',revoked:'Révoqué',error:'En erreur',disabled:'Déconnecté'};
 export const ACCOUNT_STATUS_LABELS:Record<AccountStatus|'legacy',string>={active:'Actif',unavailable:'Indisponible',revoked:'Révoqué',disabled:'Désactivé',legacy:'Compte historique'};
 
 export function isConnectionProvider(value:unknown):value is ConnectionProvider{return typeof value==='string'&&(CONNECTION_PROVIDERS as readonly string[]).includes(value);}
-export function providerOfPlatform(platform:PublicationPlatform):ConnectionProvider{return platform==='google_business_profile'?'google_business_profile':platform==='tiktok'?'tiktok':'meta';}
+export function providerOfPlatform(platform:PublicationPlatform):ConnectionProvider{return platform==='google_business_profile'?'google_business_profile':platform==='tiktok'?'tiktok':platform==='snapchat'?'snapchat':'meta';}
 export function connectFirstMessage(platform:PublicationPlatform):string{return `Connectez d’abord ${PROVIDER_LABELS[providerOfPlatform(platform)]}`;}
 
 // Normalized account exposed by a provider. Only non-sensitive fields; anything else is dropped.
@@ -48,6 +48,14 @@ export function normalizeTikTokAccounts(user:TikTokUser|null):ExternalPublicatio
  if(!user)return [];const name=displayName(user.username?`@${user.username}`:user.displayName);
  return externalId(user.openId)&&name?[{provider:'tiktok',platform:'tiktok',externalAccountId:user.openId,displayName:name,parentExternalId:null,metadata:{}}]:[];
 }
+// Snapchat : les profils publics (Public Profiles) que la personne connectée gère ; chacun est un compte publiable.
+export type SnapchatPublicProfile={id:string;displayName:string|null;username:string|null};
+export function normalizeSnapchatAccounts(profiles:readonly SnapchatPublicProfile[]):ExternalPublicationAccount[]{
+ const result:ExternalPublicationAccount[]=[];
+ for(const p of profiles){const name=displayName(p?.username?`@${p.username}`:p?.displayName);
+  if(externalId(p?.id)&&/^[A-Za-z0-9_-]{1,100}$/.test(p.id)&&name)result.push({provider:'snapchat',platform:'snapchat',externalAccountId:p.id,displayName:name,parentExternalId:null,metadata:{}});}
+ return dedupe(result);
+}
 function dedupe(accounts:ExternalPublicationAccount[]):ExternalPublicationAccount[]{const seen=new Set<string>();return accounts.filter(a=>{const k=`${a.platform}|${a.externalAccountId}`;if(seen.has(k))return false;seen.add(k);return true;});}
 // Payload of publication_accounts_sync (exact keys expected by the RPC).
 export function syncPayload(accounts:readonly ExternalPublicationAccount[]){
@@ -78,7 +86,7 @@ export function getChannelPublishability(i:PublishabilityInput):ChannelPublishab
 
 // View models of the "Connexions" section and of the account selector of each channel card.
 export type ConnectionSummary={provider:ConnectionProvider;label:string;status:ConnectionStatus|'none';statusLabel:string;connected:boolean;
- counts:{facebook:number;instagram:number;google_business_profile:number;tiktok:number};canDisconnect:boolean;expiresLabel:string|null;connectedLabel:string|null};
+ counts:{facebook:number;instagram:number;google_business_profile:number;tiktok:number;snapchat:number};canDisconnect:boolean;expiresLabel:string|null;connectedLabel:string|null};
 export type AccountOption={id:string;platform:PublicationPlatform;name:string;status:AccountStatus;statusLabel:string;assignable:boolean;usedByOtherClient?:boolean};
 export type ChannelAccountView={platform:PublicationPlatform;platformLabel:string;currentAccountId:string|null;currentLabel:string|null;options:AccountOption[];
  emptyMessage:string|null;publishability:ChannelPublishability;publishabilityLabel:string};
@@ -87,7 +95,7 @@ export function connectionSummary(provider:ConnectionProvider,row:{status:string
  const status=row&&(CONNECTION_STATUSES as readonly string[]).includes(row.status)?row.status as ConnectionStatus:'none';
  const n=(k:string)=>{const v=row?.accounts?.[k];return typeof v==='number'&&Number.isInteger(v)&&v>=0?v:0;};
  return {provider,label:PROVIDER_LABELS[provider],status,statusLabel:CONNECTION_STATUS_LABELS[status],connected:status==='active',
-  counts:{facebook:n('facebook'),instagram:n('instagram'),google_business_profile:n('google_business_profile'),tiktok:n('tiktok')},canDisconnect:status!=='none'&&status!=='disabled',
+  counts:{facebook:n('facebook'),instagram:n('instagram'),google_business_profile:n('google_business_profile'),tiktok:n('tiktok'),snapchat:n('snapchat')},canDisconnect:status!=='none'&&status!=='disabled',
   expiresLabel:status==='active'&&typeof row?.expires_at==='string'&&!Number.isNaN(Date.parse(row.expires_at))?`Expire le ${day.format(new Date(row.expires_at))}`:null,
   connectedLabel:status!=='none'&&typeof row?.connected_at==='string'&&!Number.isNaN(Date.parse(row.connected_at))?`Connecté le ${day.format(new Date(row.connected_at))}`:null};
 }

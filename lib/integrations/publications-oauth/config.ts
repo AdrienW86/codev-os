@@ -7,7 +7,7 @@ import type {ConnectionProvider} from '@/lib/publications/connections/model';
 // Graph API v26.0 (released 2026-07-29; no change to the Pages / Instagram publishing / Login endpoints used here).
 export const META_GRAPH_VERSION='v26.0';
 // Official callback paths (the redirect URI is the configured base URL + this path, nothing else).
-export const OAUTH_CALLBACK_PATHS:Record<ConnectionProvider,string>={meta:'/api/publications/oauth/meta/callback',google_business_profile:'/api/publications/oauth/google-business-profile/callback',tiktok:'/api/publications/oauth/tiktok/callback'};
+export const OAUTH_CALLBACK_PATHS:Record<ConnectionProvider,string>={meta:'/api/publications/oauth/meta/callback',google_business_profile:'/api/publications/oauth/google-business-profile/callback',tiktok:'/api/publications/oauth/tiktok/callback',snapchat:'/api/publications/oauth/snapchat/callback'};
 // businessManagerRoles: the administrator's role on the client Pages comes from a Business Manager (business
 // portfolio). Meta then also requires ads_management + ads_read for Instagram publishing (official content publishing
 // guide). Off by default (minimum permissions); META_PAGE_ROLES_VIA_BUSINESS_MANAGER=true turns it on.
@@ -18,6 +18,8 @@ export type MetaOAuthConfig={appId:string;appSecret:string;redirectUri:string;bu
 export type GoogleOAuthConfig={clientId:string;clientSecret:string;redirectUri:string};
 // TikTok for Developers (Login Kit + Content Posting API) : client key / client secret de l'application CODE-V.
 export type TikTokOAuthConfig={clientKey:string;clientSecret:string;redirectUri:string};
+// Snap (Business Manager → Business Details → OAuth App, Public Profile API) : client id / client secret de l'application CODE-V.
+export type SnapchatOAuthConfig={clientId:string;clientSecret:string;redirectUri:string};
 export type CredentialKey={id:string;key:Buffer};
 export type CredentialKeyring={current:CredentialKey;previous:CredentialKey|null};
 type Env=Record<string,string|undefined>;
@@ -49,6 +51,11 @@ export function tiktokOAuthConfig(env:Env=process.env):TikTokOAuthConfig|null{
  if(!opaque(clientKey,8,100)||!/^[A-Za-z0-9_-]+$/.test(clientKey)||!opaque(clientSecret,16,200)||!redirectUri)return null;
  return {clientKey,clientSecret,redirectUri};
 }
+export function snapchatOAuthConfig(env:Env=process.env):SnapchatOAuthConfig|null{
+ const clientId=env.SNAPCHAT_CLIENT_ID,clientSecret=env.SNAPCHAT_CLIENT_SECRET,redirectUri=redirectUriFor('snapchat',env);
+ if(!opaque(clientId,8,200)||!/^[A-Za-z0-9_-]+$/.test(clientId)||!opaque(clientSecret,16,200)||!redirectUri)return null;
+ return {clientId,clientSecret,redirectUri};
+}
 // AES-256-GCM keys: 32 random bytes, base64. The key id is stored next to each ciphertext (rotation).
 function key(raw:string|undefined,id:string|undefined):CredentialKey|null{
  if(!raw||!id||!/^[a-z0-9_-]{1,40}$/.test(id))return null;
@@ -70,5 +77,6 @@ export function missingOAuthConfiguration(provider:ConnectionProvider,env:Env=pr
  if(provider==='meta'&&!metaOAuthConfig(env))missing.push('META_APP_ID','META_APP_SECRET');
  if(provider==='google_business_profile'&&!googleOAuthConfig(env))missing.push('GOOGLE_BUSINESS_PROFILE_CLIENT_ID','GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET');
  if(provider==='tiktok'&&!tiktokOAuthConfig(env))missing.push('TIKTOK_CLIENT_KEY','TIKTOK_CLIENT_SECRET');
+ if(provider==='snapchat'&&!snapchatOAuthConfig(env))missing.push('SNAPCHAT_CLIENT_ID','SNAPCHAT_CLIENT_SECRET');
  return [...new Set(missing)];
 }

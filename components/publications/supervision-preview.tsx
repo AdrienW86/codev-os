@@ -1,5 +1,5 @@
 import type {SupervisionVariant} from '@/lib/publications/supervision-review';
-import {MediaPreview} from './media-preview';
+import {MediaPreview,isVideoPreview} from './media-preview';
 
 // Socle Publications, lot 7 (mobile) : aperçu d'une variante telle qu'elle apparaîtra sur sa plateforme (Facebook,
 // Instagram, Google Business Profile). Rendu indicatif, jetons de design uniquement ; la photo est l'URL signée courte
@@ -20,6 +20,13 @@ export function VariantPreview({variant,accountName}:{variant:SupervisionVariant
   <Photo variant={variant} className="aspect-[9/16] object-contain"/>
   <figcaption className="absolute inset-x-0 bottom-0 space-y-1 bg-gradient-to-t from-black/85 to-transparent p-3 text-sm"><span className="block font-semibold">{accountName}</span>
    <span className="block line-clamp-4 break-words whitespace-pre-wrap">{variant.text}</span></figcaption></figure>;
+ if(variant.platform==='snapchat'){const spotlight=isVideoPreview(variant.media.preview);
+  return <figure className="relative overflow-hidden rounded-xl border border-border bg-black text-white" data-preview="snapchat" data-snapchat-format={spotlight?'spotlight':'story'}>
+  <Photo variant={variant} className="aspect-[9/16] object-contain"/>
+  <figcaption className="absolute inset-x-0 top-0 flex items-center gap-2 bg-gradient-to-b from-black/70 to-transparent p-3 text-sm"><Avatar name={accountName}/><span className="min-w-0"><span className="block truncate font-semibold">{accountName}</span>
+   <span className="block text-xs">{spotlight?'Spotlight':'Story · 24 h'}</span></span></figcaption>
+  {spotlight?<p className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-3 text-sm line-clamp-3 break-words">{variant.text}</p>
+   :<p className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-3 text-xs">Story photo : Snapchat n’affiche pas le texte.</p>}</figure>;}
  if(variant.platform==='google_business_profile')return <figure className="overflow-hidden rounded-xl border border-border bg-surface" data-preview="google_business_profile">
   <figcaption className="flex items-center gap-2 p-2.5"><Avatar name={accountName}/><span className="min-w-0"><span className="block truncate text-sm font-semibold">{accountName}</span><span className="block text-xs text-muted">Fiche Google · Nouveauté</span></span></figcaption>
   <Photo variant={variant} className="aspect-[4/3]"/>

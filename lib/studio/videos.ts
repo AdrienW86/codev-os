@@ -97,15 +97,21 @@ export async function deleteStudioVideo(id:unknown,deps:StudioDeps={}):Promise<{
  return {ok:true,message:'Vidéo supprimée.'};
 }
 
+/** Réseaux qui peuvent recevoir une vidéo du Studio (une vidéo seule par publication). */
+export const STUDIO_VIDEO_PLATFORMS={tiktok:{label:'TikTok',maxText:2200},snapchat:{label:'Snapchat',maxText:160}} as const;
+export type StudioVideoPlatform=keyof typeof STUDIO_VIDEO_PLATFORMS;
 /**
- * Prépare une publication TikTok (brouillon non planifié) avec une vidéo du Studio : copie privée de la vidéo dans le
- * stockage des publications, rattachée à la variante TikTok. Aucune soumission, approbation ni diffusion ici.
+ * Prépare une publication TikTok ou Snapchat (brouillon non planifié) avec une vidéo du Studio : copie privée de la vidéo
+ * dans le stockage des publications, rattachée à la variante du réseau (Snapchat : Spotlight). Aucune soumission,
+ * approbation ni diffusion ici.
  */
-export async function createTikTokDraftFromVideo(videoId:unknown,caption:unknown,deps:StudioDeps={}):Promise<{ok:true;publicationId:string;message:string}|{ok:false;message:string}>{
+export async function createDraftFromVideo(platform:unknown,videoId:unknown,caption:unknown,deps:StudioDeps={}):Promise<{ok:true;publicationId:string;message:string}|{ok:false;message:string}>{
  const {userId}=await requireAdmin();
+ if(platform!=='tiktok'&&platform!=='snapchat')return {ok:false,message:'Réseau invalide.'};
+ const {label,maxText}=STUDIO_VIDEO_PLATFORMS[platform];
  if(typeof videoId!=='string'||!STUDIO_UUID.test(videoId))return {ok:false,message:'Vidéo invalide.'};
  const text=typeof caption==='string'?caption.replace(/\r/g,'').trim():'';
- if(!text||text.length>2200)return {ok:false,message:'Texte TikTok requis (2 200 caractères au plus).'};
+ if(!text||text.length>maxText)return {ok:false,message:`Texte ${label} requis (${maxText.toLocaleString('fr-FR')} caractères au plus).`};
  const db=deps.db??getSupabaseServerClient();
  const row=await db.from('studio_videos').select('id,client_id,title,storage_path').eq('id',videoId).maybeSingle();
  const v=row.data as {id:string;client_id:string;title:string;storage_path:string}|null;
@@ -114,17 +120,17 @@ export async function createTikTokDraftFromVideo(videoId:unknown,caption:unknown
  let projectId:string|null=null;
  for(const p of (projects.data??[]) as {id:string;client_id:string;type:string}[]){
   const capabilities=await getPublicationProjectChannels(p).catch(()=>null);
-  if(capabilities&&projectAllowsPlatform(capabilities,'tiktok')){projectId=p.id;break;}
+  if(capabilities&&projectAllowsPlatform(capabilities,platform)){projectId=p.id;break;}
  }
- if(projects.error||!projectId)return {ok:false,message:'Aucun projet de ce client n’autorise TikTok : activez TikTok dans ses réglages Publications.'};
+ if(projects.error||!projectId)return {ok:false,message:`Aucun projet de ce client n’autorise ${label} : activez ${label} dans ses réglages Publications.`};
  const file=await db.storage.from(STUDIO_BUCKET).download(v.storage_path);
  if(file.error||!file.data)return {ok:false,message:'Vidéo illisible dans le stockage.'};
  const bytes=new Uint8Array(await file.data.arrayBuffer());
  const form=(extra:(f:FormData)=>void)=>{const f=new FormData();
   for(const [k,val] of Object.entries({client_id:v.client_id,project_id:projectId!,title:v.title,angle:'Vidéo motion design du Studio vidéo',source:text}))f.set(k,val);
-  f.set('tiktok_enabled','on');f.set('tiktok_text',text);extra(f);return f;};
+  f.set(`${platform}_enabled`,'on');f.set(`${platform}_text`,text);extra(f);return f;};
  const created=await saveUnscheduledDraft(form(()=>{}));
- if(!created.id)return {ok:false,message:created.message??'Brouillon TikTok non créé.'};
+ if(!created.id)return {ok:false,message:created.message??`Brouillon ${label} non créé.`};
  const publicationId=created.id,incomplete='La vidéo n’a pas pu être attachée : le brouillon a été archivé. Réessayez.';
  const abandon=async()=>{await db.rpc('publication_archive',{p_publication_id:publicationId,p_actor_id:userId});return {ok:false as const,message:incomplete};};
  let revisionId:string|null|undefined;try{revisionId=(await currentRevision(publicationId))?.revision_id;}catch{revisionId=null;}
@@ -135,9 +141,11 @@ export async function createTikTokDraftFromVideo(videoId:unknown,caption:unknown
  const registered=await db.rpc('publication_register_image',{p_publication_id:publicationId,p_revision_id:revisionId,p_asset_id:assetId,p_path:path,
   p_hash:createHash('sha256').update(bytes).digest('hex'),p_mime:VIDEO_MIME,p_provenance:`Vidéo motion design du Studio vidéo (« ${v.title.slice(0,120)} »), photos du client`,p_actor_id:userId});
  if(registered.error){await db.storage.from(VIDEO_BUCKET).remove([path]);return abandon();}
- const revised=await saveDraft(form(f=>{f.set('publication_id',publicationId);f.set('revision_id',revisionId!);f.append('tiktok_assets',assetId);}));
+ const revised=await saveDraft(form(f=>{f.set('publication_id',publicationId);f.set('revision_id',revisionId!);f.append(`${platform}_assets`,assetId);}));
  if(!revised.id)return abandon();
  await db.from('studio_videos').update({last_publication_id:publicationId}).eq('id',v.id);
- await writeAudit({kind:'admin',userId},{action:'studio.tiktok_draft_created',resource_type:'studio_video',resource_id:v.id,metadata:{client_id:v.client_id,publication_id:publicationId}}).catch(()=>{});
- return {ok:true,publicationId,message:'Brouillon TikTok prêt : planifiez-le puis validez-le dans Publications.'};
+ await writeAudit({kind:'admin',userId},{action:`studio.${platform}_draft_created`,resource_type:'studio_video',resource_id:v.id,metadata:{client_id:v.client_id,publication_id:publicationId}}).catch(()=>{});
+ return {ok:true,publicationId,message:`Brouillon ${label} prêt : planifiez-le puis validez-le dans Publications.`};
 }
+/** Compatibilité : brouillon TikTok depuis une vidéo du Studio. */
+export async function createTikTokDraftFromVideo(videoId:unknown,caption:unknown,deps:StudioDeps={}){return createDraftFromVideo('tiktok',videoId,caption,deps);}

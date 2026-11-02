@@ -51,7 +51,7 @@ test('view model: FB / IG / GBP / TikTok cards, sorted enabled slots, inactive h
  const explicit=[{platform:'facebook',enabled:true,accountConnected:true,rules:' Ton ',schedule:sched([slot(5,'12:00'),slot(1,'12:00'),slot(3,'18:00',false)])},
   {platform:'instagram',enabled:false,accountConnected:false,rules:null,schedule:sched([slot(2,'18:00'),slot(6,'11:00')],false)}];
  const v=model.buildChannelConfiguration(caps('configured',['facebook'],false),explicit);
- assert.deepEqual(json(v.cards.map(c=>[c.label,c.state,c.configured])),[['Facebook','active',true],['Instagram','inactive',true],['Google Business Profile','inactive',false],['TikTok','inactive',false]]);
+ assert.deepEqual(json(v.cards.map(c=>[c.label,c.state,c.configured])),[['Facebook','active',true],['Instagram','inactive',true],['Google Business Profile','inactive',false],['TikTok','inactive',false],['Snapchat','inactive',false]]);
  const fb=v.cards[0];assert.deepEqual(json(fb.schedule.slots),[{weekday:1,localTime:'12:00'},{weekday:5,localTime:'12:00'}],'Monday → Sunday then time');
  assert.deepEqual(json(fb.schedule.inactiveSlots),[{weekday:3,localTime:'18:00'}]);assert.equal(fb.postsPerWeek,2);assert.equal(fb.rules,'Ton');assert.equal(fb.accountConnected,true);
  assert.equal(v.cards[1].schedule.enabled,false,'disabled channel keeps its (disabled) schedule');assert.equal(v.cards[2].schedule,null,'no schedule yet');
@@ -91,7 +91,7 @@ test('channel activation: account and rules preserved, last channel can be disab
  assert.deepEqual(s.db.log,[['publication_channel_save',{p_project_id:P,p_platform:'facebook',p_enabled:false,p_publication_account_id:ACC,p_editorial_rules:'Ton chaleureux',p_actor_id:'user_admin'}]],'existing account and rules sent back');
  const gbp=serviceWith(configuredTables());await gbp.m.setChannelEnabled(P,'google_business_profile',true);assert.deepEqual(gbp.db.log[0][1].p_platform,'google_business_profile');assert.equal(gbp.db.log[0][1].p_publication_account_id,null);
  const legacy=serviceWith({publication_project_channels:[]});assert.deepEqual(json(await legacy.m.setChannelEnabled(P,'facebook',false)),{ok:false,message:'Confirmez d’abord les canaux hérités.'});assert.deepEqual(legacy.db.log,[]);
- for(const [platform,enabled] of [['snapchat',true],['facebook','yes']]){const x=serviceWith(configuredTables());assert.equal((await x.m.setChannelEnabled(P,platform,enabled)).ok,false);assert.deepEqual(x.db.log,[]);}});
+ for(const [platform,enabled] of [['pinterest',true],['facebook','yes']]){const x=serviceWith(configuredTables());assert.equal((await x.m.setChannelEnabled(P,platform,enabled)).ok,false);assert.deepEqual(x.db.log,[]);}});
 
 test('schedule save per channel: channel resolved server-side, P2-a RPC only, independent failures',async()=>{
  const s=serviceWith(configuredTables());const slots=[{weekday:1,local_time:'12:00',enabled:true}];
@@ -125,7 +125,7 @@ test('component: legacy banner, FB/IG/GBP cards, one save button per channel, sl
   {platform:'instagram',enabled:false,accountConnected:false,rules:null,schedule:sched([],false)},{platform:'google_business_profile',enabled:true,accountConnected:false,rules:null,schedule:null}];
  const html=renderToStaticMarkup(jsx.jsx(ChannelConfiguration,{projectId:P,view:model.buildChannelConfiguration(caps('configured',['facebook','google_business_profile'],false),explicit)}));
  for(const label of ['Facebook','Instagram','Google Business Profile'])assert.match(html,new RegExp(`data-channel="[a-z_]+"[^>]*>[\\s\\S]*?${label}`));
- assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,10,'toggle + editorial rules + schedule form per card (TikTok non configuré : activation seule)');
+ assert.equal((html.match(/>Enregistrer (Facebook|Instagram|Google Business Profile)</g)??[]).length,3,'one independent save per channel');assert.equal((html.match(/<form/g)??[]).length,11,'toggle + editorial rules + schedule form per card (TikTok et Snapchat non configurés : activation seule)');
  assert.ok(html.indexOf('value="1"')>-1);const fb=html.slice(html.indexOf('data-channel="facebook"'),html.indexOf('data-channel="instagram"'));
  assert.match(fb,/2 publications \/ semaine/);assert.match(fb,/Réactiver Mercredi 18:00/);assert.match(fb,/Compte connecté/);assert.match(fb,/Ton chaleureux/);assert.match(fb,/Europe\/Paris/);assert.match(fb,/>Actif</);
  assert.ok(fb.indexOf('<option value="1" selected')<fb.lastIndexOf('<option value="5" selected'),'Monday row before Friday row');

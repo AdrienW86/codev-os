@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Studio vidéo" };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Studio vidéo : création de vidéos motion design par client, indépendante des publications. Une vidéo peut ensuite
-// servir à préparer une publication TikTok (brouillon), validée comme toute publication.
+// servir à préparer une publication TikTok ou Snapchat (brouillon), validée comme toute publication.
 export default async function StudioPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin();
   const params = await searchParams;
@@ -41,7 +41,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           : !videos?.videos.length ? <Panel className="p-6 text-sm text-muted">Aucune vidéo pour l’instant.</Panel>
           : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{videos.videos.map((v) => <StudioVideoCard key={v.id} video={v} />)}</div>}
       </section>
-      <p className="mt-6 text-xs text-muted">Les vidéos préparées pour TikTok apparaissent dans <Link href="/publications" className="text-accent underline">Publications</Link>, en brouillon.</p>
+      <p className="mt-6 text-xs text-muted">Les vidéos préparées pour TikTok ou Snapchat apparaissent dans <Link href="/publications" className="text-accent underline">Publications</Link>, en brouillon.</p>
     </>}
   </>;
 }

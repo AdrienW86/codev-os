@@ -1,7 +1,7 @@
 import 'server-only';
 import {createHmac} from 'node:crypto';
 import type {ProviderRequest,ProviderTransport} from '@/lib/publications/connections/providers';
-import {META_GRAPH_VERSION,type GoogleOAuthConfig,type MetaOAuthConfig,type TikTokOAuthConfig} from './config';
+import {META_GRAPH_VERSION,type GoogleOAuthConfig,type MetaOAuthConfig,type SnapchatOAuthConfig,type TikTokOAuthConfig} from './config';
 
 // Provider HTTP transports (Lot 4.3 P11-a). Official endpoints are constants; a request only chooses a validated
 // relative path. Every call: timeout, no redirect, bounded body, JSON only, never logged, never retried here (an
@@ -22,6 +22,13 @@ export const TIKTOK_AUTHORIZE='https://www.tiktok.com/v2/auth/authorize/';
 const TIKTOK_API='https://open.tiktokapis.com/v2/';
 // Scopes minimum : identité du compte (nom affiché) et publication directe. Rien d'autre (ni vidéos, ni statistiques).
 export const TIKTOK_SCOPES=['user.info.basic','video.publish'] as const;
+// Snap OAuth 2.0 (comptes Snapchat / Business Manager) : jeton d'accès court (environ 1 h), jeton de rafraîchissement.
+export const SNAPCHAT_AUTHORIZE='https://accounts.snapchat.com/login/oauth2/authorize';
+const SNAPCHAT_TOKEN='https://accounts.snapchat.com/login/oauth2/access_token';
+// Lectures de découverte des profils publics (API Marketing, en lecture seule).
+const SNAPCHAT_API='https://adsapi.snapchat.com/v1/';
+// Scope unique : Public Profile API (gestion du contenu des profils publics). Rien d'autre (ni publicité, ni audiences).
+export const SNAPCHAT_SCOPES=['snapchat-profile-api'] as const;
 export const GOOGLE_BUSINESS_SCOPE='https://www.googleapis.com/auth/business.manage';
 // Minimum Meta permissions (official permission reference): list the managed Pages, read the Page / its linked
 // Instagram professional account, and the two publishing permissions needed later (P11-b) so that no second consent
@@ -89,6 +96,19 @@ export function tiktokTransport(config:TikTokOAuthConfig,fetchImpl:FetchLike=fet
   return call(fetchImpl,TIKTOK_API+'user/info/?'+query(r.params),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
  }};
 }
+export function snapchatTransport(config:SnapchatOAuthConfig,fetchImpl:FetchLike=fetch):ProviderTransport{
+ return {async request(r:ProviderRequest){
+  if(r.operation==='token'){
+   safePath(r.path,/^token$/);
+   const params:Record<string,string>={...r.params,client_id:config.clientId,client_secret:config.clientSecret};
+   if(r.params.grant_type==='refresh_token'){if(!r.credential?.refreshToken)throw new TransportError('invalid_path');params.refresh_token=r.credential.refreshToken;}
+   else params.redirect_uri=config.redirectUri;
+   return call(fetchImpl,SNAPCHAT_TOKEN,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:query(params)});}
+  if(r.operation!=='read'||!r.credential)throw new TransportError('invalid_path');
+  const path=safePath(r.path,/^(me|organizations\/[0-9a-f-]{36}\/public_profiles)$/);
+  return call(fetchImpl,SNAPCHAT_API+path+(Object.keys(r.params).length?'?'+query(r.params):''),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
+ }};
+}
 // Authorization URLs (official hosts only; the state / PKCE challenge come from the server).
 export function metaAuthorizeUrl(config:MetaOAuthConfig,state:string):string{
  // Facebook Login for Business: config_id replaces scope. Classic Facebook Login: explicit scope list.
@@ -101,4 +121,7 @@ export function googleAuthorizeUrl(config:GoogleOAuthConfig,state:string,codeCha
 }
 export function tiktokAuthorizeUrl(config:TikTokOAuthConfig,state:string):string{
  return TIKTOK_AUTHORIZE+'?'+query({client_key:config.clientKey,redirect_uri:config.redirectUri,response_type:'code',scope:TIKTOK_SCOPES.join(','),state});
+}
+export function snapchatAuthorizeUrl(config:SnapchatOAuthConfig,state:string):string{
+ return SNAPCHAT_AUTHORIZE+'?'+query({client_id:config.clientId,redirect_uri:config.redirectUri,response_type:'code',scope:SNAPCHAT_SCOPES.join(' '),state});
 }

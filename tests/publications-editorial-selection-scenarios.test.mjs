@@ -59,7 +59,7 @@ test("scénario B — rotation : trois démoussages récents, une autre prestati
     "La mousse retient l’humidité sur les tuiles : un démoussage avant l’hiver les protège du gel.",
     "Avant / après démoussage sur ce toit. #toiture #demoussage",
     "Démoussage de toiture : retrait de la mousse et nettoyage des tuiles avant l’hiver."]) };
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), again)), { ok: false, reason: "repetition" }, "same service a fourth time");
+  { const r = json(sel.validateGeneratorOutput(input(), again)); assert.equal(r.reason, "repetition", "same service a fourth time"); assert.match(r.detail, /^(même prestation que les 2 dernières publications|sujet déjà utilisé)/); }
   assert.equal(sel.validateGeneratorOutput(input(), { idea, publications: variants(faitage) }).ok, true, "another verified service with a matching photo");
   // Sans photo pour l'autre prestation, la rotation ne bloque pas (pas d'alternative illustrable).
   assert.equal(sel.repeatsService(again.idea.subject, input({ media: [{ ...roof, description: "Toiture couverte de mousse.", categories: ["toiture"] }] })), false);

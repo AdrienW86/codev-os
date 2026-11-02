@@ -78,11 +78,22 @@ export const VARIANT_SIMILARITY_THRESHOLD=.8;
 const opening=(text:string)=>normalize(text).split(' ').slice(0,6).join(' ');
 // Répétition : même sujet qu'une publication récente, formulation trop proche ou même accroche (6 premiers mots).
 export function repeatsPrevious(subject:string,texts:readonly string[],input:Pick<AgentV2GeneratorInput,'previousSubjects'|'previousPublications'>&Partial<Pick<AgentV2GeneratorInput,'services'|'media'>>):boolean{
- const subjects=new Set([...input.previousSubjects,...(input.previousPublications??[]).map(p=>p.subject)].map(normalize));
- if(subjects.has(normalize(subject)))return true;
- if(repeatsService(subject,input))return true;
- const previous=(input.previousPublications??[]).flatMap(p=>p.texts.map(t=>t.text));
- return texts.some(t=>previous.some(old=>textSimilarity(t,old)>=REPETITION_THRESHOLD||(opening(t).split(' ').length>=6&&opening(t)===opening(old))));
+ return repetitionDetail(subject,texts,input)!==null;
+}
+/**
+ * Motif précis d'une répétition (ou null) : il est enregistré avec le refus et renvoyé au modèle pour le nouvel essai.
+ * Avant, le refus « repetition » était muet : le nouvel essai ne savait pas quoi corriger et échouait à nouveau.
+ */
+export function repetitionDetail(subject:string,texts:readonly string[],input:Pick<AgentV2GeneratorInput,'previousSubjects'|'previousPublications'>&Partial<Pick<AgentV2GeneratorInput,'services'|'media'>>):string|null{
+ const all=[...input.previousSubjects,...(input.previousPublications??[]).map(p=>p.subject)];
+ const same=all.find(s=>normalize(s)===normalize(subject));
+ if(same!==undefined)return `sujet déjà utilisé : « ${same.slice(0,80)} » ; choisis un sujet formulé autrement (angle, bénéfice ou question précise), pas le seul nom de la prestation`;
+ if(repeatsService(subject,input)){const s=(input.services??[]).find(x=>aboutService(subject,x));
+  return `même prestation que les 2 dernières publications${s?` (« ${s.slice(0,60)} »)`:''} ; choisis une autre prestation de services`;}
+ for(const p of input.previousPublications??[])for(const old of p.texts)for(const t of texts){
+  if(textSimilarity(t,old.text)>=REPETITION_THRESHOLD)return `formulation trop proche de la publication « ${p.subject.slice(0,80)} » ; réécris avec d’autres phrases`;
+  if(opening(t).split(' ').length>=6&&opening(t)===opening(old.text))return `même accroche que la publication « ${p.subject.slice(0,80)} » : « ${opening(t).slice(0,60)} » ; commence autrement`;}
+ return null;
 }
 
 // Prestations du client reconnues dans un texte : editorial-text.ts (mots propres + vocabulaire associé, PR #42).
@@ -125,7 +136,7 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
   // Le motif (termes refusés, sans le texte) est conservé : il dit quoi corriger au lieu d'un refus muet.
   const found=[...new Set([value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])].flatMap(t=>unsupportedClaims(t,facts)).map(c=>c.split(':').slice(1).join(':').trim().toLocaleLowerCase('fr')))];
   if(found.length)return {ok:false,reason:'unsupported_claim',detail:`termes non confirmés : ${found.slice(0,5).map(f=>`« ${f.slice(0,40)} »`).join(', ')}`};}
- if(input.previousSubjects&&repeatsPrevious(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput))return {ok:false,reason:'repetition'};
+ if(input.previousSubjects){const detail=repetitionDetail(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput);if(detail)return {ok:false,reason:'repetition',detail};}
  // PR #42 : lieux autorisés, photo cohérente (jamais un document), répétitions sur tout l'historique chargé.
  const refusal=editorialRefusal(input,value);if(refusal)return {ok:false,...refusal};
  return {ok:true,value};

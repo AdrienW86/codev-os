@@ -26,7 +26,7 @@ export const AGENT_V2_INSTRUCTIONS=[
  'Si une information manque, reste générique et factuel ; n’écris aucun chiffre, aucun prix, aucune promesse, aucun avis, aucune garantie, aucun délai, aucune ville non fournie.',
  // Mots refusés automatiquement par le contrôle anti-invention (selection.ts) : les nommer évite des refus en série.
  `Mots refusés automatiquement s’ils ne figurent pas mot pour mot dans le contexte : ${BLOCKED_WORDS.join(', ')}. Pour l’appel à l’action, reste sobre et sans qualificatif, et varie sa formulation (jamais un appel listé dans avoid_ctas).`,
- 'Une seule idée éditoriale commune (idea.subject et idea.angle), différente des previous_subjects, déclinée en un texte natif et DIFFÉRENT pour chaque occurrence fournie.',
+ 'Une seule idée éditoriale commune (idea.subject et idea.angle), différente des previous_subjects, déclinée en un texte natif et DIFFÉRENT pour chaque occurrence fournie. idea.subject est une formulation précise (un angle, un bénéfice ou une question), jamais le seul nom d’une prestation : « Motion design » seul est interdit, « Pourquoi une vidéo animée rend votre offre plus claire » convient.',
  'Chaque plateforme a son propre texte (accroche, structure et longueur adaptées) : jamais la même phrase reprise ou à peine retouchée d’une plateforme à l’autre. Seuls les faits sont communs.',
  'Prestations : ne cite que des prestations présentes dans services. Si les previous_publications portent toutes sur la même prestation, choisis une autre prestation de services illustrée par une photo disponible.',
  'previous_publications : les 3 dernières publications (sujet, textes, photo). Ne reprends ni leur sujet, ni leurs formulations, ni leur accroche, ni une photo de même description.',

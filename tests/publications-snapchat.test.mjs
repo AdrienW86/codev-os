@@ -12,6 +12,7 @@ const publisher = loadTs("lib/publications/delivery/snapchat-publisher.ts");
 const integration = loadTs("lib/integrations/publications-snapchat-publish.ts", { "./publications-retry-after": { publicationRetryAfterSeconds: () => null } }, { FormData, Blob, Response });
 const model = loadTs("lib/publications/connections/model.ts", { "../editor": { platformLabels: { snapchat: "Snapchat" } } });
 const config = loadTs("lib/integrations/publications-oauth/config.ts");
+const oauthHttp = loadTs("lib/integrations/publications-oauth/http.ts", { "./config": config });
 const PROFILE = "pp-123_abc";
 const ADD = `/us/v1/public_profiles/${PROFILE}/media/m-1/multipart-upload`;
 
@@ -43,29 +44,26 @@ test("Snapchat : identifiants exigés, scope vérifié, profils publics normalis
 });
 
 test("Snapchat : connexion, rafraîchissement et découverte des profils par le transport OAuth (lecture seule)", async () => {
+  const ORG = "11111111-1111-4111-8111-111111111111", OTHER = "22222222-2222-4222-8222-222222222222";
   const calls = [];
   const transport = { async request(r) { calls.push(`${r.operation}:${r.path}`);
     if (r.operation === "token") return { status: 200, body: { access_token: "snap.newtoken1", expires_in: 3600, refresh_token: "snap.refresh-2", scope: "snapchat-profile-api", token_type: "Bearer" } };
-    if (r.path === "me") return { status: 200, body: { request_status: "SUCCESS", me: { id: "me-1", organization_id: "11111111-1111-4111-8111-111111111111" } } };
-    return { status: 200, body: { public_profiles: [{ public_profile: { id: PROFILE, display_name: "JRenov" } }] } }; } };
+    if (r.path === "public_profiles/my_profile") return { status: 200, body: { request_id: "r", request_status: "SUCCESS", public_profile: { id: PROFILE, organization_id: ORG, display_name: "Codev", snap_user_name: "codev_website" } } };
+    assert.equal(r.params.limit, "50");
+    return { status: 200, body: { request_status: "SUCCESS", public_profiles: [{ sub_request_status: "SUCCESS", public_profile: { id: PROFILE, display_name: "Codev" } }, { public_profile: { id: OTHER, display_name: "JRenov" } }] } }; } };
   const p = snapchat.createSnapchatConnectionProvider(transport);
   const c = await p.exchangeCode("code-12345678", "https://os.code-v.fr/api/publications/oauth/snapchat/callback");
-  assert.equal(c.subject, "me-1");
-  assert.deepEqual(json(await p.listPublicProfiles(c)), [{ id: PROFILE, displayName: "JRenov", username: null }]);
-  assert.deepEqual(calls, ["token:token", "read:me", "read:me", "read:organizations/11111111-1111-4111-8111-111111111111/public_profiles"]);
+  assert.equal(c.subject, PROFILE);
+  assert.deepEqual(json(await p.listPublicProfiles(c)), [{ id: PROFILE, displayName: "Codev", username: "codev_website" }, { id: OTHER, displayName: "JRenov", username: null }]);
+  assert.deepEqual(calls, ["token:token", "read:public_profiles/my_profile", "read:public_profiles/my_profile", `read:organizations/${ORG}/public_profiles`]);
+  const orgDenied = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.path === "public_profiles/my_profile" ? { status: 200, body: { public_profile: { id: PROFILE, organization_id: ORG, display_name: "Codev" } } } : { status: 403, body: { request_status: "ERROR", error_code: "AUTHORIZATION_PERMISSION_DENIED" } }; } });
+  assert.deepEqual(json(await orgDenied.listPublicProfiles(credential())), [{ id: PROFILE, displayName: "Codev", username: null }], "refus sur l'organisation : le profil de la personne reste");
   const noMe = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.operation === "token" ? { status: 200, body: { access_token: "snap.newtoken1", expires_in: 3600, token_type: "Bearer" } } : { status: 403, body: {} }; } });
   const partial = await noMe.exchangeCode("code-12345678", "https://os.code-v.fr/cb");
-  assert.equal(partial.subject, null, "un refus sur /me n'empêche pas l'enregistrement du jeton");
+  assert.equal(partial.subject, null, "un refus sur le profil n'empêche pas l'enregistrement du jeton");
   await assert.rejects(noMe.listPublicProfiles(partial), (e) => e.kind === "permission", "le refus apparaît à la découverte");
-  const bizCalls = [];
-  const viaBiz = snapchat.createSnapchatConnectionProvider({ async request(r) { bizCalls.push(r.path);
-    if (r.path === "biz:me") return { status: 200, body: { me: { id: "me-2", organization_id: "11111111-1111-4111-8111-111111111111" } } };
-    if (r.path.startsWith("biz:organizations/")) return { status: 200, body: { public_profiles: [{ public_profile: { id: PROFILE, display_name: "Codev" } }] } };
-    return { status: 403, body: { request_status: "ERROR" } }; } });
-  assert.deepEqual(json(await viaBiz.listPublicProfiles(credential())), [{ id: PROFILE, displayName: "Codev", username: null }], "repli sur l'hôte Public Profile");
-  assert.deepEqual(bizCalls, ["me", "biz:me", "organizations/11111111-1111-4111-8111-111111111111/public_profiles", "biz:organizations/11111111-1111-4111-8111-111111111111/public_profiles"]);
-  const probe = snapchat.createSnapchatConnectionProvider({ async request(r) { if (r.path === "probe:public_search") throw new Error("network"); return { status: r.path === "me" ? 403 : 404, body: { debug_message: "secret?" } }; } });
-  assert.equal(await probe.diagnose(credential()), "ads403_biz404_pubx");
+  const probe = snapchat.createSnapchatConnectionProvider({ async request(r) { if (r.path === "probe:public_search") throw new Error("network"); return { status: 403, body: { debug_message: "secret?" } }; } });
+  assert.equal(await probe.diagnose(credential()), "me403_pubx");
   const expired = snapchat.createSnapchatConnectionProvider({ async request() { return { status: 401, body: { error: "invalid_token" } }; } });
   assert.deepEqual(json(await expired.validateConnection(credential())), { status: "expired", externalIdentity: null });
 });
@@ -98,7 +96,7 @@ test("Snapchat : une photo devient une Story ; fichier chiffré AES-256-CBC, env
 test("Snapchat : une vidéo (Studio vidéo) devient un Spotlight avec la description validée (160 caractères)", async () => {
   const text = "Une toiture neuve en 30 secondes ".repeat(10);
   const t = fakeTransport({ media: (r) => { assert.equal(r.body.type, "VIDEO"); return { status: 200, body: { media: [{ media: { id: "m-1", add_path: ADD, finalize_path: ADD } }] } }; },
-    spotlights: (r) => { assert.equal(r.body.media_id, "m-1"); assert.equal(r.body.locale, "fr_FR"); assert.equal([...r.body.description].length, 160); assert.ok(r.body.description.endsWith("…")); return { status: 200, body: { spotlight: { id: "spot-7" } } }; } });
+    spotlights: (r) => { assert.equal(r.body.media_id, "m-1"); assert.equal(r.body.locale, "fr_FR"); assert.equal([...r.body.description].length, 160); assert.ok(r.body.description.endsWith("…")); return { status: 200, body: { request_id: "r-7", spotlight_id: "spot-7", request_status: "SUCCESS" } }; } });
   const r = await publisher.createSnapchatPublisher(t, { encrypt: (b) => ({ bytes: b, key: "k", iv: "i" }) }).publish(input({ media: [video], text }));
   assert.deepEqual(json(r), { ok: true, remoteId: "spot-7", simulated: false });
   assert.deepEqual(t.calls, ["read", "media", "part1", "finalize", "spotlights"]);
@@ -126,8 +124,12 @@ test("Snapchat : refus avant toute écriture visible, incertitude après l'envoi
   assert.deepEqual(json(await p(lost).publish(input())), { ok: false, uncertain: true, errorCode: "timeout_after_dispatch" });
   const server = fakeTransport({ media: mediaCreated, stories: { status: 502, body: null } });
   assert.equal((await p(server).publish(input())).uncertain, true);
-  const noId = fakeTransport({ media: mediaCreated, stories: { status: 200, body: { request_status: "SUCCESS" } } });
-  assert.equal((await p(noId).publish(input())).errorCode, "remote_id_missing");
+  const docStory = fakeTransport({ media: mediaCreated, stories: { status: 200, body: { request_id: "req-1", request_status: "SUCCESS" } } });
+  assert.deepEqual(json(await p(docStory).publish(input())), { ok: true, remoteId: "m-1", simulated: false }, "Story : réponse documentée sans id, id du média retenu");
+  const noSpot = fakeTransport({ media: mediaCreated, spotlights: { status: 200, body: { request_status: "SUCCESS" } } });
+  assert.equal((await p(noSpot).publish(input({ media: [video] }))).errorCode, "remote_id_missing");
+  const dup = fakeTransport({ media: mediaCreated, stories: { status: 400, body: { request_status: "ERROR", error_code: "MEDIA_POSTING_ALREADY_IN_PROGRESS" } } });
+  assert.deepEqual(json(await p(dup).publish(input())), { ok: false, uncertain: true, errorCode: "posting_in_progress" }, "doublon en cours : jamais renvoyé");
   assert.equal((await p(fakeTransport()).publish(input({ media: [video], text: "  " }))).errorCode, "empty_post");
 });
 
@@ -168,4 +170,20 @@ test("Snapchat : cinquième réseau partout (migration, Studio vidéo, aperçu, 
   const doc = src("docs/publications-snapchat.md");
   for (const name of ["SNAPCHAT_CLIENT_ID", "SNAPCHAT_CLIENT_SECRET", "snapchat-profile-api", "/api/publications/oauth/snapchat/callback"]) assert.match(doc, new RegExp(name.replace(/[/-]/g, "\\$&")));
   assert.doesNotMatch(src("lib/publications/delivery/snapchat-publisher.ts"), /console\./, "rien n'est journalisé");
+});
+
+test("Snapchat : URL documentées de la Public Profile API pour la découverte (businessapi, lecture seule)", async () => {
+  const urls = [];
+  const fetchImpl = async (url, init) => { urls.push([url, init.method, init.headers.Authorization]); return new Response("{}", { status: 200, headers: { "content-type": "application/json" } }); };
+  const t = oauthHttp.snapchatTransport({ clientId: "abcd-1234-efgh", clientSecret: "s".repeat(32), redirectUri: "https://os.code-v.fr/cb" }, fetchImpl);
+  const c = credential();
+  await t.request({ operation: "read", path: "public_profiles/my_profile", params: {}, credential: c });
+  await t.request({ operation: "read", path: "organizations/11111111-1111-4111-8111-111111111111/public_profiles", params: { limit: "50" }, credential: c });
+  await t.request({ operation: "read", path: "probe:public_search", params: {}, credential: c });
+  assert.deepEqual(urls, [
+    ["https://businessapi.snapchat.com/v1/public_profiles/my_profile", "GET", "Bearer snap.valid-token-123"],
+    ["https://businessapi.snapchat.com/v1/organizations/11111111-1111-4111-8111-111111111111/public_profiles?limit=50", "GET", "Bearer snap.valid-token-123"],
+    ["https://businessapi.snapchat.com/public/v1/public_profiles/search?query=snapchat", "GET", "Bearer snap.valid-token-123"]]);
+  for (const bad of ["me", "public_profiles/other", "organizations/x/public_profiles", "public_profiles/my_profile/../x"])
+    await assert.rejects(t.request({ operation: "read", path: bad, params: {}, credential: c }), (e) => e.kind === "invalid_path", bad);
 });

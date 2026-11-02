@@ -10,7 +10,7 @@ const A = n => uid("a", n), O = n => uid("5", n);
 const services = ["Rénovation de toiture", "Isolation de toiture", "Fenêtres de toit"];
 
 test("a photo filed under a service name illustrates that service, even when the name has only generic words", () => {
-  const m = { id: A(1), categories: ["Rénovation de toiture", "Toiture terminée"], description: "Toit en tuiles rouges sous un ciel bleu.", used: false };
+  const m = { id: A(1), categories: ["Rénovation de toiture", "Toiture terminée"], description: "Tuiles rouges sous un ciel bleu.", used: false };
   assert.deepEqual(json(photos.photoServices(m, services)), ["Rénovation de toiture"]);
   assert.deepEqual(json(photos.photoServices({ ...m, categories: ["Fenêtres de toit"] }, services)), ["Fenêtres de toit"]);
   assert.deepEqual(json(photos.photoServices({ ...m, categories: ["Autre"] }, services)), []);

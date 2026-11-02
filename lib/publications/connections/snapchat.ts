@@ -47,7 +47,12 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
   if(r.status!==200||!r.body||typeof r.body!=='object'||(typeof body.error==='string'&&body.error)||(typeof body.request_status==='string'&&body.request_status.toUpperCase()==='ERROR'))
    throw r.status===200&&!body.error?new ConnectionProviderError('invalid'):failure(r.status,r.body);
   return r.body;};
- const me=async(credential:ProviderCredential)=>{const m=record(record(await call({operation:'read',path:'me',params:{},credential})).me);
+ // Lecture sur l'hôte Marketing, puis sur l'hôte Public Profile si le premier refuse (403 / 404) : chemin non vérifié.
+ const read=async(path:string,credential:ProviderCredential)=>{
+  try{return await call({operation:'read',path,params:{},credential});}
+  catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='permission'||e.kind==='invalid'||e.kind==='unavailable'))
+   {try{return await call({operation:'read',path:'biz:'+path,params:{},credential});}catch{throw e;}}throw e;}};
+ const me=async(credential:ProviderCredential)=>{const m=record(record(await read('me',credential)).me);
   const id=text(m.id,100),organization=text(m.organization_id,100);
   if(!id||!SNAP_ID.test(id))throw new ConnectionProviderError('invalid');return {id,organization:organization&&UUID.test(organization)?organization:null};};
  const provider:SnapchatConnectionProvider={
@@ -65,7 +70,11 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
    catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='expired'||e.kind==='revoked'))return {status:e.kind,externalIdentity:null};throw e;}},
   async listPublicProfiles(credential){
    const user=await me(credential);if(!user.organization)return [];
-   return snapchatProfilesOf(await call({operation:'read',path:`organizations/${user.organization}/public_profiles`,params:{},credential}));},
+   return snapchatProfilesOf(await read(`organizations/${user.organization}/public_profiles`,credential));},
+  async diagnose(credential){
+   const status=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});return String(Math.min(Math.max(r.status|0,0),999));}catch{return 'x';}};
+   const [ads,biz,pub]=await Promise.all([status('me'),status('biz:me'),status('probe:public_search')]);
+   return `ads${ads}_biz${biz}_pub${pub}`;},
  };
  return provider;
 }

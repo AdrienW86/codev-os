@@ -136,7 +136,11 @@ export async function completeOAuthCallback(provider:ConnectionProvider,query:UR
  if(isCredentialReference(r.replaced_reference)&&r.replaced_reference!==reference)await deps.vault.deleteCredential(r.replaced_reference).catch(()=>log(provider,'vault_cleanup'));
  let accounts:ExternalPublicationAccount[];
  try{accounts=await discoverAccounts(provider,credential,deps);}
- catch(error){log(provider,'discovery',error);await record(deps,s.client_id,provider,'oauth_completed','discovery_'+providerCode(error),userId);return back('partial');}
+ catch(error){log(provider,'discovery',error);
+  // Snapchat : statuts HTTP de lectures témoins dans le code d'audit (aucun corps, aucun jeton), pour distinguer
+  // « application non autorisée par Snap » d'un mauvais appel de notre côté.
+  let diag='';if(provider==='snapchat'){try{diag='_'+(await deps.snapchat!.provider.diagnose(credential)).replace(/[^a-z0-9_]/g,'').slice(0,36);}catch{diag='';}}
+  await record(deps,s.client_id,provider,'oauth_completed',('discovery_'+providerCode(error)+diag).slice(0,60),userId);return back('partial');}
  const synced=await deps.db.rpc('publication_accounts_sync',{p_client_id:s.client_id,p_connection_id:r.connection_id,p_accounts:syncPayload(accounts),p_actor_id:userId});
  if(synced.error){log(provider,'sync');await record(deps,s.client_id,provider,'oauth_completed','sync_failed',userId);return back('partial');}
  await record(deps,s.client_id,provider,'oauth_completed',null,userId,counts(accounts));

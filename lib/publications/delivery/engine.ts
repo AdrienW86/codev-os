@@ -1,5 +1,5 @@
 import 'server-only';
-import {IMAGE_BUCKET} from '../editor';
+import {mediaBucket} from '../editor';
 import {isPublicationUuid} from '../validation';
 import {isCredentialReference,type CredentialVault,type ProviderCredential} from '../connections/vault';
 import {outcomeOf,outcomeOfError,type PublicationPublisher,type PublishInput} from './publisher';
@@ -48,10 +48,17 @@ export async function executeClaimedPublicationJob(claim:Claim,workerId:string,d
  let media:PublishInput['media']=[];
  if(context.assets.length){
   const ttl=Math.min(Math.max(deps.signedUrlTtlSeconds??300,60),MAX_TTL);
-  const signed=await settle(()=>db.storage.from(IMAGE_BUCKET).createSignedUrls(context.assets.map(a=>a.storage_path),ttl),{data:null,error:'network'});
-  const urls=new Map((signed.data??[]).flatMap(s=>s.path&&s.signedUrl&&!s.error?[[s.path,s.signedUrl] as [string,string]]:[]));
-  if(signed.error||context.assets.some(a=>!urls.has(a.storage_path))){log('media');return {state:'aborted',step:'media'};}
-  media=context.assets.map(a=>({url:urls.get(a.storage_path)!,mimeType:a.mime_type}));
+  // Un lot de signatures par stockage (images, vidéos) : le stockage découle du type enregistré en base.
+  const urls=new Map<string,string>();let failed=false;
+  for(const bucket of [...new Set(context.assets.map(a=>mediaBucket(a.mime_type)))]){
+   const paths=context.assets.filter(a=>mediaBucket(a.mime_type)===bucket).map(a=>a.storage_path);
+   const signed=await settle(()=>db.storage.from(bucket).createSignedUrls(paths,ttl),{data:null,error:'network'});
+   if(signed.error)failed=true;
+   for(const s of signed.data??[])if(s.path&&s.signedUrl&&!s.error)urls.set(bucket+'\n'+s.path,s.signedUrl);
+  }
+  const key=(a:{storage_path:string;mime_type:string})=>mediaBucket(a.mime_type)+'\n'+a.storage_path;
+  if(failed||context.assets.some(a=>!urls.has(key(a)))){log('media');return {state:'aborted',step:'media'};}
+  media=context.assets.map(a=>({url:urls.get(key(a))!,mimeType:a.mime_type}));
  }
  // TikTok : réglages choisis par l'humain qui a validé cette révision (confidentialité, commentaires, divulgation).
  let tiktok:PublishInput['tiktok'];

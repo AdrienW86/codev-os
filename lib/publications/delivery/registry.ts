@@ -7,7 +7,7 @@ import {googleTransport,tiktokTransport} from '@/lib/integrations/publications-o
 import {tiktokPublishTransport} from '@/lib/integrations/publications-tiktok-publish';
 import {createTikTokConnectionProvider} from '../connections/tiktok';
 import {createTikTokPublisher,createTikTokReconciler} from './tiktok-publisher';
-import {publicMediaLink} from '@/lib/integrations/publications-media-link';
+import {publicMediaLink,storageOrigin} from '@/lib/integrations/publications-media-link';
 import {metaPublishTransport} from '@/lib/integrations/publications-meta-publish';
 import {gbpPublishTransport} from '@/lib/integrations/publications-gbp-publish';
 import {isPublicationUuid} from '../validation';
@@ -46,7 +46,7 @@ export function productionPublisherRegistry():{publishers:PublisherRegistry;reco
  // TikTok : images servies par CODE-V OS (domaine vérifié), jeton rafraîchi en mémoire comme pour Google.
  const tiktok=tiktokOAuthConfig(),base=oauthBaseUrl();
  if(tiktok&&base){const provider=createTikTokConnectionProvider(tiktokTransport(tiktok));
-  publishers.tiktok=createTikTokPublisher(tiktokPublishTransport(),{refresh:credential=>provider.refresh(credential),mediaLink:url=>publicMediaLink(url,base)});
+  publishers.tiktok=createTikTokPublisher(tiktokPublishTransport(fetch,{mediaOrigin:storageOrigin()}),{refresh:credential=>provider.refresh(credential),mediaLink:url=>publicMediaLink(url,base)});
   reconcilers.tiktok=createTikTokReconciler();}
  return {publishers,reconcilers};
 }
@@ -87,7 +87,8 @@ export const SCHEDULED_LATE_TOLERANCE_SECONDS=2*3600;
 // passage, le premier envoi reste libre (comme avant) et les suivants ne réservent que les plateformes dont le pire cas
 // tient dans le temps restant (délais des transports : 20 s par requête Meta / GBP, 15 s par renouvellement OAuth, marge
 // pour le contexte, le coffre et les URL signées). Instagram (~290 s) n'est donc jamais qu'un premier envoi. Plafond fixe.
-export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000,tiktok:120_000};
+export const SEND_BUDGET_MS:Readonly<Record<PublicationPlatform,number>>={facebook:60_000,google_business_profile:60_000,instagram:300_000,tiktok:240_000};
+// TikTok 240 s : une vidéo motion design est lue dans le stockage puis envoyée (jusqu'à 60 s + 90 s) avant le suivi du statut.
 export const MAX_SCHEDULED_DUE_WITH_DEADLINE=10;
 // reconcile : vérification automatique des posts Google « en cours de relecture » (voir reconcilePendingGoogleDeliveries).
 // Par défaut, uniquement sur le chemin de production (deps non fournies) ; jamais d'envoi, seulement une lecture.

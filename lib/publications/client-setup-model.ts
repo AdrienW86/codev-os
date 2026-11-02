@@ -2,9 +2,9 @@
 // Pur et utilisable côté client : aucune donnée de compte autre que des libellés, aucun secret.
 export type ClientPublicationSettings={timezone:string;publishingEnabled:boolean;generationEnabled:boolean;autoPrepareEnabled:boolean;prepareLeadDays:number;
  mediaReuseAllowed:boolean;mediaReuseAfterDays:number;editorialBrief:string;requireHumanApproval:true;
- autoApproveEnabled:boolean;autoApproveHoursBefore:number;saved:boolean};
+ autoApproveEnabled:boolean;autoApproveHoursBefore:number;tiktokMotionVideo:boolean;saved:boolean};
 export const DEFAULT_CLIENT_PUBLICATION_SETTINGS:ClientPublicationSettings={timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,
- prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false};
+ prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,tiktokMotionVideo:false,saved:false};
 // Fuseaux proposés (France, DOM-TOM, voisins). Le fuseau courant reste proposé même s'il n'est pas dans la liste.
 export const COMMON_TIMEZONES=['Europe/Paris','Europe/Brussels','Europe/Luxembourg','Europe/Zurich','Europe/Monaco','Europe/London','Europe/Madrid','Europe/Lisbon',
  'America/Guadeloupe','America/Martinique','America/Cayenne','Indian/Reunion','Indian/Mayotte','Pacific/Noumea','Pacific/Tahiti','America/Montreal'] as const;
@@ -22,7 +22,7 @@ export function timezoneOptions(current:string|null|undefined):string[]{return c
 const TIMEZONE=/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/;
 
 type Row={timezone?:unknown;publishing_enabled?:unknown;generation_enabled?:unknown;auto_prepare_enabled?:unknown;prepare_lead_days?:unknown;
- media_reuse_allowed?:unknown;media_reuse_after_days?:unknown;editorial_brief?:unknown;auto_approve_enabled?:unknown;auto_approve_hours_before?:unknown}|null;
+ media_reuse_allowed?:unknown;media_reuse_after_days?:unknown;editorial_brief?:unknown;auto_approve_enabled?:unknown;auto_approve_hours_before?:unknown;tiktok_motion_video?:unknown}|null;
 // Ligne absente (aucun réglage enregistré) : valeurs par défaut sûres, tout désactivé.
 export function clientSettingsFromRow(row:Row):ClientPublicationSettings{
  if(!row)return DEFAULT_CLIENT_PUBLICATION_SETTINGS;
@@ -30,7 +30,7 @@ export function clientSettingsFromRow(row:Row):ClientPublicationSettings{
  return {timezone:typeof row.timezone==='string'?row.timezone:d.timezone,publishingEnabled:bool(row.publishing_enabled,false),generationEnabled:bool(row.generation_enabled,false),
   autoPrepareEnabled:bool(row.auto_prepare_enabled,false),prepareLeadDays:int(row.prepare_lead_days,d.prepareLeadDays),mediaReuseAllowed:bool(row.media_reuse_allowed,false),
   mediaReuseAfterDays:int(row.media_reuse_after_days,d.mediaReuseAfterDays),editorialBrief:typeof row.editorial_brief==='string'?row.editorial_brief:'',requireHumanApproval:true,
-  autoApproveEnabled:bool(row.auto_approve_enabled,false),autoApproveHoursBefore:int(row.auto_approve_hours_before,d.autoApproveHoursBefore),saved:true};
+  autoApproveEnabled:bool(row.auto_approve_enabled,false),autoApproveHoursBefore:int(row.auto_approve_hours_before,d.autoApproveHoursBefore),tiktokMotionVideo:bool(row.tiktok_motion_video,false),saved:true};
 }
 // Formulaire → charge utile de publication_client_settings_save (clés fermées, valeurs typées). null = invalide.
 export function clientSettingsPayload(form:{get(name:string):unknown}):{payload:Record<string,string|number|boolean>}|{error:string}{
@@ -48,6 +48,12 @@ export function autoApprovalPayload(form:{get(name:string):unknown}):{enabled:bo
  const raw=form.get('auto_approve_hours_before'),hours=raw===null||raw===undefined||raw===''?12:Number(raw);
  if(!Number.isInteger(hours)||hours<1||hours>72)return {error:'Le délai de validation automatique doit être compris entre 1 et 72 heures.'};
  return {enabled:form.get('auto_approve_enabled')==='on',hoursBefore:hours};
+}
+// Vidéo motion design TikTok : enregistrée seulement si la case a changé (la colonne n'existe qu'après la migration
+// 20261120000000 ; tant qu'on n'y touche pas, l'enregistrement des autres réglages n'en dépend pas).
+export function motionVideoChange(form:{get(name:string):unknown}):boolean|null{
+ const was=form.get('tiktok_motion_video_was');if(was!=='on'&&was!=='off')return null;
+ const now=form.get('tiktok_motion_video')==='on';return now===(was==='on')?null:now;
 }
 // Résumé lisible de l'état de la préparation automatique pour la fiche client.
 export function automationSummary(s:ClientPublicationSettings,globalStop:boolean):string{

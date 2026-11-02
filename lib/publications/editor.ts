@@ -14,6 +14,10 @@ export function parseEditorialForm(form:FormData):EditorialDraft|null{
  return {publication_id:publication||null,expected_revision_id:revision||null,client_id:client,project_id:project,title,angle,source,target_date:target||null,week:week||null,slot:slot?Number(slot) as 1|2:null,variants};
 }
 export const IMAGE_BUCKET="publication-images";
+// Vidéos (motion design TikTok) : stockage privé distinct, choisi d'après le type du média enregistré en base.
+export const VIDEO_BUCKET="publication-videos";
+export const VIDEO_MIME="video/mp4";
+export function mediaBucket(mime:string):string{return mime===VIDEO_MIME?VIDEO_BUCKET:IMAGE_BUCKET;}
 export const IMAGE_URL_TTL=120;
 export const MAX_IMAGE_BYTES=786432;
 export function imageMime(bytes:Uint8Array):"image/png"|"image/jpeg"|"image/webp"|null{

@@ -1,11 +1,11 @@
-/* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and must not be cached by an image proxy. */
 import type {SupervisionVariant} from '@/lib/publications/supervision-review';
+import {MediaPreview} from './media-preview';
 
 // Socle Publications, lot 7 (mobile) : aperçu d'une variante telle qu'elle apparaîtra sur sa plateforme (Facebook,
 // Instagram, Google Business Profile). Rendu indicatif, jetons de design uniquement ; la photo est l'URL signée courte
 // de la variante. Composant sans état : utilisable côté serveur et dans la carte de validation.
 function Photo({variant,className}:{variant:SupervisionVariant;className:string}){
- if(variant.media.preview)return <img src={variant.media.preview} alt={`Photo de la variante ${variant.label}`} className={`w-full bg-surface-sunken object-cover ${className}`}/>;
+ if(variant.media.preview)return <MediaPreview src={variant.media.preview} alt={`Photo de la variante ${variant.label}`} className={`w-full bg-surface-sunken object-cover ${className}`}/>;
  const text=variant.media.state==='missing'?'Photo manquante : validation impossible':'Photo indisponible (aperçu expiré ou illisible)';
  return <div role="img" aria-label={text} data-media-missing={variant.media.state} className={`flex w-full items-center justify-center border border-dashed border-warning/60 bg-warning/10 p-3 text-center text-xs text-warning ${className}`}>{text}</div>;
 }

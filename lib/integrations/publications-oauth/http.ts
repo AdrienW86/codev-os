@@ -28,9 +28,12 @@ const SNAPCHAT_TOKEN='https://accounts.snapchat.com/login/oauth2/access_token';
 // Découverte des profils publics (Public Profile API, lecture seule, doc « Profiles ») : profil de la personne connectée
 // (/v1/public_profiles/my_profile), puis profils de son organisation. Plus un diagnostic sur la recherche « publique ».
 const SNAPCHAT_API='https://businessapi.snapchat.com/v1/';
+// Identité Marketing (GET adsapi /v1/me, scope snapchat-marketing-api) : seule source documentée de l'organisation quand
+// la personne connectée gère un profil d'entreprise sans porter elle-même de profil public (my_profile refusé).
+const SNAPCHAT_ADS_ME='https://adsapi.snapchat.com/v1/me';
 const SNAPCHAT_PUBLIC_SEARCH='https://businessapi.snapchat.com/public/v1/public_profiles/search?query=snapchat';
 // Scope unique : Public Profile API (gestion du contenu des profils publics). Rien d'autre (ni publicité, ni audiences).
-export const SNAPCHAT_SCOPES=['snapchat-profile-api'] as const;
+export const SNAPCHAT_SCOPES=['snapchat-profile-api','snapchat-marketing-api'] as const;
 export const GOOGLE_BUSINESS_SCOPE='https://www.googleapis.com/auth/business.manage';
 // Minimum Meta permissions (official permission reference): list the managed Pages, read the Page / its linked
 // Instagram professional account, and the two publishing permissions needed later (P11-b) so that no second consent
@@ -107,8 +110,8 @@ export function snapchatTransport(config:SnapchatOAuthConfig,fetchImpl:FetchLike
    else params.redirect_uri=config.redirectUri;
    return call(fetchImpl,SNAPCHAT_TOKEN,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:query(params)});}
   if(r.operation!=='read'||!r.credential)throw new TransportError('invalid_path');
-  const path=safePath(r.path,/^(public_profiles\/my_profile|organizations\/[0-9a-f-]{36}\/public_profiles|probe:public_search)$/);
-  const url=path==='probe:public_search'?SNAPCHAT_PUBLIC_SEARCH:SNAPCHAT_API+path;
+  const path=safePath(r.path,/^(public_profiles\/my_profile|organizations\/[0-9a-f-]{36}\/public_profiles|ads:me|probe:public_search)$/);
+  const url=path==='probe:public_search'?SNAPCHAT_PUBLIC_SEARCH:path==='ads:me'?SNAPCHAT_ADS_ME:SNAPCHAT_API+path;
   return call(fetchImpl,url+(Object.keys(r.params).length?(url.includes('?')?'&':'?')+query(r.params):''),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
  }};
 }

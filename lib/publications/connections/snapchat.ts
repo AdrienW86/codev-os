@@ -53,33 +53,50 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
   const id=text(p.id,100),organization=text(p.organization_id,100);
   if(!id||!SNAP_ID.test(id))throw new ConnectionProviderError('invalid');
   return {id,organization:organization&&UUID.test(organization)?organization:null,profile:snapchatProfilesOf({public_profiles:[{public_profile:p}]})};};
+ // Identité Marketing : { me: { id, organization_id } } (adsapi /v1/me, scope snapchat-marketing-api).
+ const adsMe=async(credential:ProviderCredential)=>{const m=record(record(await call({operation:'read',path:'ads:me',params:{},credential})).me);
+  const id=text(m.id,100),organization=text(m.organization_id,100);
+  if(!id||!SNAP_ID.test(id))throw new ConnectionProviderError('invalid');
+  return {id,organization:organization&&UUID.test(organization)?organization:null};};
+ // Identité : profil public porté par la personne, sinon identité Marketing (gestionnaire d'un profil d'entreprise).
+ const identity=async(credential:ProviderCredential)=>{
+  try{return {...await myProfile(credential),error:null as ConnectionProviderError|null};}
+  catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='expired'||e.kind==='revoked'))throw e;
+   try{return {...await adsMe(credential),profile:[] as SnapchatPublicProfile[],error:e instanceof ConnectionProviderError?e:null};}catch{throw e;}}};
  const provider:SnapchatConnectionProvider={
   async exchangeCode(code,redirectUri){
    if(!opaque(code)||!text(redirectUri,500))throw new ConnectionProviderError('invalid');
    const credential=snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'authorization_code',code}}),null);
    // Identité lue ensuite, sans bloquer l'enregistrement : un refus de Snap sur la lecture des profils apparaît alors
    // à l'étape de découverte (code distinct de l'échange du code d'autorisation).
-   let subject:string|null=null;try{subject=(await myProfile(credential)).id;}catch{subject=null;}
+   let subject:string|null=null;try{subject=(await identity(credential)).id;}catch{subject=null;}
    return {...credential,subject};},
   async refresh(credential){if(!credential.refreshToken)throw new ConnectionProviderError('revoked');
    return snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'refresh_token'},credential}),credential);},
   async validateConnection(credential):Promise<ConnectionValidation>{
-   try{const user=await myProfile(credential);return {status:'active',externalIdentity:user.id};}
+   try{const user=await identity(credential);return {status:'active',externalIdentity:user.id};}
    catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='expired'||e.kind==='revoked'))return {status:e.kind,externalIdentity:null};throw e;}},
   async listPublicProfiles(credential){
-   const user=await myProfile(credential);
-   // Autres profils de l'organisation auxquels la personne a accès (facultatif : un refus ici garde son propre profil).
+   const user=await identity(credential);
+   // Profils de l'organisation auxquels la personne a accès (doc « Get Profiles by Organization ID »). Facultatif quand
+   // la personne porte elle-même un profil ; seule source sinon (un refus est alors renvoyé tel quel).
    let others:SnapchatPublicProfile[]=[];
-   if(user.organization){try{others=snapchatProfilesOf(await call({operation:'read',path:`organizations/${user.organization}/public_profiles`,params:{limit:'50'},credential}));}catch{others=[];}}
-   const seen=new Set<string>();return [...user.profile,...others].filter(p=>!seen.has(p.id)&&Boolean(seen.add(p.id)));},
+   if(user.organization){try{others=snapchatProfilesOf(await call({operation:'read',path:`organizations/${user.organization}/public_profiles`,params:{limit:'50'},credential}));}
+    catch(e){if(!user.profile.length)throw e;others=[];}}
+   const all=[...user.profile,...others];if(!all.length&&user.error)throw user.error;
+   const seen=new Set<string>();return all.filter(p=>!seen.has(p.id)&&Boolean(seen.add(p.id)));},
   async diagnose(credential){
-   // Statut HTTP et code d'erreur Snap (error_code, valeur d'énumération) : jamais le corps, jamais le jeton.
-   const status=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});
-     const b=record(r.body),code=typeof b.error_code==='string'?b.error_code:typeof b.error==='string'?b.error:'';
-     return {status:String(Math.min(Math.max(r.status|0,0),999)),code:code.toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,40)};}
-    catch{return {status:'x',code:''};}};
-   const [me,pub]=await Promise.all([status('public_profiles/my_profile'),status('probe:public_search')]);
-   return `me${me.status}_pub${pub.status}${me.code?'_'+me.code:''}`;},
+   // Statut HTTP et code d'erreur Snap (error_code, valeur d'énumération ; « nojson » si le corps n'est pas du JSON) :
+   // jamais le message, jamais le jeton.
+   const probe=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});
+     const b=record(r.body),raw=typeof b.error_code==='string'?b.error_code:typeof b.error==='string'?b.error:r.body===null&&r.status!==200?'nojson':'';
+     return {status:String(Math.min(Math.max(r.status|0,0),999)),code:raw.toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,24),body:r.body};}
+    catch{return {status:'x',code:'',body:null};}};
+   const [me,ads,pub]=await Promise.all([probe('public_profiles/my_profile'),probe('ads:me'),probe('probe:public_search')]);
+   const org=text(record(record(ads.body).me).organization_id,100);
+   const orgs=org&&UUID.test(org)?await probe(`organizations/${org}/public_profiles`):{status:'0',code:''};
+   const code=[me,ads,orgs].map(p=>p.code).find(Boolean);
+   return `m${me.status}a${ads.status}o${orgs.status}p${pub.status}${code?'_'+code.slice(0,22):''}`;},
  };
  return provider;
 }

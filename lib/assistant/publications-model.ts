@@ -99,8 +99,9 @@ export function photoExclusionReasons(row: PhotoDecisionRow): string[] {
   }
   if (a && !a.manualVerdict && a.verdict === "off_topic") reasons.push("Jugée hors sujet par le classement IA (sans rapport avec l’activité du client).");
   if (a && !a.manualVerdict && a.verdict === "to_review") reasons.push("Classée « à examiner » par l’IA : une validation humaine est nécessaire.");
-  if (a && !a.confidential && a.sensitive.some((kind) => kind === "face" || kind === "minor") && row.libraryStatus !== "validated" && row.libraryStatus !== "used")
-    reasons.push(`${a.sensitive.includes("minor") ? "Mineur" : "Visage"} détecté : une validation humaine est nécessaire.`);
+  // Visage d'adulte : publiable automatiquement (accord des clients) ; un mineur exige toujours une validation humaine.
+  if (a && !a.confidential && a.sensitive.includes("minor") && row.libraryStatus !== "validated" && row.libraryStatus !== "used")
+    reasons.push("Mineur détecté : une validation humaine est nécessaire.");
   if (a && (a.quality === "poor" || a.qualityIssues.some((issue) => BLOCKING_ISSUES.includes(issue)))) {
     const issues = a.qualityIssues.map((issue) => QUALITY_LABELS[issue]).filter(Boolean);
     reasons.push(`Qualité insuffisante${issues.length ? ` : ${issues.join(", ")}` : " (jugée médiocre)"}.`);

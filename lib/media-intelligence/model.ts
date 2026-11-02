@@ -89,7 +89,8 @@ export function normalizeAssessment(value:unknown,profileVersion:number):Assessm
  const relevance=round(br),publishability=round(confidential?Math.min(pb,0.1):pb);
  let finalVerdict:Verdict=verdict;
  if(confidential&&finalVerdict==='relevant')finalVerdict='to_review';
- if(finalVerdict==='relevant'&&(relevance<0.6||publishability<0.5||sensitive.includes('face')||sensitive.includes('minor')||quality==='poor'))finalVerdict='to_review';
+ // Visage d'adulte (équipe du client) : publiable automatiquement (accord des clients, 02/11/2026) ; un mineur jamais.
+ if(finalVerdict==='relevant'&&(relevance<0.6||publishability<0.5||sensitive.includes('minor')||quality==='poor'))finalVerdict='to_review';
  // Capture d'écran ou image surtout textuelle : jamais « pertinent » sans regard humain (données privées possibles).
  if(finalVerdict==='relevant'&&(issues.includes('screenshot')||issues.includes('text_heavy')))finalVerdict='to_review';
  if(relevance<0.25&&!confidential)finalVerdict='off_topic';
@@ -98,13 +99,28 @@ export function normalizeAssessment(value:unknown,profileVersion:number):Assessm
 }
 
 // Un média peut-il illustrer une publication ? Décision humaine d'abord, sinon évaluation IA prudente.
-export type CandidateInput={libraryStatus:string;mediaKind:string;purged:boolean;assessment:{verdict:Verdict;confidential:boolean;sensitive:string[];manual_verdict:'relevant'|'off_topic'|null}|null};
+// Visages : les clients ont accepté (02/11/2026) que les photos où leur équipe est visible soient publiées sans
+// validation photo par photo. Une photo jadis mise « à examiner » pour le SEUL motif d'un visage (scores et qualité
+// suffisants, aucune autre donnée sensible) est donc retenue. Un mineur, une donnée confidentielle ou une capture
+// d'écran ne le sont jamais. Même règle en base : publications_private.library_asset_publishable.
+type CandidateAssessment={verdict:Verdict;confidential:boolean;sensitive:string[];manual_verdict:'relevant'|'off_topic'|null;
+ business_relevance?:number|string|null;publishability?:number|string|null;quality?:string|null;quality_issues?:string[]|null};
+export type CandidateInput={libraryStatus:string;mediaKind:string;purged:boolean;assessment:CandidateAssessment|null};
+/** À examiner uniquement parce qu'un visage d'adulte est visible (le reste de l'évaluation la rendait publiable). */
+export function faceOnlyReview(a:CandidateAssessment|null|undefined):boolean{
+ if(!a||a.verdict!=='to_review'||a.confidential)return false;
+ if(!a.sensitive.includes('face')||a.sensitive.some(s=>s!=='face'))return false;
+ const relevance=Number(a.business_relevance),publishability=Number(a.publishability);
+ return Number.isFinite(relevance)&&relevance>=0.6&&Number.isFinite(publishability)&&publishability>=0.5&&typeof a.quality==='string'&&a.quality!=='poor'
+  &&!(a.quality_issues??[]).some(i=>i==='screenshot'||i==='text_heavy');
+}
 export function isPublicationCandidate(m:CandidateInput):boolean{
  if(m.mediaKind!=='image'||m.purged)return false;
  if(['quarantined','rejected','archived'].includes(m.libraryStatus))return false;
  if(m.assessment?.confidential)return false;
  if(m.libraryStatus==='validated'||m.libraryStatus==='used')return m.assessment?.manual_verdict!=='off_topic';
- return m.assessment?.verdict==='relevant'&&m.assessment.manual_verdict!=='off_topic'&&!m.assessment.sensitive.some(s=>s==='face'||s==='minor');
+ const a=m.assessment;if(!a||a.manual_verdict==='off_topic'||a.sensitive.includes('minor'))return false;
+ return a.verdict==='relevant'||faceOnlyReview(a);
 }
 // Légendes utilisables dans un prompt de rédaction : jamais celles d'un média confidentiel, en quarantaine ou rejeté.
 export function promptSafeCaption(m:{caption:string|null;libraryStatus:string;assessment:{confidential:boolean}|null}):string|null{

@@ -2,7 +2,7 @@
 // Publications. Pur et testable. L'éligibilité reprend exactement les règles de la sélection
 // (isPublicationCandidate, fitsPlatforms, reusable) ; la base reste l'autorité (publications_private.agent_v2_library_available).
 import {fitsPlatforms,reusable,type ReuseSettings} from '@/lib/publications/agent-v2/library-pool';
-import {isPublicationCandidate,SENSITIVE_LABELS,type SensitiveKind,type Verdict} from './model';
+import {faceOnlyReview,isPublicationCandidate,SENSITIVE_LABELS,type SensitiveKind,type Verdict} from './model';
 
 export type ExclusionInput={
  libraryStatus:string;mediaKind:string;mimeType:string;size:number;width:number|null;height:number|null;purged:boolean;claimed:boolean;
@@ -35,8 +35,9 @@ export function exclusionReasons(m:ExclusionInput):{eligible:boolean;reasons:Exc
  if(!validated&&['received','to_review'].includes(m.libraryStatus)){
   if(!a)block('not_assessed','Ni analysée ni validée : validez-la ou lancez l’analyse.');
   else if(a.verdict==='off_topic')block('ai_off_topic',`L’analyse la juge hors sujet (pertinence ${Math.round(a.business_relevance*100)} %).`);
-  else if(a.verdict==='to_review')block('ai_to_review',`L’analyse demande un regard humain (pertinence ${Math.round(a.business_relevance*100)} %, publiable ${Math.round(a.publishability*100)} %) : validez-la si elle convient.`);
-  if(a&&a.sensitive.some(s=>s==='face'||s==='minor'))block('face_or_minor','Visage ou mineur visible : une validation humaine est nécessaire.');
+  else if(a.verdict==='to_review'&&!faceOnlyReview(a))block('ai_to_review',`L’analyse demande un regard humain (pertinence ${Math.round(a.business_relevance*100)} %, publiable ${Math.round(a.publishability*100)} %) : validez-la si elle convient.`);
+  if(a&&a.sensitive.includes('minor'))block('minor','Mineur visible : une validation humaine est nécessaire.');
+  else if(a&&a.sensitive.includes('face'))reasons.push({code:'face',blocking:false,label:'Visage visible : publiée automatiquement (accord des clients pour leur équipe).'});
  }
  if(a&&(a.quality==='poor'||a.quality_issues.some(i=>BLOCKING_ISSUES.includes(i)))){
   const issues=a.quality_issues.filter(i=>BLOCKING_ISSUES.includes(i)).map(i=>ISSUE_LABELS[i]??i);

@@ -49,6 +49,10 @@ test("historique éditorial : idées proposées seulement, prestations, styles, 
   assert.deepEqual(json(memory.recurringPhrases(history)), [], "no 4-word sequence shared by two ideas");
   const tics = memory.buildEditorialHistory({ publications: [pub(1, "A"), pub(2, "B")], variants: [variant(1, "facebook", "N’hésitez pas à nous contacter pour vos tuiles."), variant(2, "facebook", "Gouttières : n’hésitez pas à nous contacter.")], libraryUses: [], catalogUses: [], services: [] });
   assert.deepEqual(json(memory.recurringPhrases(tics)), ["hesitez pas a nous", "n hesitez pas a", "pas a nous contacter"]);
+  // Signature imposée (nom du client, site, zone) : jamais une « formulation récurrente » à éviter.
+  const brand = memory.buildEditorialHistory({ publications: [pub(1, "A"), pub(2, "B")], variants: [variant(1, "facebook", "Parlons de votre projet : contactez CODE-V via code-v.fr à Perpignan."), variant(2, "facebook", "Une idée ? Contactez CODE-V via code-v.fr à Perpignan.")], libraryUses: [], catalogUses: [], services: [] });
+  assert.ok(json(memory.recurringPhrases(brand)).includes("code v via code"), "without the client name, the signature is a tic");
+  assert.deepEqual(json(memory.recurringPhrases(brand, 10, ["CODE-V", "Perpignan"])), [], "client name and zone are ignored");
 });
 
 test("styles d'accroche et de CTA : classement déterministe et rotation par pool", () => {

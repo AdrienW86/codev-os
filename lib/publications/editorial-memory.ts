@@ -1,7 +1,7 @@
 // Intelligence éditoriale (PR #42) — historique éditorial d'un client, construit à partir des données existantes
 // (publications, variantes de la révision courante, usages des photos). Pur : le chargement est fait par l'appelant
 // (contexte de l'Agent v2, lecture serveur editorial-history.ts), chaque table une seule fois.
-import {ctaStyleOf,introStyleOf,openingOf,servicesIn,shingles,type CtaStyle,type IntroStyle} from './editorial-text';
+import {ctaStyleOf,introStyleOf,openingOf,servicesIn,shingles,type CtaStyle,type IntroStyle,normalizeText} from './editorial-text';
 import type {PublicationPlatform} from './types';
 
 export type HistoryPublicationRow={id:string;subject:string|null;current_revision_id:string|null;status?:string|null;archived_at?:string|null;platform?:string|null;created_at?:string|null};
@@ -46,9 +46,13 @@ export function buildEditorialHistory(input:{publications:readonly HistoryPublic
 }
 
 // Formulations récurrentes : suites de 4 mots présentes dans au moins deux idées distinctes, les plus fréquentes d'abord.
-export function recurringPhrases(history:readonly EditorialHistoryItem[],max=10):string[]{
+// Les suites qui contiennent un mot du nom du client ou de sa zone (signature imposée « contactez CODE-V via code-v.fr »,
+// « à Perpignan et dans les Pyrénées-Orientales ») ne sont pas des tics d'écriture : elles sont ignorées, sinon la
+// consigne de marque et la garde se contredisent et chaque préparation est refusée.
+export function recurringPhrases(history:readonly EditorialHistoryItem[],max=10,ignoredWords:readonly string[]=[]):string[]{
+ const ignored=new Set(ignoredWords.flatMap(w=>normalizeText(w).split(' ')).filter(w=>w.length>=3));
  const count=new Map<string,number>();
- for(const item of history){const seen=new Set<string>();for(const t of item.texts)for(const s of shingles(t,4))seen.add(s);for(const s of seen)count.set(s,(count.get(s)??0)+1);}
+ for(const item of history){const seen=new Set<string>();for(const t of item.texts)for(const s of shingles(t,4))if(!s.split(' ').some(w=>ignored.has(w)))seen.add(s);for(const s of seen)count.set(s,(count.get(s)??0)+1);}
  return [...count].filter(([,n])=>n>=2).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,max).map(([s])=>s);
 }
 // Style dominant d'une idée (premier texte de la publication la plus récente), pour la rotation des accroches et des CTA.

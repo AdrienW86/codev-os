@@ -47,9 +47,9 @@ test("scheduled preparation: horizon ensured, Agent v2 called as the delegated a
   const r = await mod.runScheduledPreparation(now, deps(okRun(true)));
   assert.deepEqual(json(r), { clients: 1, preparations: 1, submitted: 2, notified: 1, skipped: {}, followUp: { runs: 0, attached: 0, submitted: 0, gaveUp: 0 } });
   const ensure = fake.calls.find(c => c[1] === "publication_channel_occurrences_ensure");
-  assert.deepEqual(ensure[2], { p_project_id: P, p_start_date: "2026-10-12", p_end_date: "2026-10-15", p_actor_id: ADMIN });
+  assert.deepEqual(ensure[2], { p_project_id: P, p_start_date: "2026-10-12", p_end_date: "2026-11-12", p_actor_id: ADMIN });
   assert.equal(prepared[0][0], ADMIN); assert.equal(prepared[0][1], P);
-  assert.equal(prepared[0][2].leadDays, 3); assert.equal(prepared[0][2].allowRealAI, true);
+  assert.equal(prepared[0][2].leadDays, 31, "a month ahead, whatever the old lead-days setting"); assert.equal(prepared[0][2].allowRealAI, true);
   assert.deepEqual(fake.tables.publications.map(p => p.status), ["pending_review", "pending_review"]);
   assert.ok(!fake.calls.some(c => /review_manual|prepare_delivery|approve/.test(String(c[1]))), "never approves nor prepares a delivery");
   assert.deepEqual(json(fake.tables.admin_notifications.map(({ event_key, category, href }) => ({ event_key, category, href }))), [{ event_key: `publication-review:${RUN}`, category: "publication_review", href: "/publications/review" }]);
@@ -172,4 +172,17 @@ test("tick route wires the steps in isolated steps (own try each); notifications
   assert.equal(schema.safeNotificationHref("/publications/review"), "/publications/review");
   assert.equal(schema.safeNotificationHref(`/publications/${PUB(1)}`), `/publications/${PUB(1)}`);
   assert.equal(schema.safeNotificationHref("/publications/../settings"), "/notifications");
+});
+
+test("scheduled preparation: content refused by the guards is regenerated once in the same tick with the refusal reason", async () => {
+  const refused = { ok: false, refused: true, refusalDetail: "même style d’accroche", message: "Contenu refusé", publications: [], withMedia: false };
+  const { mod, prepared, deps, fake } = setup(baseTables());
+  const r = await mod.runScheduledPreparation(now, deps(n => n === 1 ? refused : okRun(true)));
+  assert.equal(prepared.length, 2); assert.equal(r.preparations, 2); assert.equal(r.submitted, 2);
+  assert.equal(prepared[0][2].retryFeedback, undefined); assert.equal(prepared[1][2].retryFeedback, "même style d’accroche");
+  assert.equal(prepared[1][2].leadDays, 31);
+  assert.deepEqual(fake.tables.publications.map(p => p.status), ["pending_review", "pending_review"]);
+  const twice = setup(baseTables());
+  const t = await twice.mod.runScheduledPreparation(now, twice.deps(refused));
+  assert.equal(twice.prepared.length, 2, "never more than one regeneration"); assert.equal(t.skipped.preparation_refused, 1);
 });

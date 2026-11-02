@@ -82,23 +82,23 @@ test("L2 AI timeouts: thrown preparations count towards the per-tick cap; failur
   let aiCalls = 0;
   const occurrences = Array.from({ length: 20 }, (_, i) => ({ id: OCC(i + 1), publication_id: null, skipped_at: null, scheduled_for: new Date(T0 + 3 * 86400000).toISOString() }));
   const failing = preparation(clientsTables(20, { publication_channel_occurrences: occurrences }), { prepare: async (project, n, tables, options) => {
-    // Seule occurrence ouverte du projet abandonnée (3 échecs) : l'Agent v2 répond « rien à préparer », sans IA.
+    // Seule occurrence ouverte du projet abandonnée (4 échecs) : l’Agent v2 répond « rien à préparer », sans IA.
     if (options.excludeOccurrenceIds?.includes(OCC(clientOf(project)))) return { ok: false, message: NO_OPEN, publications: [], withMedia: false };
     aiCalls++;
     tables.publication_agent_v2_runs.push({ id: RUN(1000 + n), project_id: project, status: "failed", occurrence_ids: [OCC(clientOf(project))], created_at: options.now.toISOString(), agent_id: uid("9", 1) });
     return { ok: false, message: "Génération indisponible. Aucun brouillon créé.", publications: [], withMedia: false };
   } });
   let maxPerTick = 0;
-  for (let t = 0; t < 96; t++) { const before = aiCalls; await failing.mod.runScheduledPreparation(new Date(T0 + t * TICK), failing.deps); maxPerTick = Math.max(maxPerTick, aiCalls - before); }
+  for (let t = 0; t < 144; t++) { const before = aiCalls; await failing.mod.runScheduledPreparation(new Date(T0 + t * TICK), failing.deps); maxPerTick = Math.max(maxPerTick, aiCalls - before); }
   assert.equal(maxPerTick, 2);
   const perProject = new Map(); for (const run of failing.fake.tables.publication_agent_v2_runs) perProject.set(run.project_id, (perProject.get(run.project_id) ?? 0) + 1);
-  assert.equal(Math.max(...perProject.values()), 3, "an occurrence failing 3 times is excluded, a failed project waits 6 h between attempts");
+  assert.equal(Math.max(...perProject.values()), 4, "an occurrence failing 4 times is excluded, a failed project waits 6 h between attempts");
   const firstAt = new Map(), gaps = [];
   for (const run of failing.fake.tables.publication_agent_v2_runs) { const prev = firstAt.get(run.project_id); if (prev) gaps.push(Date.parse(run.created_at) - prev); firstAt.set(run.project_id, Date.parse(run.created_at)); }
   assert.ok(gaps.every(g => g >= failing.mod.PROJECT_FAILURE_BACKOFF_MS), "never two AI calls on a failing project within 6 h");
   // Coût plafonné : l'Agent v2 impute 0,10 € (maxCost) à une génération en échec ; le budget mensuel de l'agent est re-vérifié en base.
-  report("AI failures over 24 h (96 ticks, 20 clients all failing)", { ai_calls: aiCalls, max_per_tick: maxPerTick, max_per_project: Math.max(...perProject.values()), worst_cost_eur: +(aiCalls * 0.1).toFixed(2) });
-  assert.equal(aiCalls, 60, "20 projects × 3 attempts, then a human is notified");
+  report("AI failures over 36 h (144 ticks, 20 clients all failing)", { ai_calls: aiCalls, max_per_tick: maxPerTick, max_per_project: Math.max(...perProject.values()), worst_cost_eur: +(aiCalls * 0.1).toFixed(2) });
+  assert.equal(aiCalls, 80, "20 projects × 4 attempts, then a human is notified");
   assert.equal(failing.fake.tables.admin_notifications.filter(x => x.category === "incident").length, 20, "one incident per abandoned occurrence");
 });
 

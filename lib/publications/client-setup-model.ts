@@ -5,6 +5,9 @@ export type ClientPublicationSettings={timezone:string;publishingEnabled:boolean
  autoApproveEnabled:boolean;autoApproveHoursBefore:number;saved:boolean};
 export const DEFAULT_CLIENT_PUBLICATION_SETTINGS:ClientPublicationSettings={timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,
  prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false};
+// Horizon de la préparation automatique : l'agent prépare tout le mois à venir (31 jours), pour que chaque client ait
+// son mois programmé à l'avance. Le réglage « jours avant le créneau » (prepare_lead_days) n'est plus utilisé.
+export const PREPARATION_HORIZON_DAYS=31;
 // Fuseaux proposés (France, DOM-TOM, voisins). Le fuseau courant reste proposé même s'il n'est pas dans la liste.
 export const COMMON_TIMEZONES=['Europe/Paris','Europe/Brussels','Europe/Luxembourg','Europe/Zurich','Europe/Monaco','Europe/London','Europe/Madrid','Europe/Lisbon',
  'America/Guadeloupe','America/Martinique','America/Cayenne','Indian/Reunion','Indian/Mayotte','Pacific/Noumea','Pacific/Tahiti','America/Montreal'] as const;
@@ -52,7 +55,7 @@ export function autoApprovalPayload(form:{get(name:string):unknown}):{enabled:bo
 // Résumé lisible de l'état de la préparation automatique pour la fiche client.
 export function automationSummary(s:ClientPublicationSettings,globalStop:boolean):string{
  if(!s.autoPrepareEnabled)return 'Préparation automatique suspendue : l’agent ne prépare rien seul pour ce client.';
- const base=`L’agent prépare les publications ${s.prepareLeadDays} jour${s.prepareLeadDays>1?'s':''} avant chaque créneau, puis les soumet à votre validation.`+
+ const base=`L’agent prépare un mois à l’avance toutes les publications des ${PREPARATION_HORIZON_DAYS} prochains jours, puis les soumet à votre validation.`+
   (s.autoApproveEnabled?` Sans action de votre part, elles sont validées automatiquement ${s.autoApproveHoursBefore} h avant leur publication (sauf TikTok et les publications que vous avez modifiées).`:'');
  return globalStop?`${base} L’arrêt général est actif : aucune diffusion n’aura lieu tant qu’il n’est pas levé.`:base;
 }

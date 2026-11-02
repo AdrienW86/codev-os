@@ -5,6 +5,7 @@ import {isPublicationUuid} from './validation';
 import {accountHealth,agentRunView,deliveryErrorReason,deliveryState,latestLiveDelivery,missedSlot,MISSED_SLOT_REASON,rescheduleTargets,upcomingTasks,ERROR_DELIVERY_STATUSES,
  type AccountHealth,type AccountRow,type AgentRunView,type ConnectionRow,type DeliveryDetailRow,type DeliveryState,type OccurrenceRow,type PhotoStats,type UpcomingTask} from './supervision-model';
 import {loadClientPhotoCoverage} from './supervision-photos';
+import {PREPARATION_HORIZON_DAYS} from './client-setup-model';
 import type {PublicationPlatform,PublicationStatus} from './types';
 
 // Socle Publications, lot 7 : lecture du tableau de supervision (admin uniquement). Aucune écriture ici ; les actions
@@ -75,7 +76,7 @@ export async function getSupervision(now=new Date(),options:{scheduledDelivery?:
  const concerned=(clients.data??[]).map(c=>{const s=settingsByClient.get(c.id);
   const agentProjects=(agents.data??[]).filter(a=>a.client_id===c.id&&a.enabled&&a.rights_confirmed).map(a=>a.project_id as string);
   const run=runRows.find(r=>r.client_id===c.id);
-  return {id:c.id,name:c.name,autoPrepare:s?.auto_prepare_enabled===true,generation:s?.generation_enabled===true,leadDays:s?.prepare_lead_days??3,
+  return {id:c.id,name:c.name,autoPrepare:s?.auto_prepare_enabled===true,generation:s?.generation_enabled===true,leadDays:PREPARATION_HORIZON_DAYS,
    reuse:{allowed:s?.media_reuse_allowed===true,afterDays:s?.media_reuse_after_days??180},
    agentProjects,accounts:health.filter(h=>h.clientId===c.id),projectId:projectOf(c.id),lastRun:run?agentRunView(run):null};})
   // Seuls les clients concernés par les Publications : agent, comptes, préparation automatique ou publications.

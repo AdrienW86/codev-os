@@ -18,6 +18,7 @@ import {buildEditorialJustification,MAX_JUSTIFICATION_BYTES,type EditorialJustif
 import {adaptImage} from '../media/transform';
 import type {Json} from '@/lib/supabase/database.types';
 import {publicationPlatforms,type PublicationPlatform} from '../types';
+import {PREPARATION_HORIZON_DAYS} from '../client-setup-model';
 
 // Agent Publications v2 orchestration (Lot 4.3 P7). Explicit admin action only. Order: open occurrences → batch →
 // context → begin (lease, budget, idempotence) → generation → strict validation → ONE atomic finish (all drafts or
@@ -106,7 +107,7 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  if(capabilities.source!=='configured')return result(false,'Confirmez d’abord les canaux du projet (onglet Configuration).');
  if(!projectSupportsPublications(capabilities))return result(false,'Publications suspendues : aucun canal actif.');
  // The state is re-read here: occurrences linked by a previous run are no longer candidates (idempotence).
- const horizon=options.leadDays?Math.min(Math.max(Math.trunc(options.leadDays),1),28):28;
+ const horizon=options.leadDays?Math.min(Math.max(Math.trunc(options.leadDays),1),PREPARATION_HORIZON_DAYS):PREPARATION_HORIZON_DAYS;
  const excluded=new Set(options.excludeOccurrenceIds??[]);
  const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform)&&!excluded.has(o.occurrenceId));
  const batch=selectIdeaBatch(open,now);

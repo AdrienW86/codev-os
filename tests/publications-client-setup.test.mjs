@@ -23,7 +23,7 @@ test('model: safe defaults without a row, typed parsing, human approval always r
  assert.match(model.automationSummary({...d,autoPrepareEnabled:true,autoApproveEnabled:true,autoApproveHoursBefore:12},false),/validées automatiquement 12 h avant.*sauf TikTok/);
  assert.deepEqual(json(model.timezoneOptions('Asia/Tokyo').slice(0,2)),['Asia/Tokyo','Europe/Paris']);assert.equal(model.timezoneOptions('Europe/Paris')[0],'Europe/Paris');
  assert.match(model.automationSummary({...d,autoPrepareEnabled:false},false),/suspendue/);
- assert.match(model.automationSummary({...d,autoPrepareEnabled:true,prepareLeadDays:2},true),/2 jours avant chaque créneau.*validation.*arrêt général est actif/s);
+ assert.match(model.automationSummary({...d,autoPrepareEnabled:true,prepareLeadDays:2},true),/un mois à l’avance.*31 prochains jours.*validation.*arrêt général est actif/s);
 });
 
 function service(rpcResult,{tables={}}={}){

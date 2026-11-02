@@ -36,7 +36,7 @@ test('binary validation: JPEG / PNG / WebP accepted with SHA-256; empty, oversiz
  for(const [format,mime] of [['jpeg','image/jpeg'],['png','image/png'],['webp','image/webp']]){const bytes=await image(format);
   const r=validate.checkSourceImage(bytes,mime);assert.equal(r.ok,true,format);assert.equal(r.mimeType,mime);assert.equal(r.sha256,sha(bytes));assert.equal(r.size,bytes.length);
   for(const platform of ['facebook','instagram','google_business_profile']){const d=await transform.adaptImage(bytes,platform);
-   assert.equal(d.mime_type,'image/jpeg');assert.ok(d.bytes.length>0&&d.bytes.length<=786432);assert.deepEqual([d.width,d.height],[1080,1080],'square for every network');
+   assert.equal(d.mime_type,'image/jpeg');assert.ok(d.bytes.length>0&&d.bytes.length<=786432);assert.deepEqual([d.width,d.height],[1080,720],'original 3:2 ratio kept, 1080 px wide');
    const px=await sharp(Buffer.from(d.bytes)).raw().toBuffer({resolveWithObject:true});
    for(const i of [0,(px.info.width*px.info.height-1)*px.info.channels])assert.ok(px.data[i+2]<200,'no white band');
    assert.equal(validate.checkSourceImage(d.bytes,'image/jpeg').ok,true,'derivative is a real JPEG');}}
@@ -97,7 +97,7 @@ test('workflow: FB + IG + GBP attached — fetched once, one private upload per 
   for(const [i,u] of uploads.entries()){const id=media.agentMediaAssetId(RUN,1,PUBS[i]);assert.deepEqual(u,['upload','publication-images',`${C}/${PUBS[i]}/${id}`,{contentType:'image/jpeg',upsert:false}]);}
   const [attach]=h.rpcs('publication_agent_v2_media_attach');assert.equal(attach.p_attempt,1);assert.equal(attach.p_original_hash,sha(bytes),'original SHA-256');
   assert.deepEqual(attach.p_assets.map(a=>Object.keys(a).sort().join(',')),Array(3).fill('asset_id,file_hash,height,mime_type,publication_id,storage_path,width'),'metadata only, no bytes');
-  assert.deepEqual(attach.p_assets.map(a=>[a.publication_id,a.width,a.height,a.mime_type]),[[PUBS[0],1080,1080,'image/jpeg'],[PUBS[1],1080,1080,'image/jpeg'],[PUBS[2],1080,1080,'image/jpeg']]);
+  assert.deepEqual(attach.p_assets.map(a=>[a.publication_id,a.width,a.height,a.mime_type]),[[PUBS[0],1080,720,'image/jpeg'],[PUBS[1],1080,720,'image/jpeg'],[PUBS[2],1080,720,'image/jpeg']]);
   for(const a of attach.p_assets)assert.equal(a.file_hash,sha(h.stored.get(a.storage_path)),'hash of the stored derivative');
   assert.ok(!h.log.some(x=>x[0]==='remove'),'nothing removed on success');
   const leaked=JSON.stringify([outcome,attach,errors]);for(const s of [DRIVE_FILE,DRIVE_FOLDER,'chantier-lyon','token','https://'])assert.ok(!leaked.includes(s),`no leak: ${s}`);
@@ -283,6 +283,17 @@ test('P8 scope: one migration, no publisher / delivery / job / cron / security d
   assert.doesNotMatch(src(f).replace(/\/\/[^\n]*/g,''),/openai|setInterval|cron|publication_deliveries|publication_jobs|getPublicUrl|console\.log/i,f);
  for(const f of readdirSync(resolve(root,'lib/publications/agent-v2')))assert.doesNotMatch(src('lib/publications/agent-v2/'+f).replace(/\/\/[^\n]*/g,''),/publications-drive|google-drive|googleapis/i,`${f}: Drive only through the injectable media source`);});
 
+test('derivatives keep the original ratio when the network accepts it, otherwise the closest allowed ratio',async()=>{
+ const size=transform.outputSize;
+ assert.deepEqual(json(size(1080,1350,'instagram')),{width:1080,height:1350},'4:5 visual kept for Instagram');
+ assert.deepEqual(json(size(1080,1920,'instagram')),{width:1080,height:1350},'9:16 phone photo brought to 4:5 for Instagram');
+ assert.deepEqual(json(size(1080,1920,'tiktok')),{width:1080,height:1920},'9:16 kept for TikTok');
+ assert.deepEqual(json(size(4000,1000,'facebook')),{width:1080,height:565},'panorama brought to 1.91:1');
+ assert.deepEqual(json(size(3000,3000,'google_business_profile')),{width:1080,height:1080});
+ const tall=new Uint8Array(await sharp({create:{width:900,height:1600,channels:3,background:'#468'}}).png().toBuffer());
+ for(const [platform,h] of [['instagram',1350],['snapchat',1920]]){const d=await transform.adaptImage(tall,platform);const meta=await sharp(Buffer.from(d.bytes)).metadata();
+  assert.deepEqual([meta.format,meta.width,meta.height,d.width,d.height],['jpeg',1080,h,1080,h],platform);assert.ok(d.bytes.length<=786432);}
+});
 test('manual image: PNG and WebP become JPEG without crop, at most 1080 px wide (TikTok), JPEG stays untouched, junk refused',async()=>{
  for(const format of ['png','webp']){
   const out=await transform.toPublishableJpeg(await image(format));

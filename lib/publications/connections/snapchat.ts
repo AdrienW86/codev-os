@@ -5,7 +5,7 @@ import type {SnapchatPublicProfile} from './model';
 
 // Snapchat connection provider (Snap OAuth 2.0 + Public Profile API). Jeton d'accès Bearer court (environ 1 h), jeton de
 // rafraîchissement long, scope snapchat-profile-api exigé (sinon aucune publication possible). Les comptes publiables
-// sont les profils publics (Public Profiles) de l'organisation de la personne connectée. Aucune réponse du fournisseur
+// sont le profil public de la personne connectée et ceux de son organisation auxquels elle a accès. Aucune réponse du fournisseur
 // n'est journalisée ni renvoyée à l'interface.
 const record=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown,max=300):string|null=>typeof v==='string'&&v.trim().length>=1&&v.length<=max?v.trim():null;
@@ -47,34 +47,35 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
   if(r.status!==200||!r.body||typeof r.body!=='object'||(typeof body.error==='string'&&body.error)||(typeof body.request_status==='string'&&body.request_status.toUpperCase()==='ERROR'))
    throw r.status===200&&!body.error?new ConnectionProviderError('invalid'):failure(r.status,r.body);
   return r.body;};
- // Lecture sur l'hôte Marketing, puis sur l'hôte Public Profile si le premier refuse (403 / 404) : chemin non vérifié.
- const read=async(path:string,credential:ProviderCredential)=>{
-  try{return await call({operation:'read',path,params:{},credential});}
-  catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='permission'||e.kind==='invalid'||e.kind==='unavailable'))
-   {try{return await call({operation:'read',path:'biz:'+path,params:{},credential});}catch{throw e;}}throw e;}};
- const me=async(credential:ProviderCredential)=>{const m=record(record(await read('me',credential)).me);
-  const id=text(m.id,100),organization=text(m.organization_id,100);
-  if(!id||!SNAP_ID.test(id))throw new ConnectionProviderError('invalid');return {id,organization:organization&&UUID.test(organization)?organization:null};};
+ // Profil public de la personne connectée (GET /v1/public_profiles/my_profile, scope snapchat-profile-api) :
+ // { public_profile: { id, organization_id, display_name, snap_user_name, … } }. L'identité retenue est l'id du profil.
+ const myProfile=async(credential:ProviderCredential)=>{const p=record(record(await call({operation:'read',path:'public_profiles/my_profile',params:{},credential})).public_profile);
+  const id=text(p.id,100),organization=text(p.organization_id,100);
+  if(!id||!SNAP_ID.test(id))throw new ConnectionProviderError('invalid');
+  return {id,organization:organization&&UUID.test(organization)?organization:null,profile:snapchatProfilesOf({public_profiles:[{public_profile:p}]})};};
  const provider:SnapchatConnectionProvider={
   async exchangeCode(code,redirectUri){
    if(!opaque(code)||!text(redirectUri,500))throw new ConnectionProviderError('invalid');
    const credential=snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'authorization_code',code}}),null);
    // Identité lue ensuite, sans bloquer l'enregistrement : un refus de Snap sur la lecture des profils apparaît alors
    // à l'étape de découverte (code distinct de l'échange du code d'autorisation).
-   let subject:string|null=null;try{subject=(await me(credential)).id;}catch{subject=null;}
+   let subject:string|null=null;try{subject=(await myProfile(credential)).id;}catch{subject=null;}
    return {...credential,subject};},
   async refresh(credential){if(!credential.refreshToken)throw new ConnectionProviderError('revoked');
    return snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'refresh_token'},credential}),credential);},
   async validateConnection(credential):Promise<ConnectionValidation>{
-   try{const user=await me(credential);return {status:'active',externalIdentity:user.id};}
+   try{const user=await myProfile(credential);return {status:'active',externalIdentity:user.id};}
    catch(e){if(e instanceof ConnectionProviderError&&(e.kind==='expired'||e.kind==='revoked'))return {status:e.kind,externalIdentity:null};throw e;}},
   async listPublicProfiles(credential){
-   const user=await me(credential);if(!user.organization)return [];
-   return snapchatProfilesOf(await read(`organizations/${user.organization}/public_profiles`,credential));},
+   const user=await myProfile(credential);
+   // Autres profils de l'organisation auxquels la personne a accès (facultatif : un refus ici garde son propre profil).
+   let others:SnapchatPublicProfile[]=[];
+   if(user.organization){try{others=snapchatProfilesOf(await call({operation:'read',path:`organizations/${user.organization}/public_profiles`,params:{limit:'50'},credential}));}catch{others=[];}}
+   const seen=new Set<string>();return [...user.profile,...others].filter(p=>!seen.has(p.id)&&Boolean(seen.add(p.id)));},
   async diagnose(credential){
    const status=async(path:string)=>{try{const r=await transport.request({operation:'read',path,params:{},credential});return String(Math.min(Math.max(r.status|0,0),999));}catch{return 'x';}};
-   const [ads,biz,pub]=await Promise.all([status('me'),status('biz:me'),status('probe:public_search')]);
-   return `ads${ads}_biz${biz}_pub${pub}`;},
+   const [me,pub]=await Promise.all([status('public_profiles/my_profile'),status('probe:public_search')]);
+   return `me${me}_pub${pub}`;},
  };
  return provider;
 }

@@ -14,8 +14,8 @@ Une publication Snapchat porte toujours un seul média (contrôle en base).
 
 1. **Connexion par client** (onglet Publications du client ou Configuration du projet) : Snap OAuth 2.0, scope
    `snapchat-profile-api`. Jeton d’accès court (environ 1 h) rafraîchi en mémoire, jeton de rafraîchissement chiffré
-   dans le coffre comme pour Meta, Google et TikTok. Les comptes proposés sont les profils publics de l’organisation
-   Snap de la personne connectée ; on en affecte un au canal Snapchat du projet.
+   dans le coffre comme pour Meta, Google et TikTok. Les comptes proposés sont le profil public de la personne
+   connectée et ceux de son organisation Snap auxquels elle a accès ; on en affecte un au canal Snapchat du projet.
 2. **Canal Snapchat** par projet : planning (jours / heures), règles éditoriales, compte affecté.
 3. **Agent** : une phrase courte et visuelle (160 caractères au plus, 1 à 3 hashtags).
 4. **Studio vidéo** : « Créer une publication Snapchat » prépare un brouillon (non planifié) avec la vidéo ; vous le
@@ -41,9 +41,10 @@ Tant que les deux variables manquent, Snapchat reste « non configuré » (aucun
    créer une application « CODE-V OS ».
 2. **URL de redirection** : `<PUBLICATIONS_OAUTH_BASE_URL>/api/publications/oauth/snapchat/callback`
    (ex. `https://os.code-v.fr/api/publications/oauth/snapchat/callback`).
-3. **Accès à la Public Profile API** : l’API est sur liste d’autorisation. Demander à Snap l’accès pour cette
-   application (scope `snapchat-profile-api`, gestion du contenu des profils publics). Sans cet accord, la connexion
-   échoue avec « accès refusé ».
+3. **Accès à la Public Profile API** : l’API est sur liste d’autorisation. Pour vérifier l’accès sans contact Snap,
+   connecter un client puis lire le code d’audit `publication.oauth_completed` : en cas d’échec de la découverte il
+   porte `me<statut>_pub<statut>` (profil de la personne connectée, recherche publique). `pub200` signifie que
+   l’application est autorisée.
 4. Renseigner `SNAPCHAT_CLIENT_ID` et `SNAPCHAT_CLIENT_SECRET` dans Vercel (Production), puis redéployer.
 
 ## Par client
@@ -53,15 +54,18 @@ Tant que les deux variables manquent, Snapchat reste « non configuré » (aucun
 - Connecter Snapchat depuis la page du client, activer le canal Snapchat du projet, choisir les jours / heures, puis
   affecter le profil public.
 
-## À vérifier avec la documentation officielle
+## Appels Snap (documentation Public Profile API, vérifiée le 2026-11-02)
 
-Les chemins et champs suivants suivent la documentation Snap (Public Profile API, *Profile Asset Management*) telle
-qu’elle était accessible au moment de l’écriture ; ils sont isolés dans
-`lib/integrations/publications-snapchat-publish.ts`, `lib/publications/delivery/snapchat-publisher.ts` et
-`lib/integrations/publications-oauth/http.ts` :
+Isolés dans `lib/integrations/publications-oauth/http.ts`, `lib/integrations/publications-snapchat-publish.ts` et
+`lib/publications/delivery/snapchat-publisher.ts` :
 
-- découverte des profils : `GET https://adsapi.snapchat.com/v1/me` puis `/v1/organizations/<id>/public_profiles` ;
-- média : `POST https://businessapi.snapchat.com/v1/public_profiles/<profil>/media` (`type`, `name`, `key`, `iv`)
-  → `media_id`, `add_path`, `finalize_path` ; envoi `multipart/form-data` (`action=ADD`, `part_number`, `file`)
-  puis `action=FINALIZE` ;
-- Story : `POST …/stories` (`media_id`) ; Spotlight : `POST …/spotlights` (`media_id`, `description`, `locale`).
+- profil de la personne connectée : `GET https://businessapi.snapchat.com/v1/public_profiles/my_profile`
+  → `{ public_profile: { id, organization_id, display_name, snap_user_name } }` ;
+- profils de l’organisation : `GET https://businessapi.snapchat.com/v1/organizations/<id>/public_profiles` ;
+- média : `POST https://businessapi.snapchat.com/v1/public_profiles/<profil>/media` (`type`, `name`, `key`, `iv` en
+  base64) → `media_id`, `add_path`, `finalize_path` ; envoi `multipart/form-data` (`action=ADD`, `part_number`, `file`,
+  morceaux de 32 Mo au plus) puis `action=FINALIZE` ; un média expire 24 h après sa création ;
+- Story : `POST …/stories` (`media_id`) → `{ request_id, request_status }` seulement (l’id du média sert de référence) ;
+- Spotlight : `POST …/spotlights` (`media_id`, `description` ≤ 160, `locale`) → `spotlight_id` ; vidéo MP4 de 6 à
+  60 s, 540 × 960 px au moins ; statut initial `SUBMITTED` (modération Snap avant `LIVE`).
+- `MEDIA_POSTING_ALREADY_IN_PROGRESS` : diffusion « à vérifier », jamais renvoyée.

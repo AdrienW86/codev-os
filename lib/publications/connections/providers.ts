@@ -32,7 +32,7 @@ export interface SnapchatConnectionProvider{
  refresh(credential:ProviderCredential):Promise<ProviderCredential>;
  validateConnection(credential:ProviderCredential):Promise<ConnectionValidation>;
  listPublicProfiles(credential:ProviderCredential):Promise<SnapchatPublicProfile[]>;
- /** Statuts HTTP de trois lectures témoins (identité Marketing, identité Public Profile, recherche publique), ex. « ads403_biz404_pub403 ». */
+ /** Statuts HTTP de deux lectures témoins (profil de la personne connectée, recherche publique), ex. « me403_pub200 ». */
  diagnose(credential:ProviderCredential):Promise<string>;
 }
 // Server-side HTTP transport a real provider is built on (not implemented in P9: no OAuth configured yet).

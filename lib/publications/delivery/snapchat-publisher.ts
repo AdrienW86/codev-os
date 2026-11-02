@@ -96,6 +96,7 @@ export function createSnapchatPublisher(transport:SnapchatPublishTransport,optio
   catch{return fail('provider_unavailable','network_before_dispatch');}
   if(!ok200(created))return withRetry(classifySnapchatError(created.status,created.body,'read'),created);
   const mediaId=field(created.body,['media_id','id'],[['media','media']]);
+  // Réponse documentée : { media_id, add_path, finalize_path } (chemins relatifs, préfixe régional possible, ex. /us/v1/…).
   const addPath=field(created.body,['add_path'],[['media','media']]),finalizePath=field(created.body,['finalize_path'],[['media','media']])??addPath;
   if(!mediaId||!REMOTE_ID.test(mediaId)||!addPath||!finalizePath)return fail('provider_unavailable','media_container_invalid');
   const PART=32*1024*1024;
@@ -118,8 +119,13 @@ export function createSnapchatPublisher(transport:SnapchatPublishTransport,optio
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
    if(kind==='invalid_path')return fail('permanent','invalid_request');
    return uncertain(kind==='timeout'?'timeout_after_dispatch':'network_after_dispatch');}
-  if(!ok200(r))return withRetry(classifySnapchatError(r.status,r.body,'write'),r);
-  const remoteId=field(r.body,['id','story_id','spotlight_id'],[[action,video?'spotlight':'story']]);
+  if(!ok200(r)){
+   // Une publication de ce même média est déjà en cours chez Snap : ne jamais renvoyer, l'original aboutira seul.
+   if(String(record(r.body).error_code??'').toUpperCase()==='MEDIA_POSTING_ALREADY_IN_PROGRESS')return uncertain('posting_in_progress');
+   return withRetry(classifySnapchatError(r.status,r.body,'write'),r);}
+  // Spotlight : { spotlight_id }. Story : Snap ne renvoie que { request_id, request_status } ; l'identifiant retenu est
+  // alors celui du média publié (propre à cet envoi).
+  const remoteId=video?field(r.body,['spotlight_id','id'],[['spotlights','spotlight']]):field(r.body,['story_id','id'],[['stories','story']])??mediaId;
   if(!remoteId||!REMOTE_ID.test(remoteId))return uncertain('remote_id_missing');
   return {ok:true,remoteId,simulated:false};
  }};

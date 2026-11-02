@@ -85,7 +85,7 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  const candidates=[...catalog,...pool].map(m=>{const s=photoServices(m,services);return s.length?{...m,services:s}:m;});
  const history=buildEditorialHistory({publications:historyRows,variants:texts,libraryUses:libUses,catalogUses:uses.data,services});
  const zone=client.data.geographic_area?.trim()||null,priorityTopics=strings(profile.data?.priority_topics).slice(0,30);
- const plan=buildEditorialPlan({history,services,media:candidates,priorityTopics,zone,now});
+ const plan=buildEditorialPlan({history,services,media:candidates,priorityTopics,zone,now,clientName:client.data.name});
  return {clientId,input:{client:{name:client.data.name,activity:client.data.activity?.trim()||null,zone},project:{name:project.data.name},services,
   rules:[config.data.editorial_rules,settings.data?.editorial_brief??'',profile.data?.communication_guidelines??''].map(r=>r.trim()).filter(Boolean).join('\n').slice(0,8000),
   channelRules:enabled.flatMap(c=>c.editorial_rules?.trim()?[{platform:c.platform,rules:c.editorial_rules.trim()}]:[]),

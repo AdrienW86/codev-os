@@ -30,7 +30,7 @@ export type EditorialContext={history:EditorialHistoryItem[];plan:EditorialPlan}
 const RECENT_WINDOW=6;
 const day=(iso:string|null)=>iso?iso.slice(0,10):null;
 
-export function buildEditorialPlan(input:{history:readonly EditorialHistoryItem[];services:readonly string[];media:readonly AgentMediaCandidate[];priorityTopics?:readonly string[];zone:string|null;now:Date}):EditorialPlan{
+export function buildEditorialPlan(input:{history:readonly EditorialHistoryItem[];services:readonly string[];media:readonly AgentMediaCandidate[];priorityTopics?:readonly string[];zone:string|null;now:Date;clientName?:string|null}):EditorialPlan{
  const {history,services}=input,recent=history.slice(0,RECENT_WINDOW);
  const lastIndex=(s:string)=>recent.findIndex(h=>h.services.includes(s));
  const deprioritised:DeprioritisedService[]=[];
@@ -51,7 +51,7 @@ export function buildEditorialPlan(input:{history:readonly EditorialHistoryItem[
  return {favouredServices:favoured,deprioritised:deprioritised.slice(0,6),servicesWithoutPhoto:services.filter(s=>!illustrated.includes(s)).slice(0,10),seasonalPreference:seasonal,
   introStyle:nextInPool(INTRO_STYLES,intros),avoidIntroStyle:sameIntro,ctaStyle:nextInPool(CTA_STYLES,ctas),
   avoidOpenings:[...new Set(history.slice(0,12).flatMap(h=>h.openings))].filter(o=>o.split(' ').length>=3).slice(0,12),
-  avoidCtas:[...new Set(history.slice(0,10).flatMap(h=>h.ctas))].slice(0,5),recurringPhrases:recurringPhrases(history),allowedPlaces:allowedPlaces(input.zone),historyConsidered:history.length};
+  avoidCtas:[...new Set(history.slice(0,10).flatMap(h=>h.ctas))].slice(0,5),recurringPhrases:recurringPhrases(history,10,[input.clientName??'',input.zone??'']),allowedPlaces:allowedPlaces(input.zone),historyConsidered:history.length};
 }
 
 // Version compacte envoyée au modèle (coût borné) : 10 idées au plus, sans texte complet ni identifiant de photo.

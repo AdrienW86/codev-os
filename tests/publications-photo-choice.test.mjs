@@ -28,3 +28,12 @@ test("no photo while available photos illustrate services: refused with the illu
   assert.equal(sel.validateGeneratorOutput(input([{ ...media[0], services: [] }]), output(null)).ok, true, "no illustrated service: a missing photo stays allowed");
   assert.equal(sel.validateGeneratorOutput(input([{ ...media[0], used: true }]), output(null)).ok, true, "used photos do not count");
 });
+
+test("« remise en état » is work, not a commercial discount; « remise de 10 % » stays refused", () => {
+  const facts = sel.factsOf({ client: { name: "Toitures", activity: "Couverture", zone: null }, project: { name: "R" }, services: ["Rénovation de toiture"], rules: "", channelRules: [], occurrences: [], media: [], previousSubjects: [], priorityTopics: [] });
+  const kinds = t => json(sel.unsupportedClaims(t, facts)).map(c => c.split(":")[0]);
+  assert.ok(!kinds("Remise en état de votre toiture après l’hiver.").includes("promotion"));
+  assert.ok(!kinds("Une remise à neuf complète.").includes("promotion"));
+  assert.ok(kinds("Profitez d’une remise sur votre devis.").includes("promotion"));
+  assert.ok(kinds("Remises exceptionnelles ce mois-ci.").includes("promotion"));
+});

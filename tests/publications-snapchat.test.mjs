@@ -33,6 +33,7 @@ test("Snapchat : identifiants exigés, scope vérifié, profils publics normalis
   const c = snapchat.snapchatCredentialOf({ access_token: "snap.abcdefgh", expires_in: 3600, refresh_token: "snap.rfabcdef", scope: "snapchat-profile-api", token_type: "Bearer" }, null);
   assert.equal(c.provider, "snapchat"); assert.equal(c.refreshToken, "snap.rfabcdef");
   assert.throws(() => snapchat.snapchatCredentialOf({ access_token: "snap.abcdefgh", expires_in: 3600, scope: "snapchat-marketing-api" }, null), (e) => e.kind === "permission");
+  assert.deepEqual(json(snapchat.snapchatCredentialOf({ access_token: "snap.abcdefgh", expires_in: 3600, token_type: "Bearer" }, null).scopes), ["snapchat-profile-api"], "scope absent de la réponse : celui demandé");
   assert.throws(() => snapchat.snapchatCredentialOf({ error: "invalid_grant" }, null), (e) => e.kind === "revoked");
   const profiles = snapchat.snapchatProfilesOf({ request_status: "SUCCESS", public_profiles: [{ sub_request_status: "SUCCESS", public_profile: { id: PROFILE, display_name: "JRenov", snap_user_name: "jrenov" } }, { public_profile: { id: "https://x", display_name: "URL" } }] });
   assert.deepEqual(json(profiles), [{ id: PROFILE, displayName: "JRenov", username: "jrenov" }]);
@@ -52,6 +53,10 @@ test("Snapchat : connexion, rafraîchissement et découverte des profils par le 
   assert.equal(c.subject, "me-1");
   assert.deepEqual(json(await p.listPublicProfiles(c)), [{ id: PROFILE, displayName: "JRenov", username: null }]);
   assert.deepEqual(calls, ["token:token", "read:me", "read:me", "read:organizations/11111111-1111-4111-8111-111111111111/public_profiles"]);
+  const noMe = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.operation === "token" ? { status: 200, body: { access_token: "snap.newtoken1", expires_in: 3600, token_type: "Bearer" } } : { status: 403, body: {} }; } });
+  const partial = await noMe.exchangeCode("code-12345678", "https://os.code-v.fr/cb");
+  assert.equal(partial.subject, null, "un refus sur /me n'empêche pas l'enregistrement du jeton");
+  await assert.rejects(noMe.listPublicProfiles(partial), (e) => e.kind === "permission", "le refus apparaît à la découverte");
   const expired = snapchat.createSnapchatConnectionProvider({ async request() { return { status: 401, body: { error: "invalid_token" } }; } });
   assert.deepEqual(json(await expired.validateConnection(credential())), { status: "expired", externalIdentity: null });
 });

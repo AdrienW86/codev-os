@@ -63,9 +63,22 @@ test("Snapchat : connexion, rafraîchissement et découverte des profils par le 
   assert.equal(partial.subject, null, "un refus sur le profil n'empêche pas l'enregistrement du jeton");
   await assert.rejects(noMe.listPublicProfiles(partial), (e) => e.kind === "permission", "le refus apparaît à la découverte");
   const probe = snapchat.createSnapchatConnectionProvider({ async request(r) { if (r.path === "probe:public_search") throw new Error("network"); return { status: 403, body: { debug_message: "secret?" } }; } });
-  assert.equal(await probe.diagnose(credential()), "me403_pubx");
-  const coded = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.path === "probe:public_search" ? { status: 200, body: {} } : { status: 403, body: { request_status: "ERROR", error_code: "E3002-Not Allowed!", debug_message: "secret details" } }; } });
-  assert.equal(await coded.diagnose(credential()), "me403_pub200_e3002notallowed", "code d'erreur Snap assaini, sans message");
+  assert.equal(await probe.diagnose(credential()), "m403a403o0px");
+  const coded = snapchat.createSnapchatConnectionProvider({ async request(r) {
+    if (r.path === "probe:public_search") return { status: 200, body: {} };
+    if (r.path === "ads:me") return { status: 200, body: { me: { id: "u-1", organization_id: ORG } } };
+    if (r.path.startsWith("organizations/")) return { status: 200, body: { public_profiles: [] } };
+    return { status: 403, body: null }; } });
+  assert.equal(await coded.diagnose(credential()), "m403a200o200p200_nojson", "corps non JSON signalé, jamais le message");
+  // Gestionnaire d'un profil d'entreprise : my_profile refusé, organisation lue via l'identité Marketing.
+  const manager = snapchat.createSnapchatConnectionProvider({ async request(r) {
+    if (r.path === "public_profiles/my_profile") return { status: 403, body: { request_status: "ERROR", error_code: "E3002" } };
+    if (r.path === "ads:me") return { status: 200, body: { request_status: "SUCCESS", me: { id: "u-1", organization_id: ORG } } };
+    return { status: 200, body: { public_profiles: [{ public_profile: { id: PROFILE, display_name: "Codev", snap_user_name: "codev_website" } }] } }; } });
+  assert.deepEqual(json(await manager.listPublicProfiles(credential())), [{ id: PROFILE, displayName: "Codev", username: "codev_website" }]);
+  assert.deepEqual(json(await manager.validateConnection(credential())), { status: "active", externalIdentity: "u-1" });
+  const nothing = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.path === "ads:me" ? { status: 200, body: { me: { id: "u-1" } } } : { status: 403, body: {} }; } });
+  await assert.rejects(nothing.listPublicProfiles(credential()), (e) => e.kind === "permission", "ni profil ni organisation : refus d'origine");
   const expired = snapchat.createSnapchatConnectionProvider({ async request() { return { status: 401, body: { error: "invalid_token" } }; } });
   assert.deepEqual(json(await expired.validateConnection(credential())), { status: "expired", externalIdentity: null });
 });
@@ -182,10 +195,14 @@ test("Snapchat : URL documentées de la Public Profile API pour la découverte (
   await t.request({ operation: "read", path: "public_profiles/my_profile", params: {}, credential: c });
   await t.request({ operation: "read", path: "organizations/11111111-1111-4111-8111-111111111111/public_profiles", params: { limit: "50" }, credential: c });
   await t.request({ operation: "read", path: "probe:public_search", params: {}, credential: c });
+  await t.request({ operation: "read", path: "ads:me", params: {}, credential: c });
   assert.deepEqual(urls, [
     ["https://businessapi.snapchat.com/v1/public_profiles/my_profile", "GET", "Bearer snap.valid-token-123"],
     ["https://businessapi.snapchat.com/v1/organizations/11111111-1111-4111-8111-111111111111/public_profiles?limit=50", "GET", "Bearer snap.valid-token-123"],
-    ["https://businessapi.snapchat.com/public/v1/public_profiles/search?query=snapchat", "GET", "Bearer snap.valid-token-123"]]);
+    ["https://businessapi.snapchat.com/public/v1/public_profiles/search?query=snapchat", "GET", "Bearer snap.valid-token-123"],
+    ["https://adsapi.snapchat.com/v1/me", "GET", "Bearer snap.valid-token-123"]]);
+  const authorize = new URL(oauthHttp.snapchatAuthorizeUrl({ clientId: "abcd-1234-efgh", clientSecret: "s".repeat(32), redirectUri: "https://os.code-v.fr/cb" }, "state-1"));
+  assert.equal(authorize.searchParams.get("scope"), "snapchat-profile-api snapchat-marketing-api");
   for (const bad of ["me", "public_profiles/other", "organizations/x/public_profiles", "public_profiles/my_profile/../x"])
     await assert.rejects(t.request({ operation: "read", path: bad, params: {}, credential: c }), (e) => e.kind === "invalid_path", bad);
 });

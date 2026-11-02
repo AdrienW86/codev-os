@@ -32,7 +32,7 @@ export interface SnapchatConnectionProvider{
  refresh(credential:ProviderCredential):Promise<ProviderCredential>;
  validateConnection(credential:ProviderCredential):Promise<ConnectionValidation>;
  listPublicProfiles(credential:ProviderCredential):Promise<SnapchatPublicProfile[]>;
- /** Statuts HTTP de deux lectures témoins (profil de la personne connectée, recherche publique), ex. « me403_pub200_authorization_permission_denied » (code d'erreur Snap tronqué). */
+ /** Statuts HTTP des lectures témoins (my_profile, identité Marketing, profils de l'organisation, recherche publique) et premier code d'erreur Snap, ex. « m403a200o200p200_xxx » (m = my_profile, a = adsapi /me, o = organisation, p = recherche publique ; o0 = non tenté). */
  diagnose(credential:ProviderCredential):Promise<string>;
 }
 // Server-side HTTP transport a real provider is built on (not implemented in P9: no OAuth configured yet).

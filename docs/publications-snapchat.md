@@ -12,8 +12,8 @@ Une publication Snapchat porte toujours un seul média (contrôle en base).
 
 ## Ce que fait CODE-V OS
 
-1. **Connexion par client** (onglet Publications du client ou Configuration du projet) : Snap OAuth 2.0, scope
-   `snapchat-profile-api`. Jeton d’accès court (environ 1 h) rafraîchi en mémoire, jeton de rafraîchissement chiffré
+1. **Connexion par client** (onglet Publications du client ou Configuration du projet) : Snap OAuth 2.0, scopes
+   `snapchat-profile-api` (publication) et `snapchat-marketing-api` (lecture de l’organisation Snap uniquement). Jeton d’accès court (environ 1 h) rafraîchi en mémoire, jeton de rafraîchissement chiffré
    dans le coffre comme pour Meta, Google et TikTok. Les comptes proposés sont le profil public de la personne
    connectée et ceux de son organisation Snap auxquels elle a accès ; on en affecte un au canal Snapchat du projet.
 2. **Canal Snapchat** par projet : planning (jours / heures), règles éditoriales, compte affecté.
@@ -43,8 +43,8 @@ Tant que les deux variables manquent, Snapchat reste « non configuré » (aucun
    (ex. `https://os.code-v.fr/api/publications/oauth/snapchat/callback`).
 3. **Accès à la Public Profile API** : l’API est sur liste d’autorisation. Pour vérifier l’accès sans contact Snap,
    connecter un client puis lire le code d’audit `publication.oauth_completed` : en cas d’échec de la découverte il
-   porte `me<statut>_pub<statut>` (profil de la personne connectée, recherche publique). `pub200` signifie que
-   l’application est autorisée.
+   porte `m<statut>a<statut>o<statut>p<statut>[_code]` (my_profile, identité Marketing, profils de l’organisation —
+   `o0` = non tenté —, recherche publique) puis le premier code d’erreur Snap.
 4. Renseigner `SNAPCHAT_CLIENT_ID` et `SNAPCHAT_CLIENT_SECRET` dans Vercel (Production), puis redéployer.
 
 ## Par client
@@ -59,9 +59,12 @@ Tant que les deux variables manquent, Snapchat reste « non configuré » (aucun
 Isolés dans `lib/integrations/publications-oauth/http.ts`, `lib/integrations/publications-snapchat-publish.ts` et
 `lib/publications/delivery/snapchat-publisher.ts` :
 
-- profil de la personne connectée : `GET https://businessapi.snapchat.com/v1/public_profiles/my_profile`
-  → `{ public_profile: { id, organization_id, display_name, snap_user_name } }` ;
-- profils de l’organisation : `GET https://businessapi.snapchat.com/v1/organizations/<id>/public_profiles` ;
+- profil porté par la personne connectée : `GET https://businessapi.snapchat.com/v1/public_profiles/my_profile`
+  → `{ public_profile: { id, organization_id, display_name, snap_user_name } }` ; refusé (403) quand la personne gère un
+  profil d’entreprise sans en porter un ;
+- sinon identité Marketing : `GET https://adsapi.snapchat.com/v1/me` → `{ me: { id, organization_id } }` (scope
+  `snapchat-marketing-api`) ;
+- profils de l’organisation accessibles à la personne : `GET https://businessapi.snapchat.com/v1/organizations/<id>/public_profiles` ;
 - média : `POST https://businessapi.snapchat.com/v1/public_profiles/<profil>/media` (`type`, `name`, `key`, `iv` en
   base64) → `media_id`, `add_path`, `finalize_path` ; envoi `multipart/form-data` (`action=ADD`, `part_number`, `file`,
   morceaux de 32 Mo au plus) puis `action=FINALIZE` ; un média expire 24 h après sa création ;

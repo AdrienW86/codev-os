@@ -139,6 +139,12 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  if(input.previousSubjects){const detail=repetitionDetail(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput);if(detail)return {ok:false,reason:'repetition',detail};}
  // PR #42 : lieux autorisés, photo cohérente (jamais un document), répétitions sur tout l'historique chargé.
  const refusal=editorialRefusal(input,value);if(refusal)return {ok:false,...refusal};
+ // Sans photo alors que des photos disponibles illustrent des prestations : le sujet a été choisi sans photo. Refus
+ // expliqué (nouvel essai guidé vers une prestation illustrée) plutôt qu'un brouillon « photo manquante » évitable.
+ if(value.publications.every(p=>p.mediaId===null)){
+  const illustrated=[...new Set(input.media.filter(m=>!m.used).flatMap(m=>m.services??[]))];
+  if(illustrated.length)return {ok:false,reason:'photo_available',detail:`des photos disponibles illustrent : ${illustrated.slice(0,5).map(s=>`« ${s.slice(0,40)} »`).join(', ')} ; choisis l’une de ces prestations et la photo correspondante`};
+ }
  return {ok:true,value};
 }
 

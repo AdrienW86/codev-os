@@ -39,7 +39,13 @@ export function dedupeByHash<T extends {id:string}>(candidates:readonly T[],hash
 }
 
 /** Prestations du client qu'une photo illustre selon sa description et ses thèmes (contexte non fiable : choix seulement). */
-export const photoServices=(m:Pick<AgentMediaCandidate,'description'|'categories'>,services:readonly string[])=>servicesIn([m.description??'',...m.categories].join(' . '),services);
+// Prestations illustrées par une photo : vocabulaire de sa description et de ses catégories, ou catégorie qui EST le nom
+// d'une prestation (l'analyse range les photos par prestation du client : « Rénovation de toiture » n'a aucun mot
+// propre une fois les mots génériques retirés et n'était jamais reconnue, d'où des « photos manquantes » à tort).
+export const photoServices=(m:Pick<AgentMediaCandidate,'description'|'categories'>,services:readonly string[])=>{
+ const named=new Set(m.categories.map(normalizeText));
+ return services.filter(s=>named.has(normalizeText(s))||servicesIn([m.description??'',...m.categories].join(' . '),[s]).length>0);
+};
 /**
  * Adéquation photo / sujet : quand le sujet porte sur une prestation reconnue et que la photo en illustre une autre
  * (et pas celle du sujet), la photo est refusée. Sans signal d'un côté ou de l'autre, rien n'est refusé ici.

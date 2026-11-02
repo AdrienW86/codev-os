@@ -64,7 +64,8 @@ const refusals:Record<string,string>={unsupported_claim:'Contenu refusé : il co
  cta_repetition:'Contenu refusé : appel à l’action déjà employé ou même style que les dernières publications. Aucun brouillon créé ; relancez.',
  phrase_repetition:'Contenu refusé : formulation récurrente des publications passées. Aucun brouillon créé ; relancez.',
  photo_mismatch:'Contenu refusé : la photo choisie illustre une autre prestation que le sujet. Aucun brouillon créé ; relancez.',
- document_photo:'Contenu refusé : une photo de document ne peut pas illustrer une intervention. Aucun brouillon créé ; relancez.'};
+ document_photo:'Contenu refusé : une photo de document ne peut pas illustrer une intervention. Aucun brouillon créé ; relancez.',
+ photo_available:'Contenu refusé : sujet choisi sans photo alors que des photos disponibles illustrent d’autres prestations. Aucun brouillon créé ; relancez.'};
 // Justification éditoriale enregistrée avec le run (PR #42) tant qu'il est en cours : une erreur n'empêche jamais la
 // préparation (information pour l'admin), elle est seulement journalisée sans contenu.
 async function recordJustification(db:ReturnType<typeof getSupabaseServerClient>,runId:string,userId:string,justification:EditorialJustification){

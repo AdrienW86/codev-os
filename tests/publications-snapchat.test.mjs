@@ -64,6 +64,8 @@ test("Snapchat : connexion, rafraîchissement et découverte des profils par le 
   await assert.rejects(noMe.listPublicProfiles(partial), (e) => e.kind === "permission", "le refus apparaît à la découverte");
   const probe = snapchat.createSnapchatConnectionProvider({ async request(r) { if (r.path === "probe:public_search") throw new Error("network"); return { status: 403, body: { debug_message: "secret?" } }; } });
   assert.equal(await probe.diagnose(credential()), "me403_pubx");
+  const coded = snapchat.createSnapchatConnectionProvider({ async request(r) { return r.path === "probe:public_search" ? { status: 200, body: {} } : { status: 403, body: { request_status: "ERROR", error_code: "E3002-Not Allowed!", debug_message: "secret details" } }; } });
+  assert.equal(await coded.diagnose(credential()), "me403_pub200_e3002notallowed", "code d'erreur Snap assaini, sans message");
   const expired = snapchat.createSnapchatConnectionProvider({ async request() { return { status: 401, body: { error: "invalid_token" } }; } });
   assert.deepEqual(json(await expired.validateConnection(credential())), { status: "expired", externalIdentity: null });
 });

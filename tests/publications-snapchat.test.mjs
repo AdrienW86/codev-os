@@ -60,6 +60,8 @@ test("Snapchat : configuration serveur (noms seulement, jamais de valeur) et URL
   const env = { PUBLICATIONS_OAUTH_BASE_URL: "https://os.code-v.fr", SNAPCHAT_CLIENT_ID: "abcd-1234-efgh", SNAPCHAT_CLIENT_SECRET: "s".repeat(32) };
   assert.deepEqual(json(config.snapchatOAuthConfig(env)), { clientId: "abcd-1234-efgh", clientSecret: "s".repeat(32), redirectUri: "https://os.code-v.fr/api/publications/oauth/snapchat/callback" });
   assert.equal(config.snapchatOAuthConfig({ ...env, SNAPCHAT_CLIENT_SECRET: "court" }), null);
+  assert.equal(config.snapchatOAuthConfig({ ...env, SNAPCHAT_CLIENT_ID: " abcd-1234-efgh\n", SNAPCHAT_CLIENT_SECRET: "s".repeat(32) + "\n" }).clientId, "abcd-1234-efgh", "valeur collée avec un retour à la ligne acceptée");
+  assert.equal(config.snapchatOAuthConfig({ ...env, SNAPCHAT_CLIENT_SECRET: "s".repeat(16) + " " + "s".repeat(16) }), null, "espace interne refusé");
   assert.deepEqual(json(config.missingOAuthConfiguration("snapchat", {})), ["PUBLICATIONS_OAUTH_BASE_URL", "PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID", "SNAPCHAT_CLIENT_ID", "SNAPCHAT_CLIENT_SECRET"]);
 });
 

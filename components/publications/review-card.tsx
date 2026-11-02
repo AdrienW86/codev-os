@@ -1,9 +1,10 @@
-/* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and must not be cached by an image proxy. */
+/* Aperçus privés : URL signées courtes, photo ou vidéo motion design (MediaPreview), jamais mises en cache. */
 'use client';
 import {useActionState,useState} from 'react';
 import {approveFromCardAction,approveGroupFromCardAction,editFromCardAction,rejectFromCardAction,type ReviewCardState} from '@/app/(cockpit)/publications/review-actions';
 import {AgentPrepareForm} from './agent-forms';
 import {TikTokPostSettings} from './tiktok-post-settings';
+import {MediaPreview} from './media-preview';
 import {DebugDetails} from '@/components/projects/debug-details';
 import type {ReviewCardData} from '@/lib/publications/review-cards';
 const input='mt-1 block w-full rounded-lg border border-border bg-background p-3 text-sm';
@@ -58,7 +59,7 @@ export function ReviewCard({card,showContext=false}:{card:ReviewCardData;showCon
  const [platform,setPlatform]=useState(card.variants[0]?.platform),[mode,setMode]=useState<'view'|'edit'|'reject'>('view');
  return <article className="rounded-xl border border-border p-5" data-review-card={card.status}>
  <div className="grid gap-4 md:grid-cols-[12rem_1fr]">
-  {card.image?<img src={card.image} alt="Photo associée à la publication" className="max-h-48 w-full rounded-lg object-contain"/>:<div role="img" aria-label="Image indisponible" className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted">Image indisponible</div>}
+  {card.image?<MediaPreview src={card.image} alt="Photo associée à la publication" className="max-h-48 w-full rounded-lg object-contain"/>:<div role="img" aria-label="Image indisponible" className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted">Image indisponible</div>}
   <div><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted">{formatLongDate(card.date)}</p><span className="rounded-full border border-border px-2 py-0.5 text-xs">{statusLabels[card.status]}</span></div>
    {showContext&&<p className="mt-1 text-xs text-muted">{card.clientName} · {card.projectName}</p>}
    <h3 className="mt-2 font-semibold">{card.subject}</h3><p className="mt-1 text-xs text-muted">{card.variants.map(v=>v.label).join(' · ')}</p>

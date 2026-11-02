@@ -9,7 +9,7 @@ import {getPublicationProjectChannels,publicationChannelLock} from "./project-ch
 import {projectAllowsPlatform} from "./channels";
 import {parseTikTokSettings} from "./tiktok-settings";
 import {toPublishableJpeg} from "./media/transform";
-import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,parseEditorialForm,platformLabels} from "./editor";
+import {IMAGE_BUCKET,IMAGE_URL_TTL,MAX_IMAGE_BYTES,imageMime,mediaBucket,parseEditorialForm,platformLabels} from "./editor";
 import type {Publication,PublicationRevision,PublicationVariant,PublicationReview,PublicationEvent,PublicationAsset,PublicationVariantAsset} from "./types";
 export type Workspace={publication:Publication;revisions:PublicationRevision[];variants:PublicationVariant[];reviews:PublicationReview[];events:PublicationEvent[];assets:(PublicationAsset&{preview:string|null})[];links:PublicationVariantAsset[]};
 const failed="Opération non confirmée. Rechargez la fiche et réessayez. Vérifiez aussi que les migrations du Lot 2 sont appliquées.";
@@ -40,7 +40,7 @@ export async function getWorkspace(id:string):Promise<Workspace|null>{
  // publication's variants, plus images uploaded for it (audited media_uploaded events) and not yet attached.
  const assetIds=[...new Set([...links.map(l=>l.asset_id),...events.flatMap(e=>uploadedAsset(e)??[])])],assets:PublicationAsset[]=[];
  for(let offset=0;offset<assetIds.length;offset+=100){const batch=assetIds.slice(offset,offset+100);assets.push(...await allRows<PublicationAsset>(()=>db.from("publication_assets").select("*").eq("client_id",clientId).in("id",batch).order("id")));}
- const previews=await Promise.all(assets.map(async asset=>{const signed=await db.storage.from(IMAGE_BUCKET).createSignedUrl(asset.storage_path,IMAGE_URL_TTL);return {...asset,preview:signed.error?null:signed.data.signedUrl};}));
+ const previews=await Promise.all(assets.map(async asset=>{const signed=await db.storage.from(mediaBucket(asset.mime_type)).createSignedUrl(asset.storage_path,IMAGE_URL_TTL);return {...asset,preview:signed.error?null:signed.data.signedUrl};}));
  return {publication:root.data,revisions,variants,reviews:reviewDecisions(reviews,events,variants),events,assets:previews,links:links.filter(l=>variants.some(v=>v.id===l.variant_id))};
 }
 // Guarded refusals of the save RPC (55000), mapped without exposing the database message.

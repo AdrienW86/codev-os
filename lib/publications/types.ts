@@ -63,7 +63,7 @@ export type PublicationVariant = Updated & {
   platform: PublicationPlatform; text_content: string; metadata: Json;
 };
 export type PublicationAsset = Created & {
-  client_id: string; storage_path: string; file_hash: string; mime_type: "image/jpeg" | "image/png" | "image/webp";
+  client_id: string; storage_path: string; file_hash: string; mime_type: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   width: number | null; height: number | null; provenance: string; rights_confirmed: boolean;
 };
 export type PublicationVariantAsset = { variant_id: string; asset_id: string; client_id: string; sort_order: number };

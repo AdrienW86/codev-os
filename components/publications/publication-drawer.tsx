@@ -1,10 +1,11 @@
-/* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and must not be cached by an image proxy. */
+/* Aperçus privés : URL signées courtes (MediaPreview), jamais mises en cache. */
 'use client';
 import {useRouter} from 'next/navigation';
 import Link from 'next/link';
 import {useActionState,useEffect,useRef,useState,type ReactNode} from 'react';
 import {approveFromDrawerAction,archiveFromDrawerAction,rejectFromDrawerAction,saveFromDrawerAction,stageMediaAction,type DrawerState} from '@/app/(cockpit)/publications/drawer-actions';
 import {TikTokPostSettings} from './tiktok-post-settings';
+import {MediaPreview} from './media-preview';
 import {AgentPrepareForm} from './agent-forms';
 import {BoardVisibilityForm} from './board-visibility-form';
 import {DeliverySection} from './delivery-section';
@@ -88,7 +89,7 @@ function ToPrepare({detail}:{detail:PublicationDetailData}){
 
 function mediaLabel(state:MediaState){return state==='missing'?'Média requis':'Média indisponible';}
 export function MediaBox({state,preview,label}:{state:MediaState;preview:string|null;label?:string}){
- return <figure className="space-y-1">{preview?<img src={preview} alt="Aperçu du média de la publication" className="max-h-72 w-full rounded-lg object-contain"/>
+ return <figure className="space-y-1">{preview?<MediaPreview src={preview} alt="Aperçu du média de la publication" className="max-h-72 w-full rounded-lg object-contain"/>
   :<div role="img" aria-label={state==='ok'?'Aperçu indisponible':mediaLabel(state)} data-media={state} className={`flex h-40 items-center justify-center rounded-lg border text-sm ${state==='missing'?'border-danger/60 text-danger':'border-dashed border-border text-muted'}`}>{state==='ok'?'Aperçu indisponible':mediaLabel(state)}</div>}
   {label&&<figcaption className="text-xs font-medium">{label}</figcaption>}</figure>;
 }

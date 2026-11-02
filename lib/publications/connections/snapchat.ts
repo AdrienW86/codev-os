@@ -26,7 +26,9 @@ export function snapchatCredentialOf(body:unknown,previous:ProviderCredential|nu
  if(typeof b.error==='string'&&b.error)throw failure(400,b);
  if(!opaque(b.access_token)||typeof b.expires_in!=='number'||!Number.isFinite(b.expires_in)||b.expires_in<=120
   ||(typeof b.token_type==='string'&&b.token_type.toLowerCase()!=='bearer'))throw new ConnectionProviderError('invalid');
- const scopes=typeof b.scope==='string'?b.scope.split(/[ ,]+/).filter(Boolean).slice(0,50):previous?.scopes??[];
+ // Snap ne renvoie pas toujours le champ scope : sans lui, le jeton vaut pour le seul scope demandé à l'autorisation.
+ // Un scope renvoyé qui ne contient pas snapchat-profile-api reste refusé.
+ const scopes=typeof b.scope==='string'&&b.scope.trim()?b.scope.split(/[ ,]+/).filter(Boolean).slice(0,50):previous?.scopes?.length?previous.scopes:[...SNAPCHAT_REQUIRED_SCOPES];
  if(!SNAPCHAT_REQUIRED_SCOPES.every(s=>scopes.includes(s)))throw new ConnectionProviderError('permission');
  const refresh=opaque(b.refresh_token)?b.refresh_token:previous?.refreshToken??null;
  return {accessToken:b.access_token,refreshToken:refresh,expiresAt:new Date(now+(b.expires_in-120)*1000).toISOString(),scopes,provider:'snapchat',subject:previous?.subject??null};
@@ -52,7 +54,10 @@ export function createSnapchatConnectionProvider(transport:ProviderTransport):Sn
   async exchangeCode(code,redirectUri){
    if(!opaque(code)||!text(redirectUri,500))throw new ConnectionProviderError('invalid');
    const credential=snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'authorization_code',code}}),null);
-   return {...credential,subject:(await me(credential)).id};},
+   // Identité lue ensuite, sans bloquer l'enregistrement : un refus de Snap sur la lecture des profils apparaît alors
+   // à l'étape de découverte (code distinct de l'échange du code d'autorisation).
+   let subject:string|null=null;try{subject=(await me(credential)).id;}catch{subject=null;}
+   return {...credential,subject};},
   async refresh(credential){if(!credential.refreshToken)throw new ConnectionProviderError('revoked');
    return snapchatCredentialOf(await call({operation:'token',path:'token',params:{grant_type:'refresh_token'},credential}),credential);},
   async validateConnection(credential):Promise<ConnectionValidation>{

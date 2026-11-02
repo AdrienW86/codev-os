@@ -52,7 +52,8 @@ export function tiktokOAuthConfig(env:Env=process.env):TikTokOAuthConfig|null{
  return {clientKey,clientSecret,redirectUri};
 }
 export function snapchatOAuthConfig(env:Env=process.env):SnapchatOAuthConfig|null{
- const clientId=env.SNAPCHAT_CLIENT_ID,clientSecret=env.SNAPCHAT_CLIENT_SECRET,redirectUri=redirectUriFor('snapchat',env);
+ // Valeurs collées dans Vercel : espaces et retours à la ligne autour de la valeur ignorés (jamais à l'intérieur).
+ const clientId=env.SNAPCHAT_CLIENT_ID?.trim(),clientSecret=env.SNAPCHAT_CLIENT_SECRET?.trim(),redirectUri=redirectUriFor('snapchat',env);
  if(!opaque(clientId,8,200)||!/^[A-Za-z0-9_-]+$/.test(clientId)||!opaque(clientSecret,16,200)||!redirectUri)return null;
  return {clientId,clientSecret,redirectUri};
 }

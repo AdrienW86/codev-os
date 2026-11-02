@@ -19,6 +19,8 @@ import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
 import { readSearchConsoleConnection } from "@/lib/integrations/search-console/connection";
 import { safeRead } from "@/lib/core/safe-read";
+import { VisualAgentPanel } from "@/components/clients/visual-agent-panel";
+import { getVisualAgent } from "@/lib/visual-agent/service";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
 import { Action } from "@/components/ui/button";
@@ -252,7 +254,20 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
         {data.agentReady ? <AgentConfigurationForm projectId={data.project.id} config={data.agent} /> : <p role="alert" className="mt-3 text-sm">Configuration de l’agent indisponible.</p>}
         <p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${data.project.id}/calendar`}>Calendrier des publications →</Link> <Link className="ml-4 text-accent" href={`/publications/review`}>Publications à valider →</Link></p>
       </Panel>
+      <VisualAgentSection clientId={clientId} />
     </div>
+  );
+}
+
+// Agent Visuels : visuels à la charte du client, générés à la fréquence choisie et déposés dans sa photothèque Drive.
+async function VisualAgentSection({ clientId }: { clientId: string }) {
+  const view = await safeRead("visual-agent", () => getVisualAgent(clientId), null);
+  return (
+    <Panel className="p-6">
+      <h2 className="font-semibold">Agent Visuels</h2>
+      {view.data ? <div className="mt-3"><VisualAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} folderReady={view.data.folderReady} logoPreview={view.data.logoPreview} /></div>
+        : <p role="alert" className="mt-3 text-sm">Agent Visuels indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </Panel>
   );
 }
 

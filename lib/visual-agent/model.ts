@@ -72,3 +72,12 @@ export function fallbackCopy(service:string,zone:string|null):{headline:string;s
 const lum=(hex:string)=>{const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(c=>c<=.03928?c/12.92:((c+.055)/1.055)**2.4);return .2126*r+.7152*g+.0722*b;};
 /** Couleur de texte lisible sur un fond donné (blanc ou quasi noir). */
 export const readableOn=(background:string)=>lum(background)>.4?'#111827':'#ffffff';
+
+/**
+ * Dimensions explicites du logo (le moteur de rendu ne réduit pas une image d'après maxWidth) : hauteur ≤ size,
+ * largeur ≤ 1,6 × size pour qu'un logo horizontal reste lisible, proportions conservées.
+ */
+export function fitLogo(logo:{width:number;height:number},size:number):{width:number;height:number}{
+ const scale=Math.min(size*1.6/logo.width,size/logo.height);
+ return {width:Math.max(1,Math.round(logo.width*scale)),height:Math.max(1,Math.round(logo.height*scale))};
+}

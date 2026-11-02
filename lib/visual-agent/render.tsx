@@ -1,7 +1,7 @@
 import 'server-only';
 import {ImageResponse} from 'next/og';
 import sharp from 'sharp';
-import {VISUAL_HEIGHT,VISUAL_WIDTH,readableOn,type VisualTemplate} from './model';
+import {VISUAL_HEIGHT,VISUAL_WIDTH,fitLogo,readableOn,type VisualTemplate} from './model';
 
 // Rendu d'un visuel à la charte (1080 × 1350, portrait 4:5 : le format le plus visible sur Instagram et Facebook).
 // Mise en page simple et lisible : logo exact du client, couleurs de la charte, prestation, accroche, ligne de contact.
@@ -10,10 +10,11 @@ export type VisualContent={template:VisualTemplate;service:string;headline:strin
  primaryColor:string;secondaryColor:string;textColor:string;logo:Uint8Array|null};
 
 /** Logo normalisé en PNG (fond transparent conservé), 480 px au plus, pour l'insérer dans le rendu. */
-export async function logoDataUrl(bytes:Uint8Array|null):Promise<string|null>{
+export type LogoImage={src:string;width:number;height:number};
+export async function logoDataUrl(bytes:Uint8Array|null):Promise<LogoImage|null>{
  if(!bytes?.length)return null;
- try{const png=await sharp(bytes,{limitInputPixels:24000000,animated:false}).rotate().resize(480,480,{fit:'inside',withoutEnlargement:true}).png().toBuffer();
-  return `data:image/png;base64,${png.toString('base64')}`;}catch{return null;}
+ try{const {data,info}=await sharp(bytes,{limitInputPixels:24000000,animated:false}).rotate().resize(480,480,{fit:'inside',withoutEnlargement:true}).png().toBuffer({resolveWithObject:true});
+  return {src:`data:image/png;base64,${data.toString('base64')}`,width:info.width,height:info.height};}catch{return null;}
 }
 /** Couleurs dominantes d'un logo (proposition de charte) : couleur principale et seconde couleur distincte. */
 export async function logoColors(bytes:Uint8Array):Promise<{primary:string;secondary:string}|null>{
@@ -31,11 +32,11 @@ export async function logoColors(bytes:Uint8Array):Promise<{primary:string;secon
  }catch{return null;}
 }
 
-function Logo({src,size,clientName,color}:{src:string|null;size:number;clientName:string;color:string}){
- return src?<img src={src} alt="" style={{maxWidth:size,maxHeight:size,objectFit:'contain'}}/>
-  :<div style={{display:'flex',fontSize:44,fontWeight:700,color,letterSpacing:1}}>{clientName}</div>;
+function Logo({src,size,clientName,color}:{src:LogoImage|null;size:number;clientName:string;color:string}){
+ if(src){const {width,height}=fitLogo(src,size);return <img src={src.src} alt="" width={width} height={height} style={{width,height}}/>;}
+ return <div style={{display:'flex',fontSize:44,fontWeight:700,color,letterSpacing:1}}>{clientName}</div>;
 }
-function layout(c:VisualContent,logo:string|null,fontFamily:string){
+function layout(c:VisualContent,logo:LogoImage|null,fontFamily:string){
  const onPrimary=c.textColor,onSecondary=readableOn(c.secondaryColor),title={fontSize:c.headline.length>40?78:92,fontWeight:700,lineHeight:1.08,letterSpacing:-1};
  const tag=<div style={{display:'flex',alignSelf:'flex-start',padding:'14px 26px',borderRadius:999,background:c.secondaryColor,color:onSecondary,fontSize:32,fontWeight:700}}>{c.service}</div>;
  const contact=c.contactLine?<div style={{display:'flex',fontSize:36,fontWeight:600}}>{c.contactLine}</div>:null;

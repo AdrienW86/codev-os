@@ -50,6 +50,12 @@ test("copy check: short, nothing invented, no hashtag or link, never reused", ()
   assert.deepEqual(json(m.fallbackCopy("Dératisation", "Perpignan")), { headline: "Dératisation", subline: "À votre service — Perpignan" });
 });
 
+test("logo keeps its proportions inside the frame: tall ones capped by height, wide ones by 1.6 × the frame", () => {
+  assert.deepEqual(json(m.fitLogo({ width: 450, height: 264 }, 200)), { width: 320, height: 188 });
+  assert.deepEqual(json(m.fitLogo({ width: 300, height: 600 }, 200)), { width: 100, height: 200 });
+  assert.deepEqual(json(m.fitLogo({ width: 480, height: 480 }, 240)), { width: 240, height: 240 });
+});
+
 test("readable text colour on any brand colour", () => {
   assert.equal(m.readableOn("#ffffff"), "#111827");
   assert.equal(m.readableOn("#f59e0b"), "#111827");

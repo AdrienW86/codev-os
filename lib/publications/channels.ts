@@ -10,7 +10,7 @@ export type PublicationChannelSource='legacy'|'configured';
 // project type. Calendar v1 and Agent v1 only work in that case until their multi-channel migration (P3/P7).
 export type PublicationCapabilities={source:PublicationChannelSource;channels:PublicationProjectChannel[];platforms:PublicationPlatform[];legacyAligned:boolean};
 
-const displayOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok'];
+const displayOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok','snapchat'];
 
 // Enabled, known and distinct platforms, in a stable display order.
 // legacyAligned defaults to true; only the server boundary sets it for a configured project.
@@ -29,7 +29,7 @@ export function projectAllowsPlatform(capabilities:PublicationCapabilities,platf
 // enforces it at approval (Brouillon → À publier). Current product rule kept: every platform requires a media.
 // Instagram cannot publish without one; Facebook / Google Business Profile keep the stricter historical rule.
 // Making a platform text-only means changing BOTH this table and the SQL function (a new migration).
-export const PLATFORM_MEDIA_REQUIREMENT:Readonly<Record<PublicationPlatform,boolean>>={facebook:true,instagram:true,google_business_profile:true,tiktok:true};
+export const PLATFORM_MEDIA_REQUIREMENT:Readonly<Record<PublicationPlatform,boolean>>={facebook:true,instagram:true,google_business_profile:true,tiktok:true,snapchat:true};
 export function platformRequiresMedia(platform:string):boolean{return (publicationPlatforms as readonly string[]).includes(platform)&&PLATFORM_MEDIA_REQUIREMENT[platform as PublicationPlatform];}
 
 export const SUSPENDED_PUBLICATIONS_MESSAGE='Publications suspendues : aucun canal actif.';

@@ -27,7 +27,9 @@ export function parseStudioForm(form:{get(name:string):unknown;getAll(name:strin
  if(lines.length>MOTION_MAX_PHOTOS||lines.some(l=>l.length>120))return {ok:false,message:'Une légende par ligne, 120 caractères au plus chacune.'};
  return {ok:true,draft:{clientId,title,libraryAssetIds:ids,script:{headline,captions:lines,closing:closing||null,brand,pace}}};
 }
-/** Texte proposé pour une publication TikTok de la vidéo : les textes de la vidéo, modifiables avant création. */
-export function suggestedCaption(script:MotionScript):string{
- return [script.headline,...script.captions,script.closing??''].map(s=>s.trim()).filter(Boolean).join('\n').slice(0,2200);
+/** Texte proposé pour une publication de la vidéo : les textes de la vidéo, modifiables avant création. Snapchat (160
+ *  caractères au plus) : l'accroche seule, coupée au besoin. */
+export function suggestedCaption(script:MotionScript,maxLength=2200):string{
+ if(maxLength<300){const hook=script.headline.trim();return [...hook].length<=maxLength?hook:[...hook].slice(0,maxLength-1).join('').trimEnd()+'…';}
+ return [script.headline,...script.captions,script.closing??''].map(s=>s.trim()).filter(Boolean).join('\n').slice(0,maxLength);
 }

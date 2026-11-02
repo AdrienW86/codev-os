@@ -97,13 +97,16 @@ test("photo library usage follows each publication created by a split", async ()
 });
 
 test("form: one select per platform, approval warning, submission disabled when a platform has no open slot", () => {
-  const { ScheduleDraftForm } = loadTs("components/publications/schedule-draft-form.tsx", { "@/components/ui/flash": { flash: () => {} }, "next/link": { __esModule: true, default: ({ href, children }) => require("react").createElement("a", { href }, children) }, "@/app/(cockpit)/publications/[id]/schedule-actions": { scheduleDraftAction: async () => ({}) }, "@/lib/publications/editor": editor });
+  const { ScheduleDraftForm } = loadTs("components/publications/schedule-draft-form.tsx", { "@/components/ui/flash": { flash: () => {} }, "next/link": { __esModule: true, default: ({ href, children }) => require("react").createElement("a", { href }, children) }, "@/app/(cockpit)/publications/[id]/schedule-actions": { scheduleDraftAction: async () => ({}), manualScheduleAction: async () => ({}) }, "@/lib/publications/editor": editor, "@/lib/publications/manual-scheduling-model": {} });
   const html = renderToStaticMarkup(require("react").createElement(ScheduleDraftForm, { publicationId: PUB, revisionId: REV, choices: [{ platform: "facebook", label: "Facebook", options: [{ id: OCC_FB, label: "mardi 13 octobre à 12:00" }] }, { platform: "instagram", label: "Instagram", options: [] }] }));
   assert.match(html, /name="occurrence_facebook"/); assert.match(html, /name="occurrence_instagram"/);
   assert.match(html, /doit être soumise à validation, même si ce brouillon était déjà approuvé/);
   assert.match(html, /archivé et restera consultable/);
   assert.match(html, /Préparez d’abord des créneaux pour Instagram/);
-  assert.match(html, /<button disabled=""/);
+  assert.match(html, /<button disabled=""[^>]*>Planifier ce brouillon/);
+  // Publication libre proposée en premier, active même sans créneau ouvert.
+  assert.ok(html.indexOf("Publier quand je veux") < html.indexOf("Ou sur un créneau du planning"));
+  assert.match(html, /<button class="[^"]*">Publier maintenant<\/button>/);
 });
 test("the scheduling code goes through the single RPC and never writes publications directly", () => {
   const source = readFileSync("lib/publications/draft-scheduling.ts", "utf8");

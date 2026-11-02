@@ -114,9 +114,11 @@ export type PublicationChannelScheduleRow = Updated & { client_id: string; proje
 export type PublicationChannelScheduleSlotRow = Updated & {
   client_id: string; project_id: string; project_channel_id: string; schedule_id: string; weekday: number; local_time: string; enabled: boolean;
 };
-// Dated occurrence of a channel schedule slot (Lot 4.3 P3). Created only by publication_channel_occurrences_ensure.
+// Dated occurrence of a channel schedule slot (Lot 4.3 P3). Created only by publication_channel_occurrences_ensure,
+// or, without slot (origin 'manual'), by publication_schedule_manual for a post published outside the planning.
 export type PublicationChannelOccurrenceRow = Updated & {
-  client_id: string; project_id: string; project_channel_id: string; schedule_id: string; schedule_slot_id: string; platform: PublicationPlatform;
+  client_id: string; project_id: string; project_channel_id: string; schedule_id: string | null; schedule_slot_id: string | null; platform: PublicationPlatform;
+  origin: "schedule" | "manual";
   local_date: string; local_time: string; timezone: string; scheduled_for: string; publication_id: string | null; skipped_at: string | null; skipped_reason: string | null;
 };
 // Agent v2 run (Lot 4.3 P7) and its media step (P8). Written only through the publication_agent_v2_* RPCs.
@@ -140,7 +142,7 @@ export type PublicationTables = {
   publication_oauth_states: Table<PublicationOAuthStateRow, never, never>;
   publication_agent_v2_runs: Table<PublicationAgentV2RunRow, "agent_run_id" | "agent_id" | "client_id" | "project_id" | "occurrence_ids" | "considered_count">;
   publication_editorial_groups: Table<PublicationEditorialGroupRow, "client_id" | "project_id" | "subject">;
-  publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "schedule_slot_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
+  publication_channel_occurrences: Table<PublicationChannelOccurrenceRow, "client_id" | "project_id" | "project_channel_id" | "platform" | "local_date" | "local_time" | "timezone" | "scheduled_for">;
   publication_project_channels: Table<PublicationProjectChannelRow, "client_id" | "project_id" | "platform">;
   publication_channel_schedules: Table<PublicationChannelScheduleRow, "client_id" | "project_id" | "project_channel_id">;
   publication_channel_schedule_slots: Table<PublicationChannelScheduleSlotRow, "client_id" | "project_id" | "project_channel_id" | "schedule_id" | "weekday" | "local_time">;
@@ -224,6 +226,7 @@ export type PublicationFunctions = {
   publication_client_settings_save: {Args:{p_client_id:string;p_settings:Json;p_actor_id:string};Returns:string};
   publication_client_project_ensure: {Args:{p_client_id:string;p_actor_id:string};Returns:Json};
   publication_schedule_draft: {Args:{p_publication_id:string;p_expected_revision_id:string;p_assignments:Json;p_actor_id:string};Returns:Json};
+  publication_schedule_manual: {Args:{p_publication_id:string;p_expected_revision_id:string;p_at:string;p_actor_id:string};Returns:Json};
   publication_save_unscheduled_draft: {Args:{p_client_id:string;p_project_id:string;p_title:string;p_angle:string;p_source:string;p_variants:Json;p_actor_id:string};Returns:string};
   publication_submit_manual: {Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_review_manual: {Args:{p_publication_id:string;p_revision_id:string;p_decision:string;p_reason:string|null;p_actor_id:string};Returns:undefined};

@@ -49,6 +49,8 @@ export async function getCalendar(filter:{from:string;to:string;client?:string;p
  // Channel occurrences are authoritative for mono-platform publications. Their
  // real free slots are visible too, without inventing an editorial publication.
  for(const occurrence of occurrences){
+  // Publication manuelle retirée : son horaire n'était pas un créneau du planning, il disparaît du calendrier.
+  if(occurrence.origin==='manual'&&occurrence.skipped_at)continue;
   const project=projects.find(p=>p.id===occurrence.project_id),publication=publications.find(p=>p.id===occurrence.publication_id);
   if(!project||project.client_id!==occurrence.client_id||(occurrence.publication_id&&(!publication
    ||publication.client_id!==occurrence.client_id||publication.project_id!==occurrence.project_id

@@ -57,6 +57,15 @@ test("Snapchat : connexion, rafraîchissement et découverte des profils par le 
   const partial = await noMe.exchangeCode("code-12345678", "https://os.code-v.fr/cb");
   assert.equal(partial.subject, null, "un refus sur /me n'empêche pas l'enregistrement du jeton");
   await assert.rejects(noMe.listPublicProfiles(partial), (e) => e.kind === "permission", "le refus apparaît à la découverte");
+  const bizCalls = [];
+  const viaBiz = snapchat.createSnapchatConnectionProvider({ async request(r) { bizCalls.push(r.path);
+    if (r.path === "biz:me") return { status: 200, body: { me: { id: "me-2", organization_id: "11111111-1111-4111-8111-111111111111" } } };
+    if (r.path.startsWith("biz:organizations/")) return { status: 200, body: { public_profiles: [{ public_profile: { id: PROFILE, display_name: "Codev" } }] } };
+    return { status: 403, body: { request_status: "ERROR" } }; } });
+  assert.deepEqual(json(await viaBiz.listPublicProfiles(credential())), [{ id: PROFILE, displayName: "Codev", username: null }], "repli sur l'hôte Public Profile");
+  assert.deepEqual(bizCalls, ["me", "biz:me", "organizations/11111111-1111-4111-8111-111111111111/public_profiles", "biz:organizations/11111111-1111-4111-8111-111111111111/public_profiles"]);
+  const probe = snapchat.createSnapchatConnectionProvider({ async request(r) { if (r.path === "probe:public_search") throw new Error("network"); return { status: r.path === "me" ? 403 : 404, body: { debug_message: "secret?" } }; } });
+  assert.equal(await probe.diagnose(credential()), "ads403_biz404_pubx");
   const expired = snapchat.createSnapchatConnectionProvider({ async request() { return { status: 401, body: { error: "invalid_token" } }; } });
   assert.deepEqual(json(await expired.validateConnection(credential())), { status: "expired", externalIdentity: null });
 });

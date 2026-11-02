@@ -25,8 +25,11 @@ export const TIKTOK_SCOPES=['user.info.basic','video.publish'] as const;
 // Snap OAuth 2.0 (comptes Snapchat / Business Manager) : jeton d'accès court (environ 1 h), jeton de rafraîchissement.
 export const SNAPCHAT_AUTHORIZE='https://accounts.snapchat.com/login/oauth2/authorize';
 const SNAPCHAT_TOKEN='https://accounts.snapchat.com/login/oauth2/access_token';
-// Lectures de découverte des profils publics (API Marketing, en lecture seule).
+// Lectures de découverte des profils publics : hôte de l'API Marketing, puis celui de la Public Profile API (repli), et un
+// diagnostic sur un point d'accès « public » (recherche), qui ne répond que si l'application est sur liste d'autorisation.
 const SNAPCHAT_API='https://adsapi.snapchat.com/v1/';
+const SNAPCHAT_BUSINESS_API='https://businessapi.snapchat.com/v1/';
+const SNAPCHAT_PUBLIC_SEARCH='https://businessapi.snapchat.com/public/v1/public_profiles/search?query=snapchat';
 // Scope unique : Public Profile API (gestion du contenu des profils publics). Rien d'autre (ni publicité, ni audiences).
 export const SNAPCHAT_SCOPES=['snapchat-profile-api'] as const;
 export const GOOGLE_BUSINESS_SCOPE='https://www.googleapis.com/auth/business.manage';
@@ -105,8 +108,9 @@ export function snapchatTransport(config:SnapchatOAuthConfig,fetchImpl:FetchLike
    else params.redirect_uri=config.redirectUri;
    return call(fetchImpl,SNAPCHAT_TOKEN,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:query(params)});}
   if(r.operation!=='read'||!r.credential)throw new TransportError('invalid_path');
-  const path=safePath(r.path,/^(me|organizations\/[0-9a-f-]{36}\/public_profiles)$/);
-  return call(fetchImpl,SNAPCHAT_API+path+(Object.keys(r.params).length?'?'+query(r.params):''),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
+  const path=safePath(r.path,/^((biz:)?(me|organizations\/[0-9a-f-]{36}\/public_profiles)|probe:public_search)$/);
+  const url=path==='probe:public_search'?SNAPCHAT_PUBLIC_SEARCH:path.startsWith('biz:')?SNAPCHAT_BUSINESS_API+path.slice(4):SNAPCHAT_API+path;
+  return call(fetchImpl,url+(Object.keys(r.params).length?(url.includes('?')?'&':'?')+query(r.params):''),{method:'GET',headers:{Authorization:`Bearer ${r.credential.accessToken}`,Accept:'application/json'}});
  }};
 }
 // Authorization URLs (official hosts only; the state / PKCE challenge come from the server).

@@ -32,6 +32,8 @@ export interface SnapchatConnectionProvider{
  refresh(credential:ProviderCredential):Promise<ProviderCredential>;
  validateConnection(credential:ProviderCredential):Promise<ConnectionValidation>;
  listPublicProfiles(credential:ProviderCredential):Promise<SnapchatPublicProfile[]>;
+ /** Statuts HTTP de trois lectures témoins (identité Marketing, identité Public Profile, recherche publique), ex. « ads403_biz404_pub403 ». */
+ diagnose(credential:ProviderCredential):Promise<string>;
 }
 // Server-side HTTP transport a real provider is built on (not implemented in P9: no OAuth configured yet).
 // Returns the HTTP status and the parsed JSON body; never logs the request (it carries the access token).

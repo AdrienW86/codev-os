@@ -48,8 +48,8 @@ const codev:FixtureScenario={id:'codev-nominal',name:'CODE-V — parcours nomina
    google_business_profile:'Avant la création de votre site internet, CODE-V vous aide à rassembler textes, photos et structure des pages.'},cta:null},
  firstAttempt:'compliant',defaultOutcomes:allSuccess};
 
-// --- JRenov : rénovation (visage écarté, photo déjà utilisée, résultats de diffusion mélangés) ---
-const jrenov:FixtureScenario={id:'jrenov-mixed',name:'JRenov — diffusion contrastée',description:'Rénovation : photo avec visage écartée, photo déjà utilisée écartée ; Facebook réussit, Instagram refuse, Google est indisponible.',negative:false,
+// --- JRenov : rénovation (mineur écarté, photo déjà utilisée, résultats de diffusion mélangés) ---
+const jrenov:FixtureScenario={id:'jrenov-mixed',name:'JRenov — diffusion contrastée',description:'Rénovation : photo avec un enfant écartée, photo déjà utilisée écartée ; Facebook réussit, Instagram refuse, Google est indisponible.',negative:false,
  client:{name:'JRenov',activity:'Rénovation intérieure',zone:'Narbonne'},project:{name:'Réseaux sociaux JRenov'},
  profile:profile({activitySummary:'Rénovation intérieure : salles de bain, carrelage, isolation.',services:['Rénovation de salle de bain','Pose de carrelage','Isolation des combles'],
   acceptedPhotoTypes:['pièces rénovées','détails de finition'],excludedPhotoTypes:['photos de personnes'],priorityTopics:['Rénovation de salle de bain']}),
@@ -60,7 +60,7 @@ const jrenov:FixtureScenario={id:'jrenov-mixed',name:'JRenov — diffusion contr
   {id:'sim-photo-jrenov-1',label:'Salle de bain avec douche à l’italienne',caption:'fini !',libraryStatus:'received',width:1500,height:2000,importedDaysAgo:4,
    vision:vision({business_relevance:.92,publishability:.9,description:'Salle de bain avec douche à l’italienne et carrelage gris clair.',topics:['salle de bain','carrelage']})},
   {id:'sim-photo-jrenov-2',label:'Artisan posant du carrelage',caption:null,libraryStatus:'received',width:1600,height:1200,importedDaysAgo:2,
-   vision:vision({sensitive:['face'],description:'Artisan posant du carrelage au sol, visage visible.',topics:['carrelage']})},
+   vision:vision({sensitive:['face','minor'],description:'Artisan posant du carrelage au sol avec un enfant à côté.',topics:['carrelage']})},
   {id:'sim-photo-jrenov-3',label:'Combles isolés',caption:null,libraryStatus:'validated',width:1600,height:1200,importedDaysAgo:40,
    vision:vision({business_relevance:.85,publishability:.8,description:'Combles avec isolant déroulé entre les solives.',topics:['isolation','combles']})}],
  uses:[{assetId:'sim-photo-jrenov-3',publicationId:'sim-pub-jrenov-1',usedDaysAgo:20}],
@@ -88,7 +88,7 @@ const catalane:FixtureScenario={id:'catalane-rotation',name:'Couverture Catalane
   {id:'sim-photo-catalane-2',label:'Faîtage en tuiles canal',caption:null,libraryStatus:'received',width:1800,height:1350,importedDaysAgo:5,
    vision:vision({business_relevance:.85,publishability:.85,description:'Faîtage de toiture en tuiles canal, tuiles faîtières alignées.',topics:['faîtage','toiture']})},
   {id:'sim-photo-catalane-3',label:'Équipe sur le toit',caption:'la team',libraryStatus:'received',width:1600,height:1200,importedDaysAgo:1,
-   vision:vision({sensitive:['face'],description:'Deux personnes posent sur un toit, visages visibles.',topics:['toiture']})}],
+   vision:vision({sensitive:['face','minor'],description:'Un adulte et un enfant posent sur un toit.',topics:['toiture']})}],
  uses:[],
  history:[
   {id:'sim-pub-catalane-3',subject:'Démoussage : protéger ses tuiles du gel',texts:[{platform:'facebook',text:'Une tuile gorgée d’eau par la mousse souffre davantage quand il gèle.'}],media:'Tuiles nettoyées après démoussage.'},

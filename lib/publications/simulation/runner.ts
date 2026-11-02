@@ -61,7 +61,8 @@ function exclusionReason(row:LibraryRow,a:Assessment,uses:readonly LibraryUse[],
  if(a.confidential)return `Confidentielle (${a.sensitive.filter(s=>s!=='face'&&s!=='minor').map(s=>SENSITIVE_LABELS[s as SensitiveKind]).join(', ')||'information privée'}) : ne peut jamais illustrer une publication.`;
  if(['quarantined','rejected','archived'].includes(row.library_status))return 'Photo en quarantaine, rejetée ou archivée.';
  if(a.verdict==='off_topic')return 'Hors sujet pour l’activité du client.';
- if(a.sensitive.includes('face')||a.sensitive.includes('minor'))return 'Visage ou mineur identifiable : examen humain obligatoire avant tout usage.';
+ // Visage d'adulte (équipe du client) : publiable (accord des clients) ; un mineur jamais sans regard humain.
+ if(a.sensitive.includes('minor'))return 'Mineur identifiable : examen humain obligatoire avant tout usage.';
  if(a.quality==='poor'||a.quality_issues.some(i=>['blurry','screenshot','text_heavy'].includes(i)))return 'Qualité insuffisante (flou, capture d’écran ou image surtout textuelle).';
  if(a.verdict==='to_review'&&row.library_status!=='validated')return 'À examiner : pas encore validée par un humain.';
  if(!fitsPlatforms(row))return 'Format inadapté aux trois plateformes.';

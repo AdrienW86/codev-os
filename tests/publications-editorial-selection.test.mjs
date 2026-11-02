@@ -54,9 +54,9 @@ const withText = (i, text) => output({ publications: output().publications.map((
 
 test("validation refuses a subject, wording or opening already used by the last publications", () => {
   assert.equal(sel.validateGeneratorOutput(input(), output()).ok, true);
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), output({ idea: { subject: "Démoussage de TOITURE !", angle: "A" } }))), { ok: false, reason: "repetition" }, "same subject, case and punctuation aside");
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(0, "Le démoussage protège vos tuiles des infiltrations et prolonge la durée de vie de la toiture."))), { ok: false, reason: "repetition" }, "near-identical wording");
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(0, "Le démoussage protège vos tuiles des infiltrations : ici une autre histoire, pas la même."))), { ok: false, reason: "repetition" }, "same opening");
+  { const r = json(sel.validateGeneratorOutput(input(), output({ idea: { subject: "Démoussage de TOITURE !", angle: "A" } }))); assert.equal(r.reason, "repetition", "same subject, case and punctuation aside"); assert.match(r.detail, /^sujet déjà utilisé : « /); }
+  { const r = json(sel.validateGeneratorOutput(input(), withText(0, "Le démoussage protège vos tuiles des infiltrations et prolonge la durée de vie de la toiture."))); assert.equal(r.reason, "repetition", "near-identical wording"); assert.match(r.detail, /^(formulation trop proche|même accroche) /); }
+  { const r = json(sel.validateGeneratorOutput(input(), withText(0, "Le démoussage protège vos tuiles des infiltrations : ici une autre histoire, pas la même."))); assert.equal(r.reason, "repetition", "same opening"); assert.match(r.detail, /^même accroche que la publication « /); }
   assert.ok(sel.textSimilarity("Toiture refaite à neuf", "toiture REFAITE a neuf !") > 0.99);
   assert.ok(sel.textSimilarity("Gouttières posées", "Ardoises remplacées") === 0);
   // Les sujets prioritaires du profil sont des faits utilisables ; les textes passés n'en sont pas.

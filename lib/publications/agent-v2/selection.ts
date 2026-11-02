@@ -27,7 +27,8 @@ export function selectIdeaBatch(candidates:readonly OpenOccurrenceCandidate[],no
 const word=(body:string)=>new RegExp(String.raw`(?<![\p{L}\p{N}])(?:`+body+String.raw`)(?![\p{L}\p{N}])`,'giu');
 const CLAIM_PATTERNS:{name:string;pattern:RegExp}[]=[
  {name:'price',pattern:/\d+(?:[.,]\d+)?\s?(?:€|euros?(?![\p{L}]))/giu},{name:'percent',pattern:/\d+(?:[.,]\d+)?\s?%/gu},
- {name:'promotion',pattern:word('promo(?:tion)?s?|réductions?|remises?|soldes?|offre spéciale|gratuit(?:e|s|es)?|offert(?:e|s|es)?')},
+ // « remise en état / à neuf / en conformité » est un travail, pas une remise commerciale.
+ {name:'promotion',pattern:word('promo(?:tion)?s?|réductions?|remises?(?!\\s+(?:en|à|a)\\s)|soldes?|offre spéciale|gratuit(?:e|s|es)?|offert(?:e|s|es)?')},
  {name:'guarantee',pattern:word('garanti(?:e|es|s)?|décennale|decennale')},
  {name:'certification',pattern:word('certifi(?:é|ée|és|ées|cation|cations)|qualibat|rge|label(?:lisé|lisée|s)?')},
  {name:'experience',pattern:/\d+\s+ans(?![\p{L}])|depuis\s+(?:19|20)\d{2}|expérience de/giu},

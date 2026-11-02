@@ -25,7 +25,7 @@ export async function runVisualAction(_state: VisualAgentState, form: FormData):
   if (mode === "generate") revalidatePath(`/clients/${clientId}`);
   return {
     ok: true, headline: result.headline, preview: `data:image/png;base64,${Buffer.from(result.png).toString("base64")}`,
-    message: mode === "preview" ? `Aperçu : « ${result.headline} » (${result.service}). Rien n’a été déposé.`
+    message: mode === "preview" ? `Aperçu : « ${result.headline} » (${result.service}, mise en page « ${result.template} »). Rien n’a été déposé ; chaque aperçu tire une prestation et une mise en page au hasard.`
       : `Visuel déposé dans le Drive (« ${result.headline} ») : il rejoindra la photothèque au prochain import.`,
   };
 }

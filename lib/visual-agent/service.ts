@@ -3,7 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {structuredResponse} from '@/lib/integrations/publications-openai';
 import {generateDriveId,importDriveToken,uploadDrive} from '@/lib/whatsapp/providers';
-import {checkCopy,fallbackCopy,isDue,nextService,nextTemplate,parseSettingsForm,readableOn,settingsFromRow,HEADLINE_MAX,SUBLINE_MAX,type VisualAgentSettings,type VisualItem,type VisualTemplate} from './model';
+import {checkCopy,fallbackCopy,isDue,nextService,nextTemplate,parseSettingsForm,readableOn,settingsFromRow,VISUAL_TEMPLATES,HEADLINE_MAX,SUBLINE_MAX,type VisualAgentSettings,type VisualItem,type VisualTemplate} from './model';
 import {logoColors,renderVisual} from './render';
 
 // Agent Visuels : pour les clients qui l'ont activé, un visuel à la charte est généré à la fréquence choisie et déposé
@@ -118,10 +118,12 @@ export type GenerateResult={ok:true;png:Uint8Array;service:string;headline:strin
 export async function generateVisual(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;preview?:boolean}):Promise<GenerateResult>{
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const [{settings,items},ctx]=await Promise.all([readSettings(clientId),context(clientId)]);
- const service=nextService(ctx.services,items);
+ // Aperçu : prestation et mise en page tirées au hasard, pour voir la variété du rendu (rien n'est journalisé).
+ const pick=<T,>(list:readonly T[])=>list[Math.floor(Math.random()*list.length)];
+ const service=options.preview&&ctx.services.length?pick(ctx.services):nextService(ctx.services,items);
  if(!service)return {ok:false,message:'Aucune prestation confirmée pour ce client : renseignez-les dans la photothèque.'};
  if(!options.preview&&!ctx.folder)return {ok:false,message:'Aucun dossier Drive de photothèque configuré pour ce client.'};
- const template=nextTemplate(items),copy=await writeCopy(ctx,service,items.map(i=>i.headline));
+ const template=options.preview?pick(VISUAL_TEMPLATES):nextTemplate(items),copy=await writeCopy(ctx,service,items.map(i=>i.headline));
  let png:Uint8Array;
  try{png=await renderVisual({template,service,headline:copy.headline,subline:copy.subline,contactLine:settings.contactLine,clientName:ctx.client.name,
   primaryColor:settings.primaryColor,secondaryColor:settings.secondaryColor,textColor:settings.textColor,logo:await readLogo(settings.logoPath)});}

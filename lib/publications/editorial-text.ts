@@ -15,7 +15,7 @@ export const openingOf=(text:string,n=6)=>words(text).slice(0,n).join(' ');
 export function shingles(text:string,n=4):Set<string>{const w=words(text),set=new Set<string>();for(let i=0;i+n<=w.length;i++)set.add(w.slice(i,i+n).join(' '));return set;}
 
 // --- Prestations : mots qui désignent une prestation du client (« Réparation de faîtage » → faitage) ---
-const GENERIC_WORDS=new Set(['reparation','reparations','entretien','renovation','installation','nettoyage','traitement','pose','remplacement','toiture','toitures','travaux','service','services']);
+const GENERIC_WORDS=new Set(['reparation','reparations','entretien','renovation','installation','nettoyage','traitement','pose','remplacement','toiture','toitures','toit','toits','travaux','service','services']);
 // Vocabulaire visible associé à une prestation reconnue (descriptions de photos, sujets). Mots entiers, pluriel toléré.
 // Liste fermée et prudente : elle sert à rapprocher une photo et un sujet, jamais à affirmer une prestation.
 export const SERVICE_SYNONYMS:Record<string,string[]>={

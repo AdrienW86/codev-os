@@ -116,7 +116,8 @@ test("anti-répétition au-delà des 3 dernières idées : sujet, formulation, a
   const q = memory.buildEditorialHistory({ publications: [pub(1, "Un"), pub(2, "Deux"), pub(3, "Trois")], variants: [variant(1, "facebook", "Et la mousse ?"), variant(2, "facebook", "Et le zinc ?"), variant(3, "facebook", "Et le faîtage ?")], libraryUses: [], catalogUses: [], services: roofServices });
   const allQuestions = ["Une gouttière bouchée ?", "Zinc ou PVC ? #zinguerie", "Gouttières : entretien ou remplacement ?"];
   const qi = { ...input(), editorial: { history: q, plan: planMod.buildEditorialPlan({ history: q, services: roofServices, media: [], zone: null, now }) }, previousSubjects: [], previousPublications: [] };
-  assert.equal(guards.historyRefusal({ idea, publications: variants(allQuestions) }, qi.editorial).reason, "intro_repetition");
+  { const r = guards.historyRefusal({ idea, publications: variants(allQuestions) }, qi.editorial); assert.equal(r.reason, "intro_repetition");
+    assert.match(r.detail, /ne commence pas par une question/, "consigne concrète pour le nouvel essai"); }
   assert.equal(guards.historyRefusal({ idea, publications: variants([allQuestions[0], allQuestions[1], "Gouttières : entretien et remplacement."]) }, qi.editorial), null, "one platform varies");
   // Formulation récurrente signalée au modèle.
   const tics = memory.buildEditorialHistory({ publications: [pub(1, "A"), pub(2, "B")], variants: [variant(1, "facebook", "N’hésitez pas à nous contacter pour vos tuiles."), variant(2, "facebook", "Gouttières : n’hésitez pas à nous contacter.")], libraryUses: [], catalogUses: [], services: [] });

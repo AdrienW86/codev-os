@@ -81,7 +81,7 @@ export default async function PublicationsSupervisionPage({searchParams}:PagePro
    {c.tooFewPhotos&&<p className="mt-1 text-xs text-warning" data-too-few-photos="true">Trop peu de photos : l’agent risque de préparer sans photo. <Link href={`/clients/${c.id}?tab=media`} className="underline">Ajouter des photos</Link></p>}</>
   :<p className="text-xs text-warning">Photothèque illisible pour le moment.</p>;
  const agentOf=(c:ClientSupervision)=><div className="space-y-2 text-sm">
-  <div className="flex flex-wrap items-center gap-2"><Badge tone={c.autoPrepare&&c.generation?"green":"neutral"}>{c.autoPrepare&&c.generation?`Préparation auto · ${c.leadDays} j`:"Préparation manuelle"}</Badge>
+  <div className="flex flex-wrap items-center gap-2"><Badge tone={c.autoPrepare&&c.generation?"green":"neutral"}>{c.autoPrepare&&c.generation?'Préparation auto · 1 mois à l’avance':"Préparation manuelle"}</Badge>
    {c.lastRun&&<span className={`text-xs ${c.lastRun.state==="failed"?"text-warning":"text-muted"}`} data-agent-run={c.lastRun.state}>{c.lastRun.label}{c.lastRun.reason?` : ${c.lastRun.reason}`:""} · {formatSlot(c.lastRun.at)}</span>}</div>
   {c.autoPrepare&&<SuspendClientForm clientId={c.id} clientName={c.name}/>}
   {c.agentProjects.map(project=><details key={project} className="rounded-lg border border-border p-2"><summary className="cursor-pointer text-sm font-medium">Générer maintenant</summary>

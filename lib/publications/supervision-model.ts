@@ -37,7 +37,7 @@ export const tooFewPhotos=(s:PhotoStats)=>s.available<MIN_AVAILABLE_PHOTOS;
 
 export type OccurrenceRow={id:string;client_id:string;project_id:string;platform:PublicationPlatform;scheduled_for:string;publication_id:string|null;skipped_at:string|null};
 export type UpcomingTask={occurrenceId:string;clientId:string;projectId:string;platform:PublicationPlatform;scheduledFor:string;prepareFrom:string;automatic:boolean};
-// Créneaux encore vides des 14 prochains jours. L'agent les prépare à partir de « créneau − avance du client » quand la
+// Créneaux encore vides des 14 prochains jours. L'agent les prépare à partir de « créneau − horizon de préparation » quand la
 // préparation automatique est active ; sinon ils attendent « Générer maintenant ».
 export function upcomingTasks(occurrences:readonly OccurrenceRow[],settings:ReadonlyMap<string,{autoPrepare:boolean;leadDays:number}>,now:Date,limit=12):UpcomingTask[]{
  const end=now.getTime()+UPCOMING_TASK_DAYS*day;

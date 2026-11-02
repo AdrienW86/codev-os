@@ -6,10 +6,11 @@ import type {Actor} from '@/lib/core/actor';
 import {NO_OPEN_OCCURRENCE,prepareNextPublicationsAs,retryAgentV2MediaAs,type AgentV2Result,type PrepareOptions} from '../agent-v2/service';
 import {addDays,parisToday} from '../calendar';
 import {SCHEDULED_LATE_TOLERANCE_SECONDS,scheduledDeliveryEnabled} from '../delivery/registry';
+import {PREPARATION_HORIZON_DAYS} from '../client-setup-model';
 
 // Socle Publications, lot 6 : préparation planifiée par le planificateur (/api/internal/scheduler/tick).
 // - Préparation : pour chaque client dont la préparation automatique est activée, l'Agent v2 (seul moteur) prépare les
-//   occurrences de l'horizon choisi (fréquences = créneaux des canaux), au nom de l'administrateur qui a activé la
+//   occurrences du mois à venir (PREPARATION_HORIZON_DAYS ; fréquences = créneaux des canaux), au nom de l'administrateur qui a activé la
 //   préparation automatique (délégation journalisée). Les brouillons complets (photo attachée) passent « À valider »
 //   (pending_review) et l'administrateur est notifié. Jamais d'approbation ici.
 // - Diffusion : une publication approuvée par un humain reçoit sa diffusion à l'heure de son créneau, au nom de cet
@@ -27,8 +28,10 @@ export const LATE_DELIVERY_TOLERANCE_MS=SCHEDULED_LATE_TOLERANCE_SECONDS*1000;
 // Échecs de l'Agent v2 (refus de contenu, sortie invalide, génération indisponible) : plus aucun appel IA pour ce
 // projet pendant PROJECT_FAILURE_BACKOFF_MS ; une occurrence en échec MAX_OCCURRENCE_FAILURES fois sur la fenêtre
 // n'est plus tentée et un humain est notifié une fois (budget de l'agent partagé entre tous les clients).
+// Un contenu refusé par les gardes est régénéré une fois dans le même passage avec le motif du refus (comme
+// « Préparer les prochaines publications ») : un créneau compte donc jusqu'à 2 échecs par passage.
 export const PROJECT_FAILURE_BACKOFF_MS=6*3600000;
-export const MAX_OCCURRENCE_FAILURES=3;
+export const MAX_OCCURRENCE_FAILURES=4;
 const FAILURE_WINDOW_MS=14*86400000;
 // Étape média d'une préparation planifiée : au plus MAX_MEDIA_ATTEMPTS essais (le premier compris) pendant
 // MEDIA_FOLLOW_UP_MS ; au-delà, abandon : réservation de la photo libérée, « Photo manquante » notifiée.
@@ -195,10 +198,10 @@ export async function runScheduledPreparation(now=new Date(),deps:ScheduledPrepa
  // D'abord les reprises sans IA (photo, soumission), puis les nouvelles préparations.
  await followUpRuns(now,deps,summary,skip,left);
  // Rotation : le client le moins récemment traité d'abord (jamais traité en tête), pour qu'aucun ne soit oublié.
- const clients=await db().from('publication_client_settings').select('client_id,prepare_lead_days,last_auto_prepared_at').eq('auto_prepare_enabled',true).eq('generation_enabled',true)
+ const clients=await db().from('publication_client_settings').select('client_id,last_auto_prepared_at').eq('auto_prepare_enabled',true).eq('generation_enabled',true)
   .order('last_auto_prepared_at',{ascending:true,nullsFirst:true}).order('client_id').limit(MAX_CLIENTS_PER_TICK);
  if(clients.error||!clients.data)return {...summary,skipped:{...summary.skipped,settings_unavailable:1}};
- for(const client of clients.data as {client_id:string;prepare_lead_days:number;last_auto_prepared_at?:string|null}[]){
+ for(const client of clients.data as {client_id:string;last_auto_prepared_at?:string|null}[]){
   if(summary.preparations>=MAX_PREPARATIONS_PER_TICK)break;
   // Plus le temps de lancer une préparation : le client garde sa place en tête de rotation (non horodaté).
   if(left()<PREPARATION_BUDGET_MS){skip('deadline');summary.deadline=true;break;}
@@ -215,12 +218,12 @@ export async function runScheduledPreparation(now=new Date(),deps:ScheduledPrepa
  }
  return summary;
 }
-async function prepareClient(client:{client_id:string;prepare_lead_days:number},now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void,left:()=>number){
+async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void,left:()=>number){
  const actor=await delegatedActor(client.client_id,deps.isAdmin);
  if(!actor){skip('no_delegated_admin');return;}
  const projects=await db().from('publication_agent_projects').select('project_id').eq('client_id',client.client_id).eq('enabled',true).eq('rights_confirmed',true).order('project_id');
  if(projects.error||!projects.data?.length){skip('no_agent_project');return;}
- const leadDays=Math.min(Math.max(Math.trunc(client.prepare_lead_days)||3,1),14),today=parisToday(now);
+ const leadDays=PREPARATION_HORIZON_DAYS,today=parisToday(now);
  for(const {project_id:projectId} of projects.data as {project_id:string}[]){
   if(summary.preparations>=MAX_PREPARATIONS_PER_TICK)break;
   if(left()<PREPARATION_BUDGET_MS){skip('deadline');summary.deadline=true;break;}
@@ -233,13 +236,23 @@ async function prepareClient(client:{client_id:string;prepare_lead_days:number},
   const ensured=await db().rpc('publication_channel_occurrences_ensure',{p_project_id:projectId,p_start_date:today,p_end_date:addDays(today,leadDays),p_actor_id:actor});
   if(ensured.error){skip((ensured.error as DbError)?.code==='23514'?'channels_not_configured':'occurrences_unavailable');continue;}
   let prepared:AgentV2Result;
-  try{prepared=await deps.prepare(actor,projectId,{allowRealAI:true,leadDays,now,...(failures.exhausted.length?{excludeOccurrenceIds:failures.exhausted}:{})});}
+  const options={allowRealAI:true,leadDays,now,...(failures.exhausted.length?{excludeOccurrenceIds:failures.exhausted}:{})};
+  try{prepared=await deps.prepare(actor,projectId,options);}
   // Une exception (délai, base ou Drive indisponible) a pu survenir après l'appel IA : elle compte comme une tentative
   // (#47), sinon une panne en série déclencherait un appel IA par projet de chaque client visité.
   catch{console.error('[publications-scheduler] preparation failed');summary.preparations++;skip('preparation_failed');continue;}
   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');continue;}
   // Toute tentative compte (un refus de contenu a pu consommer un appel IA) : au plus MAX_PREPARATIONS_PER_TICK.
   summary.preparations++;
+  // Contenu refusé par les gardes (répétition, affirmation non confirmée…) : une seule régénération immédiate avec le
+  // motif, si le passage en a encore le budget. Le premier run reste « failed » et journalisé.
+  if(!prepared.ok&&prepared.refused&&summary.preparations<MAX_PREPARATIONS_PER_TICK&&left()>=PREPARATION_BUDGET_MS){
+   await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId??null,ok:false,refused:true});
+   try{prepared=await deps.prepare(actor,projectId,{...options,retryFeedback:prepared.refusalDetail});}
+   catch{console.error('[publications-scheduler] preparation failed');summary.preparations++;skip('preparation_failed');continue;}
+   summary.preparations++;
+   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');continue;}
+  }
   if(!prepared.runId){skip('preparation_refused');await audit(deps,projectId,{delegated_actor:actor,ok:false});continue;}
   // Persist the recovery record BEFORE any submission/notification. Their response can be lost after COMMIT, or
   // the process may stop between them: the next tick must find this run without generating another batch.

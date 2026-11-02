@@ -7,6 +7,7 @@ import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
 import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
+import { runVisualAgentTick } from "@/lib/visual-agent/service";
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/publications/automation/scheduled";
 import { runAutoApproval } from "@/lib/publications/automation/auto-approval";
@@ -22,7 +23,7 @@ export const maxDuration = 300;
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
-  search_console: 60_000, whatsapp: 75_000, media_intelligence: 60_000, publication_preparation: 120_000,
+  search_console: 60_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -74,6 +75,8 @@ async function handle(request: Request) {
   const searchConsole = await step("search_console", () => syncDueSearchConsole(new Date()), "Synchro Search Console différée.");
   // Reprises WhatsApp → Drive : vide la file (médias disponibles 7 jours chez Meta) et applique la conservation.
   const whatsapp = await step("whatsapp", async () => ingestionEnabled() ? { ...await processMediaBatch({ kind: "system", worker: "whatsapp-scheduler" }, 20, 60000), retention: await purgeExpiredPersonalData() } : { disabled: true }, "Import WhatsApp différé.");
+  // Agent Visuels : au plus un visuel par client dû (clients qui l'ont activé), déposé dans son Drive avant la synchro.
+  const visualAgent = await step("visual_agent", () => runVisualAgentTick(new Date()), "Agent Visuels différé.");
   // Photothèque intelligente : classement borné des clients qui l'ont activé et purge des rejets expirés. Jamais de publication.
   const mediaIntelligence = await step("media_intelligence", () => runMediaIntelligenceTick(), "Classement de la photothèque différé.");
   // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
@@ -81,7 +84,7 @@ async function handle(request: Request) {
   const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(new Date(), undefined, { deadline }), "Préparation des publications différée.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, publicationPreparation, whatsappExports, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, publicationPreparation, whatsappExports, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

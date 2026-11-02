@@ -134,13 +134,15 @@ export async function driveFileMatches(token: string, id: string, folder: string
   return true;
 }
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/3gpp": "3gp" };
-export async function uploadDrive(token: string, id: string, folder: string, image: UploadBytes) {
+export async function uploadDrive(token: string, id: string, folder: string, image: UploadBytes, name?: string) {
   driveFileId.parse(id); folderSchema.parse(folder);
   if (await driveFileMatches(token, id, folder, image.md5)) return "existing" as const;
   await checkFolder(token, folder);
   const extension = extensions[image.mime];
   if (!extension) throw new ImportFailure("invalid_media");
-  const metadata = { id, name: `chantier-${image.sha256.slice(0, 20)}.${extension}`, parents: [folder], mimeType: image.mime };
+  // Nom fourni (visuels générés) seulement s'il est simple et a la bonne extension ; sinon nom par défaut.
+  const fileName = name && /^[a-z0-9-]{1,60}\.[a-z0-9]{2,4}$/.test(name) && name.endsWith(`.${extension}`) ? name : `chantier-${image.sha256.slice(0, 20)}.${extension}`;
+  const metadata = { id, name: fileName, parents: [folder], mimeType: image.mime };
   const start = await request("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true", {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Upload-Content-Type": image.mime, "X-Upload-Content-Length": String(image.bytes.length) }, body: JSON.stringify(metadata),
   });

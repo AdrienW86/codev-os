@@ -1,6 +1,6 @@
--- Vidéos motion design pour TikTok : une vidéo MP4 générée par CODE-V OS à partir des photos et du texte d'une
--- publication TikTok remplace ces photos dans une NOUVELLE révision (origine « manual »), qui repasse « À valider » :
--- un humain voit la vidéo, choisit la confidentialité TikTok et consent avant toute diffusion (règle TikTok inchangée).
+-- Vidéos motion design : (a) une publication TikTok peut porter une vidéo MP4 à la place de photos ;
+-- (b) Studio vidéo, activité distincte : bibliothèque des vidéos créées par client, stockage privé dédié.
+-- Toute diffusion reste une publication validée par un humain (règle TikTok inchangée).
 -- 1) Stockage privé dédié aux vidéos (aucune politique : accès service_role uniquement, comme les images).
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('publication-videos','publication-videos',false,67108864,array['video/mp4'])
@@ -33,66 +33,29 @@ drop trigger if exists guard_variant_video on public.publication_variant_assets;
 create trigger guard_variant_video before insert on public.publication_variant_assets
  for each row execute function publications_private.guard_variant_video();
 
--- 4) Réglage par client : générer automatiquement la vidéo des publications TikTok préparées par l'agent.
-alter table public.publication_client_settings add column if not exists tiktok_motion_video boolean not null default false;
-create or replace function public.publication_motion_video_save(p_client_id uuid, p_enabled boolean, p_actor_id text)
-returns void language plpgsql set search_path to 'pg_catalog' as $$
-declare previous boolean;
-begin
- if p_actor_id is null or p_actor_id !~ '^user_[a-zA-Z0-9_-]{1,200}$' or p_client_id is null or p_enabled is null then
-  raise exception 'Invalid motion video setting' using errcode='22023'; end if;
- select tiktok_motion_video into previous from public.publication_client_settings where client_id=p_client_id for update;
- if not found then raise exception 'Client settings missing' using errcode='23514'; end if;
- if previous is distinct from p_enabled then
-  update public.publication_client_settings set tiktok_motion_video=p_enabled where client_id=p_client_id;
-  insert into public.publication_events(actor_type,actor_id,action,client_id,resource_type,resource_id,before_data,after_data,metadata)
-  values('admin',p_actor_id,'publication.motion_video_setting_saved',p_client_id,'client',p_client_id,
-   jsonb_build_object('tiktok_motion_video',previous),jsonb_build_object('tiktok_motion_video',p_enabled),'{}'::jsonb);
- end if;
-end $$;
-
--- 5) Publications TikTok à mettre en vidéo : préparées par l'agent (révision « generated »), « À valider », photos
---    seulement, client ayant activé le réglage, créneau à venir, aucun échec déjà enregistré pour cette révision.
-create or replace function public.publication_motion_video_candidates(p_now timestamptz, p_limit integer)
-returns table(publication_id uuid, revision_id uuid, client_id uuid)
-language sql stable set search_path to 'pg_catalog' as $$
- select p.id,p.current_revision_id,p.client_id
- from public.publications p
- join public.publication_client_settings s on s.client_id=p.client_id and s.tiktok_motion_video
- join public.publication_revisions r on r.id=p.current_revision_id and r.publication_id=p.id and r.origin='generated'
- join public.publication_variants v on v.revision_id=r.id and v.platform='tiktok'
- left join public.publication_channel_occurrences o on o.id=p.occurrence_id
- where p_now is not null and p.platform='tiktok' and p.status='pending_review' and p.archived_at is null
-  and (o.id is null or (o.skipped_at is null and o.scheduled_for>p_now))
-  and exists(select 1 from public.publication_variant_assets x join public.publication_assets a on a.id=x.asset_id
-   where x.variant_id=v.id and a.mime_type in('image/jpeg','image/webp','image/png'))
-  and not exists(select 1 from public.publication_variant_assets x join public.publication_assets a on a.id=x.asset_id
-   where x.variant_id=v.id and a.mime_type='video/mp4')
-  and not exists(select 1 from public.publication_events e where e.resource_type='publication' and e.resource_id=p.id
-   and e.action='publication.motion_video_failed' and e.metadata->>'revision_id'=r.id::text)
- order by o.scheduled_for nulls last,p.id
- limit least(greatest(coalesce(p_limit,0),1),20);
-$$;
-
--- 6) Échec de génération journalisé (code court, jamais de détail technique) : la révision n'est plus reprise
---    automatiquement ; un humain peut relancer depuis l'écran de validation.
-create or replace function public.publication_motion_video_failed(p_publication_id uuid, p_revision_id uuid, p_code text, p_actor_id text)
-returns void language plpgsql set search_path to 'pg_catalog' as $$
-declare pub public.publications;
-begin
- if p_code is null or p_code !~ '^[a-z_]{1,40}$' or (p_actor_id is not null and p_actor_id !~ '^user_[a-zA-Z0-9_-]{1,200}$') then
-  raise exception 'Invalid motion video failure' using errcode='22023'; end if;
- select * into pub from public.publications where id=p_publication_id;
- if not found then raise exception 'Publication missing' using errcode='23514'; end if;
- insert into public.publication_events(actor_type,actor_id,action,client_id,resource_type,resource_id,metadata)
- values(case when p_actor_id is null then 'system' else 'admin' end,p_actor_id,'publication.motion_video_failed',pub.client_id,'publication',pub.id,
-  jsonb_build_object('revision_id',p_revision_id,'code',p_code));
-end $$;
+-- 4) Studio vidéo : bibliothèque des vidéos motion design créées par client (activité distincte des publications).
+--    Les fichiers vivent dans un stockage privé dédié ; une vidéo n'est publiée nulle part sans action explicite.
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values('studio-videos','studio-videos',false,67108864,array['video/mp4'])
+on conflict (id) do nothing;
+create table if not exists public.studio_videos (
+ id uuid primary key default gen_random_uuid(),
+ client_id uuid not null references public.clients(id) on delete restrict,
+ title text not null check (length(btrim(title)) between 1 and 160),
+ script jsonb not null check (jsonb_typeof(script)='object'),
+ sources jsonb not null default '{}'::jsonb check (jsonb_typeof(sources)='object'),
+ storage_path text not null unique check (storage_path ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.mp4$'),
+ duration_seconds numeric(5,2) not null check (duration_seconds>0 and duration_seconds<=120),
+ size_bytes integer not null check (size_bytes>0 and size_bytes<=67108864),
+ width integer not null check (width>0), height integer not null check (height>0),
+ created_by text not null check (created_by ~ '^user_[a-zA-Z0-9_-]{1,200}$'),
+ created_at timestamptz not null default now(),
+ last_publication_id uuid references public.publications(id) on delete set null,
+ constraint studio_videos_path_client check (split_part(storage_path,'/',1)=client_id::text)
+);
+create index if not exists studio_videos_client_idx on public.studio_videos(client_id,created_at desc);
+alter table public.studio_videos enable row level security;
+revoke all on public.studio_videos from public, anon, authenticated;
+grant select, insert, update, delete on public.studio_videos to service_role;
 
 revoke all on function publications_private.guard_variant_video() from public, anon, authenticated;
-revoke all on function public.publication_motion_video_save(uuid,boolean,text) from public, anon, authenticated;
-revoke all on function public.publication_motion_video_candidates(timestamptz,integer) from public, anon, authenticated;
-revoke all on function public.publication_motion_video_failed(uuid,uuid,text,text) from public, anon, authenticated;
-grant execute on function public.publication_motion_video_save(uuid,boolean,text) to service_role;
-grant execute on function public.publication_motion_video_candidates(timestamptz,integer) to service_role;
-grant execute on function public.publication_motion_video_failed(uuid,uuid,text,text) to service_role;

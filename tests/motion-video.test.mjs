@@ -138,114 +138,95 @@ test("transport vidéo : lecture limitée au stockage du projet, envoi PUT avec 
   assert.ok(transport.TIKTOK_PUBLISH_PATHS.includes("post/publish/video/init"));
 });
 
-// --- Service de génération (base simulée) ---
-const PUB = "11111111-1111-4111-8111-111111111111", REV = "22222222-2222-4222-8222-222222222222", CLIENT = "33333333-3333-4333-8333-333333333333";
-const IMG1 = "44444444-4444-4444-8444-444444444441", IMG2 = "44444444-4444-4444-8444-444444444442", VAR = "55555555-5555-4555-8555-555555555555", NEWREV = "66666666-6666-4666-8666-666666666666";
-function fakeDb(state) {
-  const log = [];
-  const rows = (table) => state[table] ?? [];
-  const query = (table) => { let list = rows(table); const q = {
-    select: () => q, order: () => q, limit: () => q,
-    eq: (k, v) => { list = list.filter((r) => r[k] === v); return q; },
-    in: (k, vs) => { list = list.filter((r) => vs.includes(r[k])); return q; },
-    maybeSingle: async () => ({ data: list[0] ?? null, error: null }),
-    then: (res) => res({ data: list, error: null, count: list.length }) }; return q; };
-  return { log, from: query,
-    storage: { from: (bucket) => ({
-      download: async (path) => { log.push(["download", bucket, path]); return { data: new Blob([Buffer.from("img:" + path)]), error: null }; },
-      upload: async (path, bytes, o) => { log.push(["upload", bucket, path, o.contentType]); return { error: null }; },
-      remove: async (paths) => { log.push(["remove", bucket, ...paths]); return { error: null }; } }) },
-    rpc: async (name, args) => { log.push(["rpc", name, json(args)]); return state.rpc?.[name]?.(args) ?? { data: null, error: null }; } };
-}
-const baseState = (over = {}) => ({
-  publications: [{ id: PUB, client_id: CLIENT, platform: "tiktok", status: "pending_review", current_revision_id: REV, archived_at: null }],
-  publication_variants: [{ id: VAR, revision_id: REV, platform: "tiktok", text_content: TEXT, metadata: { cta: "Devis" } }],
-  publication_variant_assets: [{ variant_id: VAR, asset_id: IMG1, sort_order: 0 }, { variant_id: VAR, asset_id: IMG2, sort_order: 1 }],
-  publication_assets: [{ id: IMG1, client_id: CLIENT, storage_path: `${CLIENT}/${PUB}/${IMG1}`, mime_type: "image/jpeg" }, { id: IMG2, client_id: CLIENT, storage_path: `${CLIENT}/${PUB}/${IMG2}`, mime_type: "image/jpeg" }],
-  clients: [{ id: CLIENT, name: "Jrenov" }], publication_revisions: [{ id: REV, publication_id: PUB }],
-  rpc: { publication_revise_manual: () => ({ data: NEWREV, error: null }) }, ...over });
+// --- Studio vidéo (base simulée) ---
+const CLIENT = "33333333-3333-4333-8333-333333333333", ASSET = "44444444-4444-4444-8444-444444444441";
 const types = loadTs("lib/publications/types.ts"), validation = loadTs("lib/publications/validation.ts", { "./types": types });
 const editor = loadTs("lib/publications/editor.ts", { "./validation": validation, "./types": types });
-function service(renderImpl) {
-  return loadTs("lib/publications/motion-video.ts", {
-    "node:path": require("node:path"), "ffmpeg-static": { default: "/bin/ffmpeg" }, "@/lib/supabase/server": { getSupabaseServerClient: () => { throw Error("db"); } },
-    "@/lib/admin-policy": { isAuthorizedAdmin: () => true },
-    "@/lib/motion/video/render": { MOTION_RENDER_TIMEOUT_MS: 170_000, MotionRenderError: class extends Error { constructor(code) { super(code); this.code = code; } }, renderMotionVideo: renderImpl },
-    "@/lib/motion/video/storyboard": story, "./editor": editor, "./validation": validation,
-    "./automation/scheduled": { delegatedActor: async () => "user_admin" } }, { process: { env: {}, cwd: () => "/app" } });
+const studioModel = loadTs("lib/studio/model.ts", { "@/lib/motion/video/storyboard": story });
+const formOf = (entries) => { const f = new FormData(); for (const [k, v] of entries) f.append(k, v); return f; };
+const baseForm = (over = []) => formOf([["client_id", CLIENT], ["title", "Toiture octobre"], ["headline", "Toiture refaite en 3 jours"], ["captions", "Dépose des tuiles\nPose de l'écran"], ["closing", "Demandez votre devis"], ["brand", ""], ["pace", "standard"], ["library_asset", ASSET], ...over]);
+
+test("studio : formulaire strict (client, accroche, rythme, 1 à 8 photos, une légende par ligne)", () => {
+  const ok = studioModel.parseStudioForm(baseForm(), 1);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(json(ok.draft.script), { headline: "Toiture refaite en 3 jours", captions: ["Dépose des tuiles", "Pose de l'écran"], closing: "Demandez votre devis", brand: "", pace: "standard" });
+  assert.deepEqual(json(ok.draft.libraryAssetIds), [ASSET]);
+  assert.match(studioModel.parseStudioForm(baseForm(), 8).message, /8 photos au plus/);
+  assert.match(studioModel.parseStudioForm(formOf([["client_id", CLIENT], ["title", "T"], ["headline", "Accroche"], ["captions", ""], ["closing", ""], ["brand", ""], ["pace", "standard"]]), 0).message, /au moins une photo/);
+  assert.match(studioModel.parseStudioForm((() => { const f = baseForm(); f.set("pace", "turbo"); return f; })(), 0).message, /rythme/);
+  assert.match(studioModel.parseStudioForm((() => { const f = baseForm(); f.set("client_id", "x"); return f; })(), 0).message, /client/);
+  assert.equal(studioModel.suggestedCaption(ok.draft.script), "Toiture refaite en 3 jours\nDépose des tuiles\nPose de l'écran\nDemandez votre devis");
+});
+
+test("studio : storyboard du script saisi (aucun texte ajouté), rythme appliqué", () => {
+  const b = story.buildScriptStoryboard({ headline: "Toiture refaite 🎉", captions: ["Dépose #chantier"], closing: "Demandez votre devis", brand: "Jrenov", pace: "dynamic" }, 2, "seed");
+  assert.deepEqual(json(b.scenes.map((s) => [s.kind, s.headline ?? s.caption])), [["hook", "Toiture refaite"], ["photo", "Dépose"], ["outro", "Jrenov"]]);
+  assert.equal(b.scenes.at(-1).caption, "Demandez votre devis");
+  assert.equal(b.scenes[0].duration, story.MOTION_PACES.dynamic.hook);
+  assert.throws(() => story.buildScriptStoryboard({ headline: "🎉", captions: [], closing: null, brand: "J" }, 1, "s"), /motion_text_required/);
+});
+
+const VID_BYTES = new Uint8Array([0, 0, 0, 32, ...Buffer.from("ftypisom"), ...new Array(4096).fill(1)]);
+function studioDb() {
+  const log = [];
+  const tables = { clients: [{ id: CLIENT, name: "Jrenov" }], studio_videos: [] };
+  const query = (table) => { let list = tables[table] ?? []; const q = {
+    select: () => q, order: () => q, limit: () => q, in: () => q, is: () => q, not: () => q,
+    eq: (k, v) => { list = list.filter((r) => r[k] === v); return q; },
+    maybeSingle: async () => ({ data: list[0] ?? null, error: null }),
+    insert: async (row) => { log.push(["insert", table, json(row)]); tables[table].push(row); return { error: null }; },
+    then: (res) => res({ data: list, error: null }) }; return q; };
+  return { log, tables, from: query, storage: { from: (bucket) => ({
+    upload: async (path, bytes, o) => { log.push(["upload", bucket, path, o.contentType]); return { error: null }; },
+    remove: async (paths) => { log.push(["remove", bucket, ...paths]); return { error: null }; },
+    createSignedUrls: async (paths) => ({ data: paths.map((path) => ({ path, signedUrl: "https://proj.supabase.co/sign/" + path })), error: null }) }) } };
 }
-const fakeRender = (calls) => async (input) => { calls.push(input); return { bytes: VIDEO, storyboard: story.buildMotionStoryboard({ text: input.text, photoCount: input.photos.length, clientName: input.clientName, seed: input.seed }), durationMs: 5, width: 720, height: 1280 }; };
-
-test("génération : photos du stockage → vidéo privée → nouvelle révision TikTok (vidéo seule, sources gardées)", async () => {
-  const renders = [], db = fakeDb(baseState());
-  const r = await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", {}, { db });
-  assert.equal(r.ok, true); assert.equal(r.revisionId, NEWREV);
-  assert.equal(renders[0].photos.length, 2); assert.equal(renders[0].clientName, "Jrenov"); assert.equal(renders[0].ffmpegPath, "/bin/ffmpeg");
-  const upload = db.log.find((l) => l[0] === "upload");
-  assert.equal(upload[1], "publication-videos"); assert.equal(upload[3], "video/mp4"); assert.match(upload[2], new RegExp(`^${CLIENT}/${PUB}/[0-9a-f-]{36}$`));
-  const register = db.log.find((l) => l[1] === "publication_register_image")[2];
-  assert.equal(register.p_mime, "video/mp4"); assert.equal(register.p_path, upload[2]); assert.equal(register.p_revision_id, REV);
-  const revise = db.log.find((l) => l[1] === "publication_revise_manual")[2];
-  assert.equal(revise.p_expected_revision_id, REV);
-  assert.deepEqual(revise.p_variants[0].asset_ids, [register.p_asset_id]);
-  assert.equal(revise.p_variants[0].text_content, TEXT, "texte inchangé");
-  assert.deepEqual(revise.p_variants[0].metadata.motion_video.source_asset_ids, [IMG1, IMG2]);
-  assert.equal(revise.p_variants[0].metadata.cta, "Devis", "métadonnées existantes conservées");
-  assert.ok(!db.log.some((l) => /approve|review|submit|delivery|job/.test(String(l[1]))), "jamais d'approbation ni de diffusion");
+function studio(audit = []) {
+  return loadTs("lib/studio/videos.ts", {
+    "node:crypto": require("node:crypto"), "node:path": require("node:path"), "ffmpeg-static": { default: "/bin/ffmpeg" },
+    "@/lib/require-admin": { requireAdmin: async () => ({ userId: "user_admin" }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => { throw Error("db"); } },
+    "@/lib/core/audit": { writeAudit: async (actor, entry) => { audit.push(entry.action); } }, "@/lib/whatsapp/library": { readOriginal: async () => null },
+    "@/lib/publications/project-channels": {}, "@/lib/publications/channels": {}, "@/lib/publications/workspace": {},
+    "@/lib/publications/editor": editor, "@/lib/motion/video/render": { MotionRenderError: class extends Error {}, renderMotionVideo: async () => { throw Error("real render"); } },
+    "./model": studioModel }, { process: { env: {}, cwd: () => "/app" }, File, FormData, Blob });
+}
+test("studio : rendu à partir de la photothèque, stockage privé dédié, bibliothèque par client, journal", async () => {
+  const db = studioDb(), audit = [], renders = [];
+  const render = async (input) => { renders.push(input); return { bytes: VID_BYTES, storyboard: story.buildScriptStoryboard(input.script, input.photos.length, input.seed), durationMs: 1, width: 720, height: 1280 }; };
+  const r = await studio(audit).createStudioVideo(baseForm(), { db, render, readLibrary: async (c, a) => c === CLIENT && a === ASSET ? { bytes: new Uint8Array([1]), mime: "image/jpeg" } : null });
+  assert.equal(r.ok, true, r.message);
+  assert.equal(renders[0].script.brand, "Jrenov", "nom affiché par défaut : le client");
+  const up = db.log.find((l) => l[0] === "upload");
+  assert.deepEqual(up, ["upload", "studio-videos", `${CLIENT}/${r.id}.mp4`, "video/mp4"]);
+  const row = db.log.find((l) => l[0] === "insert")[2];
+  assert.equal(row.client_id, CLIENT); assert.equal(row.created_by, "user_admin"); assert.deepEqual(row.sources, { library_asset_ids: [ASSET], uploaded_photos: 0 });
+  assert.deepEqual(audit, ["studio.video_created"]);
+  assert.ok(!db.log.some((l) => /publication/.test(String(l[1]))), "le Studio ne touche pas aux publications");
+  const listed = await studio().listStudioVideos(CLIENT, { db });
+  assert.equal(listed.videos.length, 1); assert.match(listed.videos[0].url, /studio-videos|sign/);
+  const refused = await studio().createStudioVideo(baseForm(), { db, render, readLibrary: async () => null });
+  assert.match(refused.message, /photothèque est illisible/);
+  const noEngine = await studio().createStudioVideo(baseForm(), { db, render, ffmpegPath: null, readLibrary: async () => ({ bytes: new Uint8Array([1]), mime: "image/jpeg" }) });
+  assert.match(noEngine.message, /Moteur vidéo indisponible/);
 });
 
-test("génération : refus TikTok seulement, photos requises, révision périmée nettoyée, régénération depuis les sources", async () => {
-  const renders = [];
-  let db = fakeDb(baseState({ publications: [{ ...baseState().publications[0], platform: "instagram" }] }));
-  assert.equal((await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", {}, { db })).code, "not_tiktok");
-  db = fakeDb(baseState({ publication_variant_assets: [] }));
-  assert.equal((await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", {}, { db })).code, "photos");
-  db = fakeDb(baseState({ rpc: { publication_revise_manual: () => ({ data: null, error: { code: "40001" } }) } }));
-  const stale = await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", {}, { db });
-  assert.equal(stale.code, "stale"); assert.ok(db.log.some((l) => l[0] === "remove" && l[1] === "publication-videos"), "vidéo orpheline supprimée");
-  const VID = "77777777-7777-4777-8777-777777777777", s = baseState();
-  db = fakeDb({ ...s, publication_variant_assets: [{ variant_id: VAR, asset_id: VID, sort_order: 0 }],
-    publication_variants: [{ ...s.publication_variants[0], metadata: { motion_video: { source_asset_ids: [IMG2] } } }],
-    publication_assets: [...s.publication_assets, { id: VID, client_id: CLIENT, storage_path: `${CLIENT}/${PUB}/${VID}`, mime_type: "video/mp4" }] });
-  assert.equal((await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", { automatic: true }, { db })).code, "already", "l'automatique ne refait jamais une vidéo");
-  const again = await service(fakeRender(renders)).generateTikTokMotionVideo(PUB, "user_admin", {}, { db });
-  assert.equal(again.ok, true); assert.deepEqual(db.log.filter((l) => l[0] === "download").map((l) => l[2]), [`${CLIENT}/${PUB}/${IMG2}`], "régénération depuis les photos d'origine");
-});
-
-test("planificateur : arrêt d'urgence respecté, migration absente = désactivé, échec journalisé, échéance respectée", async () => {
-  const settings = (v) => ({ publication_settings: [{ emergency_stop: v, generation_enabled: true }] });
-  let db = fakeDb({ ...baseState(), ...settings(true) });
-  assert.equal((await service(fakeRender([])).runMotionVideoTick(new Date(), { db })).disabled, "global");
-  db = fakeDb({ ...baseState(), ...settings(false), rpc: { publication_motion_video_candidates: () => ({ data: null, error: { code: "PGRST202" } }) } });
-  assert.equal((await service(fakeRender([])).runMotionVideoTick(new Date(), { db })).disabled, "not_installed");
-  const cand = { publication_motion_video_candidates: () => ({ data: [{ publication_id: PUB, revision_id: REV, client_id: CLIENT }], error: null }) };
-  db = fakeDb({ ...baseState(), ...settings(false), rpc: { ...cand, publication_revise_manual: () => ({ data: NEWREV, error: null }) } });
-  assert.deepEqual(json(await service(fakeRender([])).runMotionVideoTick(new Date(), { db })), { rendered: 1, failed: 0, noActor: 0, candidates: 1 });
-  const failing = async () => { throw Object.assign(Error("x"), { code: "engine" }); };
-  db = fakeDb({ ...baseState(), ...settings(false), rpc: cand });
-  const svc = service(failing);
-  assert.deepEqual(json(await svc.runMotionVideoTick(new Date(), { db })), { rendered: 0, failed: 1, noActor: 0, candidates: 1 });
-  assert.deepEqual(db.log.find((l) => l[1] === "publication_motion_video_failed")[2], { p_publication_id: PUB, p_revision_id: REV, p_code: "render_engine", p_actor_id: null });
-  db = fakeDb({ ...baseState(), ...settings(false), rpc: cand });
-  assert.equal((await svc.runMotionVideoTick(new Date(), { db, deadline: 100_000, clock: () => 50_000 })).skipped, "deadline");
-});
-
-test("migration : stockage privé, vidéo réservée à TikTok et seule, réglage client journalisé, droits service_role", () => {
+test("migration : stockages privés, vidéo réservée à TikTok et seule, table Studio serveur uniquement", () => {
   const sql = src("supabase/migrations/20261120000000_publications_motion_video.sql").replace(/--[^\n]*/g, "");
   assert.match(sql, /'publication-videos','publication-videos',false,67108864,array\['video\/mp4'\]/);
+  assert.match(sql, /'studio-videos','studio-videos',false,67108864,array\['video\/mp4'\]/);
   assert.match(sql, /mime_type in \('image\/jpeg','image\/png','image\/webp','video\/mp4'\)/);
   assert.match(sql, /Video only on TikTok/); assert.match(sql, /Video must be the only media/);
-  assert.match(sql, /r\.origin='generated'/, "seules les révisions de l'agent sont reprises automatiquement");
-  assert.doesNotMatch(sql, /security definer|create policy|to (anon|authenticated)|publication_deliveries|publication_jobs|publication_review/i);
-  for (const fn of ["publication_motion_video_save", "publication_motion_video_candidates", "publication_motion_video_failed"]) assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role`));
+  assert.match(sql, /alter table public\.studio_videos enable row level security/);
+  assert.doesNotMatch(sql, /security definer|create policy|to (anon|authenticated)|publication_deliveries|publication_jobs/i);
 });
 
-test("câblage : signature par stockage dans le moteur, binaire et police tracés pour les seules routes de rendu", () => {
+test("câblage : Studio séparé des publications, signature par stockage, binaire et police tracés pour la seule route de rendu", () => {
   assert.match(src("lib/publications/delivery/engine.ts"), /createSignedUrls\(paths,ttl\)/);
   assert.equal(editor.mediaBucket("video/mp4"), "publication-videos"); assert.equal(editor.mediaBucket("image/jpeg"), "publication-images");
   const config = src("next.config.ts");
-  assert.match(config, /serverExternalPackages: \["ffmpeg-static"\]/); assert.match(config, /fonts\/\*\.ttf/);
+  assert.match(config, /serverExternalPackages: \["ffmpeg-static"\]/); assert.match(config, /"\/api\/studio\/videos": motionVideoFiles/);
   assert.ok(existsSync(new URL("../lib/motion/video/fonts/Montserrat_800ExtraBold.ttf", import.meta.url)) && existsSync(new URL("../lib/motion/video/fonts/OFL.txt", import.meta.url)));
-  const route = src("app/api/publications/[id]/motion-video/route.ts");
-  assert.match(route, /origin !== new URL\(request\.url\)\.origin[\s\S]*requireAdmin\(\)[\s\S]*generateTikTokMotionVideo/, "même origine et admin avant tout rendu");
+  assert.match(src("app/api/studio/videos/route.ts"), /origin !== new URL\(request\.url\)\.origin[\s\S]*requireAdmin\(\)[\s\S]*createStudioVideo/, "même origine et admin avant tout rendu");
+  assert.match(src("components/layout/navigation.tsx"), /href: "\/studio", label: "Studio vidéo"/);
+  assert.doesNotMatch(src("app/api/internal/scheduler/tick/route.ts"), /motion|studio/i, "aucune génération automatique dans le planificateur");
 });

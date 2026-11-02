@@ -1,19 +1,21 @@
--- Synthetic PostgreSQL local test only (vidéos motion design TikTok). Never execute remotely. Runs on the full migration
+-- Synthetic PostgreSQL local test only (vidéos TikTok + Studio vidéo). Never execute remotely. Runs on the full migration
 -- chain; rolled back by the runner. Fixtures inserted without their triggers (replica), invariants tested with triggers.
 create temporary table mv_ids(name text primary key,id uuid not null);
 grant select on mv_ids to service_role;
 create function pg_temp.mv(p_name text) returns uuid language sql as $$ select id from mv_ids where name=p_name $$;
 grant execute on function pg_temp.mv(text) to service_role;
 
--- 1. Objets serveur uniquement, invoker, search_path fixe ; stockage privé.
-do $$declare r text;f text;begin
- foreach f in array array['public.publication_motion_video_save(uuid,boolean,text)','public.publication_motion_video_candidates(timestamptz,integer)',
-  'public.publication_motion_video_failed(uuid,uuid,text,text)'] loop
-  foreach r in array array['public','anon','authenticated'] loop perform pg_temp.replay_assert(not has_function_privilege(r,f,'EXECUTE'),'browser denied '||f||' '||r);end loop;
-  perform pg_temp.replay_assert(has_function_privilege('service_role',f,'EXECUTE'),'server '||f);
-  perform pg_temp.replay_assert((select not prosecdef and proconfig @> array['search_path=pg_catalog'] from pg_proc where oid=f::regprocedure),'invoker '||f);
+-- 1. Stockages privés (aucune politique) ; table Studio réservée au serveur, RLS active ; garde non exécutable par le navigateur.
+do $$declare r text;begin
+ foreach r in array array['publication-videos','studio-videos'] loop
+  perform pg_temp.replay_assert((select not public and file_size_limit=67108864 and allowed_mime_types=array['video/mp4'] from storage.buckets where id=r),'private video bucket '||r);
  end loop;
- perform pg_temp.replay_assert((select not public and file_size_limit=67108864 and allowed_mime_types=array['video/mp4'] from storage.buckets where id='publication-videos'),'private video bucket');
+ perform pg_temp.replay_assert((select relrowsecurity from pg_class where oid='public.studio_videos'::regclass),'studio RLS');
+ foreach r in array array['anon','authenticated'] loop
+  perform pg_temp.replay_assert(not has_table_privilege(r,'public.studio_videos','SELECT,INSERT,UPDATE,DELETE'),'browser denied studio_videos '||r);
+  perform pg_temp.replay_assert(not has_function_privilege(r,'publications_private.guard_variant_video()','EXECUTE'),'browser denied guard '||r);
+ end loop;
+ perform pg_temp.replay_assert(has_table_privilege('service_role','public.studio_videos','SELECT,INSERT,UPDATE,DELETE'),'server studio_videos');
 end $$;
 
 -- 2. Fixtures fictives : un client, une publication TikTok préparée par l'agent (2 photos) et une publication Facebook.
@@ -53,20 +55,21 @@ do $$begin
  perform pg_temp.replay_failure(format('insert into public.publication_assets(id,client_id,storage_path,file_hash,mime_type,provenance) values(gen_random_uuid(),%L,''p'',%L,''video/quicktime'',''x'')',pg_temp.mv('client'),lpad('f',64,'0')),'23514','only MP4');
 end $$;
 
--- 4. Réglage client (journalisé) et sélection automatique.
+-- 4. Studio vidéo : chemin rangé sous le client, bornes, et lien de publication libéré si la publication disparaît.
 set local role service_role;
-do $$declare n integer;begin
- perform pg_temp.replay_assert(not exists(select 1 from public.publication_motion_video_candidates(now(),5)),'setting off: no candidate');
- perform public.publication_motion_video_save(pg_temp.mv('client'),true,'user_local');
- perform pg_temp.replay_assert((select count(*)=1 from public.publication_events where action='publication.motion_video_setting_saved' and resource_id=pg_temp.mv('client')),'setting audited');
- perform public.publication_motion_video_save(pg_temp.mv('client'),true,'user_local');
- perform pg_temp.replay_assert((select count(*)=1 from public.publication_events where action='publication.motion_video_setting_saved' and resource_id=pg_temp.mv('client')),'unchanged setting not re-audited');
- select count(*) into n from public.publication_motion_video_candidates(now(),5) c where c.publication_id=pg_temp.mv('tt');
- perform pg_temp.replay_assert(n=1,'TikTok agent publication with photos is a candidate');
- perform pg_temp.replay_assert(not exists(select 1 from public.publication_motion_video_candidates(now(),5) c where c.publication_id=pg_temp.mv('fb')),'never Facebook');
- perform pg_temp.replay_assert(not exists(select 1 from public.publication_motion_video_candidates(now()+interval '4 days',5)),'past slot: not a candidate');
- perform public.publication_motion_video_failed(pg_temp.mv('tt'),pg_temp.mv('tt_rev'),'render_engine',null);
- perform pg_temp.replay_assert(not exists(select 1 from public.publication_motion_video_candidates(now(),5)),'failed revision not retried automatically');
- perform pg_temp.replay_failure(format('select public.publication_motion_video_failed(%L,%L,%L,null)',pg_temp.mv('tt'),pg_temp.mv('tt_rev'),'Bad Code!'),'22023','failure code closed');
- perform pg_temp.replay_failure(format('select public.publication_motion_video_save(%L,true,%L)',pg_temp.mv('client'),'not-a-user'),'22023','actor checked');
+do $$declare c uuid:=pg_temp.mv('client');v uuid:=gen_random_uuid();
+ sql text:='insert into public.studio_videos(client_id,title,script,storage_path,duration_seconds,size_bytes,width,height,created_by) values(%L,%L,%L,%L,%s,%s,720,1280,%L)';begin
+ execute format(sql,c,'Toiture',jsonb_build_object('headline','Toiture refaite'),c||'/'||v||'.mp4',14.5,1000,'user_local');
+ perform pg_temp.replay_assert((select count(*)=1 from public.studio_videos where client_id=c and last_publication_id is null),'studio video saved');
+ perform pg_temp.replay_failure(format(sql,c,'Autre client','{}',gen_random_uuid()||'/'||gen_random_uuid()||'.mp4',10,1000,'user_local'),'23514','path outside client folder refused');
+ perform pg_temp.replay_failure(format(sql,c,'Chemin','{}',c||'/../x.mp4',10,1000,'user_local'),'23514','path shape checked');
+ perform pg_temp.replay_failure(format(sql,c,' ','{}',c||'/'||gen_random_uuid()||'.mp4',10,1000,'user_local'),'23514','title required');
+ perform pg_temp.replay_failure(format(sql,c,'Trop long','{}',c||'/'||gen_random_uuid()||'.mp4',121,1000,'user_local'),'23514','duration bounded');
+ perform pg_temp.replay_failure(format(sql,c,'Trop lourd','{}',c||'/'||gen_random_uuid()||'.mp4',10,67108865,'user_local'),'23514','size bounded');
+ perform pg_temp.replay_failure(format(sql,c,'Script','[]',c||'/'||gen_random_uuid()||'.mp4',10,1000,'user_local'),'23514','script is an object');
+ perform pg_temp.replay_failure(format(sql,c,'Auteur','{}',c||'/'||gen_random_uuid()||'.mp4',10,1000,'not-a-user'),'23514','actor checked');
+ perform pg_temp.replay_failure(format(sql,c,'Doublon','{}',c||'/'||v||'.mp4',10,1000,'user_local'),'23505','storage path unique');
+ update public.studio_videos set last_publication_id=pg_temp.mv('tt') where client_id=c;
+ perform pg_temp.replay_assert((select last_publication_id=pg_temp.mv('tt') from public.studio_videos where client_id=c),'linked to its TikTok draft');
 end $$;
+reset role;

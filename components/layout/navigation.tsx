@@ -15,6 +15,7 @@ const navigation: { href: string; label: string; icon: IconName; matches?: strin
   { href: "/agenda", label: "Agenda", icon: "calendar" },
   { href: "/work", label: "Travail", icon: "work", matches: ["/tasks", "/recommendations", "/actions"] },
   { href: "/publications", label: "Publications", icon: "publications" },
+  { href: "/studio", label: "Studio vidéo", icon: "monitor" },
   { href: "/acquisition", label: "Acquisition", icon: "clients" },
   { href: "/reports", label: "Rapports", icon: "reports" },
   { href: "/agents", label: "Agents", icon: "agents" },

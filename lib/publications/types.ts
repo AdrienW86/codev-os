@@ -181,9 +181,6 @@ export type PublicationFunctions = {
   publication_archive:{Args:{p_publication_id:string;p_actor_id:string};Returns:string};
   publication_remove:{Args:{p_publication_id:string;p_actor_id:string};Returns:number};
   publication_auto_approval_save:{Args:{p_client_id:string;p_enabled:boolean;p_hours_before:number;p_actor_id:string};Returns:undefined};
-  publication_motion_video_save:{Args:{p_client_id:string;p_enabled:boolean;p_actor_id:string};Returns:undefined};
-  publication_motion_video_candidates:{Args:{p_now:string;p_limit:number};Returns:{publication_id:string;revision_id:string;client_id:string}[]};
-  publication_motion_video_failed:{Args:{p_publication_id:string;p_revision_id:string;p_code:string;p_actor_id:string|null};Returns:undefined};
   publication_auto_approval_candidates:{Args:{p_now:string;p_limit:number};Returns:{publication_id:string;revision_id:string;client_id:string;scheduled_for:string}[]};
   publication_auto_approve:{Args:{p_publication_id:string;p_revision_id:string;p_actor_id:string};Returns:undefined};
   publication_tiktok_settings_save:{Args:{p_publication_id:string;p_revision_id:string;p_privacy_level:string;p_allow_comment:boolean;p_brand_organic:boolean;p_brand_content:boolean;p_actor_id:string};Returns:undefined};

@@ -5,13 +5,13 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp,{type OverlayOptions} from 'sharp';
 import {MOTION_CARD,motionFfmpegArgs,type MotionSceneFiles} from './filtergraph';
-import {buildMotionStoryboard,type MotionPalette,type MotionScene,type MotionStoryboard} from './storyboard';
+import {buildMotionStoryboard,buildScriptStoryboard,type MotionPalette,type MotionScript,type MotionScene,type MotionStoryboard} from './storyboard';
 
 // Rendu d'une vidéo motion design 720 × 1280 (9:16) : calques fixes dessinés par sharp (police Montserrat embarquée,
 // aucune police système requise), animation et encodage H.264 par ffmpeg (binaire fourni par l'appelant). Tout se
 // passe dans un dossier temporaire supprimé à la fin, sans réseau. Les photos sont celles de la publication.
 export const MOTION_MAX_OUTPUT_BYTES=60*1024*1024,MOTION_RENDER_TIMEOUT_MS=170_000;
-export type MotionRenderInput={photos:Uint8Array[];text:string;clientName:string;seed:string;ffmpegPath:string;fontDir:string;timeoutMs?:number};
+export type MotionRenderInput={photos:Uint8Array[];seed:string;ffmpegPath:string;fontDir:string;timeoutMs?:number}&({script:MotionScript}|{text:string;clientName:string});
 export type MotionRenderResult={bytes:Uint8Array;storyboard:MotionStoryboard;durationMs:number;width:number;height:number};
 export class MotionRenderError extends Error{constructor(readonly code:'photos'|'text'|'engine'|'timeout'|'output'){super(`Motion render: ${code}`);}}
 
@@ -89,7 +89,7 @@ async function run(ffmpegPath:string,args:string[],timeoutMs:number):Promise<voi
 export async function renderMotionVideo(input:MotionRenderInput):Promise<MotionRenderResult>{
  const started=Date.now();
  let board:MotionStoryboard;
- try{board=buildMotionStoryboard({text:input.text,photoCount:input.photos.length,clientName:input.clientName,seed:input.seed});}
+ try{board='script' in input?buildScriptStoryboard(input.script,input.photos.length,input.seed):buildMotionStoryboard({text:input.text,photoCount:input.photos.length,clientName:input.clientName,seed:input.seed});}
  catch(error){throw new MotionRenderError(error instanceof Error&&error.message==='motion_text_required'?'text':'photos');}
  const dir=await mkdtemp(join(tmpdir(),'motion-'));
  try{

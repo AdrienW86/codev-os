@@ -7,7 +7,7 @@ import {loadChannelConfiguration} from './channel-configuration';
 import {getAvailablePublicationAccounts,getProjectConnectionConfiguration,type ProjectConnectionConfiguration} from './connections/service';
 import type {AccountOption} from './connections/model';
 import type {ChannelConfigurationView} from './channel-configuration-model';
-import {autoApprovalPayload,clientSettingsFromRow,clientSettingsPayload,motionVideoChange,type ClientPublicationSettings} from './client-setup-model';
+import {autoApprovalPayload,clientSettingsFromRow,clientSettingsPayload,type ClientPublicationSettings} from './client-setup-model';
 import type {PublicationsAgentProject} from './agent-types';
 import {isPublicationUuid} from './validation';
 
@@ -63,8 +63,5 @@ export async function saveClientPublicationSettings(clientId:unknown,form:FormDa
  if(error)return {ok:false,message:error.code==='23514'?'Valeur refusée (fuseau horaire ou délai invalide).':'Réglages non enregistrés. Réessayez.'};
  const saved=await getSupabaseServerClient().rpc('publication_auto_approval_save',{p_client_id:clientId,p_enabled:auto.enabled,p_hours_before:auto.hoursBefore,p_actor_id:userId});
  if(saved.error)return {ok:false,message:'Réglages enregistrés, mais pas la validation automatique. Réessayez.'};
- const motion=motionVideoChange(form);
- if(motion!==null){const r=await getSupabaseServerClient().rpc('publication_motion_video_save',{p_client_id:clientId,p_enabled:motion,p_actor_id:userId});
-  if(r.error)return {ok:false,message:'Réglages enregistrés, mais pas la vidéo TikTok automatique (migration des vidéos appliquée ?). Réessayez.'};}
  return {ok:true,message:'Réglages Publications enregistrés.'};
 }

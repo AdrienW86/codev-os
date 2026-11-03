@@ -6,6 +6,7 @@ import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {writeAudit} from '@/lib/core/audit';
 import {readOriginal} from '@/lib/whatsapp/library';
+import {isPublicationCandidate,type CandidateInput} from '@/lib/media-intelligence/model';
 import {getPublicationProjectChannels} from '@/lib/publications/project-channels';
 import {projectAllowsPlatform} from '@/lib/publications/channels';
 import {currentRevision,saveDraft,saveUnscheduledDraft} from '@/lib/publications/workspace';
@@ -35,14 +36,25 @@ export async function listStudioVideos(clientId:string,deps:StudioDeps={}):Promi
  return {ok:true,videos:rows.map(r=>({id:r.id,clientId:r.client_id,title:r.title,script:r.script,durationSeconds:Number(r.duration_seconds),sizeBytes:r.size_bytes,createdAt:r.created_at,url:urls.get(r.storage_path)??null,lastPublicationId:r.last_publication_id}))};
 }
 export type LibraryPhoto={id:string;caption:string|null;date:string};
-/** Photos utilisables de la photothèque du client (validées ou déjà utilisées), les plus récentes d'abord. */
+/**
+ * Photos utilisables de la photothèque du client, les plus récentes d'abord : même règle que l'agent Publications
+ * (validées ou déjà utilisées, ou jugées publiables par l'analyse ; jamais confidentielles, mineurs ou hors sujet).
+ */
 export async function studioLibraryPhotos(clientId:string,deps:StudioDeps={}):Promise<LibraryPhoto[]>{
  await requireAdmin();if(!STUDIO_UUID.test(clientId))return [];
- const {data,error}=await (deps.db??getSupabaseServerClient()).from('whatsapp_assets').select('id,caption,captured_at,received_at,created_at')
-  .eq('client_id',clientId).eq('media_kind','image').in('library_status',['validated','used']).is('purged_at',null).not('imported_at','is',null)
-  .order('created_at',{ascending:false}).limit(60);
+ const db=deps.db??getSupabaseServerClient();
+ const {data,error}=await db.from('whatsapp_assets').select('id,caption,captured_at,received_at,created_at,library_status,media_kind')
+  .eq('client_id',clientId).eq('media_kind','image').in('library_status',['received','to_review','validated','used']).is('purged_at',null).not('imported_at','is',null)
+  .order('created_at',{ascending:false}).limit(120);
  if(error)return [];
- return ((data??[]) as {id:string;caption:string|null;captured_at:string|null;received_at:string|null;created_at:string}[]).map(a=>({id:a.id,caption:a.caption,date:(a.captured_at??a.received_at??a.created_at).slice(0,10)}));
+ const rows=(data??[]) as {id:string;caption:string|null;captured_at:string|null;received_at:string|null;created_at:string;library_status:string;media_kind:string}[];
+ type Assessment=NonNullable<CandidateInput['assessment']>&{asset_id:string};
+ const ids=rows.map(r=>r.id);
+ const assessed=ids.length?await db.from('whatsapp_asset_assessments').select('asset_id,verdict,confidential,sensitive,manual_verdict,business_relevance,publishability,quality,quality_issues').eq('client_id',clientId).in('asset_id',ids):{data:[],error:null};
+ if(assessed.error)return [];
+ const byAsset=new Map(((assessed.data??[]) as unknown as Assessment[]).map(a=>[a.asset_id,a]));
+ return rows.filter(r=>isPublicationCandidate({libraryStatus:r.library_status,mediaKind:r.media_kind,purged:false,assessment:byAsset.get(r.id)??null}))
+  .slice(0,60).map(a=>({id:a.id,caption:a.caption,date:(a.captured_at??a.received_at??a.created_at).slice(0,10)}));
 }
 
 export async function createStudioVideo(form:FormData,deps:StudioDeps={}):Promise<{ok:true;id:string;message:string}|{ok:false;message:string}>{

@@ -230,3 +230,9 @@ test("câblage : Studio séparé des publications, signature par stockage, binai
   assert.match(src("components/layout/navigation.tsx"), /href: "\/studio", label: "Studio vidéo"/);
   assert.doesNotMatch(src("app/api/internal/scheduler/tick/route.ts"), /motion|studio/i, "aucune génération automatique dans le planificateur");
 });
+
+test("Studio: the photo picker offers exactly what the Publications agent may publish (same rule, never purged)", () => {
+  const studio = src("lib/studio/videos.ts");
+  assert.match(studio, /isPublicationCandidate\(\{libraryStatus:r\.library_status,mediaKind:r\.media_kind,purged:false,assessment:byAsset\.get\(r\.id\)\?\?null\}\)/);
+  assert.match(studio, /\.in\('library_status',\['received','to_review','validated','used'\]\)\.is\('purged_at',null\)/);
+});

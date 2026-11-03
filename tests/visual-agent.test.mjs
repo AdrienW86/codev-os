@@ -45,6 +45,7 @@ test("copy check: short, nothing invented, no hashtag or link, never reused", ()
   assert.equal(m.checkCopy({ headline: "x".repeat(61), subline: "" }, facts, []).ok, false);
   assert.equal(m.checkCopy({ headline: "Dératisation dès 89 €", subline: "" }, facts, []).ok, false, "invented price");
   assert.equal(m.checkCopy({ headline: "Garantie 1 an", subline: "" }, facts, []).ok, false, "invented guarantee");
+  assert.equal(m.checkCopy({ headline: "Votre couvreur", subline: "Il garantit un travail durable." }, facts, []).ok, false, "guarantee as a verb");
   assert.equal(m.checkCopy({ headline: "Suivez-nous #perpignan", subline: "" }, facts, []).ok, false);
   assert.equal(m.checkCopy({ headline: "Des rongeurs chez vous ?", subline: "" }, facts, ["des rongeurs chez VOUS"]).ok, false, "already used");
   assert.deepEqual(json(m.fallbackCopy("Dératisation", "Perpignan")), { headline: "Dératisation", subline: "À votre service — Perpignan" });

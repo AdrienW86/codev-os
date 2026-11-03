@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- Aperçus privés servis par la route authentifiée de la photothèque. */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { MOTION_TRACKS, MUSIC_MOOD_LABELS } from "@/lib/motion/music";
 
 type Photo = { id: string; caption: string | null; date: string };
 const input = "mt-1 block w-full rounded-lg border border-border bg-background p-2 text-sm";
@@ -37,6 +38,11 @@ export function StudioCreateForm({ clientId, clientName, photos, maxPhotos, pace
     <label className="block text-sm">Phrase de fin (facultative)<input name="closing" maxLength={160} className={input} placeholder="Ex. Demandez votre devis" /></label>
     <label className="block text-sm">Nom affiché<input name="brand" maxLength={60} defaultValue={clientName} className={input} /></label>
     <label className="block text-sm">Rythme<select name="pace" defaultValue="standard" className={input}>{paces.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select></label>
+    <label className="block text-sm">Musique de fond<select name="music" defaultValue="auto" className={input}>
+      <option value="auto">Automatique (selon le rythme)</option><option value="none">Sans musique</option>
+      {(["dynamic", "standard", "calm"] as const).map((mood) => <optgroup key={mood} label={MUSIC_MOOD_LABELS[mood]}>
+        {MOTION_TRACKS.filter((t) => t.mood === mood).map((t) => <option key={t.id} value={t.id}>{t.title} · {t.bpm} BPM</option>)}</optgroup>)}
+    </select></label>
     <label className="block text-sm">Ajouter des photos (JPEG, PNG, WebP, 8 Mo au plus)<input type="file" name="photos" multiple accept="image/jpeg,image/png,image/webp" className={input}
       onChange={(e) => setUploads(e.currentTarget.files?.length ?? 0)} /></label>
     <fieldset className="md:col-span-2">

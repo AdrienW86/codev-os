@@ -49,7 +49,9 @@ export type MotionPace='dynamic'|'standard'|'calm';
 export const MOTION_PACES:Record<MotionPace,{label:string;scene:number;hook:number;outro:number}>={
  dynamic:{label:'Dynamique',scene:2.3,hook:2.8,outro:2.6},standard:{label:'Standard',scene:2.9,hook:3.4,outro:3},calm:{label:'Posé',scene:3.6,hook:4,outro:3.4}};
 /** Script d'une vidéo du Studio : accroche, une légende par photo suivante (facultative), phrase de fin (facultative). */
-export type MotionScript={headline:string;captions:string[];closing:string|null;brand:string;pace?:MotionPace};
+export type MotionScript={headline:string;captions:string[];closing:string|null;brand:string;pace?:MotionPace;
+ /** Morceau de fond retenu (identifiant de la bibliothèque) ; null : sans musique. */
+ music?:string|null};
 export type StoryboardInput={text:string;photoCount:number;clientName:string;seed:string};
 /** Script tiré d'un texte de publication : 1re phrase en accroche, suivantes en légendes, appel à l'action à la fin. */
 export function scriptFromText(text:string,clientName:string):MotionScript{

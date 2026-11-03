@@ -1,6 +1,6 @@
 // Arguments ffmpeg d'un storyboard (pur, testable sans ffmpeg). Chaque scène = fond pré-rendu (photo floutée ou
 // dégradé de marque) + carte photo animée (Ken Burns : zoom ou travelling) + calque texte qui glisse en fondu ;
-// scènes enchaînées par des transitions xfade, barre de progression, piste audio muette (lecteurs exigeants).
+// scènes enchaînées par des transitions xfade, barre de progression, musique de fond (ou piste muette : lecteurs exigeants).
 // Les arguments sont passés tels quels à spawn (jamais de shell) ; les chemins viennent du moteur, pas de l'utilisateur.
 import {MOTION_TRANSITION_SECONDS,type MotionMove,type MotionStoryboard} from './storyboard';
 
@@ -17,7 +17,7 @@ function zoompan(move:MotionMove,frames:number,fps:number):string{
  return `zoompan=${z}:d=${frames}:s=${MOTION_CARD.size}x${MOTION_CARD.size}:fps=${fps}`;
 }
 const hex=(color:string)=>{if(!/^#[0-9A-Fa-f]{6}$/.test(color))throw new Error('motion_invalid_color');return '0x'+color.slice(1);};
-export function motionFfmpegArgs(board:MotionStoryboard,files:MotionSceneFiles[],output:string):string[]{
+export function motionFfmpegArgs(board:MotionStoryboard,files:MotionSceneFiles[],output:string,music:string|null=null):string[]{
  if(files.length!==board.scenes.length)throw new Error('motion_files_mismatch');
  const {fps,width,height}=board,T=MOTION_TRANSITION_SECONDS;
  const args=['-hide_banner','-nostdin','-loglevel','error','-y'];
@@ -50,9 +50,13 @@ export function motionFfmpegArgs(board:MotionStoryboard,files:MotionSceneFiles[]
  const total=r3(board.total);
  graph.push(`color=c=${hex(board.palette.accent)}:s=${width}x8:r=${fps}:d=${total}[bar]`);
  graph.push(`[${chain}][bar]overlay=x='-w+w*t/${total}':y=0:shortest=1,format=yuv420p[vout]`);
- args.push('-f','lavfi','-t',String(total),'-i','anullsrc=channel_layout=stereo:sample_rate=44100');const audio=input++;
- args.push('-filter_complex',graph.join(';'),'-map','[vout]','-map',`${audio}:a`,
+ // Musique : morceau embarqué (bouclé si plus court), coupé à la durée de la vidéo avec fondus ; sinon piste muette.
+ let audioMap:string;
+ if(music){args.push('-stream_loop','-1','-i',music);const m=input++;const fadeOut=r3(Math.max(total-1.6,0));
+  graph.push(`[${m}:a]atrim=0:${total},asetpts=PTS-STARTPTS,aformat=sample_rates=44100:channel_layouts=stereo,afade=t=in:st=0:d=0.4,afade=t=out:st=${fadeOut}:d=1.6,volume=0.85[aout]`);audioMap='[aout]';}
+ else{args.push('-f','lavfi','-t',String(total),'-i','anullsrc=channel_layout=stereo:sample_rate=44100');audioMap=`${input++}:a`;}
+ args.push('-filter_complex',graph.join(';'),'-map','[vout]','-map',audioMap,
   '-c:v','libx264','-preset','veryfast','-crf','21','-profile:v','high','-pix_fmt','yuv420p','-r',String(fps),'-g',String(fps*2),
-  '-c:a','aac','-b:a','96k','-t',String(total),'-movflags','+faststart','-s',`${width}x${height}`,output);
+  '-c:a','aac','-b:a',music?'160k':'96k','-t',String(total),'-movflags','+faststart','-s',`${width}x${height}`,output);
  return args;
 }

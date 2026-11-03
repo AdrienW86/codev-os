@@ -11,7 +11,9 @@ import {buildMotionStoryboard,buildScriptStoryboard,type MotionPalette,type Moti
 // aucune police système requise), animation et encodage H.264 par ffmpeg (binaire fourni par l'appelant). Tout se
 // passe dans un dossier temporaire supprimé à la fin, sans réseau. Les photos sont celles de la publication.
 export const MOTION_MAX_OUTPUT_BYTES=60*1024*1024,MOTION_RENDER_TIMEOUT_MS=170_000;
-export type MotionRenderInput={photos:Uint8Array[];seed:string;ffmpegPath:string;fontDir:string;timeoutMs?:number}&({script:MotionScript}|{text:string;clientName:string});
+export type MotionRenderInput={photos:Uint8Array[];seed:string;ffmpegPath:string;fontDir:string;timeoutMs?:number;
+ /** Chemin d'un morceau embarqué (MP3) ; absent : piste muette. */
+ music?:string|null}&({script:MotionScript}|{text:string;clientName:string});
 export type MotionRenderResult={bytes:Uint8Array;storyboard:MotionStoryboard;durationMs:number;width:number;height:number};
 export class MotionRenderError extends Error{constructor(readonly code:'photos'|'text'|'engine'|'timeout'|'output'){super(`Motion render: ${code}`);}}
 
@@ -113,7 +115,7 @@ export async function renderMotionVideo(input:MotionRenderInput):Promise<MotionR
    files.push({background,photo:photoPath,text:textPath,mask:photo?mask:null});
   }
   const output=join(dir,'motion.mp4');
-  await run(input.ffmpegPath,motionFfmpegArgs(board,files,output),input.timeoutMs??MOTION_RENDER_TIMEOUT_MS);
+  await run(input.ffmpegPath,motionFfmpegArgs(board,files,output,input.music??null),input.timeoutMs??MOTION_RENDER_TIMEOUT_MS);
   let bytes:Buffer;try{bytes=await readFile(output);}catch{throw new MotionRenderError('output');}
   if(bytes.length<2048||bytes.length>MOTION_MAX_OUTPUT_BYTES||bytes.subarray(4,8).toString('latin1')!=='ftyp')throw new MotionRenderError('output');
   return {bytes:new Uint8Array(bytes),storyboard:board,durationMs:Date.now()-started,width:board.width,height:board.height};

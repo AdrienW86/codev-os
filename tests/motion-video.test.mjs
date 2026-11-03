@@ -142,7 +142,8 @@ test("transport vidéo : lecture limitée au stockage du projet, envoi PUT avec 
 const CLIENT = "33333333-3333-4333-8333-333333333333", ASSET = "44444444-4444-4444-8444-444444444441";
 const types = loadTs("lib/publications/types.ts"), validation = loadTs("lib/publications/validation.ts", { "./types": types });
 const editor = loadTs("lib/publications/editor.ts", { "./validation": validation, "./types": types });
-const studioModel = loadTs("lib/studio/model.ts", { "@/lib/motion/video/storyboard": story });
+const music = loadTs("lib/motion/music.ts");
+const studioModel = loadTs("lib/studio/model.ts", { "@/lib/motion/video/storyboard": story, "@/lib/motion/music": music });
 const formOf = (entries) => { const f = new FormData(); for (const [k, v] of entries) f.append(k, v); return f; };
 const baseForm = (over = []) => formOf([["client_id", CLIENT], ["title", "Toiture octobre"], ["headline", "Toiture refaite en 3 jours"], ["captions", "Dépose des tuiles\nPose de l'écran"], ["closing", "Demandez votre devis"], ["brand", ""], ["pace", "standard"], ["library_asset", ASSET], ...over]);
 
@@ -185,7 +186,7 @@ function studio(audit = []) {
   return loadTs("lib/studio/videos.ts", {
     "node:crypto": require("node:crypto"), "node:path": require("node:path"), "ffmpeg-static": { default: "/bin/ffmpeg" },
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: "user_admin" }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => { throw Error("db"); } },
-    "@/lib/core/audit": { writeAudit: async (actor, entry) => { audit.push(entry.action); } }, "@/lib/whatsapp/library": { readOriginal: async () => null }, "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"),
+    "@/lib/core/audit": { writeAudit: async (actor, entry) => { audit.push(entry.action); } }, "@/lib/whatsapp/library": { readOriginal: async () => null }, "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"), "@/lib/motion/music": music,
     "@/lib/publications/project-channels": {}, "@/lib/publications/channels": {}, "@/lib/publications/workspace": {},
     "@/lib/publications/editor": editor, "@/lib/motion/video/render": { MotionRenderError: class extends Error {}, renderMotionVideo: async () => { throw Error("real render"); } },
     "./model": studioModel }, { process: { env: {}, cwd: () => "/app" }, File, FormData, Blob });
@@ -235,4 +236,37 @@ test("Studio: the photo picker offers exactly what the Publications agent may pu
   const studio = src("lib/studio/videos.ts");
   assert.match(studio, /isPublicationCandidate\(\{libraryStatus:r\.library_status,mediaKind:r\.media_kind,purged:false,assessment:byAsset\.get\(r\.id\)\?\?null\}\)/);
   assert.match(studio, /\.in\('library_status',\['received','to_review','validated','used'\]\)\.is\('purged_at',null\)/);
+});
+
+test("music: embedded original tracks per pace, stable automatic pick, none on request, traced for the render function", () => {
+  assert.equal(music.MOTION_TRACKS.length, 8);
+  for (const t of music.MOTION_TRACKS) assert.ok(existsSync(new URL(`../lib/motion/video/music/${t.file}`, import.meta.url)), t.file);
+  for (const pace of ["dynamic", "standard", "calm"]) {
+    const a = music.pickTrack("auto", pace, "seed-1"), b = music.pickTrack("auto", pace, "seed-1");
+    assert.equal(a.mood, pace); assert.equal(a.id, b.id, "même vidéo : même morceau");
+  }
+  assert.equal(music.pickTrack("none", "dynamic", "x"), null);
+  assert.equal(music.pickTrack("calme", "dynamic", "x").id, "calme", "choix explicite prioritaire");
+  assert.equal(music.isMusicChoice("inconnu"), false); assert.equal(music.isMusicChoice("auto"), true);
+  assert.match(src("next.config.ts"), /"\.\/lib\/motion\/video\/music\/\*\.mp3"/);
+  assert.match(src("lib/motion/video/music/LICENCE.txt"), /compositions originales/);
+});
+
+test("music: looped, trimmed to the video, faded in and out; silent track without music", () => {
+  const board = story.buildScriptStoryboard({ headline: "Accroche", captions: [], closing: null, brand: "CODE-V", pace: "standard" }, 2, "seed");
+  const files = board.scenes.map((s) => ({ background: "/t/bg.png", photo: s.photo === null ? null : "/t/p.jpg", text: null, mask: s.photo === null ? null : "/t/m.png" }));
+  const withMusic = graph.motionFfmpegArgs(board, files, "/t/out.mp4", "/m/horizon.mp3");
+  const i = withMusic.indexOf("/m/horizon.mp3");
+  assert.equal(withMusic.slice(i - 3, i + 1).join(" "), "-stream_loop -1 -i /m/horizon.mp3");
+  const fc = withMusic[withMusic.indexOf("-filter_complex") + 1];
+  assert.match(fc, new RegExp(`atrim=0:${board.total}`)); assert.match(fc, /afade=t=in:st=0:d=0\.4/); assert.match(fc, /afade=t=out:st=[\d.]+:d=1\.6/);
+  assert.ok(withMusic.includes("[aout]")); assert.ok(!withMusic.includes("anullsrc=channel_layout=stereo:sample_rate=44100"));
+  const silent = graph.motionFfmpegArgs(board, files, "/t/out.mp4");
+  assert.ok(silent.includes("anullsrc=channel_layout=stereo:sample_rate=44100")); assert.ok(!silent.includes("-stream_loop"));
+  const fields = { client_id: "11111111-1111-4111-8111-111111111111", title: "T", headline: "Accroche", captions: "", closing: "", brand: "B", pace: "calm" };
+  const fake = (extra) => ({ get: (k) => ({ ...fields, ...extra })[k] ?? null, getAll: () => [] });
+  assert.equal(studioModel.parseStudioForm(fake({}), 1).draft.music, "auto", "sans choix : automatique");
+  assert.equal(studioModel.parseStudioForm(fake({ music: "lumiere" }), 1).draft.music, "lumiere");
+  const parsed = studioModel.parseStudioForm(fake({ music: "pas-un-morceau" }), 1);
+  assert.equal(parsed.ok, false, "musique inconnue refusée");
 });

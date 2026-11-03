@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 // Studio vidéo : ffmpeg-static reste hors du bundle (chemin du binaire calculé à l'exécution) ; le binaire et la police
-// Montserrat ne sont ajoutés qu'à la seule fonction qui rend une vidéo.
-const motionVideoFiles = ["./node_modules/ffmpeg-static/ffmpeg", "./lib/motion/video/fonts/*.ttf"];
+// Montserrat et les musiques de fond ne sont ajoutés qu'à la seule fonction qui rend une vidéo.
+const motionVideoFiles = ["./node_modules/ffmpeg-static/ffmpeg", "./lib/motion/video/fonts/*.ttf", "./lib/motion/video/music/*.mp3"];
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["ffmpeg-static"],

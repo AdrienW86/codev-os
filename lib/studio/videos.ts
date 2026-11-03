@@ -11,6 +11,7 @@ import {getPublicationProjectChannels} from '@/lib/publications/project-channels
 import {projectAllowsPlatform} from '@/lib/publications/channels';
 import {currentRevision,saveDraft,saveUnscheduledDraft} from '@/lib/publications/workspace';
 import {VIDEO_BUCKET,VIDEO_MIME,imageMime} from '@/lib/publications/editor';
+import {pickTrack} from '@/lib/motion/music';
 import {MotionRenderError,renderMotionVideo,type MotionRenderInput,type MotionRenderResult} from '@/lib/motion/video/render';
 import type {MotionScript} from '@/lib/motion/video/storyboard';
 import {STUDIO_BUCKET,STUDIO_MAX_UPLOAD_BYTES,STUDIO_UUID,parseStudioForm,type StudioVideo} from './model';
@@ -20,9 +21,10 @@ import {STUDIO_BUCKET,STUDIO_MAX_UPLOAD_BYTES,STUDIO_UUID,parseStudioForm,type S
 // ici : « Créer une publication TikTok » prépare seulement un brouillon, que l'humain valide dans Publications.
 type Db=ReturnType<typeof getSupabaseServerClient>;
 type Row={id:string;client_id:string;title:string;script:MotionScript;duration_seconds:number|string;size_bytes:number;created_at:string;storage_path:string;last_publication_id:string|null};
-export type StudioDeps={db?:Db;render?:(input:MotionRenderInput)=>Promise<MotionRenderResult>;ffmpegPath?:string|null;fontDir?:string;readLibrary?:(clientId:string,assetId:string)=>Promise<{bytes:Uint8Array;mime:string}|null>};
+export type StudioDeps={db?:Db;render?:(input:MotionRenderInput)=>Promise<MotionRenderResult>;ffmpegPath?:string|null;fontDir?:string;musicDir?:string;readLibrary?:(clientId:string,assetId:string)=>Promise<{bytes:Uint8Array;mime:string}|null>};
 export const STUDIO_URL_TTL=900;
 export const MOTION_FONT_DIR=join(process.cwd(),'lib','motion','video','fonts');
+export const MOTION_MUSIC_DIR=join(process.cwd(),'lib','motion','video','music');
 const unavailable='Studio vidéo indisponible : vérifiez que la migration des vidéos est appliquée.';
 
 export async function listStudioVideos(clientId:string,deps:StudioDeps={}):Promise<{ok:true;videos:StudioVideo[]}|{ok:false;message:string}>{
@@ -88,8 +90,11 @@ export async function createStudioVideo(form:FormData,deps:StudioDeps={}):Promis
  const ffmpegPath=deps.ffmpegPath===undefined?(typeof ffmpegStatic==='string'?ffmpegStatic:null):deps.ffmpegPath;
  if(!ffmpegPath)return {ok:false,message:'Moteur vidéo indisponible sur le serveur.'};
  const id=randomUUID();
+ // Musique : morceau embarqué choisi, ou tiré selon le rythme (« auto »), ou aucun ; retenu dans le script de la vidéo.
+ const track=pickTrack(draft.music,script.pace??'standard',id);
+ script.music=track?.id??null;
  let video:MotionRenderResult;
- try{video=await (deps.render??renderMotionVideo)({photos,script,seed:id,ffmpegPath,fontDir:deps.fontDir??MOTION_FONT_DIR});}
+ try{video=await (deps.render??renderMotionVideo)({photos,script,seed:id,ffmpegPath,fontDir:deps.fontDir??MOTION_FONT_DIR,music:track?join(deps.musicDir??MOTION_MUSIC_DIR,track.file):null});}
  catch(error){const code=error instanceof MotionRenderError?error.code:'engine';
   return {ok:false,message:code==='text'?'L’accroche doit contenir au moins un mot.':code==='photos'?'Une photo n’a pas pu être lue pour la vidéo.':code==='timeout'?'Le rendu a pris trop de temps : essayez avec moins de photos.':'Le rendu de la vidéo a échoué. Réessayez.'};}
  const path=`${draft.clientId}/${id}.mp4`;
@@ -98,7 +103,7 @@ export async function createStudioVideo(form:FormData,deps:StudioDeps={}):Promis
  const inserted=await db.from('studio_videos').insert({id,client_id:draft.clientId,title:draft.title,script,storage_path:path,duration_seconds:video.storyboard.total,size_bytes:video.bytes.length,
   width:video.width,height:video.height,created_by:userId,sources:{library_asset_ids:draft.libraryAssetIds,uploaded_photos:files.length}});
  if(inserted.error){await db.storage.from(STUDIO_BUCKET).remove([path]);return {ok:false,message:unavailable};}
- await writeAudit({kind:'admin',userId},{action:'studio.video_created',resource_type:'studio_video',resource_id:id,metadata:{client_id:draft.clientId,photos:photos.length,duration_seconds:video.storyboard.total}}).catch(()=>{});
+ await writeAudit({kind:'admin',userId},{action:'studio.video_created',resource_type:'studio_video',resource_id:id,metadata:{client_id:draft.clientId,photos:photos.length,duration_seconds:video.storyboard.total,music:script.music}}).catch(()=>{});
  return {ok:true,id,message:`Vidéo de ${Math.round(video.storyboard.total)} s créée.`};
 }
 

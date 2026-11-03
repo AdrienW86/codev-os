@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { createVideoDraftAction, deleteStudioVideoAction, type StudioActionState } from "@/app/(cockpit)/studio/actions";
 import { suggestedCaption, type StudioVideo } from "@/lib/studio/model";
+import { MOTION_TRACKS } from "@/lib/motion/music";
 
 const initial: StudioActionState = {};
 // Réseaux qui reçoivent une vidéo du Studio : TikTok (vidéo) et Snapchat (Spotlight, description courte).
@@ -24,13 +25,14 @@ function DraftForm({ video, network }: { video: StudioVideo; network: (typeof NE
     {state.publicationId && <p className="mt-1 text-xs"><Link href={`/publications/${state.publicationId}`} className="text-accent underline">Voir la publication {network.label}</Link></p>}
   </details>;
 }
+const musicTitle = (id: string | null | undefined) => { const t = id ? MOTION_TRACKS.find((m) => m.id === id) : null; return t ? ` · Musique : ${t.title}` : ""; };
 export function StudioVideoCard({ video }: { video: StudioVideo }) {
   const [removed, remove, removing] = useActionState(deleteStudioVideoAction, initial);
   return <article className="space-y-3 rounded-xl border border-border p-4" data-studio-video={video.id}>
     {video.url ? <video src={video.url} controls playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg bg-black" aria-label={`Vidéo ${video.title}`} />
       : <div className="flex aspect-[9/16] items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted">Aperçu indisponible</div>}
     <div><h3 className="font-semibold break-words">{video.title}</h3>
-      <p className="text-xs text-muted">{Math.round(video.durationSeconds)} s · {(video.sizeBytes / 1048576).toFixed(1)} Mo · {new Date(video.createdAt).toLocaleDateString("fr-FR")}</p></div>
+      <p className="text-xs text-muted">{Math.round(video.durationSeconds)} s · {(video.sizeBytes / 1048576).toFixed(1)} Mo · {new Date(video.createdAt).toLocaleDateString("fr-FR")}{musicTitle(video.script.music)}</p></div>
     {video.url && <a href={video.url} download={`${video.title}.mp4`} className="inline-block rounded-lg border border-border px-3 py-1.5 text-sm">Télécharger</a>}
     {NETWORKS.map((network) => <DraftForm key={network.platform} video={video} network={network} />)}
     {video.lastPublicationId && <p className="text-xs"><Link href={`/publications/${video.lastPublicationId}`} className="text-accent underline">Voir la dernière publication créée</Link></p>}

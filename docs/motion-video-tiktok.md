@@ -7,7 +7,7 @@ Le seul pont entre les deux est volontaire : le bouton « Créer un brouillon Ti
 
 ## Studio vidéo
 - Formulaire : client, titre, accroche, une légende par ligne (une par photo suivante, facultatives), phrase de fin, signature, rythme (Dynamique, Standard, Posé), 1 à 8 photos prises dans la photothèque WhatsApp du client et/ou envoyées depuis l'ordinateur (JPEG, PNG ou WebP, 8 Mo au plus chacune).
-- Rendu : vidéo verticale 720×1280, 30 i/s, 30 s au plus : accroche animée, une scène par photo (zoom ou travelling doux, transitions), légendes en incrustation, écran final à la signature, barre de progression, piste audio muette.
+- Rendu : vidéo verticale 720×1280, 30 i/s, 30 s au plus : accroche animée, une scène par photo (zoom ou travelling doux, transitions), légendes en incrustation, écran final à la signature, barre de progression, musique de fond (ou piste muette).
 - **Rien n'est inventé** : seuls les textes saisis (sans emoji, hashtag ni lien à l'image) et les photos choisies apparaissent.
 - Route `POST /api/studio/videos` (administrateur, même origine, 300 s au plus). La vidéo est rangée dans le stockage privé `studio-videos` (`<client>/<vidéo>.mp4`) et la table `studio_videos` (serveur uniquement, RLS active). Création et suppression sont journalisées.
 - « Créer un brouillon TikTok » : légende proposée à partir des textes de la vidéo, modifiable. Il faut un projet du client ouvert à TikTok. Le brouillon apparaît dans Publications, sans date, avec la vidéo copiée dans `publication-videos` ; il se programme et se valide comme les autres.
@@ -30,5 +30,5 @@ Le seul pont entre les deux est volontaire : le bouton « Créer un brouillon Ti
 2. Aucune variable d'environnement nouvelle.
 
 ## Limites
-- Pas de musique : l'API TikTok ne permet pas d'ajouter un son de sa bibliothèque à une vidéo.
+- Musique : choix « Automatique » (morceau de l'ambiance du rythme), « Sans musique » ou un morceau précis, parmi 8 compositions originales embarquées (`lib/motion/video/music/`, libres d'usage, voir LICENCE.txt), bouclées et coupées à la durée de la vidéo avec fondus. L'API TikTok ne permet pas d'ajouter un son de sa bibliothèque : la musique est intégrée au MP4.
 - Le rendu prend environ 10 à 30 s selon le nombre de photos ; une seule vidéo à la fois par requête.

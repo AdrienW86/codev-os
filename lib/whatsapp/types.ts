@@ -14,6 +14,8 @@ export type Asset = {
   classification_failures: number; classification_failed_at: string | null;
   // Outils de la photothèque (migration 20261103000000) : légende éditée par un administrateur.
   caption_edited_by?: string | null; caption_edited_at?: string | null;
+  // Disponibilité Drive (migration 20261125000000) : dernière vérification, retrait pour original absent.
+  drive_checked_at?: string | null; drive_missing_at?: string | null;
 };
 export type AssetOrigin = "whatsapp" | "drive" | "whatsapp_export";
 export type AssetInsert = Pick<Asset, "client_id" | "drive_folder_id" | "sha256" | "md5" | "drive_file_id" | "mime_type" | "size"> & Partial<Pick<Asset, "media_kind" | "caption" | "sender" | "received_at" | "width" | "height" | "origin" | "captured_at" | "imported_at">>;

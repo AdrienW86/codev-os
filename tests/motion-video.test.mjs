@@ -257,7 +257,7 @@ test("music: looped, trimmed to the video, faded in and out; silent track withou
   const files = board.scenes.map((s) => ({ background: "/t/bg.png", photo: s.photo === null ? null : "/t/p.jpg", text: null, mask: s.photo === null ? null : "/t/m.png" }));
   const withMusic = graph.motionFfmpegArgs(board, files, "/t/out.mp4", "/m/horizon.mp3");
   const i = withMusic.indexOf("/m/horizon.mp3");
-  assert.deepEqual(withMusic.slice(i - 3, i + 1), ["-stream_loop", "-1", "-i", "/m/horizon.mp3"]);
+  assert.equal(withMusic.slice(i - 3, i + 1).join(" "), "-stream_loop -1 -i /m/horizon.mp3");
   const fc = withMusic[withMusic.indexOf("-filter_complex") + 1];
   assert.match(fc, new RegExp(`atrim=0:${board.total}`)); assert.match(fc, /afade=t=in:st=0:d=0\.4/); assert.match(fc, /afade=t=out:st=[\d.]+:d=1\.6/);
   assert.ok(withMusic.includes("[aout]")); assert.ok(!withMusic.includes("anullsrc=channel_layout=stereo:sample_rate=44100"));

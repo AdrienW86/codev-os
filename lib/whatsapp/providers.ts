@@ -133,6 +133,14 @@ export async function driveFileMatches(token: string, id: string, folder: string
   if (data.id !== id || data.trashed || !data.parents?.includes(folder) || data.md5Checksum !== md5) throw new ImportFailure("drive_file_conflict");
   return true;
 }
+/** Présence d'un fichier créé par l'application dans son dossier : « missing » si introuvable, à la corbeille ou déplacé. */
+export async function driveFilePresence(token: string, id: string, folder: string): Promise<"present" | "missing"> {
+  driveFileId.parse(id);
+  const response = await request(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,parents,trashed&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 404) return "missing";
+  const data = parseGoogle(z.object({ id: z.string(), parents: z.array(z.string()).optional(), trashed: z.boolean().optional() }), await googleJson(response, "drive"), "drive");
+  return data.trashed || !data.parents?.includes(folder) ? "missing" : "present";
+}
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/3gpp": "3gp" };
 export async function uploadDrive(token: string, id: string, folder: string, image: UploadBytes, name?: string) {
   driveFileId.parse(id); folderSchema.parse(folder);

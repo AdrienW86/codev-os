@@ -67,7 +67,7 @@ test("Lien public signé : seulement le stockage du projet, signature et échéa
   assert.match(url, /^https:\/\/os\.code-v\.fr\/api\/publications\/media\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}\.jpg$/);
   const token = url.split("/media/")[1];
   assert.equal(link.resolveMediaLink(token, env), signed);
-  assert.equal(link.resolveMediaLink(token.replace(/\.(.)/, ".X"), env), null, "signature altérée");
+  assert.equal(link.resolveMediaLink(token.replace(/\.(.)/, (_, c) => (c === "X" ? ".Y" : ".X")), env), null, "signature altérée (toujours différente)");
   assert.equal(link.resolveMediaLink(token, env, Date.now() + 3600_000), null, "échéance dépassée");
   assert.equal(link.publicMediaLink("https://evil.example/a.jpg", "https://os.code-v.fr", 600, env), null, "autre hôte refusé");
   assert.equal(link.publicMediaLink(signed, "https://os.code-v.fr", 600, {}), null, "sans clé : aucun lien");

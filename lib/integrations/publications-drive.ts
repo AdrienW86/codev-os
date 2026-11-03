@@ -10,3 +10,24 @@ export function driveReadProvider():MediaProvider{
  return {async list(folderId,clientId,projectId){if(!validId(folderId))throw Error('Invalid folder');const result=[];let page:string|undefined;const seen=new Set<string>();let pages=0;do{if(++pages>5)break;const url=new URL(base);url.searchParams.set('q',`'${folderId}' in parents and trashed = false and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/webp')`);url.searchParams.set('fields','nextPageToken,files(id,name,modifiedTime,mimeType,size,imageMediaMetadata(width,height))');url.searchParams.set('pageSize','50');url.searchParams.set('orderBy','modifiedTime desc');if(page)url.searchParams.set('pageToken',page);const response=await get(url);const body=await response.json() as {nextPageToken?:string;files:{id:string;name:string;modifiedTime:string;mimeType:string;size:string;imageMediaMetadata?:{width:number;height:number}}[]};for(const f of body.files??[])if(validId(f.id)&&Number(f.size)>0&&Number(f.size)<=8388608)result.push({id:randomUUID(),client_id:clientId,project_id:projectId,drive_file_id:f.id,name:f.name.slice(0,300),modified_at:f.modifiedTime,mime_type:f.mimeType,width:f.imageMediaMetadata?.width??null,height:f.imageMediaMetadata?.height??null,size:Number(f.size),used:false,analysis:null});page=body.nextPageToken;if(page){if(typeof page!=='string'||seen.has(page))throw Error('Drive pagination invalid');seen.add(page);}}while(page&&result.length<100);return result.slice(0,100);},
  async download(fileId,folderId){if(!validId(fileId)||!validId(folderId))throw Error('Invalid file');const metadata=new URL(`${base}/${fileId}`);metadata.searchParams.set('fields','parents,mimeType,size,trashed');const m=await (await get(metadata)).json() as {parents:string[];mimeType:string;size:string;trashed:boolean};if(m.trashed||!m.parents?.includes(folderId)||!['image/jpeg','image/png','image/webp'].includes(m.mimeType)||Number(m.size)>8388608)throw Error('Media scope invalid');const url=new URL(`${base}/${fileId}`);url.searchParams.set('alt','media');const response=await get(url);const reader=response.body?.getReader();if(!reader)throw Error('No media body');const chunks:Uint8Array[]=[];let size=0;for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>8388608){await reader.cancel();throw Error('Image too large');}chunks.push(value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}};
 }
+
+export type DrivePresence='present'|'missing';
+/** Décision pure à partir des métadonnées Drive : à la corbeille ou sorti du dossier = absent de la photothèque. */
+export function presenceFromMetadata(meta:{trashed?:boolean;parents?:string[]}|null,folderId:string):DrivePresence{
+ return !meta||meta.trashed===true||!Array.isArray(meta.parents)||!meta.parents.includes(folderId)?'missing':'present';
+}
+/**
+ * Présence d'un fichier dans son dossier (accès Drive Publications) : « missing » si introuvable (404), à la corbeille
+ * ou déplacé hors du dossier ; toute autre erreur est levée (rien n'est conclu sur une panne).
+ */
+export function drivePresenceReader():(fileId:string,folderId:string)=>Promise<DrivePresence>{
+ const accessToken=driveAccessTokenSource(driveCredentials());
+ return async(fileId,folderId)=>{
+  if(!validId(fileId)||!validId(folderId))throw Error('Invalid file');
+  const url=new URL(`${base}/${fileId}`);url.searchParams.set('fields','parents,trashed');url.searchParams.set('supportsAllDrives','true');
+  const r=await fetch(url,{headers:{Authorization:`Bearer ${await accessToken()}`},signal:AbortSignal.timeout(15000),cache:'no-store',redirect:'error'});
+  if(r.status===404)return 'missing';
+  if(!r.ok)throw Error('Drive read failed');
+  return presenceFromMetadata(await r.json() as {trashed?:boolean;parents?:string[]},folderId);
+ };
+}

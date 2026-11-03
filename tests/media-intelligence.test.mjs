@@ -410,3 +410,44 @@ test("Scénario A — classification: a roofer receives five photos, the invoice
   assert.equal(usage.length, 5, "coût journalisé pour les cinq photos");
   assert.ok(usage.reduce((n, u) => n + u.estimated_cost_eur, 0) <= budget);
 });
+
+test("Drive availability: trashed, missing or moved originals leave the library; a Drive outage never removes anything", async () => {
+  const rows = [
+    { id: asset(71), client_id: CLIENT, drive_file_id: "file_trashed_01", drive_folder_id: "folder_client_a", origin: "drive", purged_at: null, imported_at: "2026-10-01T00:00:00Z", drive_checked_at: null, created_at: "2026-10-01T00:00:00Z" },
+    { id: asset(72), client_id: CLIENT, drive_file_id: "file_present_02", drive_folder_id: "folder_client_a", origin: "drive", purged_at: null, imported_at: "2026-10-01T00:00:00Z", drive_checked_at: null, created_at: "2026-10-02T00:00:00Z" },
+    { id: asset(73), client_id: CLIENT, drive_file_id: "file_outage_003", drive_folder_id: "folder_client_a", origin: "whatsapp", purged_at: null, imported_at: "2026-10-01T00:00:00Z", drive_checked_at: null, created_at: "2026-10-03T00:00:00Z" },
+    { id: asset(74), client_id: CLIENT, drive_file_id: "file_purged_004", drive_folder_id: "folder_client_a", origin: "drive", purged_at: "2026-10-05T00:00:00Z", imported_at: "2026-10-01T00:00:00Z", drive_checked_at: null, created_at: "2026-10-04T00:00:00Z" },
+  ];
+  const fake = createFakeSupabase({ whatsapp_assets: rows }, { rpc: { whatsapp_asset_mark_drive_missing: ({ p_asset_id }, tables) => { const a = tables.whatsapp_assets.find(r => r.id === p_asset_id); a.purged_at = a.drive_missing_at = "now"; return true; } } });
+  const service = load("lib/media-intelligence/service.ts", {
+    "node:crypto": require("node:crypto"), sharp: () => ({}), "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
+    "@/lib/integrations/publications-openai": {}, "@/lib/integrations/publications-drive": {}, "@/lib/publications/media/transform": {},
+    "@/lib/whatsapp/library": {}, "@/lib/whatsapp/providers": {}, "@/lib/whatsapp/service": { storeThumbnail: async () => {}, THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
+  });
+  const asked = [];
+  const readers = {
+    drive: async id => { asked.push(["drive", id]); return id === "file_trashed_01" ? "missing" : "present"; },
+    app: async id => { asked.push(["app", id]); throw Error("Drive read failed"); },
+  };
+  const result = await service.checkDriveAvailability(25, { readers });
+  assert.deepEqual(json(result), { checked: 2, missing: 1, failed: 1 });
+  assert.deepEqual(asked, [["drive", "file_trashed_01"], ["drive", "file_present_02"], ["app", "file_outage_003"]], "photos déjà purgées jamais revérifiées ; lecteur selon l'origine");
+  const byId = Object.fromEntries(fake.tables.whatsapp_assets.map(r => [r.id, r]));
+  assert.equal(byId[asset(71)].drive_missing_at, "now");
+  assert.equal(byId[asset(72)].purged_at, null); assert.ok(byId[asset(72)].drive_checked_at, "photo présente : vérifiée, reste dans la photothèque");
+  assert.equal(byId[asset(73)].purged_at, null, "panne Drive : rien n'est retiré"); assert.ok(byId[asset(73)].drive_checked_at, "revérifiée plus tard, sans bloquer la file");
+});
+
+test("Drive availability: pure presence decision, migration is reversible and never touches human-rejected purges", () => {
+  const drive = load("lib/integrations/publications-drive.ts", { "node:crypto": require("node:crypto"), "./google-drive-oauth": {} });
+  assert.equal(drive.presenceFromMetadata({ trashed: false, parents: ["folder_a"] }, "folder_a"), "present");
+  assert.equal(drive.presenceFromMetadata({ trashed: true, parents: ["folder_a"] }, "folder_a"), "missing");
+  assert.equal(drive.presenceFromMetadata({ trashed: false, parents: ["folder_b"] }, "folder_a"), "missing");
+  assert.equal(drive.presenceFromMetadata(null, "folder_a"), "missing");
+  const sql = src("supabase/migrations/20261125000000_media_drive_availability.sql");
+  assert.match(sql, /set purged_at=null,drive_missing_at=null,drive_checked_at=now\(\)\s+where id=p_asset_id and client_id=p_client_id and drive_missing_at is not null/);
+  assert.match(sql, /grant execute on function public\.whatsapp_asset_mark_drive_missing\(uuid,uuid\), public\.whatsapp_asset_restore_drive\(uuid,uuid\) to service_role/);
+  const service = src("lib/media-intelligence/service.ts");
+  assert.match(service, /\.eq\('sha256',sha256\)\.is\('drive_missing_at',null\)/, "une photo retirée pour absence Drive ne bloque pas son retour comme doublon");
+  assert.match(service, /deps\.checkDrive\?\?checkDriveAvailability/);
+});

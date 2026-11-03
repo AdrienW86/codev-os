@@ -3,14 +3,14 @@ import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {structuredResponse} from '@/lib/integrations/publications-openai';
-import {driveReadProvider} from '@/lib/integrations/publications-drive';
+import {drivePresenceReader,driveReadProvider,type DrivePresence} from '@/lib/integrations/publications-drive';
 import {visionPreview} from '@/lib/publications/media/transform';
 import type {Usage} from '@/lib/publications/ai/provider';
 import type {MediaProvider} from '@/lib/publications/media/types';
 import type {Json} from '@/lib/supabase/database.types';
 import type {AssetOrigin} from '@/lib/whatsapp/types';
 import {assetOriginal} from '@/lib/whatsapp/originals';
-import {importDriveToken,trashDrive} from '@/lib/whatsapp/providers';
+import {driveFilePresence,importDriveToken,trashDrive} from '@/lib/whatsapp/providers';
 import {storeThumbnail,THUMBNAIL_BUCKET} from '@/lib/whatsapp/service';
 import {driveFolderBackfill,type DriveBackfill,type DriveSyncFile} from './drive-listing';
 import {classificationContext,classificationInstructions,classificationSchema,mediaProfileFromRow,mediaProfilePayload,normalizeAssessment,type MediaProfile} from './model';
@@ -135,9 +135,12 @@ export async function syncDriveLibrary(clientId:string,limit=15,deps:{provider?:
   }catch(e){result.failed++;log('drive_sync_list',codeOf(e));continue;}
   const files=[...new Map([...recent,...(older?.files??[])].map(f=>[f.drive_file_id,f])).values()];
   const ids=files.map(f=>f.drive_file_id);
-  const [known,seen]=ids.length?await Promise.all([db().from('whatsapp_assets').select('drive_file_id').eq('client_id',clientId).in('drive_file_id',ids),
+  const [known,seen]=ids.length?await Promise.all([db().from('whatsapp_assets').select('id,drive_file_id,drive_folder_id,drive_missing_at').eq('client_id',clientId).in('drive_file_id',ids),
    db().from('client_media_drive_files').select('drive_file_id,outcome,failures,updated_at').eq('client_id',clientId).in('drive_file_id',ids)]):[{data:[],error:null},{data:[],error:null}];
   if(known.error)throw Error('library_unavailable');
+  // Photo retirée car absente de Drive et de nouveau présente dans ce dossier (restaurée) : elle revient.
+  for(const row of (known.data??[]) as {id:string;drive_file_id:string;drive_folder_id:string;drive_missing_at?:string|null}[])
+   if(row.drive_missing_at&&row.drive_folder_id===folder){const back=await db().rpc('whatsapp_asset_restore_drive' as never,{p_asset_id:row.id,p_client_id:clientId} as never);if(back.error)log('drive_restore','not_recorded');}
   const retryAfter=Date.now()-SEEN_RETRY_MS;
   const memo=new Map((seen.error?[]:(seen.data??[]) as {drive_file_id:string;outcome:string;failures:number;updated_at:string}[]).map(r=>[r.drive_file_id,r]));
   const skip=new Set([...(known.data??[]).map(r=>r.drive_file_id),...[...memo.values()].filter(r=>r.outcome==='duplicate'||r.failures>=MAX_SEEN_FAILURES||Date.parse(r.updated_at)>retryAfter).map(r=>r.drive_file_id)]);
@@ -150,7 +153,7 @@ export async function syncDriveLibrary(clientId:string,limit=15,deps:{provider?:
     const bytes=await provider.download(file.drive_file_id,folder);
     const sha256=createHash('sha256').update(bytes).digest('hex'),md5=createHash('md5').update(bytes).digest('hex');
     // Même photo déjà dans la photothèque du client (WhatsApp, export, autre dossier, purgée) : jamais une seconde entrée.
-    const twin=await db().from('whatsapp_assets').select('id').eq('client_id',clientId).eq('sha256',sha256).order('created_at').limit(1);
+    const twin=await db().from('whatsapp_assets').select('id').eq('client_id',clientId).eq('sha256',sha256).is('drive_missing_at',null).order('created_at').limit(1);
     if(twin.error)throw Error('Asset not recorded');
     if(twin.data?.length){await remember(clientId,folder,file.drive_file_id,{outcome:'duplicate',asset_id:twin.data[0].id});result.duplicates++;result.skipped++;continue;}
     const meta=await sharp(Buffer.from(bytes),{limitInputPixels:40000000,animated:false}).metadata();
@@ -242,9 +245,11 @@ export async function purgeRejectedMedia(limit=10):Promise<{purged:number;failed
 // Planificateur : synchronisation Drive de tous les clients autorisés (indépendante de l'analyse IA), puis, pour les
 // clients qui ont activé le classement, à tour de rôle (le moins récemment traité d'abord), classement borné ; enfin
 // purge éventuelle. Jamais de publication. Sans accès Drive configuré, seule la synchro est sautée.
-export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{drive?:()=>MediaProvider;classify?:typeof classifyClientMedia;sync?:typeof syncDriveLibrary}={}){
+export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{drive?:()=>MediaProvider;classify?:typeof classifyClientMedia;sync?:typeof syncDriveLibrary;checkDrive?:()=>Promise<unknown>}={}){
  let synced=0;
  try{synced=(await runDriveSyncTick(maxClients,5,{drive:deps.drive,sync:deps.sync})).added;}catch(e){log('tick_drive',codeOf(e));}
+ // Originaux mis à la corbeille ou retirés du dossier Drive : la photo quitte la photothèque (réversible).
+ try{await (deps.checkDrive??checkDriveAvailability)();}catch(e){log('drive_check',codeOf(e));}
  const {data,error}=await db().from('client_media_profiles').select('client_id').eq('ai_classification_enabled',true)
   .order('last_classified_at',{ascending:true,nullsFirst:true}).order('updated_at').limit(maxClients);
  if(error)throw Error('profile_unavailable');
@@ -261,4 +266,36 @@ export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{dr
  }
  let purge;try{purge=await purgeRejectedMedia();}catch(e){log('tick_purge',codeOf(e));purge={unavailable:true};}
  return {clients:classified.length,driveAdded:synced,analyzed:classified.reduce((n,r)=>n+r.analyzed,0),quarantined:classified.reduce((n,r)=>n+r.quarantined,0),purge};
+}
+
+type PresenceReaders={drive:(fileId:string,folderId:string)=>Promise<DrivePresence>;app:(fileId:string,folderId:string)=>Promise<DrivePresence>};
+/**
+ * Vérification planifiée, par lots (les photos les moins récemment vérifiées d'abord) : une photo dont l'original est à
+ * la corbeille, introuvable ou sorti de son dossier Drive quitte la photothèque (réversible). Une panne Drive ne retire
+ * jamais rien : la photo est simplement revérifiée plus tard.
+ */
+export async function checkDriveAvailability(limit=25,deps:{readers?:PresenceReaders}={}):Promise<{checked:number;missing:number;failed:number}>{
+ const {data,error}=await db().from('whatsapp_assets').select('id,client_id,drive_file_id,drive_folder_id,origin')
+  .is('purged_at',null).not('imported_at','is',null).order('drive_checked_at',{ascending:true,nullsFirst:true}).order('created_at').limit(Math.min(Math.max(limit,1),100));
+ if(error)throw Error('library_unavailable');
+ const rows=(data??[]) as {id:string;client_id:string;drive_file_id:string;drive_folder_id:string;origin:AssetOrigin}[];
+ const result={checked:0,missing:0,failed:0};if(!rows.length)return result;
+ let readers=deps.readers??null;
+ if(!readers){let token:string|null=null;const drive=drivePresenceReader();
+  readers={drive,app:async(fileId,folderId)=>driveFilePresence(token??=await importDriveToken(),fileId,folderId)};}
+ for(const row of rows){
+  try{
+   const presence=await (row.origin==='drive'?readers.drive:readers.app)(row.drive_file_id,row.drive_folder_id);
+   result.checked++;
+   if(presence==='missing'){
+    const marked=await db().rpc('whatsapp_asset_mark_drive_missing' as never,{p_asset_id:row.id,p_client_id:row.client_id} as never);
+    if(marked.error)throw Error('Missing not recorded');
+    if(marked.data===true)result.missing++;
+    continue;
+   }
+  }catch(e){result.failed++;log('drive_check',codeOf(e));}
+  const touched=await db().from('whatsapp_assets').update({drive_checked_at:new Date().toISOString()} as never).eq('id',row.id).eq('client_id',row.client_id);
+  if(touched.error)log('drive_check','not_recorded');
+ }
+ return result;
 }

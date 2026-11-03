@@ -57,8 +57,14 @@ export async function createStudioVideo(form:FormData,deps:StudioDeps={}):Promis
  // Photos : photothèque du client (originaux Drive, client vérifié) puis fichiers ajoutés (types vérifiés au contenu).
  const photos:Uint8Array[]=[];
  for(const id of draft.libraryAssetIds){
-  const original=await (deps.readLibrary??readOriginal)(draft.clientId,id).catch(()=>null);
-  if(!original||!/^image\//.test(original.mime))return {ok:false,message:'Une photo de la photothèque est illisible : retirez-la ou réessayez.'};
+  // Cause précise (codes internes seulement, jamais de réponse Drive) : introuvable, type, lecture Drive, original modifié.
+  let reason:string|null=null;
+  const original=await (deps.readLibrary??readOriginal)(draft.clientId,id).catch((error:unknown)=>{reason=libraryReadReason(error);return null;});
+  if(!original||!/^image\//.test(original.mime)){
+   const cause=reason??(original?'type non image':'photo introuvable pour ce client');
+   console.error('[studio] library read failed',{cause});
+   return {ok:false,message:`Une photo de la photothèque est illisible (${cause}) : retirez-la ou réessayez.`};
+  }
   photos.push(original.bytes);
  }
  for(const file of files){
@@ -149,3 +155,10 @@ export async function createDraftFromVideo(platform:unknown,videoId:unknown,capt
 }
 /** Compatibilité : brouillon TikTok depuis une vidéo du Studio. */
 export async function createTikTokDraftFromVideo(videoId:unknown,caption:unknown,deps:StudioDeps={}){return createDraftFromVideo('tiktok',videoId,caption,deps);}
+
+const LIBRARY_READ_CAUSES:[RegExp,string][]=[[/Drive file changed/,'original modifié dans Drive'],[/Media scope invalid|Invalid file/,'fichier déplacé ou hors du dossier'],[/Drive read failed/,'lecture Drive refusée'],[/too large/i,'fichier trop lourd'],[/abort|timeout/i,'Drive trop lent'],[/token|credential|auth/i,'accès Drive indisponible']];
+/** Cause lisible d'un échec de lecture d'un original (motifs connus seulement, jamais le message brut). */
+export function libraryReadReason(error:unknown):string{
+ const message=error instanceof Error?`${error.name} ${error.message}`:'';
+ return LIBRARY_READ_CAUSES.find(([pattern])=>pattern.test(message))?.[1]??'erreur de lecture';
+}

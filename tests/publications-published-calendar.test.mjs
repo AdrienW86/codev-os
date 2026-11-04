@@ -36,7 +36,7 @@ test("cards: one card per editorial group and Paris day, networks ordered, Faceb
   assert.equal(cards.length, 2);
   assert.equal(cards[0].date, "2026-11-04", "23 h 30 UTC = le lendemain à Paris, plus récent d'abord");
   const g1 = cards[1];
-  assert.deepEqual(g1.networks.map((n) => n.platform), ["facebook", "instagram"]);
+  assert.deepEqual(json(g1.networks.map((n) => n.platform)), ["facebook", "instagram"]);
   assert.equal(g1.time, "09:00"); assert.equal(g1.imagePath, "a/1.jpg");
   assert.equal(g1.networks[0].url, "https://www.facebook.com/123456_7890123"); assert.equal(g1.networks[1].url, null);
   assert.equal(m.buildCards(items, "upcoming")[0].date, "2026-11-03", "à venir : du plus proche au plus lointain");

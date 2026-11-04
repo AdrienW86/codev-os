@@ -110,7 +110,7 @@ test("V2 navigation lists the daily-use entries and keeps legacy routes reachabl
   // Téléphone : barre d'onglets fixe (Accueil, Clients, Calendrier, À traiter, Menu) au-dessus de laquelle restent le
   // Directeur IA et les messages ; le contenu garde une marge basse pour ne jamais passer dessous.
   assert.match(navigation, /export function MobileTabBar/);
-  assert.deepEqual([...navigation.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", icon: "[a-z]+", prefix:/g)].map((m) => m[2]), ["Accueil", "Clients", "Calendrier", "À traiter"]);
+  assert.deepEqual([...navigation.matchAll(/\{ label: "([^"]+)", href: "([^"]+)", icon: "[a-z]+", prefix:/g)].map((m) => m[1]), ["Accueil", "Clients", "Calendrier", "À traiter"]);
   const layout = read("app/(cockpit)/layout.tsx");
   assert.match(layout, /<MobileTabBar \/>/); assert.match(layout, /pb-28 sm:px-8 sm:pt-10 lg:pb-10/);
   assert.match(read("components/assistant/persistent-voice-director.tsx"), /bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\]/);

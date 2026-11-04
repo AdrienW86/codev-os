@@ -1,6 +1,7 @@
 // Calendrier des publications (pur, testable) : vue mobile d'abord, par client et par réseau, sur un mois.
 // Trois vues : publiées (diffusions confirmées), à venir (créneaux occupés par une publication pas encore partie),
 // à traiter (échecs, blocages, résultats à vérifier). Les filtres vivent dans l'URL (aucun état caché).
+import {socialPostUrl} from '@/lib/social/post-links';
 import {platformLabels} from './editor';
 import {publicationPlatforms,type PublicationPlatform} from './types';
 
@@ -55,11 +56,7 @@ export function parisParts(iso:string):{date:string;time:string}{
  return {date:`${p('year')}-${p('month')}-${p('day')}`,time:`${p('hour')}:${p('minute')}`};
 }
 /** Lien public vers le post quand l'identifiant le permet sans appel au réseau (Facebook uniquement). */
-export function remoteUrl(platform:PublicationPlatform,remoteId:string|null):string|null{
- if(!remoteId)return null;
- if(platform==='facebook'&&/^\d{5,30}(_\d{5,30})?$/.test(remoteId))return `https://www.facebook.com/${remoteId}`;
- return null;
-}
+export function remoteUrl(platform:PublicationPlatform,remoteId:string|null):string|null{return socialPostUrl(platform,remoteId);}
 const ORDER:Record<PublicationPlatform,number>={facebook:0,instagram:1,google_business_profile:2,tiktok:3,snapchat:4};
 /** Regroupe les éléments du mois en cartes (même publication éditoriale, même jour), du plus récent au plus ancien
  *  pour les publiées et les problèmes, du plus proche au plus lointain pour l'à-venir. */

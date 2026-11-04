@@ -124,10 +124,10 @@ export function MobileNavigation() {
 
 // Barre d'onglets du téléphone : les 4 destinations du quotidien toujours à portée de pouce, plus le menu complet.
 const tabs: { href: string; label: string; icon: IconName; prefix: string }[] = [
-  { href: "/dashboard", label: "Accueil", icon: "home", prefix: "/dashboard" },
-  { href: "/clients", label: "Clients", icon: "clients", prefix: "/clients" },
-  { href: "/publications/published", label: "Calendrier", icon: "calendar", prefix: "/publications/published" },
-  { href: "/publications/supervision", label: "À traiter", icon: "check", prefix: "/publications/supervision" },
+  { label: "Accueil", href: "/dashboard", icon: "home", prefix: "/dashboard" },
+  { label: "Clients", href: "/clients", icon: "clients", prefix: "/clients" },
+  { label: "Calendrier", href: "/publications/published", icon: "calendar", prefix: "/publications/published" },
+  { label: "À traiter", href: "/publications/supervision", icon: "check", prefix: "/publications/supervision" },
 ];
 export function MobileTabBar() {
   const pathname = usePathname();

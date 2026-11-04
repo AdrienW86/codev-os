@@ -44,6 +44,17 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
           {/* Raccourci sous Publications : supervision (validations, erreurs, comptes, photos, agent), pensée pour le téléphone. */}
           {href === "/publications" && (
             <Link
+              href="/publications/published"
+              onClick={onNavigate}
+              aria-current={within(pathname, "/publications/published") ? "page" : undefined}
+              data-published-shortcut="sidebar"
+              className={`ml-9 block rounded-lg px-3 py-1.5 text-xs transition-colors ${within(pathname, "/publications/published") ? "font-medium text-foreground" : "text-muted hover:bg-surface-raised hover:text-foreground"}`}
+            >
+              Calendrier
+            </Link>
+          )}
+          {href === "/publications" && (
+            <Link
               href="/publications/supervision"
               onClick={onNavigate}
               aria-current={within(pathname, "/publications/supervision") ? "page" : undefined}

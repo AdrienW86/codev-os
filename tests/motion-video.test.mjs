@@ -229,7 +229,10 @@ test("câblage : Studio séparé des publications, signature par stockage, binai
   assert.ok(existsSync(new URL("../lib/motion/video/fonts/Montserrat_800ExtraBold.ttf", import.meta.url)) && existsSync(new URL("../lib/motion/video/fonts/OFL.txt", import.meta.url)));
   assert.match(src("app/api/studio/videos/route.ts"), /origin !== new URL\(request\.url\)\.origin[\s\S]*requireAdmin\(\)[\s\S]*createStudioVideo/, "même origine et admin avant tout rendu");
   assert.match(src("components/layout/navigation.tsx"), /href: "\/studio", label: "Studio vidéo"/);
-  assert.doesNotMatch(src("app/api/internal/scheduler/tick/route.ts"), /motion|studio/i, "aucune génération automatique dans le planificateur");
+  // Seule génération automatique : l'Agent Vidéo (clients qui l'activent), jamais une publication depuis le Studio.
+  const tick = src("app/api/internal/scheduler/tick/route.ts");
+  assert.doesNotMatch(tick, /createStudioVideo|createVideoDraft|lib\/studio/, "le planificateur ne passe jamais par le Studio");
+  assert.match(tick, /import \{ runVideoAgentTick \} from "@\/lib\/video-agent\/service";/);
 });
 
 test("Studio: the photo picker offers exactly what the Publications agent may publish (same rule, never purged)", () => {

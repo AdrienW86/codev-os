@@ -7,7 +7,7 @@ import { load, src, json } from "./helpers/ts-load.mjs";
 import { createFakeSupabase } from "./helpers/fake-supabase.mjs";
 
 const SECRET = "cron-secret-0123456789abcdef-XYZ";
-const STEPS = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "video_agent"];
+const STEPS = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "search_console", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "blog_agent", "video_agent"];
 const minutesAgo = m => new Date(Date.now() - m * 60_000).toISOString();
 
 function routeWith(fake, { env = { CRON_SECRET: SECRET }, slow } = {}) {
@@ -24,6 +24,7 @@ function routeWith(fake, { env = { CRON_SECRET: SECRET }, slow } = {}) {
     "@/lib/whatsapp/service": { ingestionEnabled: () => false, processMediaBatch: mark("whatsapp", {}), purgeExpiredPersonalData: async () => ({}) },
     "@/lib/visual-agent/service": { runVisualAgentTick: mark("visual_agent", { clients: 0, generated: 0, failed: 0 }) },
     "@/lib/video-agent/service": { runVideoAgentTick: mark("video_agent", { clients: 0, generated: 0, failed: 0 }) },
+    "@/lib/blog-agent/service": { runBlogAgentTick: mark("blog_agent", { published: 0, generated: 0, failed: 0 }) },
     "@/lib/media-intelligence/service": { runMediaIntelligenceTick: mark("media_intelligence", { clients: 0 }) },
     // Comportement réel en production : arrêt d'urgence actif et drapeau absent → étapes « disabled ».
     "@/lib/publications/automation/scheduled": {
@@ -59,7 +60,7 @@ test("tick: valid trigger runs every step once and writes a finished heartbeat; 
   assert.ok(row.finished_at); assert.equal(row.ok, true); assert.equal(row.last_success_at, row.finished_at);
   assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), {
     whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "disabled", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "disabled",
-    search_console: "disabled", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "disabled", video_agent: "ok" });
+    search_console: "disabled", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "disabled", blog_agent: "ok", video_agent: "ok" });
   assert.doesNotMatch(JSON.stringify([res, fake.tables, logs]), new RegExp(SECRET), "the secret never appears in the response, the heartbeat or the logs");
   // Le passage suivant (une minute plus tard) reprend la ligne terminée.
   const again = await route.GET(request(`Bearer ${SECRET}`));

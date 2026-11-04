@@ -39,7 +39,7 @@ async function readAgent(clientId:string){
 }
 type AssetRow=Pick<Asset,'id'|'client_id'|'origin'|'drive_file_id'|'drive_folder_id'|'md5'|'media_kind'|'library_status'|'created_at'>;
 /** Photos publiables du client (même règle que l'agent Publications), avec le texte de leur analyse pour le choix. */
-async function publishablePhotos(clientId:string):Promise<{candidates:PhotoCandidate[];rows:Map<string,AssetRow>}>{
+export async function publishablePhotos(clientId:string):Promise<{candidates:PhotoCandidate[];rows:Map<string,AssetRow>}>{
  const assets=await db().from('whatsapp_assets').select('id,client_id,origin,drive_file_id,drive_folder_id,md5,media_kind,library_status,created_at')
   .eq('client_id',clientId).eq('media_kind','image').in('library_status',['received','to_review','validated','used']).is('purged_at',null).not('imported_at','is',null)
   .order('created_at',{ascending:false}).limit(200);

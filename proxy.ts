@@ -14,6 +14,8 @@ export default clerkMiddleware(async (auth, request) => {
   if (path === "/api/internal/whatsapp/process") return;
   // Images de diffusion pour TikTok (jeton signé et daté, vérifié par la route ; aucune donnée sans jeton valide).
   if (path.startsWith("/api/publications/media/") && ["GET", "HEAD"].includes(request.method)) return;
+  // API publique du blog des clients : lecture seule des articles publiés (aucune donnée privée), lue par leurs sites.
+  if (path.startsWith("/api/public/blog/") && ["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
   // Autre exemption : le déclencheur planifié s'authentifie lui-même par CRON_SECRET (voir la route).
   if (path === "/api/internal/scheduler/tick") return;
 

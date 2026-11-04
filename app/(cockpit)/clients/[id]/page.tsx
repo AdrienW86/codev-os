@@ -21,6 +21,8 @@ import { readSearchConsoleConnection } from "@/lib/integrations/search-console/c
 import { safeRead } from "@/lib/core/safe-read";
 import { VisualAgentPanel } from "@/components/clients/visual-agent-panel";
 import { getVisualAgent } from "@/lib/visual-agent/service";
+import { getVideoAgent } from "@/lib/video-agent/service";
+import { VideoAgentPanel } from "@/components/clients/video-agent-panel";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
 import { Action } from "@/components/ui/button";
@@ -255,6 +257,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
         <p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${data.project.id}/calendar`}>Calendrier des publications →</Link> <Link className="ml-4 text-accent" href={`/publications/review`}>Publications à valider →</Link></p>
       </Panel>
       <VisualAgentSection clientId={clientId} />
+      <VideoAgentSection clientId={clientId} />
     </div>
   );
 }
@@ -267,6 +270,18 @@ async function VisualAgentSection({ clientId }: { clientId: string }) {
       <h2 className="font-semibold">Agent Visuels</h2>
       {view.data ? <div className="mt-3"><VisualAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} folderReady={view.data.folderReady} logoPreview={view.data.logoPreview} /></div>
         : <p role="alert" className="mt-3 text-sm">Agent Visuels indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </Panel>
+  );
+}
+
+// Agent Vidéo : vidéos motion design générées à la fréquence choisie, rangées dans le Studio vidéo du client.
+async function VideoAgentSection({ clientId }: { clientId: string }) {
+  const view = await safeRead("video-agent", () => getVideoAgent(clientId), null);
+  return (
+    <Panel className="p-6">
+      <h2 className="font-semibold">Agent Vidéo</h2>
+      {view.data ? <div className="mt-3"><VideoAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} photoCount={view.data.photoCount} /></div>
+        : <p role="alert" className="mt-3 text-sm">Agent Vidéo indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
     </Panel>
   );
 }

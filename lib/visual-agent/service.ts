@@ -22,7 +22,10 @@ const BUCKET='brand-assets',UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const log=(step:string,code?:string)=>console.error('[visual-agent]',{step,...(code?{code}:{})});
 export type VisualAgentView={settings:VisualAgentSettings;items:(VisualItem&{subline:string|null;drive_file_id:string|null;trigger:string})[];services:string[];folderReady:boolean;logoPreview:string|null};
 
-type Context={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null};
+export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null};
+type Context=ClientBrandContext;
+/** Faits vérifiés du client (nom, activité, zone, prestations, consignes) : partagés avec l'Agent Vidéo. */
+export async function clientBrandContext(clientId:string):Promise<ClientBrandContext>{return context(clientId);}
 async function context(clientId:string):Promise<Context>{
  const [client,profile,agents,settings]=await Promise.all([
   db().from('clients').select('name,activity,geographic_area').eq('id',clientId).maybeSingle(),

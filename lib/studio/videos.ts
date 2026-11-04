@@ -12,6 +12,7 @@ import {projectAllowsPlatform} from '@/lib/publications/channels';
 import {currentRevision,saveDraft,saveUnscheduledDraft} from '@/lib/publications/workspace';
 import {VIDEO_BUCKET,VIDEO_MIME,imageMime} from '@/lib/publications/editor';
 import {pickTrack} from '@/lib/motion/music';
+import {videoPaletteFromBrand} from '@/lib/video-agent/model';
 import {MotionRenderError,renderMotionVideo,type MotionRenderInput,type MotionRenderResult} from '@/lib/motion/video/render';
 import type {MotionScript} from '@/lib/motion/video/storyboard';
 import {STUDIO_BUCKET,STUDIO_MAX_UPLOAD_BYTES,STUDIO_UUID,parseStudioForm,type StudioVideo} from './model';
@@ -92,6 +93,10 @@ export async function createStudioVideo(form:FormData,deps:StudioDeps={}):Promis
  const id=randomUUID();
  // Musique : morceau embarqué choisi, ou tiré selon le rythme (« auto »), ou aucun ; retenu dans le script de la vidéo.
  const track=pickTrack(draft.music,script.pace??'standard',id);
+ // Couleurs de la charte (Agent Visuels) quand elles sont réglées et lisibles en texte blanc ; sinon palette par défaut.
+ const brand=await db.from('client_visual_agents' as never).select('primary_color,secondary_color').eq('client_id',draft.clientId).maybeSingle();
+ const colors=brand.error||!brand.data?null:brand.data as unknown as {primary_color:string;secondary_color:string};
+ script.palette=videoPaletteFromBrand(colors?{primary:colors.primary_color,secondary:colors.secondary_color}:null);
  script.music=track?.id??null;
  let video:MotionRenderResult;
  try{video=await (deps.render??renderMotionVideo)({photos,script,seed:id,ffmpegPath,fontDir:deps.fontDir??MOTION_FONT_DIR,music:track?join(deps.musicDir??MOTION_MUSIC_DIR,track.file):null});}

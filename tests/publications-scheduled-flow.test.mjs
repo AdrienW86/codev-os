@@ -174,7 +174,7 @@ test("tick route wires the steps in isolated steps (own try each); notifications
   assert.equal(schema.safeNotificationHref("/publications/../settings"), "/notifications");
 });
 
-test("scheduled preparation: content refused by the guards is regenerated once in the same tick with the refusal reason", async () => {
+test("scheduled preparation: content refused by the guards is regenerated (twice at most) in the same tick with the accumulated refusal reasons", async () => {
   const refused = { ok: false, refused: true, refusalDetail: "même style d’accroche", message: "Contenu refusé", publications: [], withMedia: false };
   const { mod, prepared, deps, fake } = setup(baseTables());
   const r = await mod.runScheduledPreparation(now, deps(n => n === 1 ? refused : okRun(true)));
@@ -184,5 +184,10 @@ test("scheduled preparation: content refused by the guards is regenerated once i
   assert.deepEqual(fake.tables.publications.map(p => p.status), ["pending_review", "pending_review"]);
   const twice = setup(baseTables());
   const t = await twice.mod.runScheduledPreparation(now, twice.deps(refused));
-  assert.equal(twice.prepared.length, 2, "never more than one regeneration"); assert.equal(t.skipped.preparation_refused, 1);
+  assert.equal(twice.prepared.length, 3, "never more than two regenerations"); assert.equal(t.skipped.preparation_refused, 1);
+  // Motifs cumulés : la 3e tentative reçoit les motifs des deux refus précédents (sans doublon).
+  const reasons = ["même style d’accroche", "termes non confirmés : « rapidement »"];
+  const thrice = setup(baseTables());
+  await thrice.mod.runScheduledPreparation(now, thrice.deps(n => ({ ...refused, refusalDetail: reasons[(n - 1) % 2] })));
+  assert.equal(thrice.prepared[2][2].retryFeedback, "même style d’accroche ; termes non confirmés : « rapidement »");
 });

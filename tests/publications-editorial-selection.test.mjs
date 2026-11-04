@@ -64,11 +64,14 @@ test("validation refuses a subject, wording or opening already used by the last 
   assert.doesNotMatch(sel.factsOf(input()), /infiltrations/);
 });
 
-test("validation enforces native platform rules: no hashtag on Google, bounded hashtags and length", () => {
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(2, "Couverture : entretien de zinguerie #toiture"))), { ok: false, reason: "platform_rules" });
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(1, "Zinguerie " + Array.from({ length: 9 }, (_, i) => `#tag${i}`).join(" ")))), { ok: false, reason: "platform_rules" });
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(0, "Gouttières #un #deux #trois #quatre"))), { ok: false, reason: "platform_rules" });
-  assert.deepEqual(json(sel.validateGeneratorOutput(input(), withText(2, "Zinguerie. ".repeat(160)))), { ok: false, reason: "platform_rules" });
+test("validation enforces native platform rules: extra hashtags are trimmed (never the words), too long is refused with its reason", () => {
+  // Hashtags en trop retirés au lieu de jeter la publication : dans une phrase, seul le « # » part.
+  { const r = json(sel.validateGeneratorOutput(input(), withText(2, "Couverture : entretien de zinguerie #toiture"))); assert.notEqual(r.reason, "platform_rules"); if (r.ok) assert.equal(r.value.publications[2].text, "Couverture : entretien de zinguerie toiture"); }
+  { const r = json(sel.validateGeneratorOutput(input(), withText(1, "Zinguerie\n" + Array.from({ length: 9 }, (_, i) => `#tag${i}`).join(" ")))); assert.notEqual(r.reason, "platform_rules"); if (r.ok) assert.equal(r.value.publications[1].text, "Zinguerie\n#tag0 #tag1 #tag2 #tag3 #tag4 #tag5 #tag6 #tag7"); }
+  assert.equal(sel.trimExtraHashtags("facebook", "Gouttières\n#un #deux #trois #quatre"), "Gouttières\n#un #deux #trois");
+  assert.equal(sel.trimExtraHashtags("google_business_profile", "Votre #toiture mérite un entretien.\n\n#couvreur #lyon"), "Votre toiture mérite un entretien.");
+  assert.equal(sel.trimExtraHashtags("facebook", "Rien à retirer #un"), "Rien à retirer #un");
+  { const r = json(sel.validateGeneratorOutput(input(), withText(2, "Zinguerie. ".repeat(160)))); assert.equal(r.reason, "platform_rules"); assert.match(r.detail, /trop long : \d+ caractères, 1500 au plus/); }
   assert.equal(sel.platformRuleViolation("google_business_profile", "Prix & qualité, C# et #1 ? non"), "hashtags", "a real hashtag is counted");
   assert.equal(sel.platformRuleViolation("google_business_profile", "Toiture & zinguerie"), null);
 });

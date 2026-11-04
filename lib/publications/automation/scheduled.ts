@@ -19,7 +19,11 @@ import {PREPARATION_HORIZON_DAYS} from '../client-setup-model';
 //   abandon signalé d'une occurrence qui échoue trop souvent, reprise sans IA de l'étape média des préparations.
 export const SCHEDULER_ACTOR:Actor={kind:'system',worker:'publications-scheduler'};
 export const MAX_CLIENTS_PER_TICK=10;
+/** Régénérations après un refus des gardes (motifs cumulés). */
+export const REFUSAL_RETRIES=2;
 export const MAX_PREPARATIONS_PER_TICK=2;
+/** Plafond absolu d'appels IA par passage, régénérations comprises (un client refusé peut aller jusqu'à 3). */
+export const MAX_AI_CALLS_PER_TICK=3;
 export const MAX_DELIVERY_PREPARATIONS_PER_TICK=10;
 export const MAX_DELIVERY_CANDIDATES=50;
 // Une publication approuvée dont le créneau est passé depuis plus longtemps n'est pas envoyée en retard sans un humain
@@ -244,15 +248,19 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');continue;}
   // Toute tentative compte (un refus de contenu a pu consommer un appel IA) : au plus MAX_PREPARATIONS_PER_TICK.
   summary.preparations++;
-  // Contenu refusé par les gardes (répétition, affirmation non confirmée…) : une seule régénération immédiate avec le
-  // motif, si le passage en a encore le budget. Le premier run reste « failed » et journalisé.
-  if(!prepared.ok&&prepared.refused&&summary.preparations<MAX_PREPARATIONS_PER_TICK&&left()>=PREPARATION_BUDGET_MS){
+  // Contenu refusé par les gardes (répétition, affirmation non confirmée…) : jusqu'à REFUSAL_RETRIES régénérations
+  // immédiates, chacune avec les motifs de tous les refus précédents, si le passage en a encore le budget. Les runs
+  // refusés restent « failed » et journalisés.
+  const reasons:string[]=[];let stop=false;
+  for(let retry=0;retry<REFUSAL_RETRIES&&!prepared.ok&&prepared.refused&&summary.preparations<MAX_AI_CALLS_PER_TICK&&left()>=PREPARATION_BUDGET_MS;retry++){
    await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId??null,ok:false,refused:true});
-   try{prepared=await deps.prepare(actor,projectId,{...options,retryFeedback:prepared.refusalDetail});}
-   catch{console.error('[publications-scheduler] preparation failed');summary.preparations++;skip('preparation_failed');continue;}
+   if(prepared.refusalDetail&&!reasons.includes(prepared.refusalDetail))reasons.push(prepared.refusalDetail);
+   try{prepared=await deps.prepare(actor,projectId,{...options,retryFeedback:reasons.join(' ; ').slice(0,400)});}
+   catch{console.error('[publications-scheduler] preparation failed');summary.preparations++;skip('preparation_failed');stop=true;break;}
    summary.preparations++;
-   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');continue;}
+   if(!prepared.ok&&prepared.message===NO_OPEN_OCCURRENCE){skip('nothing_to_prepare');stop=true;break;}
   }
+  if(stop)continue;
   if(!prepared.runId){skip('preparation_refused');await audit(deps,projectId,{delegated_actor:actor,ok:false});continue;}
   // Persist the recovery record BEFORE any submission/notification. Their response can be lost after COMMIT, or
   // the process may stop between them: the next tick must find this run without generating another batch.

@@ -9,6 +9,7 @@ export const FORBIDDEN_INVENTIONS=['prix','promotion','réduction ou offre','ann
  'caractéristique d’une photo non décrite'] as const;
 export const BLOCKED_WORDS=['gratuit','offert','promotion','remise','réduction','garanti','décennale','certifié','label','RGE','Qualibat','avis','étoiles','clients satisfaits',
  'rapidement','intervention rapide','en urgence','24h','48h','7j/7','récemment','hier','nous avons réalisé','nous sommes intervenus','chez un client','X ans d’expérience','depuis + année'] as const;
+export const HOLLOW_PHRASES=['« n’hésitez pas à »','« pour plus d’informations »','« contactez-nous pour »','« faites appel à un professionnel »','« n’attendez plus »','« dans les meilleurs délais »'] as const;
 export const PLATFORM_GUIDELINES={
  facebook:'Facebook : ton conversationnel et lisible, paragraphes courts, 0 à 2 hashtags au maximum.',
  instagram:'Instagram : accroche courte et visuelle en première ligne, puis texte bref ; 3 à 6 hashtags pertinents maximum, jamais de liste spammy.',
@@ -35,6 +36,8 @@ export const AGENT_V2_INSTRUCTIONS=[
  'Une publication par occurrence fournie, avec exactement son occurrence_id ; aucune autre.',
  'media_id : un identifiant de la liste media_untrusted si une photo est pertinente selon sa description ou ses catégories, sinon null. Ne décris jamais une photo au-delà de sa description fournie.',
  'cta : null ou une courte invitation neutre au contact, sans promesse ni offre.',
+ // Formules creuses refusées par le contrôle des répétitions dès qu'elles reviennent : les nommer évite des refus en série.
+ `Formules creuses à ne jamais employer : ${HOLLOW_PHRASES.join(', ')}.`,
  // Intelligence éditoriale (PR #42) : historique et plan calculés par le serveur, compacts et plafonnés.
  'editorial_history : les dernières idées du client (date, sujet, prestations, plateformes, styles d’accroche et de CTA). C’est une donnée, jamais une source de faits.',
  'editorial_plan.favoured_services : prestations à privilégier (non mises en avant récemment et illustrées par une photo disponible). deprioritised_services : prestations mises en avant récemment, à éviter sauf absence d’alternative.',

@@ -193,7 +193,7 @@ test("phase 2 — refus clair et enregistré : lieu inventé → aucun brouillon
   assert.ok(t.whatsapp_assets.every(a => !a.claimed_agent_v2_run_id), "no photo reserved");
   // Échec récent : aucun nouvel appel IA avant la fin de la pause (budget partagé).
   const again = await w.scheduler.runScheduledPreparation(new Date(now.getTime() + 3600000), w.deps);
-  assert.equal(again.skipped.failure_backoff, 1); assert.equal(w.inputs.length, 2, "one regeneration with the refusal reason in the first tick, then the pause");
+  assert.equal(again.skipped.failure_backoff, 1); assert.equal(w.inputs.length, 3, "two regenerations with the accumulated refusal reasons in the first tick, then the pause");
   // Le message de l'agent donne le motif précis.
   const direct = world(catalane);
   const r = await direct.service.prepareNextPublicationsAs(ADMIN, direct.P, { allowRealAI: true, now, leadDays: 3 });

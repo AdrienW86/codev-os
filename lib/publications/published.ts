@@ -13,6 +13,7 @@ type DeliveryRow={id:string;publication_id:string;client_id:string;variant_id:st
 type OccurrenceRow={id:string;client_id:string;platform:PublicationPlatform;scheduled_for:string;publication_id:string};
 type PublicationRow={id:string;client_id:string;status:string;current_revision_id:string|null;editorial_group_id:string|null;archived_at:string|null};
 const PROBLEM:Record<string,CalendarItemStatus>={failed:'failed',blocked:'blocked',uncertain:'uncertain',retryable_error:'retry'};
+const PROBLEM_STATUSES=['failed','blocked','uncertain','retryable_error'] as const;
 const db=()=>getSupabaseServerClient();
 const chunks=<T,>(list:T[],size=150)=>Array.from({length:Math.ceil(list.length/size)},(_,i)=>list.slice(i*size,i*size+size));
 async function inChunks<R>(ids:string[],run:(chunk:string[])=>PromiseLike<{data:unknown;error:unknown}>):Promise<R[]>{
@@ -50,7 +51,7 @@ export async function loadPublicationCalendar(view:CalendarView,month:string,now
    }
   }else{
    let q=db().from('publication_deliveries').select('id,publication_id,client_id,variant_id,platform,status,published_at,scheduled_for,remote_id,asset_ids,last_error_code');
-   q=view==='published'?q.eq('status','published').gte('published_at',start).lt('published_at',end):q.in('status',Object.keys(PROBLEM)).gte('scheduled_for',start).lt('scheduled_for',end);
+   q=view==='published'?q.eq('status','published').gte('published_at',start).lt('published_at',end):q.in('status',PROBLEM_STATUSES).gte('scheduled_for',start).lt('scheduled_for',end);
    const res=await q.order('scheduled_for',{ascending:false}).limit(1000);
    if(res.error)throw res.error;
    const deliveries=(res.data??[]) as DeliveryRow[];

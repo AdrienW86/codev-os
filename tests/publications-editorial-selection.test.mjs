@@ -73,6 +73,11 @@ test("validation enforces native platform rules: extra hashtags are trimmed (nev
   assert.equal(sel.trimExtraHashtags("facebook", "Rien à retirer #un"), "Rien à retirer #un");
   { const r = json(sel.validateGeneratorOutput(input(), withText(2, "Zinguerie. ".repeat(160)))); assert.equal(r.reason, "platform_rules"); assert.match(r.detail, /trop long : \d+ caractères, 1500 au plus/); }
   assert.equal(sel.platformRuleViolation("google_business_profile", "Prix & qualité, C# et #1 ? non"), "hashtags", "a real hashtag is counted");
+  // Snapchat (160 caractères) : raccourci à la dernière phrase complète, sinon au dernier mot suivi de « … » ; jamais réécrit.
+  { const long = "Une gouttière bouchée fait déborder l’eau contre les murs de la maison. Un entretien régulier évite les infiltrations et protège durablement les façades exposées aux fortes pluies d’automne.";
+    const fit = sel.fitToPlatform("snapchat", long); assert.ok(fit.length <= 160); assert.equal(fit, "Une gouttière bouchée fait déborder l’eau contre les murs de la maison.");
+    const words = sel.fitToPlatform("snapchat", "mot ".repeat(60)); assert.ok(words.length <= 160 && words.endsWith("mot…"));
+    assert.equal(sel.fitToPlatform("snapchat", "Court."), "Court."); }
   assert.equal(sel.platformRuleViolation("google_business_profile", "Toiture & zinguerie"), null);
 });
 

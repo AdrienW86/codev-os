@@ -4,6 +4,7 @@
 import {CTA_STYLES,INTRO_STYLES,aboutService,nextInPool,type CtaStyle,type IntroStyle} from './editorial-text';
 import {mainCtaStyle,mainIntroStyle,recurringPhrases,type EditorialHistoryItem} from './editorial-memory';
 import {photoServices} from './editorial-photos';
+import {INTRO_FIX} from './editorial-guards';
 import {allowedPlaces} from './editorial-places';
 import type {AgentMediaCandidate} from './agent-v2/contract';
 
@@ -51,7 +52,7 @@ export function buildEditorialPlan(input:{history:readonly EditorialHistoryItem[
  return {favouredServices:favoured,deprioritised:deprioritised.slice(0,6),servicesWithoutPhoto:services.filter(s=>!illustrated.includes(s)).slice(0,10),seasonalPreference:seasonal,
   introStyle:nextInPool(INTRO_STYLES,intros),avoidIntroStyle:sameIntro,ctaStyle:nextInPool(CTA_STYLES,ctas),
   avoidOpenings:[...new Set(history.slice(0,12).flatMap(h=>h.openings))].filter(o=>o.split(' ').length>=3).slice(0,12),
-  avoidCtas:[...new Set(history.slice(0,10).flatMap(h=>h.ctas))].slice(0,5),recurringPhrases:recurringPhrases(history,10,[input.clientName??'',input.zone??'']),allowedPlaces:allowedPlaces(input.zone),historyConsidered:history.length};
+  avoidCtas:[...new Set(history.slice(0,10).flatMap(h=>h.ctas))].slice(0,20),recurringPhrases:recurringPhrases(history,10,[input.clientName??'',input.zone??'']),allowedPlaces:allowedPlaces(input.zone),historyConsidered:history.length};
 }
 
 // Version compacte envoyée au modèle (coût borné) : 10 idées au plus, sans texte complet ni identifiant de photo.
@@ -61,7 +62,8 @@ export function compactEditorial(ctx:EditorialContext){
  return {editorial_history:ctx.history.slice(0,PROMPT_HISTORY_ITEMS).map(h=>({date:day(h.date),subject:clip(h.subject,120),services:h.services.slice(0,3),platforms:h.platforms,
    intro_style:mainIntroStyle(h),cta_style:mainCtaStyle(h),photo_count:h.photos.length})),
   editorial_plan:{favoured_services:ctx.plan.favouredServices,deprioritised_services:ctx.plan.deprioritised,seasonal_preference_soft:ctx.plan.seasonalPreference,
-   intro_style:ctx.plan.introStyle,avoid_intro_style:ctx.plan.avoidIntroStyle,cta_style:ctx.plan.ctaStyle,avoid_openings:ctx.plan.avoidOpenings.map(o=>clip(o,80)),
+   intro_style:ctx.plan.introStyle,avoid_intro_style:ctx.plan.avoidIntroStyle,
+   ...(ctx.plan.avoidIntroStyle?{intro_required:`le texte de la PREMIÈRE occurrence doit commencer dans le style « ${ctx.plan.introStyle} » : ${INTRO_FIX[ctx.plan.avoidIntroStyle]??'change le style de la première phrase'}`}:{}),cta_style:ctx.plan.ctaStyle,avoid_openings:ctx.plan.avoidOpenings.map(o=>clip(o,80)),
    avoid_ctas:ctx.plan.avoidCtas.map(c=>clip(c,120)),phrases_to_avoid:ctx.plan.recurringPhrases},
   allowed_places:ctx.plan.allowedPlaces};
 }

@@ -9,7 +9,7 @@ import type {EditorialContext} from './editorial-plan';
 import type {AgentMediaCandidate,AgentV2GeneratorOutput} from './agent-v2/contract';
 
 // Consigne concrète pour le nouvel essai : un style nommé (« constat ») ne suffisait pas, le modèle le répétait.
-const INTRO_FIX:Record<string,string>={constat:'commence au moins un texte par une question (« Votre toiture… ? »), un conseil à l’impératif (« Pensez à… », « Vérifiez… ») ou « Voici… »',
+export const INTRO_FIX:Record<string,string>={constat:'commence au moins un texte par une question (« Votre toiture… ? »), un conseil à l’impératif (« Pensez à… », « Vérifiez… ») ou « Voici… »',
  question:'ne commence pas par une question : ouvre sur un conseil à l’impératif (« Pensez à… ») ou sur « Voici… »',
  conseil:'n’ouvre pas sur un impératif : commence par une question ou par « Voici… »',
  presentation:'ne commence pas par « Voici / Zoom / Focus » : ouvre sur une question ou un conseil',
@@ -30,6 +30,18 @@ export function photoRefusal(subject:string,media:AgentMediaCandidate|undefined,
  if(isDocumentPhoto({description:media.description,categories:media.categories}))return {reason:'document_photo',detail:'la photo choisie est un document (facture, attestation, capture…), jamais une intervention'};
  if(!photoMatchesSubject(subject,media,services))return {reason:'photo_mismatch',detail:'la photo choisie illustre une autre prestation que le sujet'};
  return null;
+}
+
+/**
+ * Appels à l'action répétés retirés (null) : déjà employés dans les 10 dernières idées, ou tous du même style que les
+ * 2 dernières publications. Le CTA est facultatif ; le retirer évite un refus sans rien changer au texte.
+ */
+export function dropRepeatedCtas(value:AgentV2GeneratorOutput,ctx:EditorialContext):AgentV2GeneratorOutput{
+ const {history}=ctx,usedCtas=new Set(history.slice(0,10).flatMap(h=>h.ctas).map(normalizeText));
+ let publications=value.publications.map(p=>p.cta&&usedCtas.has(normalizeText(p.cta))?{...p,cta:null}:p);
+ const ctas=publications.map(p=>p.cta).filter((c):c is string=>Boolean(c)),styles=ctas.map(ctaStyleOf),recent=history.slice(0,2).map(mainCtaStyle);
+ if(styles.length&&styles.every(s=>s===styles[0])&&styles[0]!=='autre'&&recent.length===2&&recent.every(s=>s===styles[0]))publications=publications.map(p=>({...p,cta:null}));
+ return {...value,publications};
 }
 
 /**

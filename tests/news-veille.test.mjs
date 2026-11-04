@@ -8,6 +8,7 @@ const sources = load("lib/news/sources.ts"), rank = load("lib/news/rank.ts");
 test("sources: IA and SEO only, https, unique ids, official sources first, French sources included", () => {
   const list = sources.newsSources;
   assert.ok(list.length >= 10);
+  for (const id of ["search-engine-land", "search-engine-roundtable"]) assert.ok(!list.some((s) => s.id === id), `${id} refuse la collecte`);
   assert.deepEqual([...new Set(list.map((s) => s.category))].sort(), ["IA", "SEO"]);
   assert.equal(new Set(list.map((s) => s.id)).size, list.length);
   for (const s of list) { assert.match(s.url, /^https:\/\//, s.id); assert.ok(s.weight > 0 && s.weight <= 1, s.id); }

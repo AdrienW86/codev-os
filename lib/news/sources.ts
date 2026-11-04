@@ -13,10 +13,9 @@ export const newsSources: NewsSource[] = [
   { id: "huggingface", name: "Hugging Face", url: "https://huggingface.co/blog/feed.xml", category: "IA", weight: 0.85, language: "en" },
   { id: "the-decoder", name: "The Decoder", url: "https://the-decoder.com/feed/", category: "IA", weight: 0.8, language: "en" },
   { id: "actuia", name: "ActuIA", url: "https://www.actuia.com/feed/", category: "IA", weight: 0.8, language: "fr" },
-  // SEO : Google en premier (source de vérité), puis les médias de référence, dont un francophone.
+  // SEO : Google en premier (source de vérité), puis les médias de référence, dont un francophone. Search Engine Land
+  // et Search Engine Roundtable refusent la collecte automatique (premier passage du 04/11) : retirés.
   { id: "google-search-central", name: "Google Search Central", url: "https://developers.google.com/search/blog/feed.xml", category: "SEO", weight: 1, language: "en" },
-  { id: "search-engine-land", name: "Search Engine Land", url: "https://searchengineland.com/feed", category: "SEO", weight: 0.9, language: "en" },
   { id: "search-engine-journal", name: "Search Engine Journal", url: "https://www.searchenginejournal.com/feed/", category: "SEO", weight: 0.85, language: "en" },
-  { id: "search-engine-roundtable", name: "Search Engine Roundtable", url: "https://www.seroundtable.com/index.xml", category: "SEO", weight: 0.8, language: "en" },
   { id: "abondance", name: "Abondance", url: "https://www.abondance.com/feed/", category: "SEO", weight: 0.85, language: "fr" },
 ];

@@ -75,8 +75,8 @@ test("wiring: read-only loader, admin guard, reachable from the sidebar, the Pub
 });
 
 test("à traiter: each problem network carries its delivery and a readable reason; the card offers Réessayer or Vérifier (never a resend of an uncertain post)", () => {
-  const cards = m.buildCards([{ ...item({ key: "f", platform: "instagram", status: "failed", at: "2026-11-03T08:00:00Z" }), deliveryId: "d1", problemLabel: "Contenu refusé par le fournisseur" },
-    { ...item({ key: "u", platform: "facebook", status: "uncertain", at: "2026-11-03T08:00:00Z" }), deliveryId: "d2", problemLabel: "Envoi non confirmé" }], "problems");
+  const cards = m.buildCards([{ ...item({ key: "f", group: "g", platform: "instagram", status: "failed", at: "2026-11-03T08:00:00Z" }), deliveryId: "d1", problemLabel: "Contenu refusé par le fournisseur" },
+    { ...item({ key: "u", group: "g", platform: "facebook", status: "uncertain", at: "2026-11-03T08:00:00Z" }), deliveryId: "d2", problemLabel: "Envoi non confirmé" }], "problems");
   assert.deepEqual(json(cards[0].networks.map((n) => [n.platform, n.deliveryId, n.problemLabel])), [["facebook", "d2", "Envoi non confirmé"], ["instagram", "d1", "Contenu refusé par le fournisseur"]]);
   assert.equal(m.buildCards([item({ key: "p", at: "2026-11-03T08:00:00Z" })], "published")[0].networks[0].deliveryId, null);
   const loader = src("lib/publications/published.ts");

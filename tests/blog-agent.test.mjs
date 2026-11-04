@@ -7,7 +7,7 @@ const m = load("lib/blog-agent/model.ts");
 const now = new Date("2026-11-04T12:07:00Z");
 const daysAgo = (d) => new Date(now.getTime() - d * 86400000).toISOString();
 const FACTS = "Toiture Exemple\nCouvreur\nPerpignan\nDémoussage\nRéparation de toiture";
-const paragraph = "Une toiture bien entretenue protège durablement la maison contre les infiltrations et les dégâts liés aux intempéries. Un contrôle visuel régulier permet de repérer les tuiles déplacées, les mousses installées et les gouttières encombrées avant qu’ils ne deviennent un vrai problème pour la charpente.";
+const paragraph = "Une toiture bien entretenue protège durablement la maison contre les infiltrations et les dégâts liés aux intempéries. Un contrôle visuel régulier permet de repérer les tuiles déplacées, les mousses installées et les gouttières encombrées avant qu’ils ne deviennent un vrai problème pour la couverture.";
 const body = ["Introduction claire sur le sujet de l’article et sur ce que le lecteur va apprendre.", "",
   "## Pourquoi entretenir sa toiture", "", paragraph, "", paragraph, "", paragraph, "",
   "## Les signes qui doivent alerter", "", "- Des tuiles **déplacées** ou cassées", "- De la mousse sur les versants exposés au nord", "", paragraph, "", paragraph, "", paragraph, "",

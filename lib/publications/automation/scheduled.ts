@@ -21,7 +21,9 @@ export const SCHEDULER_ACTOR:Actor={kind:'system',worker:'publications-scheduler
 export const MAX_CLIENTS_PER_TICK=10;
 /** Régénérations après un refus des gardes (motifs cumulés). */
 export const REFUSAL_RETRIES=2;
-export const MAX_PREPARATIONS_PER_TICK=3;
+export const MAX_PREPARATIONS_PER_TICK=2;
+/** Plafond absolu d'appels IA par passage, régénérations comprises (un client refusé peut aller jusqu'à 3). */
+export const MAX_AI_CALLS_PER_TICK=3;
 export const MAX_DELIVERY_PREPARATIONS_PER_TICK=10;
 export const MAX_DELIVERY_CANDIDATES=50;
 // Une publication approuvée dont le créneau est passé depuis plus longtemps n'est pas envoyée en retard sans un humain
@@ -250,7 +252,7 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
   // immédiates, chacune avec les motifs de tous les refus précédents, si le passage en a encore le budget. Les runs
   // refusés restent « failed » et journalisés.
   const reasons:string[]=[];let stop=false;
-  for(let retry=0;retry<REFUSAL_RETRIES&&!prepared.ok&&prepared.refused&&summary.preparations<MAX_PREPARATIONS_PER_TICK&&left()>=PREPARATION_BUDGET_MS;retry++){
+  for(let retry=0;retry<REFUSAL_RETRIES&&!prepared.ok&&prepared.refused&&summary.preparations<MAX_AI_CALLS_PER_TICK&&left()>=PREPARATION_BUDGET_MS;retry++){
    await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId??null,ok:false,refused:true});
    if(prepared.refusalDetail&&!reasons.includes(prepared.refusalDetail))reasons.push(prepared.refusalDetail);
    try{prepared=await deps.prepare(actor,projectId,{...options,retryFeedback:reasons.join(' ; ').slice(0,400)});}

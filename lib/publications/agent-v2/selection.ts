@@ -2,7 +2,7 @@
 import {AGENT_V2_LIMITS,type AgentV2GeneratorInput,type AgentV2GeneratorOutput,type OpenOccurrenceCandidate} from './contract';
 import type {PublicationPlatform} from '../types';
 import {aboutService,textSimilarity as similarity} from '../editorial-text';
-import {historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
+import {dropRepeatedCtas,historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
 
 const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok','snapchat'];
 const byTime=(a:OpenOccurrenceCandidate,b:OpenOccurrenceCandidate)=>a.scheduledFor.localeCompare(b.scheduledFor)||platformOrder.indexOf(a.platform)-platformOrder.indexOf(b.platform)||a.occurrenceId.localeCompare(b.occurrenceId);
@@ -81,6 +81,19 @@ export function trimExtraHashtags(platform:PublicationPlatform,text:string):stri
  });
  return lines.map(l=>l.replace(/[ \t]{2,}/g,' ').trimEnd()).join('\n').replace(/\n{3,}/g,'\n\n').trim();
 }
+/**
+ * Texte Snapchat trop long (160 caractères) raccourci plutôt que refusé : coupé à la dernière
+ * phrase complète qui tient (si elle garde au moins un tiers de la limite), sinon au dernier mot, suivi de « … ».
+ * Aucun mot n'est ajouté ni modifié : le texte ne fait que perdre sa fin.
+ */
+export function fitToPlatform(platform:PublicationPlatform,text:string):string{
+ const max=PLATFORM_TEXT_RULES[platform].maxLength,t=text.trim();
+ if(t.length<=max)return t;
+ const head=t.slice(0,max),sentence=Math.max(...['. ','! ','? ','…','.\n','!\n','?\n'].map(e=>head.lastIndexOf(e)));
+ if(sentence>=max/3)return head.slice(0,sentence+1).trim();
+ const cut=t.slice(0,max-1),space=cut.search(/\s\S*$/);
+ return (space>0?cut.slice(0,space):cut).replace(/[\s,;:–—-]+$/,'')+'…';
+}
 export function platformRuleViolation(platform:PublicationPlatform,text:string):string|null{
  const rule=PLATFORM_TEXT_RULES[platform];
  if(text.length>rule.maxLength)return 'length';if(hashtags(text)>rule.maxHashtags)return 'hashtags';return null;
@@ -136,7 +149,7 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  if(!Array.isArray(o.publications)||o.publications.length!==input.occurrences.length)return {ok:false,reason:'publication_count'};
  const seen=new Set<string>(),media=new Map(input.media.map(m=>[m.id,m]));
  for(const p of o.publications){const occ=input.occurrences.find(c=>c.occurrenceId===p?.occurrenceId);
-  if(occ&&p&&typeof p.text==='string')p.text=trimExtraHashtags(occ.platform,p.text);
+  if(occ&&p&&typeof p.text==='string')p.text=occ.platform==='snapchat'?fitToPlatform(occ.platform,trimExtraHashtags(occ.platform,p.text)):trimExtraHashtags(occ.platform,p.text);
   if(!occ||seen.has(occ.occurrenceId))return {ok:false,reason:'unknown_or_duplicate_occurrence'};seen.add(occ.occurrenceId);
   if(p.platform!==occ.platform)return {ok:false,reason:'platform_mismatch'};
   if(typeof p.text!=='string'||!p.text.trim()||p.text.length>AGENT_V2_LIMITS.text)return {ok:false,reason:'invalid_text'};
@@ -148,7 +161,10 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  const texts=o.publications.map(p=>p.text.trim().toLocaleLowerCase('fr'));if(new Set(texts).size!==texts.length)return {ok:false,reason:'identical_texts'};
  // Un texte natif par plateforme : deux déclinaisons quasi identiques (formulation à 80 % commune) sont refusées.
  if(texts.some((t,i)=>texts.slice(i+1).some(u=>textSimilarity(t,u)>=VARIANT_SIMILARITY_THRESHOLD)))return {ok:false,reason:'similar_texts'};
- const value={idea:{subject,angle},publications:o.publications.map(p=>({...p,text:p.text.trim(),cta:p.cta?.trim()||null}))};
+ const cleaned={idea:{subject,angle},publications:o.publications.map(p=>({...p,text:p.text.trim(),cta:p.cta?.trim()||null}))};
+ // Appel à l'action déjà employé ou même style que les dernières publications : retiré (champ facultatif) plutôt que
+ // de jeter toute la publication ; le texte, lui, reste soumis à tous les contrôles.
+ const value=input.editorial?dropRepeatedCtas(cleaned,input.editorial):cleaned;
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
   // Le motif (termes refusés, sans le texte) est conservé : il dit quoi corriger au lieu d'un refus muet.

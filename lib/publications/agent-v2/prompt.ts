@@ -43,6 +43,7 @@ export const AGENT_V2_INSTRUCTIONS=[
  'editorial_plan.favoured_services : prestations à privilégier (non mises en avant récemment et illustrées par une photo disponible). deprioritised_services : prestations mises en avant récemment, à éviter sauf absence d’alternative.',
  'editorial_plan.seasonal_preference_soft : simple préférence de calendrier pour départager les prestations, JAMAIS un fait : n’affirme aucune saison, météo, urgence ou période de l’année qui ne figure pas dans rules.',
  'editorial_plan.intro_style : style d’accroche à utiliser pour au moins une plateforme (question, conseil, presentation, exclamation, constat) ; avoid_intro_style : style à ne pas reprendre partout. avoid_openings : accroches déjà employées, à ne jamais reprendre.',
+ 'editorial_plan.intro_required (si présent) : obligation, pas une préférence ; sinon le texte est refusé.',
  'editorial_plan.cta_style : style d’appel à l’action à privilégier (contact, message, conseil, question, appel) ; avoid_ctas : appels à l’action déjà employés, à ne jamais reprendre ; phrases_to_avoid : formulations récurrentes interdites.',
  'Lieux : ne nomme une ville, une commune, un département ou une région que s’il figure dans allowed_places ou dans client/rules. Sinon aucun lieu.',
  'La photo choisie doit illustrer la prestation du sujet (services de la photo dans media_untrusted). Une photo de document (facture, devis, attestation, certificat, capture d’écran) n’illustre jamais une intervention.',

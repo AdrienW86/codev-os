@@ -107,11 +107,14 @@ test("anti-répétition au-delà des 3 dernières idées : sujet, formulation, a
   assert.deepEqual([wording.reason, wording.detail], ["repetition", "formulation trop proche de « Rénovation de toiture en tuiles »"]);
   const opening = check({ idea, publications: variants([zinc[0], zinc[1], "Le faîtage maintient les tuiles du sommet : ici, une gouttière en zinc."]) });
   assert.deepEqual([opening.reason, opening.detail], ["intro_repetition", "accroche déjà employée : « le faitage maintient les tuiles du »"]);
-  const cta = check({ idea, publications: variants(zinc, A(2), ["Écrivez-nous en message privé.", null, null]) });
-  assert.equal(cta.reason, "cta_repetition"); assert.match(cta.detail, /déjà employé/);
-  // Même style de CTA une 3e fois de suite (contact, contact) : refusé ; un autre style passe.
-  assert.equal(check({ idea, publications: variants(zinc, A(2), ["Contactez-nous dès maintenant.", null, null]) }).reason, "cta_repetition");
-  assert.equal(check({ idea, publications: variants(zinc, A(2), ["Demandez conseil à l’équipe.", null, null]) }).ok, true);
+  // CTA déjà employé : le garde le refuse, mais la validation le retire (champ facultatif) et garde la publication.
+  const reusedCta = variants(zinc, A(2), ["Écrivez-nous en message privé.", null, null]);
+  { const g = guards.historyRefusal({ idea, publications: reusedCta }, input().editorial); assert.equal(g.reason, "cta_repetition"); assert.match(g.detail, /déjà employé/); }
+  { const cta = check({ idea, publications: reusedCta }); assert.equal(cta.ok, true); assert.equal(cta.value.publications[0].cta, null, "CTA répété retiré, texte intact"); assert.equal(cta.value.publications[0].text, zinc[0]); }
+  // Même style de CTA une 3e fois de suite (contact, contact) : le garde refuse, la validation retire le CTA ; un autre style est gardé.
+  assert.equal(guards.historyRefusal({ idea, publications: variants(zinc, A(2), ["Contactez-nous dès maintenant.", null, null]) }, input().editorial).reason, "cta_repetition");
+  assert.equal(check({ idea, publications: variants(zinc, A(2), ["Contactez-nous dès maintenant.", null, null]) }).value.publications[0].cta, null);
+  assert.equal(check({ idea, publications: variants(zinc, A(2), ["Demandez conseil à l’équipe.", null, null]) }).value.publications[0].cta, "Demandez conseil à l’équipe.");
   // Même style d'accroche (question) que les 3 dernières idées sur toutes les plateformes : refusé.
   const q = memory.buildEditorialHistory({ publications: [pub(1, "Un"), pub(2, "Deux"), pub(3, "Trois")], variants: [variant(1, "facebook", "Et la mousse ?"), variant(2, "facebook", "Et le zinc ?"), variant(3, "facebook", "Et le faîtage ?")], libraryUses: [], catalogUses: [], services: roofServices });
   const allQuestions = ["Une gouttière bouchée ?", "Zinc ou PVC ? #zinguerie", "Gouttières : entretien ou remplacement ?"];

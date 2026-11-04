@@ -20,7 +20,8 @@ export {originLabels} from './publication-detail';
 // (variants, media, history). Previews are the short-lived signed URLs of getWorkspace; technical data is only
 // loaded when the debug view is requested.
 export async function buildReviewCards(publications:PublicationListItem[],options:{debug:boolean}):Promise<ReviewCardData[]>{
- const eligible=publications.filter(p=>(p.status==='pending_review'||p.status==='rejected')&&p.current_revision_id&&p.project_id);
+ // Une publication archivée ne se valide plus : ni chargée ni affichée (moins de lectures, page plus rapide).
+ const eligible=publications.filter(p=>(p.status==='pending_review'||p.status==='rejected')&&!p.archived_at&&p.current_revision_id&&p.project_id);
  const cards=await Promise.all(eligible.map(async p=>{
   const w=await getWorkspace(p.id);if(!w||w.publication.current_revision_id!==p.current_revision_id)return null;
   const revisionId=p.current_revision_id!,revision=w.revisions.find(r=>r.id===revisionId);

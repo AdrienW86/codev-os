@@ -17,6 +17,8 @@ import {ClientFilter,SupervisionTabs} from "@/components/publications/supervisio
 import {SupervisionReviewCard} from "@/components/publications/supervision-review-card";
 import {ReviewGroupHeader} from "@/components/publications/review-card";
 import {groupReviewCards} from "@/lib/publications/review-groups";
+import {ProblemActions} from "@/components/publications/problem-actions";
+import {upcomingBlogArticles} from "@/lib/blog-agent/upcoming";
 
 // Socle Publications, lot 7 : supervision de tous les clients, pilotable depuis un téléphone. Une seule page, des onglets
 // compacts collants (?view=) et un filtre client (?client=) : voir lib/publications/supervision-view.ts. Lecture seule,
@@ -41,7 +43,7 @@ const More=({href,children}:{href:string;children:ReactNode})=><Link href={href}
 export default async function PublicationsSupervisionPage({searchParams}:PageProps<"/publications/supervision">){
  await requireAdmin();const now=new Date();
  // Interrupteur serveur lu par lib/system (présence de la valeur exacte « enabled » uniquement), jamais dans lib/publications.
- const [raw,publications,search]=await Promise.all([getSupervision(now,{scheduledDelivery:isFlagEnabled("publications-scheduled-delivery")}),listPublications(),searchParams]);
+ const [raw,publications,search,articles]=await Promise.all([getSupervision(now,{scheduledDelivery:isFlagEnabled("publications-scheduled-delivery")}),listPublications(),searchParams,upcomingBlogArticles()]);
  // File de validation complète (programmée ou non), comme /publications/review.
  const pendingAll=publications.filter(p=>p.status==="pending_review"&&!p.archived_at);
  const clientOptions=[...new Map([...raw.clients.map(c=>[c.id,c.name] as const),...pendingAll.map(p=>[p.client_id,p.client?.name??"Client"] as const)])]
@@ -57,13 +59,15 @@ export default async function PublicationsSupervisionPage({searchParams}:PagePro
  const href=(v:SupervisionView)=>supervisionHref(v,client);
  const reconnect=data.clients.flatMap(c=>c.accounts.filter(a=>a.state==="reconnect").map(a=>({client:c,account:a})));
  const shortOnPhotos=data.clients.filter(c=>c.tooFewPhotos);
+ const blog=articles.filter(a=>!client||a.clientId===client);
 
  const row=(p:SupervisedPublication,actions:boolean)=><li key={p.id} className="flex flex-col gap-2 border-t border-border py-3 first:border-t-0 sm:flex-row sm:items-start sm:justify-between">
   <div className="min-w-0"><p className="text-sm font-medium break-words"><Link href={`/publications/${p.id}`} className="hover:underline">{p.subject}</Link></p>
    <p className="mt-0.5 text-xs text-muted">{name(p.clientId)} · {platformLabels[p.platform]} · {formatSlot(p.scheduledFor)}</p>
    <div className="mt-1 flex flex-wrap gap-1.5"><Badge tone={p.status==="approved"?"green":p.status==="pending_review"?"amber":"neutral"}>{statusLabels[p.status]}</Badge>
     <Badge tone={p.delivery==="error"||p.errorReason?"amber":p.delivery==="published"?"green":"neutral"}>{p.errorReason&&p.delivery==="none"?"Créneau manqué":deliveryLabels[p.delivery]}</Badge></div>
-   {p.errorReason&&<p className="mt-1 text-xs text-warning" data-error-reason="true">{p.errorReason}</p>}</div>
+   {p.errorReason&&<p className="mt-1 text-xs text-warning" data-error-reason="true">{p.errorReason}</p>}
+   {p.errorDelivery?.id&&<ProblemActions publicationId={p.id} deliveryId={p.errorDelivery.id} status={p.errorDelivery.status} label={platformLabels[p.platform]}/>}</div>
   {actions&&<div className="flex flex-wrap items-start gap-2">
    {/* Modifier après approbation : la publication repasse en brouillon et doit être approuvée de nouveau (éditeur existant). */}
    <Link href={`/publications/${p.id}/edit`} className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-border/40">Modifier</Link>
@@ -120,12 +124,14 @@ export default async function PublicationsSupervisionPage({searchParams}:PagePro
     <Tile label="Comptes connectés" value={data.counts.connected} href={href("accounts")}/>
    </ul>
    <Section id="sv-priorities" title="À traiter" description="Les premiers éléments de chaque onglet.">
-    {!data.errors.length&&!reconnect.length&&!shortOnPhotos.length&&!data.counts.pendingReview?<Empty>Rien à traiter pour le moment.</Empty>:<ul className="space-y-3 text-sm">
+    {!data.errors.length&&!reconnect.length&&!shortOnPhotos.length&&!data.counts.pendingReview&&!blog.length?<Empty>Rien à traiter pour le moment.</Empty>:<ul className="space-y-3 text-sm">
      {data.counts.pendingReview>0&&<li><More href={href("review")}>{data.counts.pendingReview} publication{data.counts.pendingReview>1?"s":""} à valider</More></li>}
      {data.errors.slice(0,PREVIEW).map(p=><li key={p.id}><p className="font-medium break-words">{p.subject}</p><p className="text-xs text-warning">{name(p.clientId)} · {p.errorReason}</p></li>)}
      {data.errors.length>PREVIEW&&<li><More href={href("errors")}>Toutes les erreurs ({data.errors.length})</More></li>}
      {reconnect.slice(0,PREVIEW).map(({client:c,account:a})=><li key={a.id}>{c.name} · {a.name} · <span className="text-warning">{a.reason}</span> · <More href={href("accounts")}>Reconnecter</More></li>)}
      {shortOnPhotos.slice(0,PREVIEW).map(c=><li key={c.id}>{c.name} · <span className="text-warning">Trop peu de photos</span> · <More href={href("photos")}>Voir</More></li>)}
+     {/* Articles de blog annoncés : publiés automatiquement à l'heure prévue sauf annulation. */}
+     {blog.map(a=><li key={a.id} data-blog-upcoming="true">{a.clientName} · Article de blog « {a.title} » le {formatSlot(a.publishAt)} · <More href={`/blog/${a.id}`}>Relire ou annuler</More></li>)}
     </ul>}
    </Section>
   </>}
@@ -138,7 +144,7 @@ export default async function PublicationsSupervisionPage({searchParams}:PagePro
     :<Empty>Aucune publication à valider.</Empty>}
   </Section>}
 
-  {view==="errors"&&<Section id="sv-errors" title="En erreur" description="Diffusions en échec, bloquées, à réessayer ou à vérifier, et publications approuvées dont le créneau est passé sans diffusion. Relance et vérification depuis la fiche de la publication.">
+  {view==="errors"&&<Section id="sv-errors" title="En erreur" description="Diffusions en échec, bloquées, à réessayer ou à vérifier, et publications approuvées dont le créneau est passé sans diffusion. « Réessayer » ou « Vérifier » directement sur chaque ligne ; la décision finale d’un envoi non confirmé se prend sur la fiche.">
    {data.errors.length?<ul>{data.errors.map(p=>row(p,false))}</ul>:<Empty>Aucune diffusion en erreur.</Empty>}
   </Section>}
 

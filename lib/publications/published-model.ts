@@ -13,10 +13,10 @@ export const ITEM_STATUS_LABELS:Record<CalendarItemStatus,string>={published:'Pu
  failed:'Échec',blocked:'Bloquée',uncertain:'À vérifier',retry:'Nouvel essai prévu'};
 /** Une diffusion (ou une publication à venir) sur un réseau. */
 export type CalendarItem={key:string;publicationId:string;groupKey:string;clientId:string;clientName:string;platform:PublicationPlatform;
- status:CalendarItemStatus;at:string;text:string|null;imagePath:string|null;remoteId:string|null;errorCode:string|null};
+ status:CalendarItemStatus;at:string;text:string|null;imagePath:string|null;remoteId:string|null;errorCode:string|null;deliveryId?:string|null;problemLabel?:string|null};
 /** Carte affichée : une publication déclinée sur un ou plusieurs réseaux le même jour. */
 export type CalendarCard={key:string;date:string;time:string;clientId:string;clientName:string;publicationId:string;text:string|null;imagePath:string|null;
- networks:{platform:PublicationPlatform;label:string;status:CalendarItemStatus;statusLabel:string;publicationId:string;url:string|null;errorCode:string|null}[]};
+ networks:{platform:PublicationPlatform;label:string;status:CalendarItemStatus;statusLabel:string;publicationId:string;url:string|null;errorCode:string|null;deliveryId:string|null;problemLabel:string|null}[]};
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
@@ -70,7 +70,8 @@ export function buildCards(items:CalendarItem[],view:CalendarView):CalendarCard[
   if(!card.imagePath&&item.imagePath)card.imagePath=item.imagePath;
   if(!card.text&&item.text)card.text=item.text;
   if(!card.networks.some(n=>n.platform===item.platform))card.networks.push({platform:item.platform,label:platformLabels[item.platform],status:item.status,statusLabel:ITEM_STATUS_LABELS[item.status],
-   publicationId:item.publicationId,url:item.status==='published'?remoteUrl(item.platform,item.remoteId):null,errorCode:item.errorCode});
+   publicationId:item.publicationId,url:item.status==='published'?remoteUrl(item.platform,item.remoteId):null,errorCode:item.errorCode,
+   deliveryId:item.deliveryId??null,problemLabel:item.problemLabel??null});
  }
  const list=[...cards.values()];
  for(const c of list)c.networks.sort((a,b)=>ORDER[a.platform]-ORDER[b.platform]);

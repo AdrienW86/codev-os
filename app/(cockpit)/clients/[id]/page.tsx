@@ -1,3 +1,4 @@
+import { Suspense, type ReactNode } from "react";
 import { RecurringReportsPanel } from "@/components/reports/recurring-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -258,22 +259,49 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
         {data.agentReady ? <AgentConfigurationForm projectId={data.project.id} config={data.agent} /> : <p role="alert" className="mt-3 text-sm">Configuration de l’agent indisponible.</p>}
         <p className="mt-4 text-sm"><Link className="text-accent" href={`/projects/${data.project.id}/calendar`}>Calendrier des publications →</Link> <Link className="ml-4 text-accent" href={`/publications/review`}>Publications à valider →</Link></p>
       </Panel>
-      <VisualAgentSection clientId={clientId} />
-      <VideoAgentSection clientId={clientId} />
-      <BlogAgentSection clientId={clientId} />
+      {/* Agents de contenu : une ligne chacun (état et rythme), le détail au clic ; chargés en flux pour afficher la page tout de suite. */}
+      <Panel className="p-4 sm:p-6">
+        <h2 className="font-semibold">Agents de contenu</h2>
+        <p className="mt-1 text-sm text-muted">Touchez un agent pour le régler ou le lancer.</p>
+        <div className="mt-3 divide-y divide-border" data-agents-panel="true">
+          <Suspense fallback={<AgentRowPending title="Agent Visuels" />}><VisualAgentSection clientId={clientId} /></Suspense>
+          <Suspense fallback={<AgentRowPending title="Agent Vidéo" />}><VideoAgentSection clientId={clientId} /></Suspense>
+          <Suspense fallback={<AgentRowPending title="Agent Blog" />}><BlogAgentSection clientId={clientId} /></Suspense>
+        </div>
+      </Panel>
     </div>
   );
 }
+
+// Une ligne par agent : nom, état et rythme visibles d'un coup d'œil ; réglages, lancement et historique au clic.
+function AgentRow({ title, on, rhythm, children }: { title: string; on: boolean | null; rhythm: string | null; children: ReactNode }) {
+  return (
+    <details className="group py-1" data-agent-row={title}>
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="font-medium">{title}</span>
+        <span className="flex items-center gap-2 text-xs text-muted">
+          {on === null ? <span className="text-danger">Indisponible</span> : <span className={`rounded-full px-2 py-0.5 font-medium ${on ? "bg-success/10 text-success" : "bg-surface-raised"}`}>{on ? "Activé" : "Désactivé"}</span>}
+          {on && rhythm && <span className="hidden sm:inline">{rhythm}</span>}
+          <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
+        </span>
+      </summary>
+      <div className="pb-4 pt-1">{children}</div>
+    </details>
+  );
+}
+function AgentRowPending({ title }: { title: string }) {
+  return <div className="flex min-h-12 items-center justify-between py-2" aria-busy="true"><span className="font-medium">{title}</span><span className="h-4 w-20 animate-pulse rounded-full bg-surface-raised" /></div>;
+}
+const perWeek = (n: number, unit: string) => `${n} ${unit}${n > 1 ? "s" : ""} par semaine`;
 
 // Agent Visuels : visuels à la charte du client, générés à la fréquence choisie et déposés dans sa photothèque Drive.
 async function VisualAgentSection({ clientId }: { clientId: string }) {
   const view = await safeRead("visual-agent", () => getVisualAgent(clientId), null);
   return (
-    <Panel className="p-6">
-      <h2 className="font-semibold">Agent Visuels</h2>
-      {view.data ? <div className="mt-3"><VisualAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} folderReady={view.data.folderReady} logoPreview={view.data.logoPreview} /></div>
-        : <p role="alert" className="mt-3 text-sm">Agent Visuels indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
-    </Panel>
+    <AgentRow title="Agent Visuels" on={view.data ? view.data.settings.enabled : null} rhythm={view.data ? perWeek(view.data.settings.perWeek, "visuel") : null}>
+      {view.data ? <VisualAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} folderReady={view.data.folderReady} logoPreview={view.data.logoPreview} />
+        : <p role="alert" className="text-sm">Agent Visuels indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </AgentRow>
   );
 }
 
@@ -281,11 +309,10 @@ async function VisualAgentSection({ clientId }: { clientId: string }) {
 async function VideoAgentSection({ clientId }: { clientId: string }) {
   const view = await safeRead("video-agent", () => getVideoAgent(clientId), null);
   return (
-    <Panel className="p-6">
-      <h2 className="font-semibold">Agent Vidéo</h2>
-      {view.data ? <div className="mt-3"><VideoAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} photoCount={view.data.photoCount} /></div>
-        : <p role="alert" className="mt-3 text-sm">Agent Vidéo indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
-    </Panel>
+    <AgentRow title="Agent Vidéo" on={view.data ? view.data.settings.enabled : null} rhythm={view.data ? perWeek(view.data.settings.perWeek, "vidéo") : null}>
+      {view.data ? <VideoAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} photoCount={view.data.photoCount} />
+        : <p role="alert" className="text-sm">Agent Vidéo indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </AgentRow>
   );
 }
 
@@ -293,12 +320,11 @@ async function VideoAgentSection({ clientId }: { clientId: string }) {
 async function BlogAgentSection({ clientId }: { clientId: string }) {
   const view = await safeRead("blog-agent", () => getBlogAgent(clientId), null);
   return (
-    <Panel className="p-6">
-      <h2 className="font-semibold">Agent Blog</h2>
-      {view.data ? <div className="mt-3"><BlogAgentPanel clientId={clientId} settings={view.data.settings} defaultSite={view.data.defaultSite} services={view.data.services} photoCount={view.data.photoCount}
-        articles={view.data.articles.map((a) => ({ id: a.id, title: a.title, status: a.status, publish_at: a.publish_at, published_at: a.published_at, social_status: a.social_status }))} apiBase="https://os.code-v.fr" /></div>
-        : <p role="alert" className="mt-3 text-sm">Agent Blog indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
-    </Panel>
+    <AgentRow title="Agent Blog" on={view.data ? view.data.settings.enabled : null} rhythm={view.data ? perWeek(view.data.settings.perWeek, "article") : null}>
+      {view.data ? <BlogAgentPanel clientId={clientId} settings={view.data.settings} defaultSite={view.data.defaultSite} services={view.data.services} photoCount={view.data.photoCount}
+        articles={view.data.articles.map((a) => ({ id: a.id, title: a.title, status: a.status, publish_at: a.publish_at, published_at: a.published_at, social_status: a.social_status }))} apiBase="https://os.code-v.fr" />
+        : <p role="alert" className="text-sm">Agent Blog indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </AgentRow>
   );
 }
 

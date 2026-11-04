@@ -73,3 +73,18 @@ test("wiring: read-only loader, admin guard, reachable from the sidebar, the Pub
   assert.match(src("components/publications/publications-board.tsx"), /item\('published','Publiées','\/publications\/published'\)/);
   assert.match(src("components/clients/client-publications-panel.tsx"), /\/publications\/published\?client=\$\{clientId\}/);
 });
+
+test("à traiter: each problem network carries its delivery and a readable reason; the card offers Réessayer or Vérifier (never a resend of an uncertain post)", () => {
+  const cards = m.buildCards([{ ...item({ key: "f", group: "g", platform: "instagram", status: "failed", at: "2026-11-03T08:00:00Z" }), deliveryId: "d1", problemLabel: "Contenu refusé par le fournisseur" },
+    { ...item({ key: "u", group: "g", platform: "facebook", status: "uncertain", at: "2026-11-03T08:00:00Z" }), deliveryId: "d2", problemLabel: "Envoi non confirmé" }], "problems");
+  assert.deepEqual(json(cards[0].networks.map((n) => [n.platform, n.deliveryId, n.problemLabel])), [["facebook", "d2", "Envoi non confirmé"], ["instagram", "d1", "Contenu refusé par le fournisseur"]]);
+  assert.equal(m.buildCards([item({ key: "p", at: "2026-11-03T08:00:00Z" })], "published")[0].networks[0].deliveryId, null);
+  const loader = src("lib/publications/published.ts");
+  assert.match(loader, /\.\.\.\(view==='problems'\?\{deliveryId:d\.id,problemLabel:problemLabel\(d\)\}:\{\}\)/);
+  const actions = src("components/publications/problem-actions.tsx");
+  assert.match(actions, /retryDeliveryAction/); assert.match(actions, /reconcileDeliveryAction/);
+  assert.match(actions, /status==='uncertain'\s*\n?\s*\?<form action=\{check\}/, "uncertain → provider check only");
+  assert.doesNotMatch(actions, /confirmNotPublished/, "the final decision stays on the publication page");
+  assert.match(src("app/(cockpit)/publications/published/page.tsx"), /<ProblemActions publicationId=\{n\.publicationId\} deliveryId=\{n\.deliveryId!\}/);
+  assert.match(src("app/(cockpit)/publications/delivery-actions.ts"), /revalidatePath\("\/publications\/published"\)/);
+});

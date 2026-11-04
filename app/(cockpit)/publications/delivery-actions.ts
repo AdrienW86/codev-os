@@ -7,7 +7,7 @@ import {confirmDeliveryNotPublished,processDuePublications,reconcileDelivery} fr
 // Drawer « Diffusion » (Lot 4.3 P10): prepare a delivery, retry a failed / blocked one. Sending happens only through
 // the explicit admin trigger below (P13), behind the kill switches.
 export type DeliveryActionState={ok?:boolean;message?:string;result?:'exists'|'missing'|'unknown'};
-function refresh(){revalidatePath("/publications");revalidatePath("/publications/review");revalidatePath("/projects","layout");}
+function refresh(){revalidatePath("/publications");revalidatePath("/publications/review");revalidatePath("/publications/published");revalidatePath("/projects","layout");}
 export async function prepareDeliveryAction(_state:DeliveryActionState,form:FormData):Promise<DeliveryActionState>{
  await requireAdmin();const result=await preparePublicationDelivery(form.get("publication_id"));if(result.ok)refresh();return result;
 }

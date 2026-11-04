@@ -6,6 +6,9 @@ const motionVideoFiles = ["./node_modules/ffmpeg-static/ffmpeg", "./lib/motion/v
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["ffmpeg-static"],
+  // Navigation plus fluide : une page déjà visitée est réaffichée instantanément pendant 30 s (retour, aller-retour entre
+  // onglets) ; toute action serveur (revalidatePath) invalide ce cache, donc une modification reste visible aussitôt.
+  experimental: { staleTimes: { dynamic: 30 } },
   outputFileTracingIncludes: {
     "/api/studio/videos": motionVideoFiles,
     "/api/video-agent": motionVideoFiles,

@@ -51,7 +51,15 @@ export const MOTION_PACES:Record<MotionPace,{label:string;scene:number;hook:numb
 /** Script d'une vidéo du Studio : accroche, une légende par photo suivante (facultative), phrase de fin (facultative). */
 export type MotionScript={headline:string;captions:string[];closing:string|null;brand:string;pace?:MotionPace;
  /** Morceau de fond retenu (identifiant de la bibliothèque) ; null : sans musique. */
- music?:string|null};
+ music?:string|null;
+ /** Couleurs de la charte du client (Agent Visuels) ; absentes : palette contrastée choisie pour le client. */
+ palette?:MotionPalette|null};
+const HEX=/^#[0-9A-Fa-f]{6}$/;
+/** Palette de la charte si elle est complète et valide, sinon null. */
+export function brandPalette(p:unknown):MotionPalette|null{
+ const v=p as Partial<MotionPalette>|null;
+ return v&&typeof v.accent==='string'&&HEX.test(v.accent)&&typeof v.deep==='string'&&HEX.test(v.deep)&&typeof v.ink==='string'&&HEX.test(v.ink)?{accent:v.accent,deep:v.deep,ink:v.ink}:null;
+}
 export type StoryboardInput={text:string;photoCount:number;clientName:string;seed:string};
 /** Script tiré d'un texte de publication : 1re phrase en accroche, suivantes en légendes, appel à l'action à la fin. */
 export function scriptFromText(text:string,clientName:string):MotionScript{
@@ -69,7 +77,7 @@ export function buildScriptStoryboard(script:MotionScript,photoCount:number,seed
  const headline=overlayText(script.headline);
  if([...headline].length<2||!/\p{L}/u.test(headline))throw new Error('motion_text_required');
  const pace=MOTION_PACES[script.pace??'standard'];
- const seed=motionSeed(seedValue),palette=MOTION_PALETTES[motionSeed(script.brand.toLowerCase())%MOTION_PALETTES.length];
+ const seed=motionSeed(seedValue),palette=brandPalette(script.palette)??MOTION_PALETTES[motionSeed(script.brand.toLowerCase())%MOTION_PALETTES.length];
  const brand=clampWords(overlayText(script.brand)||'CODE-V',32);
  const body=script.captions.map(overlayText).filter(c=>c.length>0),cta=script.closing?overlayText(script.closing)||null:null;
  const scenes:MotionScene[]=[];

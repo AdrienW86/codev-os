@@ -186,7 +186,7 @@ function studio(audit = []) {
   return loadTs("lib/studio/videos.ts", {
     "node:crypto": require("node:crypto"), "node:path": require("node:path"), "ffmpeg-static": { default: "/bin/ffmpeg" },
     "@/lib/require-admin": { requireAdmin: async () => ({ userId: "user_admin" }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => { throw Error("db"); } },
-    "@/lib/core/audit": { writeAudit: async (actor, entry) => { audit.push(entry.action); } }, "@/lib/whatsapp/library": { readOriginal: async () => null }, "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"), "@/lib/motion/music": music,
+    "@/lib/core/audit": { writeAudit: async (actor, entry) => { audit.push(entry.action); } }, "@/lib/whatsapp/library": { readOriginal: async () => null }, "@/lib/media-intelligence/model": loadTs("lib/media-intelligence/model.ts"), "@/lib/motion/music": music, "@/lib/video-agent/model": { videoPaletteFromBrand: (b) => (b ? { deep: b.primary, accent: b.secondary, ink: "#FFFFFF" } : null) },
     "@/lib/publications/project-channels": {}, "@/lib/publications/channels": {}, "@/lib/publications/workspace": {},
     "@/lib/publications/editor": editor, "@/lib/motion/video/render": { MotionRenderError: class extends Error {}, renderMotionVideo: async () => { throw Error("real render"); } },
     "./model": studioModel }, { process: { env: {}, cwd: () => "/app" }, File, FormData, Blob });

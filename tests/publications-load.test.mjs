@@ -75,8 +75,8 @@ test("L2 AI timeouts: thrown preparations count towards the per-tick cap; failur
   // a) Exception (délai, base ou Drive) : avant #47, ignorée par le plafond → jusqu'à 10 appels IA par passage.
   const thrown = preparation(clientsTables(), { prepare: async () => { throw Error("Délai d'exécution dépassé"); } });
   const r = await thrown.mod.runScheduledPreparation(new Date(T0), thrown.deps);
-  assert.equal(thrown.calls.length, 2, "two AI attempts at most per tick even when every attempt throws");
-  assert.equal(r.preparations, 2); assert.equal(r.skipped.preparation_failed, 2);
+  assert.equal(thrown.calls.length, 3, "three AI attempts at most per tick even when every attempt throws");
+  assert.equal(r.preparations, 3); assert.equal(r.skipped.preparation_failed, 3);
   assert.match(src("lib/publications/automation/scheduled.ts"), /catch\{console\.error\('\[publications-scheduler\] preparation failed'\);summary\.preparations\+\+;/);
   // b) Échec de génération enregistré par l'Agent v2 (run « failed ») : pause de 6 h du projet, aucun nouvel appel IA.
   let aiCalls = 0;

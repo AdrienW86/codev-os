@@ -29,7 +29,7 @@ const CLAIM_PATTERNS:{name:string;pattern:RegExp}[]=[
  {name:'price',pattern:/\d+(?:[.,]\d+)?\s?(?:€|euros?(?![\p{L}]))/giu},{name:'percent',pattern:/\d+(?:[.,]\d+)?\s?%/gu},
  // « remise en état / à neuf / en conformité » est un travail, pas une remise commerciale.
  {name:'promotion',pattern:word('promo(?:tion)?s?|réductions?|remises?(?!\\s+(?:en|à|a)\\s)|soldes?|offre spéciale|gratuit(?:e|s|es)?|offert(?:e|s|es)?')},
- {name:'guarantee',pattern:word('garanti(?:e|es|s|t|r|ssons|ssez|ssent)?|décennale|decennale')},
+ {name:'guarantee',pattern:word('garanti(?:e|es|s)?|décennale|decennale')},
  {name:'certification',pattern:word('certifi(?:é|ée|és|ées|cation|cations)|qualibat|rge|label(?:lisé|lisée|s)?')},
  {name:'experience',pattern:/\d+\s+ans(?![\p{L}])|depuis\s+(?:19|20)\d{2}|expérience de/giu},
  {name:'reviews',pattern:word(String.raw`avis|étoiles?|clients?\s+satisfaits?|note de`)},
@@ -66,6 +66,21 @@ export function forbiddenServiceTerms(input:AgentV2GeneratorInput):string[]{
 // Limites éditoriales, plus strictes que les plafonds techniques des publishers (GBP 1 500, Instagram 2 200).
 export const PLATFORM_TEXT_RULES:Record<PublicationPlatform,{maxLength:number;maxHashtags:number}>={facebook:{maxLength:3000,maxHashtags:3},instagram:{maxLength:2200,maxHashtags:8},google_business_profile:{maxLength:1500,maxHashtags:0},tiktok:{maxLength:2000,maxHashtags:5},snapchat:{maxLength:160,maxHashtags:3}};
 const hashtags=(text:string)=>text.match(/(?<![\p{L}\p{N}&])#[\p{L}\p{N}_]+/gu)?.length??0;
+/**
+ * Hashtags au-delà du maximum de la plateforme retirés (les premiers sont gardés, aucun mot du texte n'est touché) :
+ * un hashtag de trop ne justifie pas de jeter une publication entière.
+ */
+export function trimExtraHashtags(platform:PublicationPlatform,text:string):string{
+ const max=PLATFORM_TEXT_RULES[platform].maxHashtags,tag=/(?<![\p{L}\p{N}&])#[\p{L}\p{N}_]+/gu;
+ if((text.match(tag)?.length??0)<=max)return text;
+ let kept=0;
+ // Lignes faites uniquement de hashtags : les hashtags en trop sont retirés ; dans une phrase, seul le « # » l'est.
+ const lines=text.split('\n').map(line=>{
+  const onlyTags=/^[\s]*(#[\p{L}\p{N}_]+[\s]*)+$/u.test(line);
+  return line.replace(tag,t=>++kept<=max?t:onlyTags?'':t.slice(1));
+ });
+ return lines.map(l=>l.replace(/[ \t]{2,}/g,' ').trimEnd()).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
 export function platformRuleViolation(platform:PublicationPlatform,text:string):string|null{
  const rule=PLATFORM_TEXT_RULES[platform];
  if(text.length>rule.maxLength)return 'length';if(hashtags(text)>rule.maxHashtags)return 'hashtags';return null;
@@ -121,11 +136,13 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  if(!Array.isArray(o.publications)||o.publications.length!==input.occurrences.length)return {ok:false,reason:'publication_count'};
  const seen=new Set<string>(),media=new Map(input.media.map(m=>[m.id,m]));
  for(const p of o.publications){const occ=input.occurrences.find(c=>c.occurrenceId===p?.occurrenceId);
+  if(occ&&p&&typeof p.text==='string')p.text=trimExtraHashtags(occ.platform,p.text);
   if(!occ||seen.has(occ.occurrenceId))return {ok:false,reason:'unknown_or_duplicate_occurrence'};seen.add(occ.occurrenceId);
   if(p.platform!==occ.platform)return {ok:false,reason:'platform_mismatch'};
   if(typeof p.text!=='string'||!p.text.trim()||p.text.length>AGENT_V2_LIMITS.text)return {ok:false,reason:'invalid_text'};
   if(p.cta!==null&&(typeof p.cta!=='string'||p.cta.length>AGENT_V2_LIMITS.cta))return {ok:false,reason:'invalid_cta'};
-  if(platformRuleViolation(occ.platform,p.text.trim()))return {ok:false,reason:'platform_rules'};
+  const violation=platformRuleViolation(occ.platform,p.text.trim());
+  if(violation)return {ok:false,reason:'platform_rules',detail:violation==='length'?`texte ${occ.platform} trop long : ${p.text.trim().length} caractères, ${PLATFORM_TEXT_RULES[occ.platform].maxLength} au plus ; raccourcis-le`:`trop de hashtags pour ${occ.platform}`};
   if(p.mediaId!==null&&(typeof p.mediaId!=='string'||!media.has(p.mediaId)||media.get(p.mediaId)?.used))return {ok:false,reason:'invalid_media'};}
  if(new Set(o.publications.map(p=>p.mediaId)).size>1)return {ok:false,reason:'invalid_media'};
  const texts=o.publications.map(p=>p.text.trim().toLocaleLowerCase('fr'));if(new Set(texts).size!==texts.length)return {ok:false,reason:'identical_texts'};

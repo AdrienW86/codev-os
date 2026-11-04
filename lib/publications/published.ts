@@ -5,15 +5,23 @@ import {safeSupabaseReadError} from '@/lib/supabase/read-error';
 import {signBoardImages} from './board';
 import {monthRange,type CalendarItem,type CalendarItemStatus,type CalendarView} from './published-model';
 import type {PublicationPlatform} from './types';
+import {ERROR_CLASS_LABELS,blockedReasonLabel} from './delivery/model';
 
 // Calendrier des publications : lecture seule, tous clients, un mois. Publiées : diffusions confirmées (published_at).
 // À traiter : diffusions en échec, bloquées, à vérifier ou en attente d'un nouvel essai (date prévue). À venir :
 // créneaux occupés par une publication pas encore partie (à valider, validée ou programmée).
-type DeliveryRow={id:string;publication_id:string;client_id:string;variant_id:string;platform:PublicationPlatform;status:string;published_at:string|null;scheduled_for:string;remote_id:string|null;asset_ids:string[]|null;last_error_code:string|null};
+type DeliveryRow={id:string;publication_id:string;client_id:string;variant_id:string;platform:PublicationPlatform;status:string;published_at:string|null;scheduled_for:string;remote_id:string|null;asset_ids:string[]|null;last_error_code:string|null;last_error_class?:string|null;blocked_reason?:string|null};
 type OccurrenceRow={id:string;client_id:string;platform:PublicationPlatform;scheduled_for:string;publication_id:string};
 type PublicationRow={id:string;client_id:string;status:string;current_revision_id:string|null;editorial_group_id:string|null;archived_at:string|null};
 const PROBLEM:Record<string,CalendarItemStatus>={failed:'failed',blocked:'blocked',uncertain:'uncertain',retryable_error:'retry'};
 const PROBLEM_STATUSES=['failed','blocked','uncertain','retryable_error'] as const;
+// Motif lisible d'un problème (jamais le message du fournisseur) : blocage, classe d'erreur, ou envoi non confirmé.
+function problemLabel(d:DeliveryRow):string|null{
+ if(d.status==='blocked')return blockedReasonLabel(d.blocked_reason??null);
+ if(d.status==='uncertain')return 'Envoi non confirmé par le réseau : vérifiez avant de relancer';
+ const klass=d.last_error_class as keyof typeof ERROR_CLASS_LABELS|null|undefined;
+ return klass&&klass in ERROR_CLASS_LABELS?ERROR_CLASS_LABELS[klass]:null;
+}
 const db=()=>getSupabaseServerClient();
 const chunks=<T,>(list:T[],size=150)=>Array.from({length:Math.ceil(list.length/size)},(_,i)=>list.slice(i*size,i*size+size));
 async function inChunks<R>(ids:string[],run:(chunk:string[])=>PromiseLike<{data:unknown;error:unknown}>):Promise<R[]>{
@@ -50,7 +58,7 @@ export async function loadPublicationCalendar(view:CalendarView,month:string,now
      status:p.status==='approved'?'approved':p.status==='pending_review'?'pending_review':'scheduled',at:o.scheduled_for,text:v?.text_content??null,imagePath:asset?paths.get(asset)??null:null,remoteId:null,errorCode:null});
    }
   }else{
-   let q=db().from('publication_deliveries').select('id,publication_id,client_id,variant_id,platform,status,published_at,scheduled_for,remote_id,asset_ids,last_error_code');
+   let q=db().from('publication_deliveries').select('id,publication_id,client_id,variant_id,platform,status,published_at,scheduled_for,remote_id,asset_ids,last_error_code,last_error_class,blocked_reason');
    q=view==='published'?q.eq('status','published').gte('published_at',start).lt('published_at',end):q.in('status',PROBLEM_STATUSES).gte('scheduled_for',start).lt('scheduled_for',end);
    const res=await q.order('scheduled_for',{ascending:false}).limit(1000);
    if(res.error)throw res.error;
@@ -66,7 +74,8 @@ export async function loadPublicationCalendar(view:CalendarView,month:string,now
     if(view==='problems'&&p?.archived_at)continue;
     items.push({key:`d:${d.id}`,publicationId:d.publication_id,groupKey:p?.editorial_group_id??d.publication_id,clientId:d.client_id,clientName:names.get(d.client_id)??'Client',platform:d.platform,
      status:view==='published'?'published':PROBLEM[d.status]??'failed',at:(view==='published'?d.published_at:null)??d.scheduled_for,text:text.get(d.variant_id)??null,
-     imagePath:d.asset_ids?.[0]?paths.get(d.asset_ids[0])??null:null,remoteId:d.remote_id,errorCode:d.last_error_code});
+     imagePath:d.asset_ids?.[0]?paths.get(d.asset_ids[0])??null:null,remoteId:d.remote_id,errorCode:d.last_error_code,
+     ...(view==='problems'?{deliveryId:d.id,problemLabel:problemLabel(d)}:{})});
    }
   }
   return {items,images:new Map(),clients};

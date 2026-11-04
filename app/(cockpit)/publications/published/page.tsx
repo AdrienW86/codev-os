@@ -10,6 +10,7 @@ import {
 import { platformLabels } from "@/lib/publications/editor";
 import { publicationPlatforms, type PublicationPlatform } from "@/lib/publications/types";
 import { PublicationsNav } from "@/components/publications/publications-board";
+import { ProblemActions } from "@/components/publications/problem-actions";
 
 export const metadata = { title: "Calendrier des publications" };
 
@@ -122,6 +123,11 @@ function Card({ card, image }: { card: CalendarCard; image: string | null }) {
         <Link key={n.platform} href={`/publications/${n.publicationId}`} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${TONE[n.status]}`} title={n.errorCode ?? undefined}>
           <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: DOT[n.platform] }} />{SHORT[n.platform]} · {n.statusLabel}</Link>)}</div>
       {text && <p className="mt-1.5 line-clamp-2 text-sm text-muted">{text}</p>}
+      {/* À traiter : motif lisible et action directe par réseau (Réessayer ou Vérifier). */}
+      {card.networks.filter((n) => n.deliveryId).map((n) => <div key={`p${n.platform}`} className="mt-2 border-t border-border pt-2">
+        {n.problemLabel && <p className="text-xs text-muted"><span className="font-medium text-foreground">{SHORT[n.platform]}</span> · {n.problemLabel}</p>}
+        <ProblemActions publicationId={n.publicationId} deliveryId={n.deliveryId!} status={n.status === "uncertain" ? "uncertain" : n.status} label={SHORT[n.platform]} />
+      </div>)}
       {card.networks.some((n) => n.url) && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
         {card.networks.filter((n) => n.url).map((n) => <a key={`u${n.platform}`} href={n.url!} target="_blank" rel="noopener noreferrer" className="text-accent-hover underline">Voir sur {platformLabels[n.platform]}</a>)}
       </div>}

@@ -110,8 +110,6 @@ export function MobileNavigation() {
       <summary className="flex cursor-pointer list-none items-center justify-between p-4">
         <span className="font-semibold">CODE-V <span className="text-muted">OS</span></span>
         <span className="flex items-center gap-2">
-          {/* Raccourci mobile vers la supervision des publications (un lien dans le résumé n'ouvre pas le menu). */}
-          <Link href="/publications/supervision" className="rounded-lg border border-border-strong px-3 py-2 text-xs text-accent-hover" data-supervision-shortcut="mobile">Supervision</Link>
           <span className="rounded-lg border border-border-strong bg-surface-raised/40 px-3 py-2 text-xs">Menu</span>
         </span>
       </summary>
@@ -141,7 +139,7 @@ export function MobileTabBar() {
     <nav aria-label="Navigation rapide" data-mobile-tabbar className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
       {tabs.map((tab) => {
         const active = within(pathname, tab.prefix);
-        return <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} className={`${item} ${active ? "font-semibold text-accent-hover" : "text-muted"}`}>
+        return <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} data-supervision-shortcut={tab.prefix === "/publications/supervision" ? "mobile" : undefined} className={`${item} ${active ? "font-semibold text-accent-hover" : "text-muted"}`}>
           <Icon name={tab.icon} width={20} height={20} />{tab.label}</Link>;
       })}
       <button type="button" onClick={openMenu} className={`${item} text-muted`} aria-controls="mobile-menu"><Icon name="menu" width={20} height={20} />Menu</button>

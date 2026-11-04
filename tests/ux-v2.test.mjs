@@ -138,3 +138,10 @@ test("new pages stay behind the admin guard; the assistant box only talks to its
     assert.match(source, /checkSameOrigin\(/, route);
   }
 });
+
+test("clients list: compact rows (name, activity, zone, signals); company details only on the client page", () => {
+  const page = read("app/(cockpit)/clients/page.tsx");
+  assert.match(page, /data-client-row/);
+  assert.doesNotMatch(page, /ClientInformation/, "plus de bloc d'informations détaillé dans la liste");
+  assert.match(read("app/(cockpit)/clients/[id]/page.tsx"), /<ClientInformation client=\{client\} includeNotes \/>/);
+});

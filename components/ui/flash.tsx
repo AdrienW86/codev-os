@@ -25,7 +25,7 @@ function subscribe(listener: () => void) {
 export function FlashRegion() {
   const value = useSyncExternalStore(subscribe, () => current, () => null);
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex justify-center sm:inset-x-auto sm:right-6">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-20 z-50 lg:bottom-4 flex justify-center sm:inset-x-auto sm:right-6">
       {value && (
         <p data-flash className={`pointer-events-auto max-w-md rounded-xl border px-4 py-3 text-sm shadow-lg ${value.ok ? "border-success/40 bg-surface-raised text-success" : "border-warning/40 bg-surface text-warning"}`}>{value.text}</p>
       )}

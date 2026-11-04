@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { requireAdmin } from "@/lib/require-admin";
 import { Header } from "@/components/layout/header";
-import { MobileNavigation, Sidebar } from "@/components/layout/navigation";
+import { MobileNavigation, MobileTabBar, Sidebar } from "@/components/layout/navigation";
 import { SimulationBanner } from "@/components/simulation/simulation-banner";
 import { SimulationProvider } from "@/components/simulation/simulation-provider";
 import { getActiveScenario } from "@/lib/simulation/server";
@@ -21,7 +21,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
         <Header simulation={Boolean(scenario)} />
         <SimulationBanner />
         <div className="px-5 sm:px-8"><PwaStatus /></div>
-        <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10">
+        <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-5 pt-8 pb-28 sm:px-8 sm:pt-10 lg:pb-10">
           {children}
           <footer className="mt-12 flex flex-wrap justify-between gap-2 border-t border-border pt-5 text-xs text-muted">
             <span>CODE-V OS</span>
@@ -29,6 +29,7 @@ export default async function CockpitLayout({ children }: { children: ReactNode 
           </footer>
         </main>
       </div>
+      <MobileTabBar />
       <PersistentVoiceDirector />
       <FlashRegion />
     </SimulationProvider>

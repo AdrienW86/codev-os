@@ -74,3 +74,12 @@ test("migration and wiring: private logos, journal, scheduled step, Drive deposi
   assert.doesNotMatch(service, /publication_(review|submit|schedule|prepare)/, "the agent never creates or approves a publication");
   assert.match(readFileSync("app/api/internal/scheduler/tick/route.ts", "utf8"), /step\("visual_agent", \(\) => runVisualAgentTick\(new Date\(\)\)/);
 });
+
+test("visuals made by the agent enter the photo library validated (both import orders), never overriding a human decision", () => {
+  const sql = readFileSync("supabase/migrations/20261126000000_visual_agent_validated.sql", "utf8");
+  assert.match(sql, /after insert on public\.whatsapp_assets/); assert.match(sql, /after insert on public\.client_visual_items/);
+  assert.match(sql, /i\.client_id=new\.client_id and i\.sha256=new\.sha256/);
+  assert.match(sql, /status_changed_by !~ '\^user_'/);
+  assert.match(sql, /library_status in \('received','to_review','quarantined'\)/);
+  assert.match(sql, /status_changed_by='visual_agent'/);
+});

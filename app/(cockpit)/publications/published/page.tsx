@@ -37,10 +37,11 @@ export default async function PublishedCalendarPage({ searchParams }: { searchPa
   const shown = filters.day ? cards.filter((c) => c.date === filters.day) : cards;
   const images = await signCalendarImages(shown.flatMap((c) => (c.imagePath ? [c.imagePath] : [])));
   const href = (patch: Partial<Record<keyof PublishedFilters, string | null>>) => calendarHref(filters, patch);
-  const clientChips = [...counts.clients.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name));
+  // Client choisi en premier : visible sans faire défiler les puces.
+  const clientChips = [...counts.clients.entries()].sort((a, b) => Number(b[0] === filters.client) - Number(a[0] === filters.client) || a[1].name.localeCompare(b[1].name));
   if (filters.client && !counts.clients.has(filters.client)) {
     const name = data.clients.find((c) => c.id === filters.client)?.name;
-    if (name) clientChips.push([filters.client, { name, count: 0 }]);
+    if (name) clientChips.unshift([filters.client, { name, count: 0 }]);
   }
   const days = groupByDay(shown);
 
@@ -62,11 +63,11 @@ export default async function PublishedCalendarPage({ searchParams }: { searchPa
 
     {/* Filtres en puces : seuls les clients et réseaux présents ce mois-ci, avec leur nombre. */}
     <section aria-label="Filtres" className="space-y-2">
-      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" data-calendar-clients>
+      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" data-calendar-clients>
         <Link href={href({ client: null })} className={chip(!filters.client)}>Tous les clients <span className="opacity-70">{[...counts.clients.values()].reduce((s, c) => s + c.count, 0)}</span></Link>
         {clientChips.map(([id, c]) => <Link key={id} href={href({ client: filters.client === id ? null : id })} className={chip(filters.client === id)}>{c.name} <span className="opacity-70">{c.count}</span></Link>)}
       </div>
-      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" data-calendar-networks>
+      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" data-calendar-networks>
         <Link href={href({ platform: null })} className={chip(!filters.platform)}>Tous les réseaux</Link>
         {publicationPlatforms.filter((p) => counts.platforms.has(p) || filters.platform === p).map((p) =>
           <Link key={p} href={href({ platform: filters.platform === p ? null : p })} className={chip(filters.platform === p)}>
@@ -115,15 +116,15 @@ function Card({ card, image }: { card: CalendarCard; image: string | null }) {
     {image ? <img src={image} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
       : <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-[10px] text-muted">Sans image</div>}
     <div className="min-w-0 flex-1">
-      <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold">{card.clientName}</p><span className="shrink-0 text-xs text-muted">{card.time}</span></div>
+      <div className="flex items-baseline justify-between gap-2"><Link href={`/publications/${card.publicationId}`} className="truncate font-semibold hover:underline">{card.clientName}</Link><span className="shrink-0 text-xs text-muted">{card.time}</span></div>
+      {/* Chaque réseau ouvre sa propre fiche. */}
       <div className="mt-1 flex flex-wrap gap-1">{card.networks.map((n) =>
-        <span key={n.platform} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${TONE[n.status]}`} title={n.errorCode ?? undefined}>
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: DOT[n.platform] }} />{SHORT[n.platform]} · {n.statusLabel}</span>)}</div>
+        <Link key={n.platform} href={`/publications/${n.publicationId}`} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${TONE[n.status]}`} title={n.errorCode ?? undefined}>
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: DOT[n.platform] }} />{SHORT[n.platform]} · {n.statusLabel}</Link>)}</div>
       {text && <p className="mt-1.5 line-clamp-2 text-sm text-muted">{text}</p>}
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        {card.networks.map((n) => <Link key={n.platform} href={`/publications/${n.publicationId}`} className="text-accent-hover underline">{card.networks.length > 1 ? `Ouvrir ${SHORT[n.platform]}` : "Ouvrir"}</Link>)}
+      {card.networks.some((n) => n.url) && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
         {card.networks.filter((n) => n.url).map((n) => <a key={`u${n.platform}`} href={n.url!} target="_blank" rel="noopener noreferrer" className="text-accent-hover underline">Voir sur {platformLabels[n.platform]}</a>)}
-      </div>
+      </div>}
     </div>
   </article>;
 }

@@ -29,7 +29,7 @@ export function PersistentVoiceDirector() {
           onClick={() => setPanel({ pathname, expanded: !expanded })}
           className="inline-flex min-h-12 items-center gap-2.5 rounded-full border border-accent/35 bg-surface px-4 py-3 text-sm font-medium text-foreground shadow-xl backdrop-blur transition-colors hover:border-accent/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
           <Icon name="mic" width={18} height={18} className="text-accent" />
-          <span>{expanded ? "Réduire" : "Directeur IA"}</span>
+          <span className={expanded ? undefined : "sr-only sm:not-sr-only"}>{expanded ? "Réduire" : "Directeur IA"}</span>
         </button>
       </div>
       <p className="sr-only" aria-live="polite">Écran actuel : {pathname}</p>

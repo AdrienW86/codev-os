@@ -14,7 +14,9 @@ const unavailable='Supervision indisponible.';
 export type SupervisedPublication={id:string;clientId:string;projectId:string;platform:PublicationPlatform;subject:string;status:PublicationStatus;
  revisionId:string;occurrenceId:string|null;scheduledFor:string|null;delivery:DeliveryState;cancellable:string[];targets:{id:string;scheduledFor:string}[];
  /** Raison sûre (lignes « En erreur » uniquement) : classe d'erreur, motif de blocage ou créneau manqué. */
- errorReason:string|null};
+ errorReason:string|null;
+ /** Diffusion en erreur à relancer ou vérifier directement depuis la ligne (null sinon). */
+ errorDelivery?:{id:string;status:string}|null};
 export type ClientSupervision={id:string;name:string;autoPrepare:boolean;generation:boolean;leadDays:number;
  /** null : photothèque illisible (jamais « trop peu » par défaut). */
  photos:PhotoStats|null;tooFewPhotos:boolean;
@@ -58,6 +60,7 @@ export async function getSupervision(now=new Date(),options:{scheduledDelivery?:
   return {id:p.id,clientId:p.client_id,projectId:p.project_id,platform:p.platform,subject:p.subject,status:p.status,revisionId:p.current_revision_id,occurrenceId:p.occurrence_id,
    scheduledFor:o?.scheduled_for??null,delivery:d.state,cancellable:d.cancellable,
    errorReason:d.state==='error'?deliveryErrorReason(latestLiveDelivery(delivered,p.id,p.current_revision_id)):null,
+   errorDelivery:d.state==='error'?((x)=>x?{id:x.id,status:x.status}:null)(latestLiveDelivery(delivered,p.id,p.current_revision_id)):null,
    targets:p.occurrence_id&&p.status!=='rejected'&&d.state!=='published'?rescheduleTargets(occ,{project_id:p.project_id,platform:p.platform,occurrence_id:p.occurrence_id},now).map(t=>({id:t.id,scheduledFor:t.scheduled_for})):[]};};
  const views=publications.map(view);
  const future=(v:SupervisedPublication)=>v.scheduledFor!==null&&Date.parse(v.scheduledFor)>now.getTime();

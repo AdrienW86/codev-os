@@ -39,6 +39,8 @@ const paths = {
   monitor: "M3 4h18v12H3z M8 20h8 M12 16v4",
   tablet: "M6 2h12v20H6z M11 18h2",
   chevron: "M6 9l6 6 6-6",
+  menu: "M3 6h18 M3 12h18 M3 18h18",
+  check: "M20 6 9 17l-5-5",
   refresh: "M21 12a9 9 0 1 1-3-6.7L21 8 M21 3v5h-5",
   compare: "M8 3v18 M16 3v18 M3 8h5 M16 16h5",
   share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M8.6 13.5l6.8 4 M15.4 6.5l-6.8 4",

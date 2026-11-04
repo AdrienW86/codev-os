@@ -16,7 +16,7 @@ export function PersistentVoiceDirector() {
   const expanded = panel.pathname === pathname && panel.expanded;
 
   return (
-    <aside aria-label="Directeur opérationnel IA" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 w-[min(28rem,calc(100vw-2rem))]">
+    <aside aria-label="Directeur opérationnel IA" className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-40 lg:bottom-[max(1rem,env(safe-area-inset-bottom))] w-[min(28rem,calc(100vw-2rem))]">
       <div id="persistent-voice-panel" className={expanded
         ? "mb-3 max-h-[min(70dvh,42rem)] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl"
         : "hidden"}>

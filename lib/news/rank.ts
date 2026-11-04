@@ -17,9 +17,9 @@ export function dedupeKey(url: string) {
 }
 
 const keywords: Record<NewsCategory, RegExp> = {
-  IA: /\b(ai|ia|llm|gpt|claude|gemini|agent|model|modèle)\b/i,
+  IA: /\b(ai|ia|llm|gpt|chatgpt|claude|gemini|mistral|agents?|models?|modèles?|intelligence artificielle|generative|générative)\b/i,
   Développement: /\b(next\.?js|react|typescript|node|release|api|github|vercel)\b/i,
-  SEO: /\b(seo|search|ranking|core update|google search|indexing|crawl)\b/i,
+  SEO: /\b(seo|search|ranking|core update|google search|indexing|crawl|référencement|serp|ai overviews?|ai mode|search console|google business profile|local)\b/i,
   Ads: /\b(ads|ad|campaign|bidding|performance max|pmax|shopping)\b/i,
   Web: /\b(web|css|chrome|browser|performance|core web vitals|lighthouse|accessibility)\b/i,
 };

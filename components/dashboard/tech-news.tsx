@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { formatDate } from "@/lib/format-date";
 import type { NewsItem } from "@/lib/news/types";
+import Link from "next/link";
 
 const DISMISS_KEY = "codev:tech-news-dismissed";
 const listeners = new Set<() => void>();
@@ -34,10 +35,13 @@ export function TechNews({ items, demo = false }: { items: readonly NewsItem[]; 
     <section aria-labelledby="tech-news-title" className="border-t border-border pt-8">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 id="tech-news-title" className="flex flex-wrap items-center gap-2 font-semibold">
-          Actualités tech & IA
+          Veille IA & SEO
           {demo && <span className="rounded-md bg-surface-raised px-2 py-0.5 text-xs font-normal text-muted">Exemples · veille bientôt disponible</span>}
         </h2>
-        <button type="button" onClick={dismiss} className="min-h-10 shrink-0 rounded-lg px-3 text-xs text-muted hover:bg-surface-raised hover:text-foreground">Masquer</button>
+        <span className="flex shrink-0 items-center gap-1">
+          {!demo && <Link href="/news" className="min-h-10 rounded-lg px-3 py-2.5 text-xs text-accent-hover hover:bg-surface-raised">Toute la veille</Link>}
+          <button type="button" onClick={dismiss} className="min-h-10 shrink-0 rounded-lg px-3 text-xs text-muted hover:bg-surface-raised hover:text-foreground">Masquer</button>
+        </span>
       </div>
       <ul className="grid gap-4 md:grid-cols-3">
         {items.slice(0, 3).map((item) => (

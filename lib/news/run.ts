@@ -10,14 +10,15 @@ import { RunError, type RunHandler } from "@/lib/runs/types";
 export const fetchNewsRun: RunHandler = async ({ now }) => {
   const supabase = getSupabaseServerClient();
   let stored = 0, failedSources = 0;
+  const failedIds: string[] = [];
   const seen = new Set<string>();
   for (const source of newsSources) {
     let items;
     try {
       const response = await safeGet(source.url, { provider: "rss", timeoutMs: 10_000, maxBytes: 2_000_000, accept: "application/rss+xml,application/atom+xml,application/xml,text/xml" });
-      if (response.status !== 200) { failedSources++; continue; }
+      if (response.status !== 200) { failedSources++; failedIds.push(source.id); continue; }
       items = parseFeed(response.body);
-    } catch { failedSources++; continue; }
+    } catch { failedSources++; failedIds.push(source.id); continue; }
     const rows = items.filter((item) => !item.publishedAt || now.getTime() - new Date(item.publishedAt).getTime() < 30 * 86_400_000).map((item) => ({
       source_id: source.id, source_name: source.name, title: item.title, url: item.url.slice(0, 2048), category: source.category,
       summary: item.summary, published_at: item.publishedAt, score: scoreItem(item, source.category, source.weight, now), dedupe_key: dedupeKey(item.url),
@@ -28,5 +29,5 @@ export const fetchNewsRun: RunHandler = async ({ now }) => {
     stored += data?.length ?? 0;
   }
   if (failedSources === newsSources.length) throw new RunError("Aucune source de veille joignable.");
-  return { status: "succeeded", summary: `${stored} nouvelle(s) actualité(s)${failedSources ? `, ${failedSources} source(s) indisponible(s)` : ""}.`, data: { stored, failedSources } };
+  return { status: "succeeded", summary: `${stored} nouvelle(s) actualité(s)${failedSources ? `, ${failedSources} source(s) indisponible(s)` : ""}.`, data: { stored, failedSources, failedIds } };
 };

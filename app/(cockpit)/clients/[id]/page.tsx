@@ -23,6 +23,8 @@ import { VisualAgentPanel } from "@/components/clients/visual-agent-panel";
 import { getVisualAgent } from "@/lib/visual-agent/service";
 import { getVideoAgent } from "@/lib/video-agent/service";
 import { VideoAgentPanel } from "@/components/clients/video-agent-panel";
+import { BlogAgentPanel } from "@/components/clients/blog-agent-panel";
+import { getBlogAgent } from "@/lib/blog-agent/service";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
 import { Action } from "@/components/ui/button";
@@ -258,6 +260,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
       </Panel>
       <VisualAgentSection clientId={clientId} />
       <VideoAgentSection clientId={clientId} />
+      <BlogAgentSection clientId={clientId} />
     </div>
   );
 }
@@ -282,6 +285,19 @@ async function VideoAgentSection({ clientId }: { clientId: string }) {
       <h2 className="font-semibold">Agent Vidéo</h2>
       {view.data ? <div className="mt-3"><VideoAgentPanel clientId={clientId} settings={view.data.settings} items={view.data.items} services={view.data.services} photoCount={view.data.photoCount} /></div>
         : <p role="alert" className="mt-3 text-sm">Agent Vidéo indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
+    </Panel>
+  );
+}
+
+// Agent Blog : articles sur le site du client, annoncés 24 h avant, publiés puis relayés sur les réseaux si demandé.
+async function BlogAgentSection({ clientId }: { clientId: string }) {
+  const view = await safeRead("blog-agent", () => getBlogAgent(clientId), null);
+  return (
+    <Panel className="p-6">
+      <h2 className="font-semibold">Agent Blog</h2>
+      {view.data ? <div className="mt-3"><BlogAgentPanel clientId={clientId} settings={view.data.settings} defaultSite={view.data.defaultSite} services={view.data.services} photoCount={view.data.photoCount}
+        articles={view.data.articles.map((a) => ({ id: a.id, title: a.title, status: a.status, publish_at: a.publish_at, published_at: a.published_at, social_status: a.social_status }))} apiBase="https://os.code-v.fr" /></div>
+        : <p role="alert" className="mt-3 text-sm">Agent Blog indisponible (migration à appliquer ou lecture impossible). Rechargez la page.</p>}
     </Panel>
   );
 }

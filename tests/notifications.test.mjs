@@ -56,3 +56,21 @@ test("Read notifications can be removed from the list; unread ones never are", (
   assert.match(page, /row\.read \? <MutationForm action=\{dismissNotificationAction\}/);
   assert.match(page, /Supprimer les notifications lues/);
 });
+
+test("Only alerts notify: routine publication events never reach the bell, the list or a push", async () => {
+  assert.deepEqual([...schema.alertCategories], ["analysis_failed", "incident", "delivery_failed"]);
+  for (const routine of ["publication_review", "media_missing", "media_received", "blog_scheduled", "report_ready", "analysis_completed"]) assert.equal(schema.isAlertCategory(routine), false, routine);
+  // Préférences enregistrées avant : les catégories courantes sont ignorées à la lecture.
+  const fake = createFakeSupabase({ admin_notification_preferences: [{ user_id: "test_admin", categories: ["publication_review", "incident", "media_missing"], push_enabled: true, push_categories: ["publication_review", "delivery_failed"] }],
+    admin_notifications: [{ id: deviceId, category: "publication_review", href: "/publications/review", created_at: "2026-11-05T08:00:00Z" }, { id: "22222222-2222-4222-8222-222222222222", category: "incident", href: "/work?kind=incident", created_at: "2026-11-05T07:00:00Z" }], admin_notification_reads: [] });
+  const service = loadTs("lib/notifications/service.ts", { "@/lib/require-admin": { requireAdmin: async () => ({ userId: "test_admin" }) }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client }, "./schema": schema });
+  assert.deepEqual(JSON.parse(JSON.stringify(await service.notificationPreferences())), { categories: ["incident"], push_enabled: true, push_categories: ["delivery_failed"] });
+  assert.deepEqual((await service.listNotifications()).map((row) => row.category), ["incident"]);
+  assert.equal(await service.unreadNotificationCount(), 1);
+  // Push : une ligne réservée pour un événement courant est ignorée, même si l'ancienne préférence l'incluait.
+  const pushFake = createFakeSupabase({ admin_push_subscriptions: [{ id: deviceId, device_id: deviceId, user_id: "test_admin", endpoint: "https://fcm.googleapis.com/fake", keys: { p256dh: "a".repeat(87), auth: "b".repeat(22) } }], admin_notification_preferences: [{ user_id: "test_admin", push_enabled: true, push_categories: ["publication_review"] }], admin_notifications: [{ id: deviceId, category: "publication_review" }], admin_push_deliveries: [{ notification_id: deviceId, subscription_id: deviceId, state: "sending" }] }, { rpc: { codev_claim_push: () => [{ notification_id: deviceId, subscription_id: deviceId, created_at: new Date().toISOString() }] } });
+  const push = loadTs("lib/notifications/push.ts", { "web-push": { default: {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => pushFake.client }, "./schema": schema });
+  let sent = 0;
+  const result = await push.flushPushNotifications({ VAPID_PUBLIC_KEY: "fake", VAPID_PRIVATE_KEY: "fake", VAPID_SUBJECT: "mailto:admin@example.test", PUSH_SENDING_ENABLED: "true", AUTHORIZED_ADMIN_USER_ID: "test_admin" }, async () => { sent++; });
+  assert.equal(sent, 0); assert.deepEqual({ ...result }, { accepted: 0, failed: 0, disabled: false });
+});

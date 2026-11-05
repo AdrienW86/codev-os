@@ -268,34 +268,45 @@ export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{dr
  return {clients:classified.length,driveAdded:synced,analyzed:classified.reduce((n,r)=>n+r.analyzed,0),quarantined:classified.reduce((n,r)=>n+r.quarantined,0),purge};
 }
 
+const DRIVE_RECHECK_MS=6*60*60*1000,DRIVE_CHECK_CONCURRENCY=5;
 type PresenceReaders={drive:(fileId:string,folderId:string)=>Promise<DrivePresence>;app:(fileId:string,folderId:string)=>Promise<DrivePresence>};
 /**
  * Vérification planifiée, par lots (les photos les moins récemment vérifiées d'abord) : une photo dont l'original est à
  * la corbeille, introuvable ou sorti de son dossier Drive quitte la photothèque (réversible). Une panne Drive ne retire
  * jamais rien : la photo est simplement revérifiée plus tard.
  */
-export async function checkDriveAvailability(limit=25,deps:{readers?:PresenceReaders}={}):Promise<{checked:number;missing:number;failed:number}>{
+export async function checkDriveAvailability(limit=25,deps:{readers?:PresenceReaders;now?:Date}={}):Promise<{checked:number;missing:number;failed:number}>{
+ // Une photo vérifiée il y a moins de DRIVE_RECHECK_MS n'est pas relue : sans ce délai, une petite photothèque était
+ // revérifiée à chaque passage du planificateur (toutes les 15 min), soit des centaines d'appels Drive inutiles par jour.
+ const staleBefore=new Date((deps.now??new Date()).getTime()-DRIVE_RECHECK_MS).toISOString();
  const {data,error}=await db().from('whatsapp_assets').select('id,client_id,drive_file_id,drive_folder_id,origin')
-  .is('purged_at',null).not('imported_at','is',null).order('drive_checked_at',{ascending:true,nullsFirst:true}).order('created_at').limit(Math.min(Math.max(limit,1),100));
+  .is('purged_at',null).not('imported_at','is',null).or(`drive_checked_at.is.null,drive_checked_at.lt.${staleBefore}`)
+  .order('drive_checked_at',{ascending:true,nullsFirst:true}).order('created_at').limit(Math.min(Math.max(limit,1),100));
  if(error)throw Error('library_unavailable');
  const rows=(data??[]) as {id:string;client_id:string;drive_file_id:string;drive_folder_id:string;origin:AssetOrigin}[];
  const result={checked:0,missing:0,failed:0};if(!rows.length)return result;
  let readers=deps.readers??null;
- if(!readers){let token:string|null=null;const drive=drivePresenceReader();
-  readers={drive,app:async(fileId,folderId)=>driveFilePresence(token??=await importDriveToken(),fileId,folderId)};}
- for(const row of rows){
+ if(!readers){let token:Promise<string>|null=null;const drive=drivePresenceReader();
+  // Jeton partagé par les lectures parallèles ; un échec n'est pas mémorisé (la photo suivante réessaie).
+  const appToken=()=>token??=importDriveToken().catch(e=>{token=null;throw e;});
+  readers={drive,app:async(fileId,folderId)=>driveFilePresence(await appToken(),fileId,folderId)};}
+ const read=readers;
+ const checkOne=async(row:typeof rows[number])=>{
   try{
-   const presence=await (row.origin==='drive'?readers.drive:readers.app)(row.drive_file_id,row.drive_folder_id);
+   const presence=await (row.origin==='drive'?read.drive:read.app)(row.drive_file_id,row.drive_folder_id);
    result.checked++;
    if(presence==='missing'){
     const marked=await db().rpc('whatsapp_asset_mark_drive_missing' as never,{p_asset_id:row.id,p_client_id:row.client_id} as never);
     if(marked.error)throw Error('Missing not recorded');
     if(marked.data===true)result.missing++;
-    continue;
+    return;
    }
   }catch(e){result.failed++;log('drive_check',codeOf(e));}
   const touched=await db().from('whatsapp_assets').update({drive_checked_at:new Date().toISOString()} as never).eq('id',row.id).eq('client_id',row.client_id);
   if(touched.error)log('drive_check','not_recorded');
- }
+ };
+ // Quelques lectures Drive en parallèle (au lieu d'une à la fois) : le passage du planificateur est plus court.
+ let next=0;
+ await Promise.all(Array.from({length:Math.min(DRIVE_CHECK_CONCURRENCY,rows.length)},async()=>{while(next<rows.length)await checkOne(rows[next++]);}));
  return result;
 }

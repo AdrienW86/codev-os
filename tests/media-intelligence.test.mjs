@@ -438,6 +438,23 @@ test("Drive availability: trashed, missing or moved originals leave the library;
   assert.equal(byId[asset(73)].purged_at, null, "panne Drive : rien n'est retiré"); assert.ok(byId[asset(73)].drive_checked_at, "revérifiée plus tard, sans bloquer la file");
 });
 
+test("Drive availability: a photo checked less than 6 hours ago is not re-read, and reads run in parallel", async () => {
+  const filters = [];
+  const query = { select: () => query, is: () => query, not: () => query, order: () => query, limit: async () => ({ data: Array.from({ length: 8 }, (_, i) => ({ id: asset(80 + i), client_id: CLIENT, drive_file_id: `file_parallel_${i}`, drive_folder_id: "folder_client_a", origin: "drive" })), error: null }),
+    or: (value) => { filters.push(value); return query; }, update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }) };
+  const service = load("lib/media-intelligence/service.ts", {
+    "node:crypto": require("node:crypto"), sharp: () => ({}), "@/lib/supabase/server": { getSupabaseServerClient: () => ({ from: () => query }) },
+    "@/lib/integrations/publications-openai": {}, "@/lib/integrations/publications-drive": {}, "@/lib/publications/media/transform": {},
+    "@/lib/whatsapp/library": {}, "@/lib/whatsapp/providers": {}, "@/lib/whatsapp/service": { storeThumbnail: async () => {}, THUMBNAIL_BUCKET: "whatsapp-thumbnails" },
+  });
+  let inFlight = 0, peak = 0;
+  const present = async () => { inFlight++; peak = Math.max(peak, inFlight); await new Promise(r => setTimeout(r, 5)); inFlight--; return "present"; };
+  const result = await service.checkDriveAvailability(25, { readers: { drive: present, app: present }, now: new Date("2026-11-05T12:00:00Z") });
+  assert.deepEqual(json(result), { checked: 8, missing: 0, failed: 0 });
+  assert.deepEqual(filters, ["drive_checked_at.is.null,drive_checked_at.lt.2026-11-05T06:00:00.000Z"]);
+  assert.ok(peak > 1 && peak <= 5, `lectures Drive parallèles et bornées (pic ${peak})`);
+});
+
 test("Drive availability: pure presence decision, migration is reversible and never touches human-rejected purges", () => {
   const drive = load("lib/integrations/publications-drive.ts", { "node:crypto": require("node:crypto"), "./google-drive-oauth": {} });
   assert.equal(drive.presenceFromMetadata({ trashed: false, parents: ["folder_a"] }, "folder_a"), "present");

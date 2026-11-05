@@ -43,7 +43,7 @@ const More=({href,children}:{href:string;children:ReactNode})=><Link href={href}
 export default async function PublicationsSupervisionPage({searchParams}:PageProps<"/publications/supervision">){
  await requireAdmin();const now=new Date();
  // Interrupteur serveur lu par lib/system (présence de la valeur exacte « enabled » uniquement), jamais dans lib/publications.
- const [raw,publications,search,articles]=await Promise.all([getSupervision(now,{scheduledDelivery:isFlagEnabled("publications-scheduled-delivery")}),listPublications(),searchParams,upcomingBlogArticles()]);
+ const [raw,publications,search,articles]=await Promise.all([getSupervision(now,{scheduledDelivery:isFlagEnabled("publications-scheduled-delivery")}),listPublications(undefined,undefined,{statuses:["pending_review"],activeOnly:true}),searchParams,upcomingBlogArticles()]);
  // File de validation complète (programmée ou non), comme /publications/review.
  const pendingAll=publications.filter(p=>p.status==="pending_review"&&!p.archived_at);
  const clientOptions=[...new Map([...raw.clients.map(c=>[c.id,c.name] as const),...pendingAll.map(p=>[p.client_id,p.client?.name??"Client"] as const)])]

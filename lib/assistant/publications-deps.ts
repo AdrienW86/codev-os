@@ -80,7 +80,7 @@ export const productionPublicationsDeps: PublicationsDeps = {
     return { ok: result.ok, message: result.message, publications: result.publications };
   },
   async pendingReview(clientId) {
-    return (await listPublications(clientId)).filter((item) => item.status === "pending_review" && !item.archived_at)
+    return (await listPublications(clientId, undefined, { statuses: ["pending_review"], activeOnly: true })).filter((item) => item.status === "pending_review" && !item.archived_at)
       .map((item) => ({ id: item.id, clientId: item.client_id, clientName: item.client?.name ?? "Client", projectName: item.project?.name ?? null, platform: item.platform ?? null, subject: item.subject, updatedAt: item.updated_at }));
   },
   async reschedulable() {

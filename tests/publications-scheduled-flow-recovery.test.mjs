@@ -110,7 +110,7 @@ test("#4 follow-up: an expired media step is retried without AI, then the drafts
   assert.deepEqual(json(retried), [[ADMIN, RUN(1)]]);
   assert.equal(prepared.length, 0, "no generation");
   assert.deepEqual(fake.tables.publications.map(p => p.status), ["pending_review", "pending_review"]);
-  assert.deepEqual(notes(fake), [{ event_key: `publication-review:${RUN(1)}`, category: "publication_review", href: "/publications/review" }]);
+  assert.deepEqual(notes(fake), [{ event_key: "publication-review:day:2026-10-12", category: "publication_review", href: "/publications/review" }]);
   assert.equal(fake.tables.publication_scheduled_runs[0].state, "done");
   assert.deepEqual(json(r.followUp), { runs: 1, attached: 1, submitted: 2, gaveUp: 0 });
   assert.ok(!fake.calls.some(c => /review_manual|prepare_delivery/.test(String(c[1]))), "never approves");
@@ -138,7 +138,7 @@ test("#4 follow-up: attempts exhausted → the claim is released, « Photo manqu
   const r = await pending.mod.runScheduledPreparation(now, pending.deps);
   assert.equal(pending.retried.length, 0);
   assert.deepEqual(pending.fake.calls.filter(c => c[1] === "publication_agent_v2_media_fail").map(c => c[2]), [{ p_run_id: RUN(1), p_attempt: 3, p_error_code: "media_unavailable", p_actor_id: ADMIN }], "pending (expired) claim released explicitly");
-  assert.deepEqual(notes(pending.fake), [{ event_key: `media-missing:run:${RUN(1)}`, category: "media_missing", href: `/clients/${C(1)}?tab=media` }]);
+  assert.deepEqual(notes(pending.fake), [{ event_key: `media-missing:${C(1)}:2026-10-12`, category: "media_missing", href: `/clients/${C(1)}?tab=media` }]);
   assert.equal(pending.fake.tables.publication_scheduled_runs[0].state, "gave_up"); assert.equal(r.followUp.gaveUp, 1);
   assert.deepEqual(pending.fake.tables.publications.map(p => p.status), ["draft", "draft"]);
   const failed = setup(followTables({ media_status: "needs_media", media_attempts: 3, media_lease_until: null }));

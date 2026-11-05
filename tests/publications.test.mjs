@@ -51,6 +51,7 @@ function setup({ deny = false, rows = [], configuration = settings, error = null
   const query = {
     select: (columns) => { calls.push(["select", columns]); return query; },
     eq: (...args) => { calls.push(["eq", ...args]); return query; }, order: () => query,
+    in: (...args) => { calls.push(["in", ...args]); return query; }, is: (...args) => { calls.push(["is", ...args]); return query; },
     range: (...args) => { calls.push(["range", ...args]); return query; },
     single: async () => ({ data: configuration, error }),
     then: (resolve) => resolve({ data: pages ? pages[pageIndex++] : rows, error }),
@@ -142,6 +143,16 @@ test("all repository reads and mutations stop before storage for a non-admin", a
     await assert.rejects(operation, /denied/);
   }
   assert.equal(calls.every((call) => call === "auth"), true);
+});
+
+test("status and archive filters are applied in the database, not after reading the whole history", async () => {
+  const filtered = setup();
+  await filtered.repository.listPublications(undefined, undefined, { statuses: ["pending_review", "draft"], activeOnly: true });
+  assert.equal(JSON.stringify(filtered.calls.find((call) => call[0] === "in")), JSON.stringify(["in", "status", ["pending_review", "draft"]]));
+  assert.equal(JSON.stringify(filtered.calls.find((call) => call[0] === "is")), JSON.stringify(["is", "archived_at", null]));
+  const plain = setup();
+  await plain.repository.listPublications();
+  assert.equal(plain.calls.some((call) => call[0] === "in" || call[0] === "is"), false);
 });
 
 test("empty list is real, filters are validated and pagination is complete", async () => {

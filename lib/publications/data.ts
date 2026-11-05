@@ -34,7 +34,10 @@ export async function getPublicationSettingsState(): Promise<PublicationSettings
   try { return await readSettings(); } catch { return null; }
 }
 
-export async function listPublications(clientId?: string, projectId?: string): Promise<PublicationListItem[]> {
+/** Filtre appliqué en base : une page qui n'affiche que les publications actives d'un statut ne lit pas tout l'historique. */
+export type PublicationListFilter = { statuses?: readonly PublicationStatus[]; activeOnly?: boolean };
+
+export async function listPublications(clientId?: string, projectId?: string, filter: PublicationListFilter = {}): Promise<PublicationListItem[]> {
   await requireAdmin();
   if (clientId !== undefined && !isPublicationUuid(clientId)) throw new Error(invalid);
   if (projectId !== undefined && !isPublicationUuid(projectId)) throw new Error(invalid);
@@ -45,6 +48,8 @@ export async function listPublications(clientId?: string, projectId?: string): P
         .order("updated_at", { ascending: false }).order("id");
       if (clientId) query = query.eq("client_id", clientId);
       if (projectId) query = query.eq("project_id",projectId);
+      if (filter.statuses?.length) query = query.in("status", [...filter.statuses]);
+      if (filter.activeOnly) query = query.is("archived_at", null);
       const { data, error } = await query.range(offset, offset + 99);
       if (error) throw error;
       results.push(...(data ?? []));

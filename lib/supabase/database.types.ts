@@ -6,6 +6,7 @@ import type { AdsWorkspaceTables, AdsWorkspaceFunctions } from "@/lib/supabase/a
 import type { SearchConsoleTables } from "@/lib/supabase/search-console.types";
 import type { SeoOpportunityTables } from "@/lib/supabase/seo-opportunities.types";
 import type { StudioTables } from "@/lib/supabase/studio.types";
+import type { FinanceTables } from "@/lib/supabase/finance.types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -305,7 +306,7 @@ export type ClientServiceInsert = {
 
 export type Database = {
   public: {
-    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & SearchConsoleTables & SeoOpportunityTables & StudioTables & {
+    Tables: PublicationTables & CoreTables & AdsWorkspaceTables & WhatsAppTables & SearchConsoleTables & SeoOpportunityTables & StudioTables & FinanceTables & {
       agent_project_assignments: {
         Row: {agent_id:string;client_id:string;project_id:string;enabled:boolean;created_at:string;updated_at:string};
         Insert: {agent_id:string;client_id:string;project_id:string;enabled?:boolean;created_at?:string;updated_at?:string};

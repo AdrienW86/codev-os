@@ -22,7 +22,7 @@ export type FinanceTables = {
     code: string; category_code: string; name: string; description: string;
     billing_unit: string; billing_frequency: FinanceCatalogRow["billing_frequency"];
     reference_min_cents?: number | null; reference_max_cents?: number | null; default_price_cents?: number | null;
-    updated_by?: string | null; archived_at?: string | null;
+    updated_by?: string | null; archived_at?: string | null; source?: string;
   }>;
   finance_client_contracts: Table<FinanceContractRow, {
     client_id: string; catalog_item_id?: string | null; name: string; description: string; billing_unit: string;

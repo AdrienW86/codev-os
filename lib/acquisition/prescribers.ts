@@ -10,7 +10,8 @@ export type PrescriberSegmentId =
   | "developers" | "home_builders" | "social_landlords" | "insurance"
   | "loss_adjusters" | "diagnostics" | "roofing_framing" | "finishing_trades"
   | "plumbing_heating" | "electrical" | "masonry" | "building_cleaning"
-  | "landscaping" | "hospitality" | "kitchen_retail";
+  | "landscaping" | "hospitality" | "kitchen_retail"
+  | "accountants" | "consultants" | "advertising" | "printers" | "photographers" | "it_services";
 
 export type PrescriberSegment = {
   id: PrescriberSegmentId;
@@ -38,6 +39,12 @@ export const PRESCRIBER_SEGMENTS: Record<PrescriberSegmentId, PrescriberSegment>
   landscaping: { id: "landscaping", label: "Paysagistes", nafCodes: ["81.30Z"] },
   hospitality: { id: "hospitality", label: "Hôtels et restaurants", nafCodes: ["55.10Z", "56.10A"] },
   kitchen_retail: { id: "kitchen_retail", label: "Cuisinistes et magasins d'ameublement", nafCodes: ["47.59A"] },
+  accountants: { id: "accountants", label: "Experts-comptables", nafCodes: ["69.20Z"] },
+  consultants: { id: "consultants", label: "Conseil aux entreprises", nafCodes: ["70.22Z"] },
+  advertising: { id: "advertising", label: "Agences de communication et de publicité", nafCodes: ["73.11Z", "70.21Z"] },
+  printers: { id: "printers", label: "Imprimeurs", nafCodes: ["18.12Z"] },
+  photographers: { id: "photographers", label: "Photographes", nafCodes: ["74.20Z"] },
+  it_services: { id: "it_services", label: "Sociétés de services informatiques", nafCodes: ["62.02A"] },
 };
 
 /** 1 = prescripteur principal, 2 = régulier, 3 = occasionnel. */
@@ -126,6 +133,18 @@ export const TRADE_PROFILES: TradeProfile[] = [
       t("real_estate_agencies", 1, "Nettoyage de fin de chantier ou entre deux locations."),
       t("hospitality", 2, "Besoins réguliers de nettoyage."),
       t("developers", 3, "Nettoyage de livraison de programmes neufs."),
+    ],
+  },
+  {
+    id: "digital", label: "Agence web / informatique",
+    keywords: ["informatique", "programmation", "developpeur", "developpement web", "agence web", "site internet", "site web", "webdesign", "numerique", "digital", "logiciel"],
+    targets: [
+      t("accountants", 1, "Les experts-comptables accompagnent les créations et la croissance des entreprises et leur recommandent des prestataires."),
+      t("consultants", 2, "Les consultants en gestion et stratégie orientent leurs clients vers des prestataires web et d'automatisation."),
+      t("advertising", 2, "Les agences de communication sans équipe technique sous-traitent sites et développements."),
+      t("it_services", 2, "Les sociétés de services informatiques sous-traitent ou redirigent les projets web hors de leur cœur de métier."),
+      t("printers", 3, "Les imprimeurs voient passer les créations d'entreprise et les besoins d'identité visuelle."),
+      t("photographers", 3, "Les photographes professionnels travaillent avec des entreprises qui refont leur site."),
     ],
   },
 ];

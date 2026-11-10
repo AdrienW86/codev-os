@@ -4,7 +4,7 @@
  * Gratuites, sans clé. Fonctions pures + `fetch` injectable pour les tests.
  * Les dirigeants (personnes physiques) ne sont jamais conservés.
  */
-import { segmentForNaf, type PrescriberSegmentId, type SegmentPriority, type TradeProfile, PRESCRIBER_SEGMENTS } from "./prescribers";
+import { normalizeText, segmentForNaf, type PrescriberSegmentId, type SegmentPriority, type TradeProfile, PRESCRIBER_SEGMENTS } from "./prescribers";
 
 export const SIRENE_API_BASE = "https://recherche-entreprises.api.gouv.fr";
 export const GEO_API_BASE = "https://geo.api.gouv.fr";
@@ -36,12 +36,17 @@ export function buildCommuneLookupUrl(place: string): string {
   return `${GEO_API_BASE}/communes?${q}`;
 }
 
-export function parseCommuneLookup(payload: unknown): ResolvedLocation | null {
+/**
+ * L'API Géo fait une recherche floue (« France » → Fort-de-France) : on n'accepte
+ * que la commune dont le nom correspond exactement à la saisie.
+ */
+export function parseCommuneLookup(payload: unknown, query?: string): ResolvedLocation | null {
   const first = Array.isArray(payload) ? (payload[0] as Json | undefined) : undefined;
   const centre = first?.centre as { coordinates?: unknown[] } | undefined;
   const lon = num(centre?.coordinates?.[0]); const lat = num(centre?.coordinates?.[1]);
   const commune = str(first?.nom); const codeInsee = str(first?.code); const departement = str(first?.codeDepartement);
   if (!commune || !codeInsee || !departement || lat === null || lon === null) return null;
+  if (query !== undefined && normalizeText(commune) !== normalizeText(query)) return null;
   return { commune, codeInsee, departement, lat, lon };
 }
 
@@ -65,6 +70,8 @@ export function parseSireneResults(payload: unknown): { companies: SireneCompany
     const siren = str(r.siren);
     if (!siren || !/^\d{9}$/.test(siren)) continue;
     if (str(r.etat_administratif) && r.etat_administratif !== "A") continue;
+    // Entreprise opposée à la réutilisation commerciale de ses données Sirene : exclue.
+    if (r.opposition_diffusion_commerciale === true) continue;
     const matching = Array.isArray(r.matching_etablissements) ? (r.matching_etablissements as Json[]) : [];
     const est = (matching.find((e) => !e.etat_administratif || e.etat_administratif === "A") ?? r.siege ?? {}) as Json;
     const name = str(r.nom_complet) ?? str(r.nom_raison_sociale);
@@ -150,8 +157,8 @@ export async function discoverPrescribers(input: {
     return res.json();
   };
   try {
-    const location = parseCommuneLookup(await get(buildCommuneLookupUrl(input.place)));
-    if (!location) return { ok: false, kind: "location_not_found", detail: `Commune introuvable : « ${input.place} ».` };
+    const location = parseCommuneLookup(await get(buildCommuneLookupUrl(input.place)), input.place);
+    if (!location) return { ok: false, kind: "location_not_found", detail: `Commune introuvable ou zone trop large : « ${input.place} ».` };
     const targets = input.profile.targets.filter((tg) => !input.segments || input.segments.includes(tg.segment));
     const all: SireneCompany[] = [];
     const perSegment = Math.min(Math.max(input.maxPerSegment, 1), 100);

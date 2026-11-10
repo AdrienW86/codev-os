@@ -17,7 +17,7 @@ const NOTICES: Record<string, string> = {
   already_exists: "Cet espace existe déjà.",
   invalid_discovery: "Paramètres de recherche invalides.",
   discovery_no_place: "Aucune commune : renseignez la zone du client ou une commune.",
-  discovery_location_not_found: "Commune introuvable dans la base officielle des communes.",
+  discovery_location_not_found: "Commune introuvable : indiquez une commune précise (ex. Strasbourg). Un pays ou une région ne suffit pas.",
   discovery_source_unavailable: "API Recherche d'entreprises momentanément indisponible. Réessayez plus tard.",
   discovery_schema_missing: "Migration Agent Prospection non appliquée.",
   discovery_workspace_missing: "Espace introuvable.",
@@ -29,6 +29,8 @@ const NOTICES: Record<string, string> = {
 const count = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,5}$/.test(v) ? v : "0");
 
 export const metadata: Metadata = { title: "Acquisition" };
+// La recherche de prescripteurs enchaîne ~20 appels Sirene (≈ 20 s) : marge au-delà du défaut.
+export const maxDuration = 60;
 
 export default async function AcquisitionPage({ searchParams }: PageProps<"/acquisition">) {
   await requireAdmin();

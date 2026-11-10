@@ -46,7 +46,7 @@ function CatalogEditor({item,categories}:{item:FinanceCatalogRow;categories:{cod
     </details>
     <form action={changeFinanceCatalogArchive} className="mt-3">
       <input type="hidden" name="id" value={item.id}/><input type="hidden" name="operation" value={item.archived_at?"restore":"archive"}/>
-      <button className="text-xs text-muted underline hover:text-foreground">{item.archived_at?"Réactiver":"Archiver"} (sans supprimer l'historique)</button>
+      <button className="text-xs text-muted underline hover:text-foreground">{item.archived_at?"Réactiver":"Archiver"} (sans supprimer l’historique)</button>
     </form>
   </article>;
 }
@@ -59,7 +59,7 @@ function ContractEditor({contract,clientId}:{contract:FinanceContractRow;clientI
     <details className="mt-3"><summary className="cursor-pointer text-sm text-accent">Modifier ce contrat</summary>
       <form action={saveFinanceContract} className="mt-4 grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="id" value={contract.id}/><input type="hidden" name="client_id" value={clientId}/>
-        {contract.catalog_item_id?<p className="text-xs text-muted sm:col-span-2">Prestation issue du catalogue : libellé et livrables figés au contrat. Les changements globaux n'affectent pas ce contrat.</p>:<>
+        {contract.catalog_item_id?<p className="text-xs text-muted sm:col-span-2">Prestation issue du catalogue : libellé et livrables figés au contrat. Les changements globaux n’affectent pas ce contrat.</p>:<>
           <label className={label}>Désignation<input name="name" required maxLength={160} defaultValue={contract.name} className={input}/></label>
           <label className={label}>Unité<select name="billing_unit" defaultValue={contract.billing_unit} className={input}>{financeUnits.map(u=><option key={u} value={u}>{units[u]??u}</option>)}</select></label>
           <label className={label+" sm:col-span-2"}>Livrables<textarea name="description" rows={2} maxLength={3000} defaultValue={contract.description} className={input}/></label>
@@ -72,8 +72,8 @@ function ContractEditor({contract,clientId}:{contract:FinanceContractRow;clientI
         <label className={label}>Fin (facultative)<input name="ends_on" type="date" defaultValue={contract.ends_on??""} className={input}/></label>
         <label className={label}>Référence devis / contrat<input name="reference" maxLength={160} defaultValue={contract.reference??""} className={input}/></label>
         <label className={label}>Notes<input name="notes" maxLength={3000} defaultValue={contract.notes??""} className={input}/></label>
-        <p className="text-xs text-muted sm:col-span-2">Les modifications sont historisées ; elles n'affectent aucun paiement ni service technique.</p>
-        <button className="min-h-10 rounded-lg bg-accent-strong px-4 text-sm font-medium text-accent-foreground">Enregistrer l'avenant</button>
+        <p className="text-xs text-muted sm:col-span-2">Les modifications sont historisées ; elles n’affectent aucun paiement ni service technique.</p>
+        <button className="min-h-10 rounded-lg bg-accent-strong px-4 text-sm font-medium text-accent-foreground">Enregistrer l’avenant</button>
       </form>
     </details>
   </article>;
@@ -99,7 +99,7 @@ export default async function FinancePage({searchParams}:PageProps<"/finance">) 
   return <>
     <PageHeading eyebrow="Gestion commerciale" title="Prestations & Finance" description="Catalogue global de tarifs indicatifs et contrats commerciaux propres à chaque client. Qonto, relances et URSSAF seront ajoutés sans changer les prestations existantes."/>
     {notice&&<p role="status" className="mb-5 rounded-xl border border-border bg-surface-raised p-3 text-sm">{notice==="prestation-ok"?"Prestation enregistrée.":notice==="contrat-ok"?"Contrat client enregistré.":notice==="archivage-ok"?"État du catalogue mis à jour.":notice==="simulation"?"Aucune écriture en mode simulation.":notice}</p>}
-    {unavailable?<Panel className="p-5"><p role="alert" className="text-sm text-warning">Module indisponible : appliquer d'abord la migration finance_catalog_contracts sur Supabase. Aucune donnée client n'a été modifiée.</p></Panel>:<>
+    {unavailable?<Panel className="p-5"><p role="alert" className="text-sm text-warning">Module indisponible : appliquer d’abord la migration finance_catalog_contracts sur Supabase. Aucune donnée client n’a été modifiée.</p></Panel>:<>
       <Panel className="mb-6 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">Catalogue global</h2><Badge>{items.length} prestations</Badge></div>
         <p className="mt-1 text-sm text-muted">{formNote}</p>
@@ -158,7 +158,7 @@ export default async function FinancePage({searchParams}:PageProps<"/finance">) 
               <label className={label}>Fin (facultative)<input name="ends_on" type="date" className={input}/></label>
               <label className={label}>Référence devis / contrat<input name="reference" maxLength={160} className={input}/></label>
               <label className={label}>Notes<input name="notes" maxLength={3000} className={input}/></label>
-              <p className="text-xs text-muted sm:col-span-2">Cette création n'émet aucune facture et n'active aucun agent. Les échanges et paiements Qonto viendront dans une prochaine PR.</p>
+              <p className="text-xs text-muted sm:col-span-2">Cette création n’émet aucune facture et n’active aucun agent. Les échanges et paiements Qonto viendront dans une prochaine PR.</p>
               <button className="min-h-10 rounded-lg bg-accent-strong px-4 text-sm font-medium text-accent-foreground">Attribuer la prestation</button>
             </form>
           </details>

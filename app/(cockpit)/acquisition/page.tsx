@@ -6,14 +6,39 @@ import { getAcquisitionConnectorReadiness } from "@/lib/acquisition/connectors";
 import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/model";
 import { AcquisitionWorkspaceTabs } from "@/components/acquisition/workspace-tabs";
 import { AcquisitionCreateForms } from "@/components/acquisition/create-forms";
+import { PrescriberDiscovery } from "@/components/acquisition/prescriber-discovery";
+import { placesConfigured } from "@/lib/acquisition/discovery";
+import { listClients } from "@/lib/clients/data";
+
+const NOTICES: Record<string, string> = {
+  workspace_created: "Espace créé, envois verrouillés.",
+  discovery_done: "Recherche terminée : {found} prescripteur(s) trouvé(s), {inserted} nouvelle(s) fiche(s).",
+  enrich_done: "Google Places : {found} fiche(s) complétée(s) sur {inserted} vérifiée(s).",
+  already_exists: "Cet espace existe déjà.",
+  invalid_discovery: "Paramètres de recherche invalides.",
+  discovery_no_place: "Aucune commune : renseignez la zone du client ou une commune.",
+  discovery_location_not_found: "Commune introuvable dans la base officielle des communes.",
+  discovery_source_unavailable: "API Recherche d'entreprises momentanément indisponible. Réessayez plus tard.",
+  discovery_schema_missing: "Migration Agent Prospection non appliquée.",
+  discovery_workspace_missing: "Espace introuvable.",
+  discovery_storage: "Enregistrement impossible. Aucune donnée partielle n'a été conservée.",
+  enrich_places_not_configured: "GOOGLE_PLACES_API_KEY n'est pas configurée.",
+  enrich_schema_missing: "Migration Agent Prospection non appliquée.",
+  enrich_source_unavailable: "Google Places indisponible ou clé refusée.",
+};
+const count = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,5}$/.test(v) ? v : "0");
 
 export const metadata: Metadata = { title: "Acquisition" };
 
-export default async function AcquisitionPage() {
+export default async function AcquisitionPage({ searchParams }: PageProps<"/acquisition">) {
   await requireAdmin();
-  const [snapshot, connectors] = await Promise.all([
+  const [snapshot, connectors, clients, params] = await Promise.all([
     getAcquisitionSnapshot(), Promise.resolve(getAcquisitionConnectorReadiness()),
+    listClients().catch(() => []), searchParams,
   ]);
+  const focusClientId = typeof params.client === "string" && /^[0-9a-f-]{36}$/i.test(params.client) ? params.client : undefined;
+  const noticeKey = typeof params.notice === "string" ? params.notice : "";
+  const notice = NOTICES[noticeKey]?.replace("{found}", count(params.found)).replace("{inserted}", count(params.inserted));
   const qualified = snapshot.prospects.filter((p) => ["qualified","draft_ready","approved"].includes(p.stage)).length;
   return <div className="space-y-7" data-acquisition="cockpit">
     <PageHeading eyebrow="Développement commercial" title="Acquisition" description="Prospection multientreprise, preuves de qualification et campagnes personnalisées. Aucun envoi automatique n'est activé." />
@@ -28,8 +53,10 @@ export default async function AcquisitionPage() {
       <strong>Envois verrouillés par défaut.</strong> La prospection réelle et la découverte automatique restent désactivées jusqu&apos;à la validation du fournisseur, des données et des mécanismes de sécurité.
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
+    {notice && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm">{notice}</p>}
+    {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
-    <AcquisitionWorkspaceTabs workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
+    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>
         <div className="p-5"><h2 className="text-lg font-semibold">Connecteurs — branchements à réaliser</h2>

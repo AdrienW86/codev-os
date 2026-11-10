@@ -8,7 +8,7 @@ import { capabilityState, scopeLabels, type AgentBlueprint, type AgentDisplaySta
 
 /** Scénario le plus parlant pour découvrir chaque agent. */
 const simulationScenarios: Record<AgentBlueprint["id"], string> = {
-  seo: "seo-progress", "google-ads": "ads-anomaly", publications: "publications-review", monitoring: "site-down", automation: "all-services", report: "report-ready", veille: "normal",
+  seo: "seo-progress", "google-ads": "ads-anomaly", publications: "publications-review", monitoring: "site-down", automation: "all-services", report: "report-ready", veille: "normal", prospection: "normal",
 };
 
 function Autonomy({ level, planned }: { level: number; planned: boolean }) {
@@ -74,7 +74,7 @@ export function AgentRegistryCard({ blueprint, state, serviceNames, clients, cli
             <p className="text-xs text-muted">Aucun agent configuré pour l’instant.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <TrySimulationButton scenarioId={simulationScenarios[blueprint.id]} href="/agents">Voir en simulation</TrySimulationButton>
-              <Action href="/agents/new">Créer</Action>
+              {blueprint.appHref ? <Action href={blueprint.appHref}>Ouvrir</Action> : <Action href="/agents/new">Créer</Action>}
             </div>
           </div>
         )}

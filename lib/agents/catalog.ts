@@ -1,7 +1,7 @@
 // Registre frontend des agents CODE-V (actuels et futurs). Configuration statique : aucune table associée.
 import { normalizeLabel, type ServiceId } from "@/lib/services/catalog";
 
-export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report" | "veille";
+export type AgentBlueprintId = "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "report" | "veille" | "prospection";
 export type AgentPortee = "global" | "client" | "project";
 /** État d’un agent tant qu’aucun agent configuré en base ne lui correspond. */
 export type BlueprintReadiness = "to-connect" | "coming-soon";
@@ -24,6 +24,8 @@ export type AgentBlueprint = {
   capabilities: Capability[];
   /** Agent global inclus pour tous les clients actifs. */
   includedForAllClients?: boolean;
+  /** Écran de l’application où l’agent est utilisable directement. */
+  appHref?: string;
   /** Reconnaît un agent déjà configuré en base. */
   matches: (agent: { name: string; publication_specialist?: boolean }) => boolean;
 };
@@ -72,6 +74,12 @@ export const agentCatalog: readonly AgentBlueprint[] = [
     scope: "global", services: [], readiness: "to-connect", plannedAutonomy: 1,
     capabilities: [{ label: "Collecte des flux publics", existsInApp: true }, { label: "Digest quotidien et hebdomadaire", existsInApp: true }],
     matches: nameHas(/veille/),
+  },
+  {
+    id: "prospection", name: "Agent Prospection", role: "Trouve les entreprises prescriptrices d’un client (architectes, syndics, agences immobilières…) dans le registre Sirene.",
+    scope: "client", services: [], readiness: "to-connect", plannedAutonomy: 1, appHref: "/acquisition",
+    capabilities: [{ label: "Cibles par métier du client", existsInApp: true }, { label: "Recherche Sirene autour de la zone", existsInApp: true }, { label: "Score et preuve par entreprise", existsInApp: true }, { label: "Export CSV", existsInApp: true }, { label: "Site et téléphone via Google Places (clé facultative)", existsInApp: true }],
+    matches: nameHas(/prospection|prescripteur/),
   },
 ];
 

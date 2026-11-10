@@ -123,7 +123,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   return (
     <>
       <Link href="/clients" className="mb-6 inline-block text-xs text-accent hover:underline">← Tous les clients</Link>
-      <PageHeading eyebrow="Dossier client" title={client.name} description={[client.activity, client.geographic_area].filter(Boolean).join(" · ") || "Informations enregistrées dans votre portefeuille."} action={<Action href={`/clients/${client.id}/edit`}>Modifier</Action>} />
+      <PageHeading eyebrow="Dossier client" title={client.name} description={[client.activity, client.geographic_area].filter(Boolean).join(" · ") || "Informations enregistrées dans votre portefeuille."} action={<><Action href={`/acquisition?client=${client.id}#prescriber-title`}>Prescripteurs</Action><Action href={`/clients/${client.id}/edit`}>Modifier</Action></>} />
       <p className="mb-4 flex flex-wrap gap-x-5 gap-y-2 text-sm"><Link href={`/finance?client=${client.id}`} className="text-accent">Prestations & tarifs →</Link><Link href={`/advertising?client=${client.id}`} className="text-accent">Campagnes publicitaires →</Link><Link href={`/analytics?client=${client.id}`} className="text-accent">Voir les performances →</Link></p>
       <Tabs label="Sections du dossier client" current={tab} items={[
         { id: "overview", label: "Vue d’ensemble", href: href("overview") },

@@ -156,3 +156,17 @@ test("Agent Prospection visible dans le registre des agents et depuis la fiche c
   assert.match(readFileSync("app/(cockpit)/clients/[id]/page.tsx", "utf8"), /\/acquisition\?client=\$\{client\.id\}/);
   assert.match(readFileSync("lib/simulation/fixtures.ts", "utf8"), /prospection: \{ status:/);
 });
+
+test("profil agence web / informatique et zone trop large refusée", () => {
+  const digital = prescribers.resolveTradeProfile("Programmation Informatique");
+  assert.equal(digital.id, "digital");
+  assert.equal(digital.targets[0].segment, "accountants");
+  assert.equal(prescribers.resolveTradeProfile("Agence web").id, "digital");
+  assert.equal(prescribers.resolveTradeProfile("Couvreur").id, "roofer");
+  const fortDeFrance = [{ nom: "Fort-de-France", code: "97209", codeDepartement: "972", centre: { coordinates: [-61.07, 14.65] } }];
+  assert.equal(sirene.parseCommuneLookup(fortDeFrance, "France"), null);
+  const strasbourg = [{ nom: "Strasbourg", code: "67482", codeDepartement: "67", centre: { coordinates: [7.7621, 48.5691] } }];
+  assert.equal(sirene.parseCommuneLookup(strasbourg, " strasbourg ").codeInsee, "67482");
+  const { companies } = sirene.parseSireneResults({ results: [company("123456789", "69.20Z", { opposition_diffusion_commerciale: true }), company("223456789", "69.20Z")] });
+  assert.deepEqual([...companies.map((c) => c.siren)], ["223456789"]);
+});

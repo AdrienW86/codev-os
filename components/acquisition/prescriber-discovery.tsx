@@ -9,9 +9,9 @@ const button = "rounded-lg bg-accent-strong px-4 py-2.5 text-sm font-semibold te
 const priorityLabel = { 1: "Prioritaire", 2: "Régulier", 3: "Occasionnel" } as const;
 
 /** Agent Prospection : trouve les entreprises prescriptrices d'un client (registre Sirene). */
-export function PrescriberDiscovery({ workspaces, clients, runs, prescribersReady, placesReady }: {
+export function PrescriberDiscovery({ workspaces, clients, runs, prescribersReady, placesReady, focusClientId }: {
   workspaces: AcquisitionWorkspace[]; clients: ClientOption[]; runs: AcquisitionDiscoveryRun[];
-  prescribersReady: boolean; placesReady: boolean;
+  prescribersReady: boolean; placesReady: boolean; focusClientId?: string;
 }) {
   const clientWorkspaces = workspaces.filter((w) => w.client_id);
   const withoutWorkspace = clients.filter((c) => !workspaces.some((w) => w.client_id === c.id));
@@ -25,7 +25,7 @@ export function PrescriberDiscovery({ workspaces, clients, runs, prescribersRead
         {clientWorkspaces.length === 0 ? <p className="text-sm text-muted">Créez d&apos;abord l&apos;espace Acquisition d&apos;un client.</p> :
           <form action={discoverPrescribersAction} className="space-y-3">
             <div><label htmlFor="prescriber-workspace" className="text-sm">Client</label>
-              <select id="prescriber-workspace" name="workspace_id" required className={input}>{clientWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.label}{clientOf(w)?.activity ? ` — ${clientOf(w)?.activity}` : ""}{clientOf(w)?.geographic_area ? `, ${clientOf(w)?.geographic_area}` : ""}</option>)}</select></div>
+              <select id="prescriber-workspace" name="workspace_id" required className={input} defaultValue={clientWorkspaces.find((w) => w.client_id === focusClientId)?.id}>{clientWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.label}{clientOf(w)?.activity ? ` — ${clientOf(w)?.activity}` : ""}{clientOf(w)?.geographic_area ? `, ${clientOf(w)?.geographic_area}` : ""}</option>)}</select></div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div><label htmlFor="prescriber-activity" className="text-sm">Métier (facultatif)</label>
                 <input id="prescriber-activity" name="activity" maxLength={120} placeholder="Par défaut : fiche client" className={input} /></div>
@@ -41,7 +41,7 @@ export function PrescriberDiscovery({ workspaces, clients, runs, prescribersRead
           </form>}
         {withoutWorkspace.length > 0 && <form action={createClientAcquisitionWorkspace} className="mt-5 flex flex-wrap items-end gap-3 border-t border-border pt-4">
           <div className="min-w-0 flex-1"><label htmlFor="acq-client" className="text-sm">Ouvrir un espace pour un client</label>
-            <select id="acq-client" name="client_id" required className={input}>{withoutWorkspace.map((c) => <option key={c.id} value={c.id}>{c.company_name || c.name}</option>)}</select></div>
+            <select id="acq-client" name="client_id" required className={input} defaultValue={withoutWorkspace.some((c) => c.id === focusClientId) ? focusClientId : undefined}>{withoutWorkspace.map((c) => <option key={c.id} value={c.id}>{c.company_name || c.name}</option>)}</select></div>
           <button type="submit" className={button}>Créer l&apos;espace</button>
         </form>}
       </div>

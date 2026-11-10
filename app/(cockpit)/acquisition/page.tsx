@@ -36,6 +36,7 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
     getAcquisitionSnapshot(), Promise.resolve(getAcquisitionConnectorReadiness()),
     listClients().catch(() => []), searchParams,
   ]);
+  const focusClientId = typeof params.client === "string" && /^[0-9a-f-]{36}$/i.test(params.client) ? params.client : undefined;
   const noticeKey = typeof params.notice === "string" ? params.notice : "";
   const notice = NOTICES[noticeKey]?.replace("{found}", count(params.found)).replace("{inserted}", count(params.inserted));
   const qualified = snapshot.prospects.filter((p) => ["qualified","draft_ready","approved"].includes(p.stage)).length;
@@ -53,7 +54,7 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
     {notice && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm">{notice}</p>}
-    {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} />}
+    {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
     <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
     <div className="grid gap-5 lg:grid-cols-2">

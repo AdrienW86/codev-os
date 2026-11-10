@@ -149,3 +149,10 @@ test("recherche, enrichissement et export réservés à l'administrateur, sans s
     assert.doesNotMatch(readFileSync(f, "utf8"), /GOOGLE_PLACES_API_KEY|process\.env/);
   }
 });
+
+test("Agent Prospection visible dans le registre des agents et depuis la fiche client", () => {
+  const catalog = readFileSync("lib/agents/catalog.ts", "utf8");
+  assert.match(catalog, /id: "prospection", name: "Agent Prospection"[\s\S]*?appHref: "\/acquisition"/);
+  assert.match(readFileSync("app/(cockpit)/clients/[id]/page.tsx", "utf8"), /\/acquisition\?client=\$\{client\.id\}/);
+  assert.match(readFileSync("lib/simulation/fixtures.ts", "utf8"), /prospection: \{ status:/);
+});

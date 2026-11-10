@@ -6,6 +6,8 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/require-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ACQUISITION_CATEGORIES } from "@/lib/acquisition/model";
+import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
+import { enrichWithPlaces, runPrescriberDiscovery } from "@/lib/acquisition/discovery";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = new Set<string>(ACQUISITION_CATEGORIES.map(c => c.id));
@@ -79,4 +81,52 @@ export async function createAcquisitionTemplate(data: FormData) {
   if(error) deny("storage");
   revalidatePath("/acquisition");
   redirect("/acquisition?notice=template_created");
+}
+
+/** Espace Acquisition dédié à un client : verrouillé (arrêt d'urgence, aucun envoi). */
+export async function createClientAcquisitionWorkspace(data: FormData) {
+  await requireAdmin();
+  const clientId = text(data,"client_id",36);
+  if (!uuid.test(clientId)) deny("validation");
+  const client = db();
+  const { data: row, error: readError } = await client.from("clients").select("id,name,company_name").eq("id",clientId).maybeSingle();
+  if (readError || !row) deny("client_missing");
+  const { data: existing } = await client.from("acquisition_workspaces").select("id").eq("client_id",clientId).limit(1);
+  if (existing?.length) deny("already_exists");
+  const { error } = await client.from("acquisition_workspaces").insert({
+    client_id:clientId,label:(row.company_name || row.name).slice(0,120),is_internal:false,
+    emergency_stop:true,discovery_enabled:false,sending_enabled:false,daily_send_limit:0,timezone:"Europe/Paris",
+  });
+  if (error) deny("storage");
+  revalidatePath("/acquisition");
+  redirect("/acquisition?notice=workspace_created");
+}
+
+const RADII = new Set([5,10,20,30,50]);
+
+/** Agent Prospection : recherche des prescripteurs du client dans le registre Sirene. Aucun contact. */
+export async function discoverPrescribersAction(data: FormData) {
+  await requireAdmin();
+  const workspaceId = text(data,"workspace_id",36);
+  const radius = Number(text(data,"radius_km",3));
+  const perSegment = Number(text(data,"max_per_segment",3));
+  if (!uuid.test(workspaceId) || !RADII.has(radius) || !Number.isInteger(perSegment) || perSegment<5 || perSegment>50) deny("invalid_discovery");
+  const segments = data.getAll("segments").filter((v): v is string => typeof v === "string" && v in PRESCRIBER_SEGMENTS) as PrescriberSegmentId[];
+  const outcome = await runPrescriberDiscovery({
+    workspaceId, activity:text(data,"activity",120), place:text(data,"place",120),
+    radiusKm:radius, maxPerSegment:perSegment, segments,
+  });
+  revalidatePath("/acquisition");
+  if (!outcome.ok) deny(`discovery_${outcome.reason}`);
+  redirect(`/acquisition?notice=discovery_done&found=${outcome.found}&inserted=${outcome.inserted}`);
+}
+
+export async function enrichProspectsAction(data: FormData) {
+  await requireAdmin();
+  const workspaceId = text(data,"workspace_id",36);
+  if (!uuid.test(workspaceId)) deny("validation");
+  const outcome = await enrichWithPlaces(workspaceId);
+  revalidatePath("/acquisition");
+  if (!outcome.ok) deny(`enrich_${outcome.reason}`);
+  redirect(`/acquisition?notice=enrich_done&found=${outcome.enriched}&inserted=${outcome.checked}`);
 }

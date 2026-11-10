@@ -4,6 +4,7 @@ export const ACQUISITION_CATEGORIES = [
   { id: "no_professional_site", label: "Entreprise sans site", description: "Présence professionnelle sans site identifiable" },
   { id: "agency_partner", label: "Agence partenaire", description: "Sous-traitance et collaborations" },
   { id: "digital_needs", label: "Automatisation et besoins numériques", description: "Besoins métier étayés par des sources" },
+  { id: "prescriber", label: "Prescripteur pour un client", description: "Entreprise susceptible de recommander le client (architecte, syndic, agence…), issue du registre Sirene" },
 ] as const;
 
 export type AcquisitionCategory = (typeof ACQUISITION_CATEGORIES)[number]["id"];
@@ -23,6 +24,15 @@ export type AcquisitionProspect = {
   category: AcquisitionCategory; stage: AcquisitionStage; score: number | null;
   source_url: string | null; source_checked_at: string | null; explanation: string | null;
   created_at: string;
+  data_source?: "manual" | "sirene"; siren?: string | null; naf_code?: string | null; segment?: string | null;
+  address?: string | null; postal_code?: string | null; city?: string | null; distance_km?: number | null;
+  employee_range?: string | null; is_sole_proprietor?: boolean;
+  places_website?: string | null; places_phone?: string | null; places_enriched_at?: string | null;
+};
+export type AcquisitionDiscoveryRun = {
+  id: string; workspace_id: string; trade_profile: string; place: string; radius_km: number;
+  status: "running" | "succeeded" | "failed"; found_count: number; inserted_count: number;
+  error: string | null; created_at: string;
 };
 export type AcquisitionMessage = {
   id: string; workspace_id: string; prospect_id: string; recipient_email: string;

@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import type { AcquisitionMessage, AcquisitionProspect, AcquisitionSender, AcquisitionTemplate, AcquisitionWorkspace } from "./model";
+import { placesExpiryThreshold } from "./places";
+import type { AcquisitionDiscoveryRun, AcquisitionMessage, AcquisitionProspect, AcquisitionSender, AcquisitionTemplate, AcquisitionWorkspace } from "./model";
 
 export type AcquisitionSnapshot = {
   workspaces: AcquisitionWorkspace[];
@@ -9,28 +10,57 @@ export type AcquisitionSnapshot = {
   messages: AcquisitionMessage[];
   senders: AcquisitionSender[];
   templates: AcquisitionTemplate[];
+  discoveryRuns: AcquisitionDiscoveryRun[];
   schemaReady: boolean;
+  /** Migration 20261203000000 (Agent Prospection) appliquée. */
+  prescribersReady: boolean;
   unavailableReason?: string;
 };
 
+const BASE_PROSPECT_COLUMNS = "id,workspace_id,company_name,website,category,stage,score,source_url,source_checked_at,explanation,created_at";
+export const PRESCRIBER_PROSPECT_COLUMNS = BASE_PROSPECT_COLUMNS +
+  ",data_source,siren,naf_code,segment,address,postal_code,city,distance_km,employee_range,is_sole_proprietor,places_website,places_phone,places_enriched_at";
+
+/** Masque les données Google Places au-delà de la durée de conservation autorisée. */
+export function withoutExpiredPlacesData(prospect: AcquisitionProspect, threshold = placesExpiryThreshold()): AcquisitionProspect {
+  if (!prospect.places_enriched_at || prospect.places_enriched_at >= threshold) return prospect;
+  return { ...prospect, places_website: null, places_phone: null };
+}
+
+/** Colonnes de l'Agent Prospection : absentes tant que la migration n'est pas appliquée. */
+async function loadPrescriberData(db: SupabaseClient): Promise<{ ready: boolean; prospects: AcquisitionProspect[]; runs: AcquisitionDiscoveryRun[] }> {
+  const [p, r] = await Promise.all([
+    db.from("acquisition_prospects").select(PRESCRIBER_PROSPECT_COLUMNS).order("score", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(500),
+    db.from("acquisition_discovery_runs").select("id,workspace_id,trade_profile,place,radius_km,status,found_count,inserted_count,error,created_at").order("created_at", { ascending: false }).limit(20),
+  ]);
+  if (p.error || r.error) return { ready: false, prospects: [], runs: [] };
+  const threshold = placesExpiryThreshold();
+  return {
+    ready: true,
+    prospects: ((p.data ?? []) as unknown as AcquisitionProspect[]).map((item) => withoutExpiredPlacesData(item, threshold)),
+    runs: (r.data ?? []) as AcquisitionDiscoveryRun[],
+  };
+}
+
 /** Read-only, admin-bound dashboard. Never return credentials or tokens to a browser. */
 export async function getAcquisitionSnapshot(): Promise<AcquisitionSnapshot> {
-  const empty: AcquisitionSnapshot = { workspaces: [], prospects: [], messages: [], senders: [], templates: [], schemaReady: false };
+  const empty: AcquisitionSnapshot = { workspaces: [], prospects: [], messages: [], senders: [], templates: [], discoveryRuns: [], schemaReady: false, prescribersReady: false };
   try {
     // Database types will be generated after the isolated migration is validated and deployed.
     const db = getSupabaseServerClient() as unknown as SupabaseClient;
     const [w,p,m,s,t] = await Promise.all([
       db.from("acquisition_workspaces").select("id,client_id,label,is_internal,discovery_enabled,sending_enabled,emergency_stop,daily_send_limit,timezone").order("created_at", {ascending:false}).limit(100),
-      db.from("acquisition_prospects").select("id,workspace_id,company_name,website,category,stage,score,source_url,source_checked_at,explanation,created_at").order("created_at", {ascending:false}).limit(150),
+      db.from("acquisition_prospects").select(BASE_PROSPECT_COLUMNS).order("created_at", {ascending:false}).limit(150),
       db.from("acquisition_messages").select("id,workspace_id,prospect_id,recipient_email,subject,body_text,state,created_at").order("created_at", {ascending:false}).limit(100),
       db.from("acquisition_senders").select("id,workspace_id,address,provider,status,daily_limit").limit(100),
       db.from("acquisition_templates").select("id,workspace_id,category,name,subject_template,body_template,enabled").limit(100),
     ]);
     const bad = [w,p,m,s,t].find((v)=>v.error);
     if (bad?.error) return {...empty, unavailableReason: "Schéma Acquisition non prêt ou accès aux données indisponible."};
-    return { schemaReady: true,
+    const prescribers = await loadPrescriberData(db);
+    return { schemaReady: true, prescribersReady: prescribers.ready, discoveryRuns: prescribers.runs,
       workspaces: (w.data ?? []) as AcquisitionWorkspace[],
-      prospects: (p.data ?? []) as AcquisitionProspect[],
+      prospects: prescribers.ready ? prescribers.prospects : (p.data ?? []) as AcquisitionProspect[],
       messages: (m.data ?? []) as AcquisitionMessage[],
       senders: (s.data ?? []) as AcquisitionSender[],
       templates: (t.data ?? []) as AcquisitionTemplate[],

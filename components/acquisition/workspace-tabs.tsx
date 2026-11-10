@@ -3,17 +3,23 @@
 import { useMemo, useState } from "react";
 import type { AcquisitionMessage, AcquisitionProspect, AcquisitionSender, AcquisitionTemplate, AcquisitionWorkspace } from "@/lib/acquisition/model";
 import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/model";
+import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
+import { enrichProspectsAction } from "@/app/(cockpit)/acquisition/actions";
 
-export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates }: {
+export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false }: {
+  placesReady?: boolean; prescribersReady?: boolean;
   workspaces: AcquisitionWorkspace[]; prospects: AcquisitionProspect[];
   messages: AcquisitionMessage[]; senders: AcquisitionSender[]; templates: AcquisitionTemplate[];
 }) {
   const [workspace, setWorkspace] = useState(workspaces[0]?.id ?? "");
   const [tab, setTab] = useState<"prospects"|"emails"|"senders"|"templates">("prospects");
   const [query, setQuery] = useState("");
+  const [segment, setSegment] = useState("");
   const active = workspaces.find(w=>w.id===workspace);
-  const filtered = useMemo(()=>prospects.filter(p=>p.workspace_id===workspace &&
-    (p.company_name+" "+(p.website??"")+" "+p.category).toLocaleLowerCase("fr").includes(query.toLocaleLowerCase("fr"))),[prospects,workspace,query]);
+  const filtered = useMemo(()=>prospects.filter(p=>p.workspace_id===workspace && (!segment || p.segment===segment) &&
+    (p.company_name+" "+(p.website??"")+" "+p.category+" "+(p.city??"")+" "+(p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label??"":"")).toLocaleLowerCase("fr").includes(query.toLocaleLowerCase("fr"))),[prospects,workspace,query,segment]);
+  const segmentsHere = [...new Set(prospects.filter(p=>p.workspace_id===workspace&&p.segment).map(p=>p.segment as PrescriberSegmentId))];
+  const hasPrescribers = segmentsHere.length>0;
   const scopedMessages=messages.filter(m=>m.workspace_id===workspace);
   return <section className="rounded-xl border border-border bg-surface">
     <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
@@ -38,13 +44,24 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
     </div>
     <div className="px-4 pb-5" role="tabpanel">
       {tab==="prospects" && <><label className="block text-sm text-muted" htmlFor="acquisition-search">Rechercher dans cet espace</label>
-        <input id="acquisition-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Entreprise, domaine, catégorie…"
+        <input id="acquisition-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Entreprise, commune, segment…"
           className="my-3 w-full rounded-lg border border-border bg-surface-raised p-3 text-sm" />
+        {hasPrescribers && prescribersReady && <div className="mb-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="acquisition-segment" className="sr-only">Segment</label>
+          <select id="acquisition-segment" value={segment} onChange={e=>setSegment(e.target.value)} className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm">
+            <option value="">Tous les segments</option>{segmentsHere.map(s=><option key={s} value={s}>{PRESCRIBER_SEGMENTS[s]?.label ?? s}</option>)}
+          </select>
+          <a href={`/api/acquisition/export?workspace=${encodeURIComponent(workspace)}`} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-raised">Exporter les prescripteurs (CSV)</a>
+          {placesReady && <form action={enrichProspectsAction}><input type="hidden" name="workspace_id" value={workspace}/>
+            <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-raised">Compléter site et téléphone (Google Places, 20 max)</button></form>}
+        </div>}
         {filtered.length===0?<p className="py-8 text-sm text-muted">Aucun prospect correspondant. La détection sera disponible après branchement et validation des sources.</p>
           :<div className="divide-y divide-border">{filtered.map(p=><article className="py-3" key={p.id}>
             <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{p.company_name}</h3>
               <span className="text-xs text-muted">{ACQUISITION_STAGES[p.stage]} · {p.score??"—"}/100</span></div>
-            <p className="text-sm text-muted">{ACQUISITION_CATEGORIES.find(c=>c.id===p.category)?.label} {p.website?"· "+p.website:""}</p>
+            <p className="text-sm text-muted">{p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label ?? p.segment:ACQUISITION_CATEGORIES.find(c=>c.id===p.category)?.label} {p.website?"· "+p.website:""}</p>
+            {p.data_source==="sirene"&&<p className="text-xs text-muted">{[p.address, p.distance_km!=null?`${p.distance_km} km`:null, p.siren?`SIREN ${p.siren}`:null, p.places_phone, p.is_sole_proprietor?"entrepreneur individuel":null].filter(Boolean).join(" · ")}
+              {p.places_website&&<> · <a className="text-accent hover:underline" href={p.places_website} target="_blank" rel="noopener noreferrer">site</a></>}</p>}
             {p.explanation&&<p className="mt-1 text-sm">{p.explanation}</p>}
             {p.source_url&&<a className="mt-1 inline-block break-all text-xs text-accent hover:underline" href={p.source_url} target="_blank" rel="noopener noreferrer">Preuve : {p.source_url}</a>}
           </article>)}</div>}</>}

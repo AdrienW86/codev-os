@@ -16,7 +16,7 @@ const notices:Record<string,string>={
  "qonto-non-configure":"Renseignez les trois variables Qonto côté serveur pour activer la synchronisation.",
  "client-associe":"Facture reliée au client CODE-V OS.",
  "association-impossible":"Association refusée : facture déjà affectée, client invalide ou écriture non confirmée.",
- "rapprochement-ok":"Crédit rapproché après confirmation. Aucun statut Qonto n'a été modifié.",
+ "rapprochement-ok":"Crédit rapproché après confirmation. Aucun statut Qonto n’a été modifié.",
  "rapprochement-impossible":"Rapprochement refusé : vérifiez la facture, le crédit et les soldes disponibles.",
  "simulation":"Aucune opération effectuée en mode simulation."
 };
@@ -27,7 +27,7 @@ export default async function QontoPage({searchParams}:PageProps<"/finance/qonto
  const notice=typeof params.notice==="string"?notices[params.notice]:"";
  const clients=await listClients();
  let overview:Awaited<ReturnType<typeof qontoOverview>>|null=null;
- try{overview=await qontoOverview();}catch{ /* Migration non appliquée : échec explicite dans l'interface. */ }
+ try{overview=await qontoOverview();}catch{ /* Migration non appliquée : échec explicite dans l’interface. */ }
  if(!overview)return <>
    <PageHeading eyebrow="Finance" title="Paiements Qonto" description="Connexion bancaire en lecture seule, rapprochements manuels et preuves conservées."/>
    <Panel className="p-5"><p role="alert" className="text-sm text-warning">Module indisponible. La migration Qonto doit être appliquée avant toute utilisation.</p>
@@ -68,7 +68,7 @@ export default async function QontoPage({searchParams}:PageProps<"/finance/qonto
   </div>
   <Panel className="mb-6 p-5">
    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Factures clients Qonto</h2><span className="text-xs text-muted">250 dernières lignes maximum</span></div>
-   {!invoices.length&&<p className="mt-3 text-sm text-muted">Aucune facture importée sur la période. Il ne s'agit pas d'une confirmation d'absence de facturation.</p>}
+   {!invoices.length&&<p className="mt-3 text-sm text-muted">Aucune facture importée sur la période. Il ne s’agit pas d’une confirmation d’absence de facturation.</p>}
    <div className="mt-4 space-y-3">
     {invoices.map(i=>{
      const allocated=assignedInvoice.get(i.id)??0;
@@ -111,7 +111,7 @@ export default async function QontoPage({searchParams}:PageProps<"/finance/qonto
    </div>
   </Panel>
   <Panel className="p-5"><h2 className="font-semibold">Crédits bancaires non rapprochés</h2>
-   <p className="mt-1 text-xs text-muted">Crédits Qonto EUR terminés, non nécessairement des paiements clients. Une simple entrée d'argent ne valide aucune facture.</p>
+   <p className="mt-1 text-xs text-muted">Crédits Qonto EUR terminés, non nécessairement des paiements clients. Une simple entrée d’argent ne valide aucune facture.</p>
    <div className="mt-4 space-y-2">{remainingCredits.slice(0,70).map(c=><div key={c.id} className="flex flex-wrap justify-between gap-3 border-b border-border py-2 text-sm">
     <div><p>{c.reference||c.label||"Sans référence"}</p><p className="text-xs text-muted">{new Date(c.settled_at).toLocaleDateString("fr-FR",{timeZone:"Europe/Paris"})} · {c.label}</p></div>
     <strong className="tabular-nums">{euro(c.amount_cents-(assignedCredit.get(c.id)??0))}</strong></div>)}

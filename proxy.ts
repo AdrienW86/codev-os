@@ -12,6 +12,10 @@ export default clerkMiddleware(async (auth, request) => {
   // Le webhook vérifie la signature Meta sur le corps brut avant tout accès au stockage.
   if (path === "/api/webhooks/whatsapp") return;
   if (path === "/api/internal/whatsapp/process") return;
+  // Webhook Resend : la route vérifie la signature Svix sur le corps brut avant tout accès au stockage.
+  if (path === "/api/webhooks/resend" && request.method === "POST") return;
+  // Désabonnement des destinataires d'e-mails (sans compte) : jeton signé vérifié par la route, une seule adresse.
+  if (path === "/api/email/unsubscribe" && ["GET", "HEAD", "POST"].includes(request.method)) return;
   // Images de diffusion pour TikTok (jeton signé et daté, vérifié par la route ; aucune donnée sans jeton valide).
   if (path.startsWith("/api/publications/media/") && ["GET", "HEAD"].includes(request.method)) return;
   // API publique du blog des clients : lecture seule des articles publiés (aucune donnée privée), lue par leurs sites.

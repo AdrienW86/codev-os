@@ -107,6 +107,17 @@ Un compte Google (celui de l’agence) est autorisé **une fois** en OAuth 2.0 ;
 - Tant que l’envoi n’est pas activé : seul « Marquer comme envoyé manuellement » est proposé. Seule la version **approuvée** d’un rapport peut être envoyée ; clé d’idempotence par version.
 - **Vérifier** : rapport approuvé → « Envoyer par e-mail » visible ; journal `report.sent`.
 
+<a id="email-webhook"></a>
+## E-mail — socle emailing (exclusions, désabonnement, retours Resend)
+
+Socle commun aux futures newsletters des clients et à la prospection CODE-V (migration `20261129000000_emailing_foundation.sql`). **Aucune campagne ni aucun envoi en nombre dans ce lot.**
+
+- **Contacts** (`email_contacts`) : par client, avec base légale (`opt_in`, `double_opt_in`, `customer`, `b2b_interest`), source, date et preuve du consentement.
+- **Exclusions** (`email_suppressions`) : `global` (rebond définitif, plainte), `codev` (désabonnement de la prospection), `client` (désabonnement de la newsletter d’un client). `isSuppressed()` à appeler avant tout envoi en nombre.
+- **Désabonnement** : `/api/email/unsubscribe?t=<jeton signé>` (page de confirmation en GET, désabonnement en POST, compatible un clic RFC 8058). Jeton dérivé de `PUBLICATION_CREDENTIALS_KEY`, URL publique `PUBLICATIONS_OAUTH_BASE_URL` : aucune nouvelle variable. `bulkEmailHeaders()` fournit `List-Unsubscribe` et `List-Unsubscribe-Post`.
+- **Webhook Resend** : `/api/webhooks/resend`, signature Svix vérifiée sur le corps brut, événements idempotents (`email_events`). Variable : `RESEND_WEBHOOK_SECRET` (secret `whsec_…` affiché par Resend → Webhooks). Sans elle, la route répond 503 et rien n’est enregistré.
+- **Vérifier** : Resend → Webhooks → « Send test event » → ligne dans `email_events`.
+
 <a id="veille"></a>
 ## Veille tech & IA (RSS)
 

@@ -35,6 +35,14 @@ set local role service_role;
 do $$declare pub uuid:=pg_temp.sd_draft('Mono',array['facebook']);rev uuid;occ uuid:=pg_temp.p10_occ('facebook');o public.publication_channel_occurrences;
  r jsonb;p public.publications;occurrences_before integer:=(select count(*) from public.publication_channel_occurrences);bound_before integer;begin
  insert into sd_ids values('mono',pub);
+ -- Test clock only: the draft is dated in the week of its occurrence. The 20261026 RPC binds in place without moving the
+ -- editorial week, so the next occurrence (next week on weekends) would otherwise hit the occurrence-date guard
+ -- (fixed later by 20261122000000). The identity guard is lifted inside this rolled-back transaction only.
+ reset role;
+ perform set_config('session_replication_role','replica',true);
+ update public.publications set editorial_week=(date_trunc('week',(select local_date from public.publication_channel_occurrences where id=occ)::timestamp))::date where id=pub;
+ perform set_config('session_replication_role','origin',true);
+ set local role service_role;
  select current_revision_id into rev from public.publications where id=pub;
  perform public.publication_submit_manual(pub,rev,'user_local');perform public.publication_review_manual(pub,rev,'approved',null,'user_local');
  perform pg_temp.replay_assert((select status from public.publications where id=pub)='approved','unscheduled draft approved first');

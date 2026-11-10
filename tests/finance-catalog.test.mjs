@@ -9,7 +9,6 @@ const compiled = ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKin
 const exports = {};
 vm.runInNewContext(compiled,{exports,Date,FormData});
 const v=exports;
-const plain=x=>JSON.parse(JSON.stringify(x));
 
 test("montants précis en centimes sans arrondis flottants et champs sécurisés",()=>{
   assert.equal(v.cents("300,99"),30099);

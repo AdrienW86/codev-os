@@ -4,6 +4,7 @@ export const ACQUISITION_CATEGORIES = [
   { id: "no_professional_site", label: "Entreprise sans site", description: "Présence professionnelle sans site identifiable" },
   { id: "agency_partner", label: "Agence partenaire", description: "Sous-traitance et collaborations" },
   { id: "digital_needs", label: "Automatisation et besoins numériques", description: "Besoins métier étayés par des sources" },
+  { id: "zone_company", label: "Entreprise de la zone", description: "Entreprise active trouvée par le balayage complet d'une zone (registre Sirene)" },
   { id: "prescriber", label: "Prescripteur pour un client", description: "Entreprise susceptible de recommander le client (architecte, syndic, agence…), issue du registre Sirene" },
 ] as const;
 
@@ -28,11 +29,14 @@ export type AcquisitionProspect = {
   address?: string | null; postal_code?: string | null; city?: string | null; distance_km?: number | null;
   employee_range?: string | null; is_sole_proprietor?: boolean;
   places_website?: string | null; places_phone?: string | null; places_enriched_at?: string | null;
+  osm_website?: string | null; osm_phone?: string | null; bodacc_created_on?: string | null; bodacc_url?: string | null;
+  contact_email?: string | null; contact_email_source?: string | null; website_status?: string | null; legal_id_confirmed?: boolean | null;
 };
 export type AcquisitionDiscoveryRun = {
   id: string; workspace_id: string; trade_profile: string; place: string; radius_km: number;
-  status: "running" | "succeeded" | "failed"; found_count: number; inserted_count: number;
+  status: "queued" | "running" | "enriching" | "succeeded" | "failed" | "cancelled"; found_count: number; inserted_count: number;
   error: string | null; created_at: string;
+  mode?: "prescribers" | "zone"; phase?: string; progress?: Record<string, unknown>;
 };
 export type AcquisitionMessage = {
   id: string; workspace_id: string; prospect_id: string; recipient_email: string;

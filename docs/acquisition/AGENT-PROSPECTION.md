@@ -40,3 +40,30 @@ sinistres, courtiers, maîtres d'œuvre, promoteurs…
 2. Dans `/acquisition`, créer l'espace du client, puis « Trouver les prescripteurs ».
 3. Facultatif : `GOOGLE_PLACES_API_KEY` dans Vercel (Production + Preview), clé Google Cloud
    restreinte à « Places API (New) », facturation activée.
+
+## Balayage complet d'une zone (multi-sources)
+
+Formulaire « Balayer toute la zone » dans l'onglet Prescripteurs. Le travail tourne en tâche de
+fond (planificateur, étape `acquisition_discovery`, ~50 s par passage toutes les 15 min) ; une
+seule recherche active par client, arrêtable à tout moment.
+
+1. **Sirene complet** (`lib/acquisition/zone-scan.ts`) : toutes les entreprises actives du rayon
+   via `/near_point`, par section NAF ; une section au-delà de 10 000 résultats (plafond de l'API)
+   est redécoupée par code NAF. Un code NAF encore au-delà est marqué « tronqué ». SCI et holdings
+   (68.20B, 64.20Z) exclues par défaut, entrepreneurs individuels en option, plafond choisi
+   (5 000 à 200 000). Les entreprises en opposition à la prospection restent exclues.
+2. **OpenStreetMap** (`osm.ts`, Overpass, licence ODbL) : site, téléphone et e-mail générique
+   publiés ; rapprochement par SIRET puis nom + code postal (ambigu = ignoré). Attribution
+   « © contributeurs OpenStreetMap » dans l'écran et l'export.
+3. **BODACC** (`bodacc.ts`) : annonces de création des 12 derniers mois du département.
+4. **Sites web** (`website.ts`, `safe-fetch.ts`) : robots.txt respecté, au plus 3 pages
+   (accueil, mentions légales), adresses publiques uniquement (anti-SSRF), 8 s et 600 Ko max.
+   Seule une adresse générique (contact@, info@…) du domaine du site est gardée ; le SIREN
+   trouvé confirme l'entreprise.
+
+Sources écartées (CGU ou données personnelles) : Google Maps hors API, PagesJaunes, LinkedIn,
+Societe.com, Infogreffe. Export : `&category=zone_company`, `&with_email=1`, 10 000 lignes max
+par fichier.
+
+Mise en service : appliquer `20261204000000_acquisition_multisource.sql` après
+`20261203000000_acquisition_prescribers.sql`. Aucune nouvelle variable d'environnement.

@@ -7,7 +7,10 @@ import { requireAdmin } from "@/lib/require-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ACQUISITION_CATEGORIES } from "@/lib/acquisition/model";
 import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
-import { enrichWithPlaces, runPrescriberDiscovery } from "@/lib/acquisition/discovery";
+import { cancelDiscoveryRun, enrichWithPlaces, queueZoneScan, runPrescriberDiscovery, ZONE_MAX_OPTIONS } from "@/lib/acquisition/discovery";
+import { ENRICHMENT_SOURCES, type EnrichmentSource } from "@/lib/acquisition/background";
+
+const sourcesFrom = (data: FormData) => data.getAll("sources").filter((v): v is EnrichmentSource => typeof v === "string" && (ENRICHMENT_SOURCES as string[]).includes(v));
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = new Set<string>(ACQUISITION_CATEGORIES.map(c => c.id));
@@ -114,7 +117,7 @@ export async function discoverPrescribersAction(data: FormData) {
   const segments = data.getAll("segments").filter((v): v is string => typeof v === "string" && v in PRESCRIBER_SEGMENTS) as PrescriberSegmentId[];
   const outcome = await runPrescriberDiscovery({
     workspaceId, activity:text(data,"activity",120), place:text(data,"place",120),
-    radiusKm:radius, maxPerSegment:perSegment, segments,
+    radiusKm:radius, maxPerSegment:perSegment, segments, sources: sourcesFrom(data),
   });
   revalidatePath("/acquisition");
   if (!outcome.ok) deny(`discovery_${outcome.reason}`);
@@ -129,4 +132,31 @@ export async function enrichProspectsAction(data: FormData) {
   revalidatePath("/acquisition");
   if (!outcome.ok) deny(`enrich_${outcome.reason}`);
   redirect(`/acquisition?notice=enrich_done&found=${outcome.enriched}&inserted=${outcome.checked}`);
+}
+
+/** Balayage complet de la zone en tâche de fond (planificateur). Aucun contact pris. */
+export async function queueZoneScanAction(data: FormData) {
+  await requireAdmin();
+  const workspaceId = text(data,"workspace_id",36);
+  const radius = Number(text(data,"radius_km",3));
+  const max = Number(text(data,"max_companies",7));
+  if (!uuid.test(workspaceId) || !RADII.has(radius) || !(ZONE_MAX_OPTIONS as readonly number[]).includes(max)) deny("invalid_discovery");
+  const outcome = await queueZoneScan({
+    workspaceId, place: text(data,"place",120), radiusKm: radius, maxCompanies: max,
+    excludeNonOperating: data.get("include_non_operating") !== "on",
+    excludeSoleProprietors: data.get("exclude_sole_proprietors") === "on",
+    sources: sourcesFrom(data),
+  });
+  revalidatePath("/acquisition");
+  if (!outcome.ok) deny(`discovery_${outcome.reason}`);
+  redirect("/acquisition?notice=zone_queued");
+}
+
+export async function cancelDiscoveryRunAction(data: FormData) {
+  await requireAdmin();
+  const runId = text(data,"run_id",36);
+  if (!uuid.test(runId)) deny("validation");
+  const ok = await cancelDiscoveryRun(runId);
+  revalidatePath("/acquisition");
+  redirect(`/acquisition?notice=${ok ? "run_cancelled" : "storage"}`);
 }

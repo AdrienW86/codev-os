@@ -2,14 +2,15 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { PRESCRIBER_SEGMENTS, resolveTradeProfile, type PrescriberSegmentId } from "./prescribers";
-import { discoverPrescribers, type ScoredProspect } from "./sirene";
+import { buildCommuneLookupUrl, discoverPrescribers, parseCommuneLookup, type ScoredProspect } from "./sirene";
+import { nextPhase, type EnrichmentSource } from "./background";
 import { findPlace, PLACES_MAX_PER_RUN, placesExpiryThreshold } from "./places";
 
 export const MAX_PROSPECTS_PER_RUN = 150;
 
 export type DiscoveryOutcome =
   | { ok: true; found: number; inserted: number; location: string }
-  | { ok: false; reason: "workspace_missing" | "schema_missing" | "no_place" | "location_not_found" | "source_unavailable" | "storage" };
+  | { ok: false; reason: "workspace_missing" | "schema_missing" | "no_place" | "location_not_found" | "source_unavailable" | "storage" | "busy" };
 
 function db(): SupabaseClient { return getSupabaseServerClient() as unknown as SupabaseClient; }
 
@@ -32,6 +33,8 @@ export function prospectRow(workspaceId: string, p: ScoredProspect, checkedAt: s
  */
 export async function runPrescriberDiscovery(input: {
   workspaceId: string; activity?: string; place?: string; radiusKm: number; maxPerSegment: number; segments?: PrescriberSegmentId[];
+  /** Enrichissements à poursuivre en tâche de fond (migration multi-sources requise). */
+  sources?: EnrichmentSource[];
 }): Promise<DiscoveryOutcome> {
   const client = db();
   const { data: workspace, error } = await client.from("acquisition_workspaces").select("id,client_id").eq("id", input.workspaceId).maybeSingle();
@@ -53,10 +56,11 @@ export async function runPrescriberDiscovery(input: {
     workspace_id: workspace.id, trade_profile: profile.id, place: place.slice(0, 120), radius_km: input.radiusKm,
     segments: segments?.length ? segments : profile.targets.map((t) => t.segment),
   }).select("id").single();
+  if (runError?.code === "23505") return { ok: false, reason: "busy" };
   if (runError || !run) return { ok: false, reason: "schema_missing" };
 
   const finish = (patch: Record<string, unknown>) =>
-    client.from("acquisition_discovery_runs").update({ ...patch, finished_at: new Date().toISOString() }).eq("id", run.id);
+    client.from("acquisition_discovery_runs").update({ ...patch, ...(patch.status === "enriching" ? {} : { finished_at: new Date().toISOString() }) }).eq("id", run.id);
   const result = await discoverPrescribers({
     profile, place, radiusKm: input.radiusKm, maxPerSegment: input.maxPerSegment,
     segments: segments?.length ? segments : undefined,
@@ -82,7 +86,11 @@ export async function runPrescriberDiscovery(input: {
     })).filter((e) => e.source_url);
     if (evidence.length) await client.from("acquisition_evidence").insert(evidence);
   }
-  await finish({ status: "succeeded", commune_code: result.location.codeInsee, found_count: result.prospects.length, inserted_count: inserted, api_requests: result.requests });
+  const sources = input.sources ?? [];
+  const background = sources.length
+    ? { status: "enriching", phase: nextPhase("sirene_zone", sources), options: { sources }, lat: result.location.lat, lon: result.location.lon, departement: result.location.departement }
+    : { status: "succeeded" };
+  await finish({ ...background, commune_code: result.location.codeInsee, found_count: result.prospects.length, inserted_count: inserted, api_requests: result.requests });
   return { ok: true, found: result.prospects.length, inserted, location: result.location.commune };
 }
 
@@ -122,4 +130,49 @@ export async function enrichWithPlaces(workspaceId: string): Promise<EnrichOutco
     }
   }
   return { ok: true, enriched, checked: data?.length ?? 0 };
+}
+
+export const ZONE_MAX_OPTIONS = [5_000, 20_000, 50_000, 200_000] as const;
+
+/**
+ * Met en file un balayage complet de la zone (toutes les entreprises actives du rayon),
+ * exécuté par le planificateur. Ne fait qu'une requête (géolocalisation) dans l'action.
+ */
+export async function queueZoneScan(input: {
+  workspaceId: string; place?: string; radiusKm: number; maxCompanies: number;
+  excludeNonOperating: boolean; excludeSoleProprietors: boolean; sources: EnrichmentSource[];
+}): Promise<{ ok: true; location: string } | { ok: false; reason: "workspace_missing" | "schema_missing" | "no_place" | "location_not_found" | "source_unavailable" | "busy" }> {
+  const client = db();
+  const { data: workspace, error } = await client.from("acquisition_workspaces").select("id,client_id").eq("id", input.workspaceId).maybeSingle();
+  if (error || !workspace) return { ok: false, reason: "workspace_missing" };
+  let place = input.place?.trim() ?? "";
+  if (!place && workspace.client_id) {
+    const { data: c } = await client.from("clients").select("geographic_area").eq("id", workspace.client_id).maybeSingle();
+    place = c?.geographic_area ?? "";
+  }
+  place = place.split(/[,;/]| et | - /i)[0]?.trim() ?? "";
+  if (!place) return { ok: false, reason: "no_place" };
+  let location;
+  try {
+    const res = await fetch(buildCommuneLookupUrl(place), { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return { ok: false, reason: "source_unavailable" };
+    location = parseCommuneLookup(await res.json(), place);
+  } catch { return { ok: false, reason: "source_unavailable" }; }
+  if (!location) return { ok: false, reason: "location_not_found" };
+  const { error: insertError } = await client.from("acquisition_discovery_runs").insert({
+    workspace_id: workspace.id, mode: "zone", phase: "sirene_zone", status: "queued", trade_profile: "zone",
+    place: location.commune.slice(0, 120), commune_code: location.codeInsee, radius_km: input.radiusKm,
+    lat: location.lat, lon: location.lon, departement: location.departement,
+    options: { maxCompanies: input.maxCompanies, excludeNonOperating: input.excludeNonOperating, excludeSoleProprietors: input.excludeSoleProprietors, sources: input.sources },
+  });
+  if (insertError?.code === "23505") return { ok: false, reason: "busy" };
+  if (insertError) return { ok: false, reason: "schema_missing" };
+  return { ok: true, location: location.commune };
+}
+
+export async function cancelDiscoveryRun(runId: string): Promise<boolean> {
+  const { error } = await db().from("acquisition_discovery_runs")
+    .update({ status: "cancelled", finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", runId).in("status", ["queued", "running", "enriching"]);
+  return !error;
 }

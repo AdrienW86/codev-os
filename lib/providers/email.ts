@@ -22,7 +22,7 @@ type InlineImage = { filename: string; base64: string; contentId: string };
 const validInline = (item: InlineImage) => /^[a-z0-9][a-z0-9._-]{1,60}\.png$/i.test(item.filename) && /^[a-z0-9-]{1,60}$/i.test(item.contentId) && item.base64.length <= 200_000
   && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(item.base64);
 
-export async function sendEmail(message: { to: string; subject: string; text: string; html?: string; inline?: InlineImage[]; idempotencyKey: string; attachment?: Attachment; attachments?: Attachment[] }, env: Env = process.env, fetchImpl?: typeof fetch) {
+export async function sendEmail(message: { to: string; subject: string; text: string; html?: string; inline?: InlineImage[]; idempotencyKey: string; attachment?: Attachment; attachments?: Attachment[]; headers?: Record<string, string> }, env: Env = process.env, fetchImpl?: typeof fetch) {
   const status = emailSendingStatus(env);
   if (!status.enabled) throw new ProviderError("email", "not_configured");
   if (!address.test(message.to) || !address.test(env.EMAIL_FROM!.replace(/^.*<|>$/g, ""))) throw new ProviderError("email", "malformed");
@@ -35,11 +35,15 @@ export async function sendEmail(message: { to: string; subject: string; text: st
   const inline = message.inline ?? [];
   if (inline.length > 2 || inline.some((item) => !validInline(item)) || (message.html !== undefined && (!message.html.trim() || message.html.length > 200_000)))
     throw new ProviderError("email", "malformed");
+  // En-têtes supplémentaires : seulement le désabonnement RFC 8058 (envois en nombre), valeurs sur une ligne.
+  const headers = message.headers ?? {};
+  if (Object.entries(headers).some(([name, value]) => !["List-Unsubscribe", "List-Unsubscribe-Post"].includes(name) || /[\r\n\x00]/.test(value) || value.length > 2000))
+    throw new ProviderError("email", "malformed");
   const files = [...attachments.map((item) => ({ filename: item.filename, content: item.base64 })), ...inline.map((item) => ({ filename: item.filename, content: item.base64, content_id: item.contentId }))];
   const data = await providerJson<{ id?: unknown }>("email", "https://api.resend.com/emails", {
     method: "POST", fetchImpl,
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": message.idempotencyKey.slice(0, 200) },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(message.html ? { html: message.html } : {}), ...(files.length ? { attachments: files } : {}) }),
+    body: JSON.stringify({ from: env.EMAIL_FROM, to: [message.to], subject: message.subject.slice(0, 200), text: message.text.slice(0, 100_000), ...(message.html ? { html: message.html } : {}), ...(files.length ? { attachments: files } : {}), ...(Object.keys(headers).length ? { headers } : {}) }),
   });
   if (typeof data.id !== "string") throw new ProviderError("email", "malformed");
   return { id: data.id };

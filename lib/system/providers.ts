@@ -5,7 +5,7 @@ import type { ProviderId } from "@/lib/agents/registry";
 export type Env = Record<string, string | undefined>;
 
 export type ProviderRequirement = {
-  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech" | "credentials" | "google-drive-import" | "whatsapp-webhook" | "whatsapp-ingestion" | "push";
+  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech" | "credentials" | "google-drive-import" | "whatsapp-webhook" | "whatsapp-ingestion" | "push" | "email-webhook";
   label: string;
   /** Variables indispensables. */
   required: string[];
@@ -48,6 +48,7 @@ export const providerRequirements: ProviderRequirement[] = [
   { id: "whatsapp-ingestion", label: "WhatsApp (téléchargement des médias)", required: ["WHATSAPP_ACCESS_TOKEN"], description: "Téléchargement des médias reçus avant leur dépôt dans Drive. Actif seulement si WHATSAPP_INGESTION_ENABLED=true.", setup: "Jeton d’accès système WhatsApp Business ; puis WHATSAPP_INGESTION_ENABLED=true.", docs: "docs/whatsapp-drive.md" },
   { id: "push", label: "Notifications push", required: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"], optional: ["PUSH_SENDING_ENABLED"], description: "Notifications web push de l’administrateur. Désactivées tant que PUSH_SENDING_ENABLED ≠ true.", setup: "Paire de clés VAPID et adresse de contact ; puis PUSH_SENDING_ENABLED=true.", docs: "docs/notifications-pwa.md" },
   { id: "email", label: "E-mail (Resend)", required: ["RESEND_API_KEY", "EMAIL_FROM"], optional: ["EMAIL_SENDING_ENABLED"], description: "Envoi des rapports approuvés. Désactivé tant que EMAIL_SENDING_ENABLED ≠ true.", setup: "Clé Resend, domaine d’envoi vérifié, adresse EMAIL_FROM ; puis EMAIL_SENDING_ENABLED=true.", docs: "docs/integrations.md#email" },
+  { id: "email-webhook", label: "E-mail (retours Resend)", required: ["RESEND_WEBHOOK_SECRET"], description: "Rebonds définitifs et plaintes ajoutés automatiquement à la liste d’exclusion.", setup: "Resend → Webhooks : URL /api/webhooks/resend, événements email.* ; copier le secret de signature (whsec_…).", docs: "docs/integrations.md#email-webhook" },
   { id: "rss", label: "Flux de veille", required: [], description: "Flux publics de la veille tech & IA.", setup: "Aucune configuration ; sources définies dans lib/news/sources.ts.", docs: "docs/integrations.md#veille" },
   { id: "internal", label: "Interne", required: [], description: "Traitements internes à CODE-V OS.", setup: "—", docs: "docs/architecture.md" },
 ];

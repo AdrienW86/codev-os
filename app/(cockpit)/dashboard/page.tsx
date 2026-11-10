@@ -35,7 +35,7 @@ export default async function DashboardPage() {
   const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications, news, reportsToReview, incidents] = await Promise.all([
     firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 4 }),
     // Modules facultatifs sur la home : leur indisponibilité (migration non appliquée, panne) ne bloque pas la page.
-    listPublications().catch(() => null),
+    listPublications(undefined, undefined, { statuses: ["pending_review", "draft"], activeOnly: true }).catch(() => null),
     topNews(3).catch(() => []),
     listReports({ status: "ready_for_review" }).catch(() => []),
     listIncidents().then((items) => items.filter((item) => item.status !== "resolved")).catch(() => []),

@@ -1,5 +1,6 @@
 import { cancelDiscoveryRunAction, createClientAcquisitionWorkspace, discoverPrescribersAction, queueZoneScanAction } from "@/app/(cockpit)/acquisition/actions";
 import type { AcquisitionDiscoveryRun, AcquisitionWorkspace } from "@/lib/acquisition/model";
+import { NAF_SECTIONS, NAF_SECTION_LABELS } from "@/lib/acquisition/naf";
 import { PRESCRIBER_SEGMENTS, resolveTradeProfile } from "@/lib/acquisition/prescribers";
 
 type ClientOption = { id: string; name: string; company_name: string | null; activity: string | null; geographic_area: string | null };
@@ -21,6 +22,36 @@ function SourceChoices({ idPrefix }: { idPrefix: string }) {
       <input id={`${idPrefix}-${s.id}`} type="checkbox" name="sources" value={s.id} defaultChecked className="mt-1" />
       <span>{s.label} <span className="text-xs text-muted">— {s.hint}</span></span></label>)}
   </fieldset>;
+}
+
+/** Choix du cœur de métier d'un balayage de zone (rien de coché = tous les métiers). */
+function ZoneScopeChoices() {
+  const segments = Object.values(PRESCRIBER_SEGMENTS).sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  return <fieldset className="space-y-2 rounded-lg border border-border p-3">
+    <legend className="px-1 text-sm">Cœur de métier (facultatif)</legend>
+    <p className="text-xs text-muted">Rien de coché : tous les métiers de la zone. Sinon, seuls les métiers et secteurs choisis sont balayés, ce qui va beaucoup plus vite.</p>
+    <details><summary className="cursor-pointer text-sm">Métiers ({segments.length})</summary>
+      <div className="mt-2 grid gap-1 sm:grid-cols-2">{segments.map((s) => <label key={s.id} htmlFor={`zone-seg-${s.id}`} className="flex items-start gap-2 text-sm">
+        <input id={`zone-seg-${s.id}`} type="checkbox" name="zone_segments" value={s.id} className="mt-1" />
+        <span>{s.label} <span className="text-xs text-muted">{s.nafCodes.join(", ")}</span></span></label>)}</div>
+    </details>
+    <details><summary className="cursor-pointer text-sm">Grands secteurs ({NAF_SECTIONS.length})</summary>
+      <div className="mt-2 grid gap-1 sm:grid-cols-2">{NAF_SECTIONS.map((code) => <label key={code} htmlFor={`zone-sec-${code}`} className="flex items-start gap-2 text-sm">
+        <input id={`zone-sec-${code}`} type="checkbox" name="zone_sections" value={code} className="mt-1" />
+        <span>{NAF_SECTION_LABELS[code]} <span className="text-xs text-muted">({code})</span></span></label>)}</div>
+    </details>
+    <div><label htmlFor="zone-naf" className="text-sm">Codes NAF précis</label>
+      <input id="zone-naf" name="zone_naf" maxLength={400} placeholder="Ex. 43.91A, 71.11Z" className={input} /></div>
+  </fieldset>;
+}
+
+function scopeSummary(r: AcquisitionDiscoveryRun): string | null {
+  const o = (r.options ?? {}) as { sections?: unknown; nafCodes?: unknown };
+  const sections = Array.isArray(o.sections) ? o.sections.filter((s): s is string => typeof s === "string") : [];
+  const codes = Array.isArray(o.nafCodes) ? o.nafCodes.filter((s): s is string => typeof s === "string") : [];
+  if (!sections.length && !codes.length) return null;
+  const labels = [...sections.map((s) => NAF_SECTION_LABELS[s] ?? s), ...codes];
+  return labels.length > 4 ? `${labels.slice(0, 4).join(", ")} +${labels.length - 4}` : labels.join(", ");
 }
 
 function runSummary(r: AcquisitionDiscoveryRun): string {
@@ -67,10 +98,10 @@ export function PrescriberDiscovery({ workspaces, clients, runs, prescribersRead
             <p className="text-xs text-muted">Recherche limitée à 150 nouvelles fiches par lancement. Les entreprises déjà présentes ne sont pas dupliquées.</p>
           </form>}
         {clientWorkspaces.length > 0 && <details className="mt-5 border-t border-border pt-4">
-          <summary className="cursor-pointer text-sm font-medium">Balayer toute la zone (toutes les entreprises du rayon)</summary>
+          <summary className="cursor-pointer text-sm font-medium">Balayer la zone (toutes les entreprises du rayon ou un cœur de métier)</summary>
           {!multisourceReady ? <p className="mt-2 text-sm text-muted">Migration <code>20261204000000_acquisition_multisource</code> à appliquer avant le premier balayage.</p> :
           <form action={queueZoneScanAction} className="mt-3 space-y-3">
-            <p className="text-xs text-muted">Toutes les entreprises actives du registre Sirene dans le rayon, tous métiers confondus, puis enrichissement multi-sources. Traitement en tâche de fond (environ 50 s toutes les 15 min) : comptez quelques heures pour une grande ville. Aucun contact n&apos;est pris.</p>
+            <p className="text-xs text-muted">Les entreprises actives du registre Sirene dans le rayon (tous métiers, ou seulement le cœur de métier choisi), puis enrichissement multi-sources. Traitement en tâche de fond (environ 50 s toutes les 15 min) : comptez quelques heures pour une grande ville. Aucun contact n&apos;est pris.</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div><label htmlFor="zone-workspace" className="text-sm">Client</label>
                 <select id="zone-workspace" name="workspace_id" required className={input} defaultValue={clientWorkspaces.find((w) => w.client_id === focusClientId)?.id}>{clientWorkspaces.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}</select></div>
@@ -83,6 +114,7 @@ export function PrescriberDiscovery({ workspaces, clients, runs, prescribersRead
             </div>
             <label htmlFor="zone-sole" className="flex items-center gap-2 text-sm"><input id="zone-sole" type="checkbox" name="exclude_sole_proprietors" /> Exclure les entrepreneurs individuels</label>
             <label htmlFor="zone-nonop" className="flex items-center gap-2 text-sm"><input id="zone-nonop" type="checkbox" name="include_non_operating" /> Inclure les SCI et holdings (exclues par défaut : sans activité commerciale)</label>
+            <ZoneScopeChoices />
             <SourceChoices idPrefix="zone-src" />
             <button type="submit" className={button}>Lancer le balayage</button>
           </form>}
@@ -104,7 +136,7 @@ export function PrescriberDiscovery({ workspaces, clients, runs, prescribersRead
         })}
         {runs.length > 0 && <div><h3 className="text-sm font-medium">Dernières recherches</h3>
           <ul className="mt-2 space-y-2 text-xs text-muted">{runs.slice(0, 6).map((r) => <li key={r.id} className="flex flex-wrap items-center gap-x-2">
-            <span>{new Date(r.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" })} · {workspaces.find((w) => w.id === r.workspace_id)?.label ?? "—"} · {r.mode === "zone" ? "zone complète" : "prescripteurs"} · {r.place}, {r.radius_km} km ·{" "}
+            <span>{new Date(r.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" })} · {workspaces.find((w) => w.id === r.workspace_id)?.label ?? "—"} · {r.mode === "zone" ? (scopeSummary(r) ? `zone ciblée (${scopeSummary(r)})` : "zone complète") : "prescripteurs"} · {r.place}, {r.radius_km} km ·{" "}
               {ACTIVE.has(r.status) ? `en cours (${PHASES[r.phase ?? ""] ?? "file d'attente"}) · ${runSummary(r)}` : r.status === "succeeded" ? runSummary(r) : r.status === "cancelled" ? "annulée" : `échec${r.error ? ` (${r.error})` : ""}`}</span>
             {ACTIVE.has(r.status) && <form action={cancelDiscoveryRunAction}><input type="hidden" name="run_id" value={r.id} /><button type="submit" className="text-accent hover:underline">Arrêter</button></form>}
           </li>)}</ul></div>}

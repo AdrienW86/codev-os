@@ -5,6 +5,7 @@ import { PRESCRIBER_SEGMENTS, resolveTradeProfile, type PrescriberSegmentId } fr
 import { buildCommuneLookupUrl, discoverPrescribers, parseCommuneLookup, type ScoredProspect } from "./sirene";
 import { nextPhase, type EnrichmentSource } from "./background";
 import { findPlace, PLACES_MAX_PER_RUN, placesExpiryThreshold } from "./places";
+import { resolveZoneScope, type ZoneScope } from "./zone-scan";
 
 export const MAX_PROSPECTS_PER_RUN = 150;
 
@@ -141,6 +142,8 @@ export const ZONE_MAX_OPTIONS = [5_000, 20_000, 50_000, 200_000] as const;
 export async function queueZoneScan(input: {
   workspaceId: string; place?: string; radiusKm: number; maxCompanies: number;
   excludeNonOperating: boolean; excludeSoleProprietors: boolean; sources: EnrichmentSource[];
+  /** Cœur de métier : vide = tous les métiers de la zone. */
+  scope?: ZoneScope;
 }): Promise<{ ok: true; location: string } | { ok: false; reason: "workspace_missing" | "schema_missing" | "no_place" | "location_not_found" | "source_unavailable" | "busy" }> {
   const client = db();
   const { data: workspace, error } = await client.from("acquisition_workspaces").select("id,client_id").eq("id", input.workspaceId).maybeSingle();
@@ -159,11 +162,14 @@ export async function queueZoneScan(input: {
     location = parseCommuneLookup(await res.json(), place);
   } catch { return { ok: false, reason: "source_unavailable" }; }
   if (!location) return { ok: false, reason: "location_not_found" };
+  const scope = resolveZoneScope({ sections: input.scope?.sections, nafCodes: input.scope?.nafCodes });
+  const targeted = scope.sections.length > 0 || scope.nafCodes.length > 0;
   const { error: insertError } = await client.from("acquisition_discovery_runs").insert({
-    workspace_id: workspace.id, mode: "zone", phase: "sirene_zone", status: "queued", trade_profile: "zone",
+    workspace_id: workspace.id, mode: "zone", phase: "sirene_zone", status: "queued", trade_profile: targeted ? "zone_targeted" : "zone",
     place: location.commune.slice(0, 120), commune_code: location.codeInsee, radius_km: input.radiusKm,
     lat: location.lat, lon: location.lon, departement: location.departement,
-    options: { maxCompanies: input.maxCompanies, excludeNonOperating: input.excludeNonOperating, excludeSoleProprietors: input.excludeSoleProprietors, sources: input.sources },
+    options: { maxCompanies: input.maxCompanies, excludeNonOperating: input.excludeNonOperating, excludeSoleProprietors: input.excludeSoleProprietors, sources: input.sources,
+      ...(targeted ? { sections: scope.sections, nafCodes: scope.nafCodes } : {}) },
   });
   if (insertError?.code === "23505") return { ok: false, reason: "busy" };
   if (insertError) return { ok: false, reason: "schema_missing" };

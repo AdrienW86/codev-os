@@ -61,6 +61,11 @@ seule recherche active par client, arrêtable à tout moment.
    Seule une adresse générique (contact@, info@…) du domaine du site est gardée ; le SIREN
    trouvé confirme l'entreprise.
 
+**Cœur de métier** (facultatif) : le balayage peut se limiter à des métiers (liste des segments
+prescripteurs), à des grands secteurs (sections NAF) ou à des codes NAF saisis. Les codes déjà
+couverts par un secteur choisi ne sont pas interrogés deux fois. Exemple : architectes à 20 km
+de Strasbourg ≈ 1 100 entreprises, soit environ 45 requêtes au lieu de plusieurs milliers.
+
 Sources écartées (CGU ou données personnelles) : Google Maps hors API, PagesJaunes, LinkedIn,
 Societe.com, Infogreffe. Export : `&category=zone_company`, `&with_email=1`, 10 000 lignes max
 par fichier.

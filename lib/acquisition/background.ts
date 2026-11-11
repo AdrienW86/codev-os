@@ -18,7 +18,7 @@ import { safeFetchPage } from "./safe-fetch";
 export type EnrichmentSource = "osm" | "bodacc" | "websites";
 export const ENRICHMENT_SOURCES: EnrichmentSource[] = ["osm", "bodacc", "websites"];
 export type RunPhase = "sirene_zone" | EnrichmentSource | "done";
-export type RunOptions = Partial<ZoneScanOptions> & { sources?: EnrichmentSource[] };
+export type RunOptions = Partial<ZoneScanOptions> & { sources?: EnrichmentSource[]; sections?: string[]; nafCodes?: string[] };
 
 type RunRow = {
   id: string; workspace_id: string; mode: "prescribers" | "zone"; phase: RunPhase; status: string;
@@ -73,7 +73,10 @@ async function phaseSireneZone(client: SupabaseClient, run: RunRow, until: numbe
     excludeSoleProprietors: run.options.excludeSoleProprietors === true,
     maxCompanies: Math.min(Math.max(Number(run.options.maxCompanies) || 20_000, 100), 200_000),
   };
-  let state = (run.cursor.zone as ZoneScanState | undefined) ?? initialZoneScan({ lat: run.lat ?? 0, lon: run.lon ?? 0, radiusKm: run.radius_km });
+  let state = (run.cursor.zone as ZoneScanState | undefined) ?? initialZoneScan({
+    lat: run.lat ?? 0, lon: run.lon ?? 0, radiusKm: run.radius_km,
+    scope: { sections: Array.isArray(run.options.sections) ? run.options.sections : [], nafCodes: Array.isArray(run.options.nafCodes) ? run.options.nafCodes : [] },
+  });
   let inserted = run.inserted_count;
   const origin = { lat: state.lat, lon: state.lon };
   while (Date.now() < until && !zoneScanDone(state, options)) {

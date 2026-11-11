@@ -36,7 +36,7 @@ export type AcquisitionDiscoveryRun = {
   id: string; workspace_id: string; trade_profile: string; place: string; radius_km: number;
   status: "queued" | "running" | "enriching" | "succeeded" | "failed" | "cancelled"; found_count: number; inserted_count: number;
   error: string | null; created_at: string;
-  mode?: "prescribers" | "zone"; phase?: string; progress?: Record<string, unknown>;
+  mode?: "prescribers" | "zone"; phase?: string; progress?: Record<string, unknown>; options?: Record<string, unknown>;
 };
 export type AcquisitionMessage = {
   id: string; workspace_id: string; prospect_id: string; recipient_email: string;

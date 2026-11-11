@@ -4,7 +4,8 @@
  * découpée par section NAF, puis par sous-classe NAF si une section dépasse le plafond.
  * État sérialisable (curseur JSON) pour reprendre d'un passage du planificateur à l'autre.
  */
-import { NAF_SECTIONS, NON_OPERATING_NAF, nafCodesOfSection } from "./naf";
+import { NAF_CODES, NAF_SECTIONS, NON_OPERATING_NAF, nafCodesOfSection, sectionOfNaf } from "./naf";
+import { PRESCRIBER_SEGMENTS } from "./prescribers";
 import { SIRENE_API_BASE, MAX_RADIUS_KM, parseSireneResults, type FetchLike, type SireneCompany } from "./sirene";
 
 export const API_RESULT_CAP = 10_000;
@@ -20,10 +21,39 @@ export type ZoneScanState = {
 };
 export type ZoneScanOptions = { excludeNonOperating: boolean; excludeSoleProprietors: boolean; maxCompanies: number };
 
-export function initialZoneScan(input: { lat: number; lon: number; radiusKm: number }): ZoneScanState {
+/** Cœur de métier ciblé : sections NAF entières et/ou sous-classes. Vide = tous les métiers. */
+export type ZoneScope = { sections: string[]; nafCodes: string[] };
+
+/**
+ * Construit le périmètre d'un balayage à partir des choix du formulaire : grands secteurs
+ * (sections), métiers prescripteurs connus (segments) et codes NAF saisis. Les codes déjà
+ * couverts par une section choisie sont retirés ; les valeurs inconnues sont ignorées.
+ */
+export function resolveZoneScope(input: { sections?: unknown[]; segments?: unknown[]; nafCodes?: unknown[] }): ZoneScope {
+  const sections = [...new Set((input.sections ?? []).filter((s): s is string => typeof s === "string" && NAF_SECTIONS.includes(s)))];
+  const known = new Set(NAF_CODES);
+  const codes = new Set<string>();
+  for (const id of input.segments ?? []) {
+    const segment = typeof id === "string" && Object.hasOwn(PRESCRIBER_SEGMENTS, id) ? PRESCRIBER_SEGMENTS[id as keyof typeof PRESCRIBER_SEGMENTS] : null;
+    segment?.nafCodes.forEach((code) => codes.add(code));
+  }
+  for (const code of input.nafCodes ?? []) if (typeof code === "string" && known.has(code)) codes.add(code);
+  const nafCodes = [...codes].filter((code) => !sections.includes(sectionOfNaf(code) ?? "")).sort();
+  return { sections: sections.sort(), nafCodes };
+}
+
+export function initialZoneScan(input: { lat: number; lon: number; radiusKm: number; scope?: Partial<ZoneScope> | null }): ZoneScanState {
+  const scope = resolveZoneScope({ sections: input.scope?.sections, nafCodes: input.scope?.nafCodes });
+  const everything = !scope.sections.length && !scope.nafCodes.length;
+  const queue: ZonePartition[] = everything
+    ? NAF_SECTIONS.map((value) => ({ filter: "section", value, page: 1, totalPages: null, totalResults: null }))
+    : [
+      ...scope.sections.map((value): ZonePartition => ({ filter: "section", value, page: 1, totalPages: null, totalResults: null })),
+      ...scope.nafCodes.map((value): ZonePartition => ({ filter: "naf", value, page: 1, totalPages: null, totalResults: null })),
+    ];
   return {
     lat: input.lat, lon: input.lon, radiusKm: Math.min(Math.max(input.radiusKm, 1), MAX_RADIUS_KM),
-    queue: NAF_SECTIONS.map((value) => ({ filter: "section", value, page: 1, totalPages: null, totalResults: null })),
+    queue,
     truncated: [], requests: 0, collected: 0, estimatedTotal: 0,
   };
 }

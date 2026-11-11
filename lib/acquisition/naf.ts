@@ -74,6 +74,34 @@ const SECTION_RANGES: [string, number, number][] = [
 ];
 export const NAF_SECTIONS: readonly string[] = SECTION_RANGES.map(([s]) => s);
 
+/** Libellés courts des sections NAF (grands secteurs d'activité). */
+export const NAF_SECTION_LABELS: Record<string, string> = {
+  A: "Agriculture, sylviculture et pêche", B: "Industries extractives", C: "Industrie manufacturière",
+  D: "Énergie (électricité, gaz)", E: "Eau, assainissement, déchets", F: "Construction et bâtiment",
+  G: "Commerce et réparation automobile", H: "Transports et entreposage", I: "Hébergement et restauration",
+  J: "Information et communication", K: "Finance et assurance", L: "Activités immobilières",
+  M: "Activités spécialisées, scientifiques et techniques", N: "Services administratifs et de soutien",
+  O: "Administration publique", P: "Enseignement", Q: "Santé humaine et action sociale",
+  R: "Arts, spectacles et loisirs", S: "Autres activités de services", T: "Activités des ménages employeurs",
+  U: "Organisations extraterritoriales",
+};
+
+/**
+ * Lit une liste de codes NAF saisie librement (« 43.91A, 7111Z ; 68.31z ») et ne garde
+ * que les sous-classes connues, sans doublon.
+ */
+export function parseNafList(raw: string): string[] {
+  const known = new Set(NAF_CODES);
+  const out = new Set<string>();
+  for (const token of raw.toUpperCase().split(/[\s,;]+/)) {
+    const m = /^(\d{2})\.?(\d{2})([A-Z])$/.exec(token);
+    if (!m) continue;
+    const code = `${m[1]}.${m[2]}${m[3]}`;
+    if (known.has(code)) out.add(code);
+  }
+  return [...out];
+}
+
 export function sectionOfNaf(code: string): string | null {
   const division = Number(code.slice(0, 2));
   return SECTION_RANGES.find(([, from, to]) => division >= from && division <= to)?.[0] ?? null;

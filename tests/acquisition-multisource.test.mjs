@@ -6,7 +6,7 @@ import { loadTs } from "./helpers/load-ts.mjs";
 const prescribers = loadTs("lib/acquisition/prescribers.ts");
 const sirene = loadTs("lib/acquisition/sirene.ts", { "./prescribers": prescribers });
 const naf = loadTs("lib/acquisition/naf.ts");
-const zone = loadTs("lib/acquisition/zone-scan.ts", { "./naf": naf, "./sirene": sirene });
+const zone = loadTs("lib/acquisition/zone-scan.ts", { "./naf": naf, "./sirene": sirene, "./prescribers": prescribers });
 const website = loadTs("lib/acquisition/website.ts");
 const osm = loadTs("lib/acquisition/osm.ts", { "./prescribers": prescribers, "./website": website });
 const bodacc = loadTs("lib/acquisition/bodacc.ts");
@@ -177,4 +177,31 @@ test("enchaînement des phases selon les sources choisies", () => {
   assert.equal(background.nextPhase("osm", ["osm", "bodacc"]), "bodacc");
   assert.equal(background.nextPhase("bodacc", ["osm", "bodacc"]), "done");
   assert.equal(background.nextPhase("sirene_zone", []), "done");
+});
+
+test("balayage par cœur de métier : secteurs, métiers et codes NAF, sans doublon", async () => {
+  assert.deepEqual(json(naf.parseNafList("43.91a, 7111Z ; 99.99Z foo 43.91A")), ["43.91A", "71.11Z"]);
+  assert.equal(Object.keys(naf.NAF_SECTION_LABELS).length, 21);
+  const scope = zone.resolveZoneScope({ sections: ["F", "ZZ"], segments: ["architects", "roofing_framing", "inconnu"], nafCodes: ["68.31Z", "12.34X"] });
+  // 43.91A/B (section F déjà choisie) retirés ; segment et code inconnus ignorés.
+  assert.deepEqual(json(scope), { sections: ["F"], nafCodes: ["68.31Z", "71.11Z"] });
+  const state = zone.initialZoneScan({ lat: 48.57, lon: 7.76, radiusKm: 10, scope });
+  assert.deepEqual(json(state.queue.map((p) => `${p.filter}:${p.value}`)), ["section:F", "naf:68.31Z", "naf:71.11Z"]);
+  assert.equal(zone.initialZoneScan({ lat: 1, lon: 1, radiusKm: 10, scope: { sections: [], nafCodes: [] } }).queue.length, 21);
+  const urls = [];
+  const fetchJson = async (url) => { urls.push(url); return { total_results: 1, total_pages: 1, results: [company("123456789", "71.11Z")] }; };
+  const options = { excludeNonOperating: true, excludeSoleProprietors: false, maxCompanies: 1000 };
+  let s = zone.initialZoneScan({ lat: 48.57, lon: 7.76, radiusKm: 10, scope: { sections: [], nafCodes: ["71.11Z"] } });
+  while (!zone.zoneScanDone(s, options)) s = (await zone.zoneScanStep(s, options, fetchJson)).state;
+  assert.equal(urls.length, 1);
+  assert.ok(urls[0].includes("activite_principale=71.11Z") && !urls[0].includes("section_activite_principale"));
+});
+
+test("cœur de métier : formulaire, action et tâche de fond câblés", () => {
+  const action = readFileSync("app/(cockpit)/acquisition/actions.ts", "utf8");
+  assert.match(action, /resolveZoneScope\(\{ sections: data\.getAll\("zone_sections"\), segments: data\.getAll\("zone_segments"\), nafCodes: parseNafList/);
+  assert.match(readFileSync("lib/acquisition/background.ts", "utf8"), /scope: \{ sections: Array\.isArray\(run\.options\.sections\)/);
+  assert.match(readFileSync("lib/acquisition/discovery.ts", "utf8"), /sections: scope\.sections, nafCodes: scope\.nafCodes/);
+  const ui = readFileSync("components/acquisition/prescriber-discovery.tsx", "utf8");
+  for (const name of ["zone_segments", "zone_sections", "zone_naf"]) assert.ok(ui.includes(`name="${name}"`), name);
 });

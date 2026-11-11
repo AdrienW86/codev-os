@@ -41,7 +41,7 @@ async function loadPrescriberData(db: SupabaseClient): Promise<{ ready: boolean;
   ]);
   // Migration multi-sources (20261204000000) d'abord, sinon colonnes Prescripteurs seules.
   let multisource = true;
-  let [p, r] = await query(MULTISOURCE_PROSPECT_COLUMNS, RUN_COLUMNS + ",mode,phase,progress");
+  let [p, r] = await query(MULTISOURCE_PROSPECT_COLUMNS, RUN_COLUMNS + ",mode,phase,progress,options");
   if (p.error || r.error) { multisource = false; [p, r] = await query(PRESCRIBER_PROSPECT_COLUMNS, RUN_COLUMNS); }
   if (p.error || r.error) return { ready: false, multisource: false, prospects: [], runs: [] };
   const threshold = placesExpiryThreshold();

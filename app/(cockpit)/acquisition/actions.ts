@@ -9,6 +9,8 @@ import { ACQUISITION_CATEGORIES } from "@/lib/acquisition/model";
 import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
 import { cancelDiscoveryRun, enrichWithPlaces, queueZoneScan, runPrescriberDiscovery, ZONE_MAX_OPTIONS } from "@/lib/acquisition/discovery";
 import { ENRICHMENT_SOURCES, type EnrichmentSource } from "@/lib/acquisition/background";
+import { parseNafList } from "@/lib/acquisition/naf";
+import { resolveZoneScope } from "@/lib/acquisition/zone-scan";
 
 const sourcesFrom = (data: FormData) => data.getAll("sources").filter((v): v is EnrichmentSource => typeof v === "string" && (ENRICHMENT_SOURCES as string[]).includes(v));
 
@@ -146,6 +148,7 @@ export async function queueZoneScanAction(data: FormData) {
     excludeNonOperating: data.get("include_non_operating") !== "on",
     excludeSoleProprietors: data.get("exclude_sole_proprietors") === "on",
     sources: sourcesFrom(data),
+    scope: resolveZoneScope({ sections: data.getAll("zone_sections"), segments: data.getAll("zone_segments"), nafCodes: parseNafList(text(data, "zone_naf", 400)) }),
   });
   revalidatePath("/acquisition");
   if (!outcome.ok) deny(`discovery_${outcome.reason}`);

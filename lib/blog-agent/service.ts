@@ -13,6 +13,8 @@ import {IMAGE_BUCKET} from '@/lib/publications/editor';
 import {loadPublicationProjectChannels} from '@/lib/publications/project-channels';
 import {clientBrandContext,type ClientBrandContext} from '@/lib/visual-agent/service';
 import {publishablePhotos} from '@/lib/video-agent/service';
+import {loadOrganicQueries} from '@/lib/integrations/google-ads/organic';
+import {SEO_GOOD_SCORE,auditBlogArticle,pickTargetQuery,seoFeedback,type SeoAudit,type TargetQuery} from './seo';
 import {ALT_MAX,BLOG_IMAGE,EXCERPT_MAX,META_MAX,META_MIN,RELAY_LABELS,RELAY_PLATFORMS,SUMMARY_MAX,TITLE_MAX,WORDS_MAX,WORDS_MIN,
  articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
  publishAtFrom,relayText,slugify,toPublicArticle,uniqueSlug,type ArticleDraft,type ArticleRow,type BlogAgentSettings,type PublicArticle,type RelayPlatform} from './model';
@@ -78,6 +80,8 @@ const INSTRUCTIONS=(forbidden:string[])=>[
  '3) Intertitres « ## » formulés comme les questions que les gens tapent réellement (Comment…, Pourquoi…, Quand…, Que vérifier avant…), chacun suivi d’une réponse directe dans sa première phrase.',
  '4) Expertise démontrée par le fond, jamais par des affirmations : étapes concrètes, signes qui doivent alerter, erreurs fréquentes à éviter, questions à poser au professionnel, points de vigilance ; sans chiffre ni promesse inventés.',
  '5) Lisibilité mobile : paragraphes de 2 à 4 phrases, phrases courtes, une liste « - » lorsqu’il y a des étapes ou des critères, vocabulaire du client final plutôt que jargon (ou jargon expliqué).',
+ 'Requête cible : si target_query_untrusted est fourni, c’est une recherche réellement tapée sur Google par des internautes de la zone ; elle devient l’expression principale (reprise telle quelle ou presque dans le title, la première phrase, la meta_description et un intertitre) et l’article doit y répondre précisément. Ne dis jamais d’où elle vient. Si elle ne peut pas être traitée sans affirmer quelque chose d’absent des faits, garde la prestation comme expression principale.',
+ 'Densité : l’expression principale 3 à 5 fois au total dans le corps, jamais plus ; la zone une à trois fois.',
  '6) Avant la conclusion, une partie « ## Questions fréquentes » avec 2 ou 3 questions en « ### » et des réponses de 1 à 3 phrases. meta_description : bénéfice concret + expression principale + invitation à lire, sans point d’exclamation.',
  `title : ${TITLE_MAX} caractères au plus, précis et engageant, sans le nom de l’entreprise. meta_description : ${META_MIN} à ${META_MAX} caractères. excerpt : chapô de 1 à 2 phrases (${EXCERPT_MAX} caractères au plus).`,
  `body_markdown : ${WORDS_MIN + 200} à ${WORDS_MAX - 400} mots en Markdown simple : un paragraphe d’introduction, puis 3 à 5 parties avec un intertitre « ## » (des « ### » si utile), des listes « - » quand elles aident, une conclusion qui invite sobrement à contacter l’entreprise. Pas de titre « # », ni lien, ni image, ni tableau, ni HTML.`,
@@ -91,19 +95,29 @@ const INSTRUCTIONS=(forbidden:string[])=>[
 const SCHEMA={type:'object',additionalProperties:false,required:['title','meta_description','excerpt','image_alt','body_markdown','social'],properties:{
  title:{type:'string'},meta_description:{type:'string'},excerpt:{type:'string'},image_alt:{type:'string'},body_markdown:{type:'string'},
  social:{type:'object',additionalProperties:false,required:[...RELAY_PLATFORMS],properties:Object.fromEntries(RELAY_PLATFORMS.map(p=>[p,{type:'string'}]))}}};
-async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[]):Promise<ArticleDraft|{error:string}>{
- let feedback:string|null=null;
+type Written={article:ArticleDraft;audit:SeoAudit};
+/**
+ * Rédaction en 3 essais au plus : un brouillon refusé par les contrôles (invention, lien, structure…) est réécrit avec
+ * le motif ; un brouillon accepté mais dont la note SEO est sous 80 est réécrit avec les remarques, et le meilleur
+ * brouillon accepté est retenu.
+ */
+async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null):Promise<Written|{error:string}>{
+ let feedback:string|null=null,best:Written|null=null;
+ const keyword=target?.query??service;
  for(let attempt=0;attempt<3;attempt++){
   try{
    const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,
-    service,angle,photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),
+    service,angle,...(target?{target_query_untrusted:target.query}:{}),photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);
-   if(checked.ok)return checked.article;
-   feedback=checked.reason;log('article','refused');
-  }catch(e){if(isBudgetExceeded(e)){log('article','budget');return {error:'Plafond IA du mois atteint pour ce client : aucun article rédigé (réglage sur la fiche client → Agents).'};}log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
+   if(!checked.ok){feedback=checked.reason;log('article','refused');continue;}
+   const audit=auditBlogArticle(checked.article,{keyword,zone:ctx.client.zone});
+   if(!best||audit.score>best.audit.score)best={article:checked.article,audit};
+   if(audit.score>=SEO_GOOD_SCORE)break;
+   feedback=seoFeedback(audit);log('article','seo_retry');
+  }catch(e){if(best)break;if(isBudgetExceeded(e)){log('article','budget');return {error:'Plafond IA du mois atteint pour ce client : aucun article rédigé (réglage sur la fiche client → Agents).'};}log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
  }
- return {error:`Article refusé par les contrôles après 3 essais (${feedback}).`};
+ return best??{error:`Article refusé par les contrôles après 3 essais (${feedback}).`};
 }
 /** Photo de l'article : publiable, sur la prestation si possible, jamais déjà utilisée par un article ; la plus récente. */
 async function choosePhoto(clientId:string,service:string,usedIds:Set<string>){
@@ -129,7 +143,7 @@ async function notify(articleId:string){
  return true;
 }
 
-export type BlogResult={ok:true;id:string;title:string;publishAt:string}|{ok:false;message:string};
+export type BlogResult={ok:true;id:string;title:string;publishAt:string;seoScore:number;targetQuery:string|null}|{ok:false;message:string};
 /** Rédige un article, le programme 24 h plus tard et prévient l'administrateur (aucune publication immédiate). */
 /** Travail de l'agent dans son périmètre IA (agent, client) : plafond mensuel du client et journal des appels. */
 export function generateBlogArticle(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;now?:Date}):Promise<BlogResult>{return withAiScope({agent:'blog',clientId},()=>generateBlogArticleUnscoped(clientId,options));}
@@ -142,8 +156,10 @@ async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'sch
  if(!service)return {ok:false,message:'Aucune prestation confirmée : renseignez-les dans l’onglet Photothèque.'};
  const photo=await choosePhoto(clientId,service,new Set(articles.map(a=>a.library_asset_id).filter((x):x is string=>Boolean(x)))).catch(()=>null);
  if(!photo)return {ok:false,message:'Aucune photo publiable lisible pour illustrer l’article : ajoutez des photos dans la photothèque.'};
- const draft=await writeArticle(ctx,service,nextAngle(articles.length),photo.text,articles.map(a=>a.title));
- if('error' in draft)return {ok:false,message:draft.error};
+ const target=pickTargetQuery(await loadOrganicQueries(clientId),{service,clientName:ctx.client.name,usedTitles:articles.map(a=>a.title)});
+ const written=await writeArticle(ctx,service,nextAngle(articles.length),photo.text,articles.map(a=>a.title),target);
+ if('error' in written)return {ok:false,message:written.error};
+ const draft=written.article;
  const id=randomUUID(),path=`${clientId}/${id}.jpg`;
  const up=await db().storage.from(BLOG_BUCKET).upload(path,photo.bytes,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
  if(up.error){log('image','upload_failed');return {ok:false,message:'Image de l’article non enregistrée. Réessayez.'};}
@@ -155,17 +171,25 @@ async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'sch
  if(inserted.error){await db().storage.from(BLOG_BUCKET).remove([path]);log('journal','failed');return {ok:false,message:'Article non enregistré. Réessayez.'};}
  await db().from('client_blog_agents').update({last_planned_at:now.toISOString()}).eq('client_id',clientId);
  await notify(id);
- return {ok:true,id,title:draft.title,publishAt};
+ // Requête visée et note SEO conservées au journal (aucune colonne nouvelle) : la fiche de l'article les relit.
+ await writeAudit(options.trigger==='manual'&&options.actorId?{kind:'admin',userId:options.actorId}:{kind:'system',worker:'blog_agent'},{action:'blog_agent.article_written',resource_type:'blog_article',resource_id:id,
+  metadata:{seo_score:written.audit.score,keyword:written.audit.keyword,target_query:target?.query??null,target_impressions:target?.impressions??null}}).catch(()=>{});
+ return {ok:true,id,title:draft.title,publishAt,seoScore:written.audit.score,targetQuery:target?.query??null};
 }
 
 // --- Fiche d'un article (administrateur) ---
-export async function getBlogArticle(id:string):Promise<{article:BlogArticle;settings:BlogAgentSettings;clientName:string;imageUrl:string|null}|null>{
+export type BlogArticleSeo={keyword:string;targetQuery:string|null;zone:string|null};
+export async function getBlogArticle(id:string):Promise<{article:BlogArticle;settings:BlogAgentSettings;clientName:string;imageUrl:string|null;seo:BlogArticleSeo}|null>{
  if(!UUID.test(id))return null;
  const r=await db().from('blog_articles').select(COLUMNS).eq('id',id).maybeSingle();
  if(r.error)throw Error('blog_unavailable');if(!r.data)return null;
  const article=r.data as BlogArticle;
- const [{settings},client]=await Promise.all([readAgent(article.client_id),db().from('clients').select('name').eq('id',article.client_id).maybeSingle()]);
- return {article,settings,clientName:String((client.data as {name?:string}|null)?.name??'Client'),imageUrl:article.image_path?`${blogImageBase()}/${article.image_path}`:null};
+ const [{settings},client,written]=await Promise.all([readAgent(article.client_id),db().from('clients').select('name,geographic_area').eq('id',article.client_id).maybeSingle(),
+  db().from('audit_logs').select('metadata').eq('action','blog_agent.article_written').eq('resource_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()]);
+ const c=(client.data??{}) as {name?:string;geographic_area?:string|null},meta=((written.data as {metadata?:Record<string,unknown>}|null)?.metadata??{}) as Record<string,unknown>;
+ const targetQuery=typeof meta.target_query==='string'&&meta.target_query.trim()?meta.target_query.trim():null;
+ return {article,settings,clientName:String(c.name??'Client'),imageUrl:article.image_path?`${blogImageBase()}/${article.image_path}`:null,
+  seo:{keyword:targetQuery??article.service??article.title,targetQuery,zone:typeof c.geographic_area==='string'&&c.geographic_area.trim()?c.geographic_area.trim():null}};
 }
 export async function updateBlogArticle(userId:string,id:string,form:FormData):Promise<{ok:boolean;message:string}>{
  const current=await getBlogArticle(id).catch(()=>null);if(!current)return {ok:false,message:'Article introuvable.'};

@@ -19,5 +19,5 @@ export async function POST(request: Request) {
   try { clientId = ((await request.json()) as { client_id?: unknown }).client_id; } catch { clientId = null; }
   if (typeof clientId !== "string" || !UUID.test(clientId)) return NextResponse.json({ ok: false, message: "Client invalide." }, { status: 400, headers });
   const result = await generateBlogArticle(clientId, { trigger: "manual", actorId: userId });
-  return NextResponse.json(result.ok ? { ...result, message: `Article « ${result.title} » rédigé : publication prévue ${when.format(new Date(result.publishAt))}.` } : result, { status: result.ok ? 200 : 422, headers });
+  return NextResponse.json(result.ok ? { ...result, message: `Article « ${result.title} » rédigé (note SEO ${result.seoScore}/100${result.targetQuery ? `, recherche visée « ${result.targetQuery} »` : ""}) : publication prévue ${when.format(new Date(result.publishAt))}.` } : result, { status: result.ok ? 200 : 422, headers });
 }

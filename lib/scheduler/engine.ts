@@ -1,6 +1,6 @@
 import "server-only";
 // Moteur d'automatisation : AUTOMATION → JOB → RUN → résultat → audit.
-// - Mise en file idempotente (clé automation + échéance) et protégée par mise à jour conditionnelle :
+// - Mise en file transactionnelle et idempotente (clé automation + échéance) :
 //   deux « ticks » simultanés ne créent jamais deux jobs pour la même échéance.
 // - Réservation par codev_claim_jobs (SKIP LOCKED + bail) : un job n'est exécuté que par un worker.
 // - Fin d'exécution « clôturée » (fencing) par worker_id : un worker dont le bail a expiré ne peut
@@ -46,18 +46,13 @@ export async function enqueueDueAutomations(actor: Actor, now: Date) {
       continue;
     }
     const next = nextRun(automation.frequency, automation.schedule as Schedule, automation.timezone, now);
-    // Réservation de l'échéance : seule la mise à jour qui voit encore l'ancienne date gagne.
-    const { data: claimed, error: claimError } = await db().from("automations")
-      .update({ next_run_at: next?.toISOString() ?? null, last_run_at: now.toISOString(), status: next ? "active" : "completed" })
-      .eq("id", automation.id).eq("next_run_at", automation.next_run_at as string).eq("status", "active").select("id");
-    if (claimError) throw new Error("automation claim");
-    if (!claimed?.length) continue;
-    const { error: jobError } = await db().from("jobs").upsert({
-      automation_id: automation.id, run_type: automation.run_type, agent_id: automation.agent_id, client_id: automation.client_id, project_id: automation.project_id,
-      payload: automation.config, scheduled_for: automation.next_run_at as string, idempotency_key: `auto:${automation.id}:${automation.next_run_at}`, trigger: "schedule",
-    }, { onConflict: "idempotency_key", ignoreDuplicates: true });
-    if (jobError) throw new Error("job enqueue");
-    enqueued++;
+    // La transaction SQL inclut le verrou, le job et l'avancement : une panne ne perd pas l'échéance.
+    const { data: claimed, error: claimError } = await db().rpc("codev_enqueue_automation", {
+      p_automation: automation.id, p_due: automation.next_run_at as string,
+      p_next: next?.toISOString() ?? null, p_now: now.toISOString(),
+    });
+    if (claimError) throw new Error("automation enqueue indisponible : migration atomique ou base à vérifier");
+    if (claimed) enqueued++;
   }
   return { enqueued, invalid };
 }

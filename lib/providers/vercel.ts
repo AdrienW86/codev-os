@@ -66,7 +66,11 @@ type CountResponse = { data?: { pageviews?: unknown; visitors?: unknown; count?:
 type AggregateResponse = { data?: unknown };
 type Period = { start: string; end: string };
 type QueryOptions = { env?: Env; fetchImpl?: FetchLike; limit?: number; now?: Date };
-const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+/** Vercel returns JSON numbers. An absent/invalid counter is unavailable, never zero. */
+function counter(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new ProviderError("vercel", "malformed");
+  return value;
+}
 
 /** Plus grande valeur de `limit` acceptée par les requêtes historiques qui ont fonctionné (≤ 25). */
 export const MAX_AGGREGATE_LIMIT = 25;
@@ -95,8 +99,8 @@ export async function webAnalyticsCount(projectId: string, period: Period, optio
   const env = options.env ?? process.env;
   const params = periodParams(projectId, env, period, options);
   const count = await providerJson<CountResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/visits/count?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
-  if (!count.data || typeof count.data !== "object") throw new ProviderError("vercel", "malformed");
-  return { pageviews: finite(count.data.pageviews), visitors: finite(count.data.visitors) };
+  if (!count || !count.data || typeof count.data !== "object" || Array.isArray(count.data)) throw new ProviderError("vercel", "malformed");
+  return { pageviews: counter(count.data.pageviews), visitors: counter(count.data.visitors) };
 }
 
 async function aggregate(projectId: string, period: Period, by: VisitDimension | "eventName", dataset: "visits" | "events", options: QueryOptions = {}): Promise<VercelAnalyticsRow[]> {
@@ -106,12 +110,12 @@ async function aggregate(projectId: string, period: Period, by: VisitDimension |
   params.set("limit", String(Math.max(1, Math.min(options.limit ?? 20, MAX_AGGREGATE_LIMIT))));
   const data = await providerJson<AggregateResponse>("vercel", `https://api.vercel.com/v1/query/web-analytics/${dataset}/aggregate?${params}`, { fetchImpl: options.fetchImpl, headers: headers(env) });
   if (!Array.isArray(data.data)) throw new ProviderError("vercel", "malformed");
-  return data.data.flatMap((raw) => {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  return data.data.map((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ProviderError("vercel", "malformed");
     const row = raw as Record<string, unknown>;
     const label = row[by];
-    if (typeof label !== "string" || !label) return [];
-    return [{ label, pageviews: dataset === "visits" ? finite(row.pageviews) : undefined, visitors: finite(row.visitors), count: dataset === "events" ? finite(row.count) : undefined }];
+    if (typeof label !== "string" || !label) throw new ProviderError("vercel", "malformed");
+    return { label, pageviews: dataset === "visits" ? counter(row.pageviews) : undefined, visitors: counter(row.visitors), count: dataset === "events" ? counter(row.count) : undefined };
   });
 }
 
@@ -139,10 +143,10 @@ async function timeSeries(projectId: string, period: Period, dataset: "visits" |
   }));
   const byDate = new Map<string, Record<string, unknown>>();
   for (const raw of chunks.flat()) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ProviderError("vercel", "malformed");
     const row = raw as Record<string, unknown>;
     const stamp = typeof row.timestamp === "string" ? row.timestamp : typeof row.day === "string" ? row.day : null;
-    if (!stamp || !day.test(stamp.slice(0, 10))) continue;
+    if (!stamp || !day.test(stamp.slice(0, 10))) throw new ProviderError("vercel", "malformed");
     byDate.set(stamp.slice(0, 10), { ...row, timestamp: stamp.length === 10 ? `${stamp}T00:00:00.000Z` : stamp });
   }
   return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
@@ -150,12 +154,12 @@ async function timeSeries(projectId: string, period: Period, dataset: "visits" |
 
 export async function dailyTrend(projectId: string, period: Period, options: QueryOptions = {}): Promise<VercelAnalyticsTrendPoint[]> {
   const rows = await timeSeries(projectId, period, "visits", options);
-  return rows.map((row) => ({ timestamp: row.timestamp as string, pageviews: finite(row.pageviews), visitors: finite(row.visitors) }));
+  return rows.map((row) => ({ timestamp: row.timestamp as string, pageviews: counter(row.pageviews), visitors: counter(row.visitors) }));
 }
 
 export async function dailyEventTrend(projectId: string, period: Period, options: QueryOptions = {}): Promise<VercelAnalyticsEventTrendPoint[]> {
   const rows = await timeSeries(projectId, period, "events", options);
-  return rows.map((row) => ({ timestamp: row.timestamp as string, count: finite(row.count), visitors: finite(row.visitors) }));
+  return rows.map((row) => ({ timestamp: row.timestamp as string, count: counter(row.count), visitors: counter(row.visitors) }));
 }
 
 export function webAnalyticsEvents(projectId: string, period: Period, options: QueryOptions = {}) {

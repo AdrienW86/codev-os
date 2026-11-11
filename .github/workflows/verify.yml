@@ -36,6 +36,11 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
       - name: Install isolated test browser
         run: npx --no-install playwright install --with-deps chromium
+      - name: Professional reports desktop and mobile (simulated data)
+        run: node scripts/test-professional-report-ui.mjs
+        env:
+          NODE_USE_ENV_PROXY: "0"
+          NEXT_TELEMETRY_DISABLED: "1"
       - name: Director desktop and mobile (simulated data)
         run: node scripts/test-director-ui.mjs
         env:

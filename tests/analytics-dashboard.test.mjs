@@ -116,7 +116,7 @@ function loadDashboard({ snapshots, sync, configured = true }) {
     "@/lib/clients/data": { listClients: async () => [] },
     "@/lib/supabase/server": { getSupabaseServerClient: () => ({ from: () => query(snapshots) }) },
     "@/lib/system/providers": { isProviderConfigured: () => configured },
-    "@/lib/vercel-analytics/sync": { VERCEL_SNAPSHOT_VERSION: 2, syncVercelAnalytics: async (...args) => { syncCalls.push(args); return sync; } },
+    "@/lib/vercel-analytics/sync": { VERCEL_SNAPSHOT_VERSION: 3, syncVercelAnalytics: async (...args) => { syncCalls.push(args); return sync; } },
   });
   return { dashboard, syncCalls };
 }
@@ -142,8 +142,18 @@ test("a same-period snapshot is shown as stale with its cause when the sync fail
   assert.equal(state.stale, true);
   assert.equal(state.syncError, "cause");
   assert.equal(state.periodStart, "2026-09-12");
-  const fresh = loadDashboard({ snapshots: [{ ...exact, data: { version: 2, visitors: 1, pageviews: 1 } }], sync: null });
+  const fresh = loadDashboard({ snapshots: [{ ...exact, data: { version: 3, visitors: 1, pageviews: 1 } }], sync: null });
   const ready = await fresh.dashboard.getAnalyticsDashboard(client, { start: "2026-09-12", end: "2026-10-11" });
   assert.equal(fresh.syncCalls.length, 0);
   assert.equal(ready.stale, false);
+});
+
+test("Analytics v2 caches are refreshed after strict counter validation without breaking the existing stale UI fallback", async () => {
+  const old = { ...monthSnapshot, fetched_at: new Date().toISOString(), data: { version: 2, visitors: 0, pageviews: 0 } };
+  const { dashboard, syncCalls } = loadDashboard({ snapshots: [old], sync: { ok: false, reason: "unavailable", error: "Comptage indisponible" } });
+  const state = await dashboard.getAnalyticsDashboard(client, { start: old.period_start, end: old.period_end });
+  assert.equal(syncCalls.length, 1);
+  assert.equal(state.status, "ready");
+  assert.equal(state.stale, true);
+  assert.equal(state.syncError, "Comptage indisponible");
 });

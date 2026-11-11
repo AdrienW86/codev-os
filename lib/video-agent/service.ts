@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {structuredResponse} from '@/lib/integrations/publications-openai';
+import {structuredResponse,withAiScope,isBudgetExceeded} from '@/lib/ai/metered';
 import {assetOriginal} from '@/lib/whatsapp/originals';
 import {isPublicationCandidate,type CandidateInput} from '@/lib/media-intelligence/model';
 import {pickTrack} from '@/lib/motion/music';
@@ -90,14 +90,16 @@ async function writeScript(ctx:ClientBrandContext,service:string,photoTexts:stri
    const checked=checkVideoScript(value,ctx.facts,used,captionCount);
    if(checked.ok)return checked.script;
    feedback=checked.reason;
-  }catch{log('script','generation_failed');break;}
+  }catch(e){log('script',isBudgetExceeded(e)?'budget':'generation_failed');break;}
  }
  return fallbackVideoScript(service,ctx.client.zone);
 }
 
 export type VideoResult={ok:true;id:string;service:string;headline:string;seconds:number}|{ok:false;message:string};
 /** Génère une vidéo pour le client et la range dans son Studio (aucune publication). */
-export async function generateAgentVideo(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null}):Promise<VideoResult>{
+/** Travail de l'agent dans son périmètre IA (agent, client) : plafond mensuel du client et journal des appels. */
+export function generateAgentVideo(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null}):Promise<VideoResult>{return withAiScope({agent:'video',clientId},()=>generateAgentVideoUnscoped(clientId,options));}
+async function generateAgentVideoUnscoped(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null}):Promise<VideoResult>{
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const ffmpegPath=typeof ffmpegStatic==='string'?ffmpegStatic:null;
  if(!ffmpegPath)return {ok:false,message:'Moteur vidéo indisponible sur le serveur.'};

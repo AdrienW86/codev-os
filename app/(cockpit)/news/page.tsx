@@ -51,5 +51,6 @@ function Item({ item, strong = false }: { item: NewsItem; strong?: boolean }) {
     <p className="text-xs text-muted"><span className="font-medium text-accent-hover">{item.category}</span> · {item.source} · <time dateTime={item.date}>{day.format(new Date(item.date + "T00:00:00Z"))}</time></p>
     <h3 className={`mt-1 ${strong ? "font-semibold" : "text-sm font-medium"}`}>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-accent-hover hover:underline">{item.title}</a> : item.title}</h3>
     {item.summary && <p className={`mt-1 text-sm text-muted ${strong ? "line-clamp-3" : "line-clamp-2"}`}>{item.summary}</p>}
+    {item.impact && <p className="mt-1 text-xs font-medium text-accent">À retenir : {item.impact}</p>}
   </article>;
 }

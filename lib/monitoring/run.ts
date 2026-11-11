@@ -9,7 +9,7 @@ import { ProviderError } from "@/lib/providers/errors";
 import { latestDeployment } from "@/lib/providers/vercel";
 import { syncVercelAnalytics } from "@/lib/vercel-analytics/sync";
 import { recentCommits } from "@/lib/providers/github";
-import { evaluateCheck, siteUrl } from "@/lib/monitoring/evaluate";
+import { auditPage, evaluateCheck, siteUrl, type PageAudit } from "@/lib/monitoring/evaluate";
 import { openIncident, prepareAction, recordRecommendation, resolveIncident } from "@/lib/agents/outputs";
 import { RunError, type RunHandler } from "@/lib/runs/types";
 import type { Json } from "@/lib/supabase/database.types";
@@ -32,15 +32,18 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
   if (error) throw new RunError("Clients illisibles.");
   const { data: connections } = await supabase.from("client_connections").select("client_id,provider,metadata").in("client_id", clientIds.slice(0, MAX_SITES)).in("provider", ["vercel", "github"]);
 
-  const counts = { up: 0, slow: 0, down: 0, skipped: 0, partial: 0, analytics: 0 };
+  const counts = { up: 0, slow: 0, down: 0, skipped: 0, partial: 0, analytics: 0, issues: 0 };
   for (const client of clients ?? []) {
     const url = siteUrl(client.website);
     if (!url) { counts.skipped++; continue; }
-    let status: number | null = null, ms: number | null = null, errorKind: string | null = null;
-    try { const response = await safeGet(url, { provider: "http", allowHttp: true, timeoutMs: 10_000, maxBytes: 200_000, accept: "text/html,*/*" }); status = response.status; ms = response.ms; }
+    let status: number | null = null, ms: number | null = null, errorKind: string | null = null, audit: PageAudit | null = null;
+    try {
+      const response = await safeGet(url, { provider: "http", allowHttp: true, timeoutMs: 10_000, maxBytes: 400_000, accept: "text/html,*/*" }); status = response.status; ms = response.ms;
+      if (response.status < 400) audit = auditPage({ requestedUrl: url, finalUrl: response.url, status: response.status, headers: response.headers, body: response.body, ms: response.ms });
+    }
     catch (failure) { errorKind = failure instanceof ProviderError ? failure.kind : "unavailable"; }
     const verdict = evaluateCheck({ ok: false, status, ms, errorKind });
-    await supabase.from("site_checks").insert({ client_id: client.id, url: url.slice(0, 2048), ok: verdict.state === "up" || verdict.state === "slow", status_code: status, response_ms: ms, error_kind: errorKind, details: { verdict: verdict.label } as Json, job_id: job.id });
+    await supabase.from("site_checks").insert({ client_id: client.id, url: url.slice(0, 2048), ok: verdict.state === "up" || verdict.state === "slow", status_code: status, response_ms: ms, error_kind: errorKind, details: { verdict: verdict.label, ...(audit ? { audit_score: audit.score, audit_issues: audit.issues.map(({ code, severity, title }) => ({ code, severity, title })) } : {}) } as Json, job_id: job.id });
     if (verdict.state === "blocked") { counts.skipped++; continue; }
     const fingerprint = `site-down:${client.id}`;
     if (verdict.state === "down") {
@@ -54,6 +57,22 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
     } else {
       counts[verdict.state]++;
       await resolveIncident(actor, fingerprint);
+      // Audit technique : un problème critique ou majeur ouvre un incident dédoublonné (une seule
+      // recommandation tant qu'il dure), résolu automatiquement dès qu'il disparaît.
+      if (audit) {
+        const host = new URL(url).hostname;
+        for (const issue of audit.issues.filter((item) => item.severity === "critical" || item.severity === "high")) {
+          counts.issues++;
+          const issueFingerprint = `site-audit:${client.id}:${issue.code}`;
+          const incident = await openIncident(actor, { clientId: client.id, agentId: agent.id, source: "monitoring", severity: issue.severity, title: `${host} : ${issue.title}`, fingerprint: issueFingerprint, details: { code: issue.code, detail: issue.detail, checked_at: now.toISOString() } });
+          if (incident.created) {
+            const recommendation = await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: `${issue.title} sur ${host}`, reason: `${issue.detail} Correction proposée : ${issue.fix}`, severity: issue.severity === "critical" ? "high" : "medium", payload: { incident_id: incident.id, url, code: issue.code, audit_score: audit.score } });
+            await supabase.from("incidents").update({ recommendation_id: recommendation.id }).eq("id", incident.id);
+          }
+        }
+        const open = new Set(audit.issues.filter((item) => item.severity === "critical" || item.severity === "high").map((item) => item.code));
+        for (const code of ["no_https", "slow_ttfb", "noindex_header", "noindex_meta", "title_missing", "viewport_missing", "canonical_foreign"]) if (!open.has(code)) await resolveIncident(actor, `site-audit:${client.id}:${code}`);
+      }
     }
     // Sources complémentaires : une panne de fournisseur n'interrompt pas le contrôle (panne partielle).
     for (const connection of (connections ?? []).filter((item) => item.client_id === client.id)) {
@@ -79,6 +98,6 @@ export const checkSitesRun: RunHandler = async ({ job, agent, actor, now }) => {
       } catch (failure) { counts.partial++; await recordSync(client.id, connection.provider, failure); }
     }
   }
-  const parts = [`${counts.up} en ligne`, counts.slow ? `${counts.slow} lent(s)` : null, counts.down ? `${counts.down} indisponible(s)` : null, counts.skipped ? `${counts.skipped} sans adresse contrôlable` : null, counts.analytics ? `${counts.analytics} analytics Vercel synchronisée(s)` : null, counts.partial ? `${counts.partial} source(s) complémentaire(s) indisponible(s)` : null].filter(Boolean);
+  const parts = [`${counts.up} en ligne`, counts.slow ? `${counts.slow} lent(s)` : null, counts.down ? `${counts.down} indisponible(s)` : null, counts.issues ? `${counts.issues} problème(s) technique(s) majeur(s)` : null, counts.skipped ? `${counts.skipped} sans adresse contrôlable` : null, counts.analytics ? `${counts.analytics} analytics Vercel synchronisée(s)` : null, counts.partial ? `${counts.partial} source(s) complémentaire(s) indisponible(s)` : null].filter(Boolean);
   return { status: "succeeded", summary: `Contrôle de ${(clients ?? []).length} site(s) : ${parts.join(", ")}.`, data: counts };
 };

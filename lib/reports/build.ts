@@ -83,6 +83,42 @@ export function searchConsoleReportLines(input: NonNullable<ReportInput["searchC
   return lines;
 }
 
+/**
+ * Lecture d'account manager senior : à partir des seuls chiffres du rapport, ce qui mérite une action la
+ * période suivante, du plus important au moins important. Chaque priorité cite le chiffre qui la justifie ;
+ * sans donnée, aucune priorité n'est déduite. `client` : formulation partageable (sans élément interne).
+ */
+export type ReportPriority = { rank: number; internal: string; client: string | null };
+export function reportPriorities(input: ReportInput, period: Period, derived: { uptime: number | null; avgResponse: number | null; overdue: number; pendingRecommendations: number; pendingActions: number; openIncidents: number; toValidate: number }): ReportPriority[] {
+  const priorities: ReportPriority[] = [];
+  if (derived.openIncidents) priorities.push({ rank: 0, internal: `Clore ${plural(derived.openIncidents, "incident ouvert", "incidents ouverts")} avant toute autre optimisation.`, client: null });
+  if (derived.uptime !== null && derived.uptime < 99.5) priorities.push({ rank: 1, internal: `Disponibilité ${nf(derived.uptime, 1)} % (< 99,5 %) : identifier la cause des coupures (hébergement, déploiements) et mettre en place une alerte.`, client: "Fiabiliser la disponibilité du site." });
+  if (derived.avgResponse !== null && derived.avgResponse > 1500) priorities.push({ rank: 2, internal: `Temps de réponse moyen ${nf(derived.avgResponse)} ms : mise en cache, images et hébergement à revoir (objectif < 800 ms).`, client: "Accélérer le chargement du site." });
+  const sc = input.searchConsole;
+  if (sc) {
+    const length = Math.round((Date.parse(`${period.end}T00:00:00Z`) - Date.parse(`${period.start}T00:00:00Z`)) / dayMs) + 1;
+    const sum = (from: string, to: string) => sc.days.filter((row) => row.date >= from && row.date <= to).reduce((acc, row) => ({ days: acc.days + 1, clicks: acc.clicks + row.clicks, impressions: acc.impressions + row.impressions, weighted: acc.weighted + (row.position ?? 0) * row.impressions, weight: acc.weight + (row.position === null ? 0 : row.impressions) }), { days: 0, clicks: 0, impressions: 0, weighted: 0, weight: 0 });
+    const now = sum(period.start, period.end), before = sum(shiftDay(period.start, -length), shiftDay(period.start, -1));
+    if (now.days === length && before.days === length && before.clicks >= 20) {
+      const change = (now.clicks - before.clicks) / before.clicks;
+      if (change <= -0.2) priorities.push({ rank: 1, internal: `Clics Google en baisse de ${nf(Math.abs(change) * 100)} % : identifier les pages et requêtes en recul (Search Console), vérifier indexation et mises à jour d’algorithme récentes.`, client: "Analyser et corriger la baisse de visibilité sur Google." });
+      else if (change >= 0.2) priorities.push({ rank: 4, internal: `Clics Google en hausse de ${nf(change * 100)} % : consolider les pages qui progressent (contenu, liens internes).`, client: "Consolider la progression sur Google." });
+    }
+    const position = now.weight ? now.weighted / now.weight : null, ctr = now.impressions ? now.clicks / now.impressions : null;
+    if (position !== null && ctr !== null && now.impressions >= 500 && position <= 10 && ctr < 0.02) priorities.push({ rank: 2, internal: `Bonne position moyenne (${nf(position, 1)}) mais CTR de ${nf(ctr * 100, 1)} % : réécrire titles et meta descriptions des pages les plus vues pour donner envie de cliquer.`, client: "Rendre les résultats Google plus attractifs (titres et descriptions)." });
+    else if (position !== null && position > 10 && position <= 20 && now.impressions >= 500) priorities.push({ rank: 3, internal: `Position moyenne ${nf(position, 1)} (deuxième page) : enrichir les pages proches du top 10 et renforcer leurs liens internes.`, client: "Faire passer les pages proches en première page de Google." });
+  }
+  for (const metric of input.metrics) {
+    const data = metric.data;
+    if (metric.provider === "pagespeed" && typeof data.performance === "number" && data.performance < 50) priorities.push({ rank: 2, internal: `Performance mobile ${data.performance}/100 : traiter les images, scripts tiers et le rendu bloquant (Core Web Vitals).`, client: "Améliorer la vitesse du site sur mobile." });
+    if (metric.provider === "google-ads" && typeof data.cost === "number" && data.cost > 0 && (data.conversions ?? 0) === 0) priorities.push({ rank: 1, internal: `Google Ads : ${nf(data.cost, 2)} € dépensés sans conversion enregistrée : vérifier le suivi puis les termes de recherche (diagnostic expert de l’Agent Google Ads).`, client: "Vérifier la mesure des demandes issues de Google Ads." });
+  }
+  if (derived.overdue) priorities.push({ rank: 2, internal: `${plural(derived.overdue, "tâche en retard", "tâches en retard")} : replanifier ou déléguer cette semaine.`, client: null });
+  if (derived.pendingActions || derived.pendingRecommendations) priorities.push({ rank: 3, internal: `Décisions en attente : ${[derived.pendingRecommendations ? plural(derived.pendingRecommendations, "recommandation", "recommandations") : null, derived.pendingActions ? plural(derived.pendingActions, "action à valider", "actions à valider") : null].filter(Boolean).join(", ")} ; les traiter évite de laisser des gains de côté.`, client: null });
+  if (derived.toValidate) priorities.push({ rank: 3, internal: `${plural(derived.toValidate, "publication attend", "publications attendent")} une validation : les traiter pour garder le rythme éditorial.`, client: null });
+  return priorities.sort((a, b) => a.rank - b.rank).slice(0, 6);
+}
+
 export function periodLabel(kind: ReportKind, period: Period) {
   if (kind === "google_ads") return period.start === period.end ? `le ${frDate(period.start)} ${period.start.slice(0, 4)}` : `du ${frDate(period.start)} ${period.start.slice(0, 4)} au ${frDate(period.end)} ${period.end.slice(0, 4)}`;
   if (kind === "monthly") return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${period.start}T00:00:00Z`));
@@ -142,6 +178,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     return [];
   })];
 
+  const priorities = reportPriorities(input, p, { uptime, avgResponse, overdue: overdue.length, pendingRecommendations: pendingRecommendations.length, pendingActions: pendingActions.length, openIncidents: openIncidents.length, toValidate: toValidate.length });
   const empty = !completed.length && !published.length && !newRecommendations.length && !doneActions.length && !incidents.length && !runs.length && !checks.length && !metricLines.length;
   const name = input.client?.name ?? "Tous les clients";
   const title = `${kind === "weekly" ? "Rapport hebdomadaire" : "Rapport mensuel"} — ${name} — ${periodLabel(kind, p)}`;
@@ -167,6 +204,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     { title: "Actions", lines: [...doneActions.map((item) => `Réalisée : ${item.label}`), ...pendingActions.map((item) => `À valider : ${item.label}`)] },
     { title: "Incidents", lines: incidents.map((item) => `${item.status === "resolved" ? "Résolu" : "Ouvert"} : ${item.title} (${item.severity})`) },
     { title: "Disponibilité et performances", lines: [uptime !== null ? `Disponibilité ${uptime} % sur ${checks.length} contrôles${avgResponse !== null ? `, temps de réponse moyen ${avgResponse} ms` : ""}.` : null, ...metricLines].filter((line): line is string => Boolean(line)) },
+    { title: "Priorités recommandées", lines: priorities.map((item, index) => `${index + 1}. ${item.internal}`) },
     { title: "Analyses des agents", lines: Object.entries(runs.reduce<Record<string, { total: number; failed: number }>>((acc, run) => { const entry = acc[run.agent] ??= { total: 0, failed: 0 }; entry.total++; if (run.status === "failed") entry.failed++; return acc; }, {})).map(([agent, stat]) => `${agent} : ${plural(stat.total, "analyse", "analyses")}${stat.failed ? `, ${stat.failed} en échec` : ""}`) },
   ].filter((section) => section.lines.length);
 
@@ -176,6 +214,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     { title: "Contenus publiés", lines: published.map((item) => item.subject) },
     { title: "Résultats", lines: [uptime !== null ? `Disponibilité du site : ${uptime.toString().replace(".", ",")} %` : null, ...metricLines].filter((line): line is string => Boolean(line)) },
     { title: "À venir", lines: upcoming.slice(0, 5).map((task) => task.title) },
+    { title: "Nos priorités pour la suite", lines: [...new Set(priorities.flatMap((item) => item.client ? [item.client] : []))].slice(0, 3) },
   ].filter((section) => section.lines.length);
 
   return {

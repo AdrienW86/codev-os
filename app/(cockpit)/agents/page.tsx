@@ -14,13 +14,15 @@ import { getActiveScenario } from "@/lib/simulation/server";
 import { SimAgents } from "@/components/simulation/views/sim-agents";
 import { AgentCoveragePanel } from "@/components/agents/agent-coverage-panel";
 import { loadAgentCoverage } from "@/lib/agents/coverage-service";
+import { TeamPanel } from "@/components/agents/team-panel";
+import { loadTeam } from "@/lib/harness/team-service";
 
 export const metadata: Metadata = { title: "Agents" };
 
 export default async function AgentsPage() {
   await requireAdmin();
   if (await getActiveScenario()) return <SimAgents />;
-  const [agents, clients, coverage] = await Promise.all([listAgents(), listClients(), loadAgentCoverage().catch(() => null)]);
+  const [agents, clients, coverage, team] = await Promise.all([listAgents(), listClients(), loadAgentCoverage().catch(() => null), loadTeam().catch(() => null)]);
   const { byBlueprint, unmatched } = matchConfiguredAgents(agents);
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));
 
@@ -48,7 +50,9 @@ export default async function AgentsPage() {
 
       {coverage && <AgentCoveragePanel gaps={coverage.gaps} clientNames={coverage.clientNames} />}
 
-      <h2 className="sr-only">Agents du registre</h2>
+      {team && <TeamPanel team={team} />}
+
+      <h2 className="text-lg font-semibold mb-4">Registre et rattachements</h2>
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {agentCatalog.map((blueprint) => {
           const configured = byBlueprint.get(blueprint.id) ?? [];

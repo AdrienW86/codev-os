@@ -25,6 +25,8 @@ import { getVisualAgent } from "@/lib/visual-agent/service";
 import { getVideoAgent } from "@/lib/video-agent/service";
 import { VideoAgentPanel } from "@/components/clients/video-agent-panel";
 import { BlogAgentPanel } from "@/components/clients/blog-agent-panel";
+import { ClientTeamPanel } from "@/components/agents/client-team-panel";
+import { loadClientPlan } from "@/lib/harness/client-plan-service";
 import { getBlogAgent } from "@/lib/blog-agent/service";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
@@ -87,6 +89,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const client = await getClientOrNotFound(id);
   const search = await searchParams;
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
+  const teamPlan = tab === "agents" ? await loadClientPlan(client.id).catch(() => null) : null;
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
   // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
   const searchConsoleProperties = tab === "agents" ? (await safeRead("search-console-properties", async () => {
@@ -204,6 +207,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         }));
         return (
           <>
+            {teamPlan && <ClientTeamPanel plan={teamPlan} />}
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />
             <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} /></div>

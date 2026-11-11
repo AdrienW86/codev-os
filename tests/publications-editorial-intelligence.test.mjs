@@ -128,6 +128,22 @@ test("anti-répétition au-delà des 3 dernières idées : sujet, formulation, a
   assert.equal(guards.historyRefusal({ idea, publications: variants([zinc[0] + " N’hésitez pas à nous contacter.", zinc[1], zinc[2]]) }, { history: tics, plan: tp }).reason, "phrase_repetition");
 });
 
+test("formulation récurrente : la phrase est retirée (jamais l'accroche) plutôt que de jeter la préparation", () => {
+  const tics = memory.buildEditorialHistory({ publications: [pub(1, "A"), pub(2, "B")], variants: [variant(1, "facebook", "N’hésitez pas à nous contacter pour vos tuiles."), variant(2, "facebook", "Gouttières : n’hésitez pas à nous contacter.")], libraryUses: [], catalogUses: [], services: [] });
+  const ctx = { history: tics, plan: planMod.buildEditorialPlan({ history: tics, services: [], media: [], zone: null, now }) };
+  const long = zinc[0] + " Une zinguerie entretenue protège durablement les façades. N’hésitez pas à nous contacter.";
+  const fixed = json(guards.dropRecurringPhraseSentences({ idea, publications: variants([long, zinc[1], zinc[2]]) }, ctx));
+  assert.equal(fixed.publications[0].text, zinc[0] + " Une zinguerie entretenue protège durablement les façades.");
+  assert.equal(guards.historyRefusal(fixed, ctx), null, "plus aucune formulation récurrente");
+  // Accroche porteuse de la formule : jamais retirée, la garde refuse comme avant.
+  const opener = json(guards.dropRecurringPhraseSentences({ idea, publications: variants(["N’hésitez pas à nous contacter pour vos gouttières. Le zinc dure longtemps. Il se patine.", zinc[1], zinc[2]]) }, ctx));
+  assert.match(opener.publications[0].text, /^N’hésitez pas à nous contacter/, "accroche intacte");
+  assert.notEqual(guards.historyRefusal(opener, ctx), null, "toujours refusé");
+  // Texte trop amputé (moins de deux phrases restantes) : inchangé.
+  const short = json(guards.dropRecurringPhraseSentences({ idea, publications: variants(["Gouttière en zinc. N’hésitez pas à nous contacter.", zinc[1], zinc[2]]) }, ctx));
+  assert.equal(short.publications[0].text, "Gouttière en zinc. N’hésitez pas à nous contacter.");
+});
+
 test("rotation : jamais 3 démoussages de suite quand une photo permet une autre prestation", () => {
   const again = { idea: { subject: "Démoussage des tuiles canal", angle: "Retirer la mousse." }, publications: variants(["Retirer la mousse évite les infiltrations sous les tuiles.", "Tuiles nettes, sans mousse. #toiture", "Démoussage : brossage et nettoyage des tuiles."], A(4)) };
   assert.equal(check(again).reason, "repetition", "3rd consecutive démoussage refused (zinguerie photo available)");
@@ -355,4 +371,13 @@ test("photo de document : les mots ambigus (maquette papier, logo) ne suffisent 
   assert.equal(photos.isDocumentPhoto({ description: "Photo d'une facture posée sur le bureau" }), true);
   assert.equal(photos.isDocumentPhoto({ description: "Écran de statistiques", sensitive: ["screen"] }), true);
   assert.equal(photos.isDocumentPhoto({ description: "Page web", quality_issues: ["screenshot"] }), true);
+});
+
+test("terme non confirmé hors accroche : la phrase est retirée, jamais rien d'ajouté ; dans l'accroche, refus", () => {
+  const extra = zinc[0] + " Le zinc protège les façades des coulures. Garantie décennale sur toutes nos poses.";
+  const ok = check({ idea, publications: variants([extra, zinc[1], zinc[2]]) });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.publications[0].text, zinc[0] + " Le zinc protège les façades des coulures.");
+  const head = check({ idea, publications: variants(["Garantie décennale sur nos gouttières en zinc. Le zinc protège les façades. Il dure longtemps.", zinc[1], zinc[2]]) });
+  assert.equal(head.reason, "unsupported_claim");
 });

@@ -195,7 +195,7 @@ test('lost details recover the SQL publication creation order even when the run 
 test('real generator: Responses API integration with strict instructions and schema (mocked, never called for real)',async()=>{
  const calls=[];const g=load('lib/publications/agent-v2/openai-generator.ts',{'@/lib/integrations/publications-openai':{structuredResponse:async(instructions,payload,schema)=>{calls.push({instructions,payload:JSON.parse(payload),schema});
   return {value:{idea:{subject:'S',angle:'A'},media_id:M,publications:[{occurrence_id:uid(5,1),text:'T',cta:null}]},usage:{input_tokens:1,output_tokens:1,estimated_cost_eur:0,model:'m'}};}}}).openaiAgentV2Generator();
- const r=await g.generate(input());assert.equal(calls[0].instructions,prompt.AGENT_V2_INSTRUCTIONS);assert.equal(calls[0].payload.client.zone,null);assert.equal(calls[0].schema.additionalProperties,false);
+ const r=await g.generate(input());assert.ok(calls[0].instructions.startsWith('CADRE DE MISSION — Agent Publications'),'cadre de mission du harness en tête');assert.ok(calls[0].instructions.endsWith(prompt.AGENT_V2_INSTRUCTIONS));assert.equal(calls[0].payload.client.zone,null);assert.equal(calls[0].schema.additionalProperties,false);
  assert.deepEqual(json(r.output.publications),[{occurrenceId:uid(5,1),platform:'facebook',text:'T',cta:null,mediaId:M}]);});
 
 test('action and UI: explicit AI authorization, admin first; configured → Agent v2, legacy → Agent v1; no database in client components',async()=>{

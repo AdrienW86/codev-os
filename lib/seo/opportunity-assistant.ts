@@ -9,6 +9,7 @@ import type { SearchFilter } from "@/lib/providers/search-console";
 import type { QueryRow } from "@/lib/providers/search-console";
 import type { SeoOpportunityRow } from "@/lib/supabase/seo-opportunities.types";
 import { actionKindLabels, addDays, categoryLabels, intentLabels, levelLabels, normalizeText, pathOf, sumRows, type Metrics, type Period } from "@/lib/seo/opportunities";
+import { withCharter } from "@/lib/harness/charter";
 
 export type AgentProposal = { type: "dismiss"; reason: string } | { type: "prepare_change" };
 export type AgentReply = { text: string; source: "rules" | "ai"; intent: ConversationIntent; proposal?: AgentProposal; degraded?: boolean };
@@ -151,7 +152,7 @@ export async function replyToMessage(row: SeoOpportunityRow, clientName: string,
   }
   try {
     const response = await deps.provider.complete({
-      system: `${SYSTEM}\nDONNÉES :\n${dataBlock(row, clientName)}`,
+      system: `${withCharter("seo", SYSTEM)}\nDONNÉES :\n${dataBlock(row, clientName)}`,
       messages: [...history.slice(-6), { role: "user", content: message.slice(0, 2000) }],
       tools: [],
     });

@@ -19,7 +19,7 @@ test("Push subscription rejects private endpoints and unvalidated keys", () => {
 });
 test("Admin denial precedes notification reads, preferences and subscription writes", async () => {
   const fake = createFakeSupabase({});
-  const service = loadTs("lib/notifications/service.ts", { "@/lib/require-admin": { requireAdmin: async () => { throw Error("denied"); } }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client }, "./schema": schema });
+  const service = loadTs("lib/notifications/service.ts", { "@/lib/require-admin": { requireAdmin: async () => { throw Error("denied"); } }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client }, "./schema": schema, "./resolution": loadTs("lib/notifications/resolution.ts") });
   for (const action of [() => service.listNotifications(), () => service.notificationPreferences(), () => service.markNotificationRead(deviceId), () => service.subscribeDevice({}), () => service.revokeDevice(deviceId), () => service.dismissNotification(deviceId), () => service.dismissReadNotifications()]) await assert.rejects(action, /denied/);
   assert.equal(fake.calls.length, 0);
 });

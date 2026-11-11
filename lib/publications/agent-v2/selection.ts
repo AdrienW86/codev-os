@@ -2,7 +2,7 @@
 import {AGENT_V2_LIMITS,type AgentV2GeneratorInput,type AgentV2GeneratorOutput,type OpenOccurrenceCandidate} from './contract';
 import type {PublicationPlatform} from '../types';
 import {aboutService,textSimilarity as similarity} from '../editorial-text';
-import {dropRepeatedCtas,historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
+import {dropRecurringPhraseSentences,dropRepeatedCtas,dropSentences,historyRefusal,photoRefusal,placeRefusal,type EditorialRefusal} from '../editorial-guards';
 
 const platformOrder:PublicationPlatform[]=['facebook','instagram','google_business_profile','tiktok','snapchat'];
 const byTime=(a:OpenOccurrenceCandidate,b:OpenOccurrenceCandidate)=>a.scheduledFor.localeCompare(b.scheduledFor)||platformOrder.indexOf(a.platform)-platformOrder.indexOf(b.platform)||a.occurrenceId.localeCompare(b.occurrenceId);
@@ -164,10 +164,21 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  const cleaned={idea:{subject,angle},publications:o.publications.map(p=>({...p,text:p.text.trim(),cta:p.cta?.trim()||null}))};
  // Appel à l'action déjà employé ou même style que les dernières publications : retiré (champ facultatif) plutôt que
  // de jeter toute la publication ; le texte, lui, reste soumis à tous les contrôles.
- const value=input.editorial?dropRepeatedCtas(cleaned,input.editorial):cleaned;
+ const withoutCtas=input.editorial?dropRepeatedCtas(cleaned,input.editorial):cleaned;
+ // Formulation récurrente : la phrase concernée est retirée (jamais l'accroche) plutôt que de jeter la préparation ;
+ // annulé si les déclinaisons deviennent trop proches l'une de l'autre.
+ const repaired=input.editorial?dropRecurringPhraseSentences(withoutCtas,input.editorial):withoutCtas;
+ const repairedTexts=repaired.publications.map(p=>p.text.toLocaleLowerCase('fr'));
+ let value=repairedTexts.some((t,i)=>repairedTexts.slice(i+1).some(u=>t===u||textSimilarity(t,u)>=VARIANT_SIMILARITY_THRESHOLD))?withoutCtas:repaired;
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
  if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
   // Le motif (termes refusés, sans le texte) est conservé : il dit quoi corriger au lieu d'un refus muet.
+  // Phrase portant un terme non confirmé (hors accroche) : retirée plutôt que de jeter la préparation ; un CTA
+  // concerné est retiré (facultatif). Le sujet, l'angle et l'accroche restent soumis au refus.
+  const claims=(t:string)=>unsupportedClaims(t,facts).length>0;
+  const trimmed=dropSentences(value,claims),cleanedClaims={...trimmed,publications:trimmed.publications.map(p=>p.cta&&claims(p.cta)?{...p,cta:null}:p)};
+  const trimmedTexts=cleanedClaims.publications.map(p=>p.text.toLocaleLowerCase('fr'));
+  if(!trimmedTexts.some((t,i)=>trimmedTexts.slice(i+1).some(u=>t===u||textSimilarity(t,u)>=VARIANT_SIMILARITY_THRESHOLD)))value=cleanedClaims;
   const found=[...new Set([value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])].flatMap(t=>unsupportedClaims(t,facts)).map(c=>c.split(':').slice(1).join(':').trim().toLocaleLowerCase('fr')))];
   if(found.length)return {ok:false,reason:'unsupported_claim',detail:`termes non confirmés : ${found.slice(0,5).map(f=>`« ${f.slice(0,40)} »`).join(', ')}`};}
  if(input.previousSubjects){const detail=repetitionDetail(value.idea.subject,value.publications.map(p=>p.text),input as AgentV2GeneratorInput);if(detail)return {ok:false,reason:'repetition',detail};}

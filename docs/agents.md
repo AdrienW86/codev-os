@@ -26,6 +26,14 @@ Refus possibles : `unknown_capability`, `not_capable`, `agent_disabled`, `simula
 
 Aucun agent n’est créé ni activé au niveau 2 ou 3. Les agents en pause s’activent depuis /agents.
 
+D’autres agents tournent aujourd’hui hors registre, par étapes dédiées du planificateur (`app/api/internal/scheduler/tick/route.ts`) et un interrupteur par client : Agent Blog, Agent Visuels, Agent Vidéo, photothèque intelligente, Agent Prospection (balayage de zone). Leur intégration au registre est prévue (organisation harness).
+
+## Supervision (harness)
+
+Un agent actif qui n’a aucune exécution planifiée ne travaille jamais. `lib/agents/coverage.ts` compare les agents actifs aux exécutions attendues (`expectedSchedules`) : Rapport → `report.generate`, Veille → `news.fetch`, Monitoring → `monitoring.check_sites` (global), SEO → `seo.analyze` (par client rattaché). Google Ads (`ads.monitor`) y entrera avec la réparation de son transport.
+
+Les écarts s’affichent en tête de /agents (détail) et sur l’accueil (résumé). « Planifier les exécutions manquantes » crée uniquement les automatisations absentes, à partir des modèles recommandés ; un agent ou une automatisation en pause n’est jamais réactivé automatiquement.
+
 ## Services → Agents
 
 `client_services.service_key` + `lifecycle` (`active`, `to_configure`, `paused`, `ended`). Activer un service rattache les agents correspondants au client (`agent_client_assignments.source = 'service'`) ; le désactiver les détache pour ce client **sans supprimer l’historique**. L’Agent Rapport est rattaché à tous les clients actifs (`source = 'global'`), à la création du client et à chaque passage du planificateur.

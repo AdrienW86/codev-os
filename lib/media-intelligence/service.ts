@@ -14,6 +14,7 @@ import {driveFilePresence,importDriveToken,trashDrive} from '@/lib/whatsapp/prov
 import {storeThumbnail,THUMBNAIL_BUCKET} from '@/lib/whatsapp/service';
 import {driveFolderBackfill,type DriveBackfill,type DriveSyncFile} from './drive-listing';
 import {classificationContext,classificationInstructions,classificationSchema,mediaProfileFromRow,mediaProfilePayload,normalizeAssessment,type MediaProfile} from './model';
+import {withCharter} from '@/lib/harness/charter';
 
 // Photothèque intelligente (socle Publications, lot 2). Serveur uniquement ; les appelants ont vérifié requireAdmin()
 // ou agissent comme planificateur. Les originaux restent dans Drive ; seule une réduction 640 px part au modèle,
@@ -82,7 +83,7 @@ export async function classifyClientMedia(clientId:string,options:{assetIds?:str
   let usage:unknown=null;
   try{
    const preview=await visionPreview(await download(asset));
-   const response=await vision(classificationInstructions,[{role:'user',content:[{type:'input_text',text:classificationContext(profile,client,asset.caption)},
+   const response=await vision(withCharter('media-library',classificationInstructions),[{role:'user',content:[{type:'input_text',text:classificationContext(profile,client,asset.caption)},
     {type:'input_image',image_url:`data:image/jpeg;base64,${Buffer.from(preview).toString('base64')}`,detail:'low'}]}],classificationSchema);
    usage=response.usage;
    const assessment=normalizeAssessment(response.value,profile.version);

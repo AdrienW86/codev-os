@@ -34,3 +34,11 @@ Une phrase (hors accroche) portant une formulation récurrente ou un terme non c
 - **Semaine du client** (`lib/harness/week-plan.ts`, fiche client → Agents) : les 7 prochains jours, jour par jour, à partir des seules échéances enregistrées (diffusions programmées, articles prévus, exécutions planifiées calculées avec leur récurrence). Les agents à cadence (Visuels, Vidéo, Photothèque) sont listés à part, sans date inventée.
 - **Réglages par client** (`settingsOf` dans `lib/harness/client-plan.ts`) : chaque agent affiche ses réglages propres au client (créneaux, validation, cadence, rythme, budget IA, planifications). Rien n'est affiché pour un agent désactivé.
 - **Contrôle quotidien** (`lib/harness/control.ts` + `control-service.ts`, étape `harness_control` du planificateur) : une fois par jour à partir de 7 h (Paris), pour chaque client ayant un service actif, chaque écart (agent à régler, semaine sans diffusion alors que la diffusion est active, blog sans article sur 14 jours) ouvre un incident interne `source = system`, empreinte `harness:<client>:<code>`. Un écart disparu est résolu automatiquement. Le contrôle n'active, ne publie et ne réactive rien. Bouton « Lancer le contrôle des clients » sur /agents.
+
+## Budget IA par client
+
+- **Passerelle mesurée** (`lib/ai/metered.ts`) : même signature que `structuredResponse`. Les agents Blog, Visuels et Vidéo travaillent dans un périmètre `withAiScope({ agent, clientId })`. Avant chaque appel, la dépense du mois du client est comparée au plafond (avec une marge de 0,02 €) ; au-delà, l'appel n'a pas lieu (`ai_budget_exceeded`). Chaque appel facturé est journalisé dans `ai_usage`.
+- **Dépense du mois** : `ai_usage` + Publications (`agent_runs`) + Photothèque (`client_media_ai_month_spend`), en mois civil de Paris. Publications et Photothèque gardent aussi leur propre garde-fou.
+- **Plafond** (`client_ai_budgets`, fiche client → Agents) : 5 € par mois par défaut, de 0 à 200 €. 0 coupe l'IA de ces agents pour le client.
+- Migration `20261206000000_ai_usage_budget` à appliquer. Sans elle, rien n'est mesuré ni bloqué (comportement d'avant). Si la dépense est illisible, l'appel est refusé.
+- Les assistants Google Ads et SEO (`lib/ai/providers.ts`) ne remontent pas leur consommation : ils ne sont pas comptés.

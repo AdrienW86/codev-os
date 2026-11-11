@@ -95,9 +95,12 @@ export async function submitDrafts(actor:string,ids:readonly string[]):Promise<D
  return {submitted,complete,reviewRequired};
 }
 // Une notification idempotente (clé d'événement) : catégorie et lien autorisés par la base, jamais de texte ni de nom.
-async function notify(eventKey:string,category:'publication_review'|'media_missing'|'delivery_failed'|'incident',href:string):Promise<boolean>{
- try{const r=await db().from('admin_notifications').upsert({event_key:eventKey,category,href},{onConflict:'event_key',ignoreDuplicates:true});
-  if(!r.error)return true;
+// Résultat : 'created' (nouvelle alerte), 'exists' (déjà envoyée, rien de neuf) ou false (non enregistrée). Seules les
+// créations sont comptées dans le résumé du passage : une alerte déjà présente n'est pas une nouvelle notification.
+type Notified=false|'created'|'exists';
+async function notify(eventKey:string,category:'publication_review'|'media_missing'|'delivery_failed'|'incident',href:string):Promise<Notified>{
+ try{const r=await db().from('admin_notifications').upsert({event_key:eventKey,category,href},{onConflict:'event_key',ignoreDuplicates:true}).select('id');
+  if(!r.error)return r.data?.length?'created':'exists';
  }catch{/* A lost response may follow COMMIT; leave the durable follow-up open for an idempotent retry. */}
  console.error('[publications-scheduler] notification not recorded',{category});return false;
 }
@@ -127,8 +130,13 @@ async function notifyExhausted(exhausted:string[],agentId:string|null,now:Date):
  if(!exhausted.length||!agentId)return 0;
  const open=await db().from('publication_channel_occurrences').select('id').in('id',exhausted).is('publication_id',null).is('skipped_at',null).gte('scheduled_for',now.toISOString());
  if(open.error||!open.data)return 0;
- let n=0;for(const o of open.data as {id:string}[])if(await notify(`publication-preparation-failed:${o.id}`,'incident',`/agents/${agentId}`))n++;
- return n;
+ if(!open.data.length)return 0;
+ // Une seule écriture pour toutes les occurrences : une alerte déjà envoyée est ignorée et n'est pas recomptée.
+ const rows=(open.data as {id:string}[]).map(o=>({event_key:`publication-preparation-failed:${o.id}`,category:'incident' as const,href:`/agents/${agentId}`}));
+ try{const r=await db().from('admin_notifications').upsert(rows,{onConflict:'event_key',ignoreDuplicates:true}).select('id');
+  if(!r.error)return r.data?.length??0;
+ }catch{/* idempotent : repris au passage suivant */}
+ console.error('[publications-scheduler] notification not recorded',{category:'incident'});return 0;
 }
 
 // Reprise sans IA des préparations planifiées dont l'étape média ou la soumission n'est pas allée au bout (bail
@@ -154,9 +162,8 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
   if(run.status==='failed'){await closeFollowUp(id,'gave_up');summary.followUp.gaveUp++;continue;}
   if(run.status!=='completed'){skip('follow_up_preparation_unconfirmed');continue;}
   if(run.media_status==='none'){
-   if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`)){
-    summary.notified++;await closeFollowUp(id,'done');
-   }
+   const sent=await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`);
+   if(sent){if(sent==='created')summary.notified++;await closeFollowUp(id,'done');}
    continue;
   }
   if(!actors.has(run.client_id))actors.set(run.client_id,await delegatedActor(run.client_id,deps.isAdmin));
@@ -172,7 +179,7 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
      if(released.error){skip('follow_up_release_failed');continue;}
      if((released.data as {media_status?:unknown}|null)?.media_status==='attached')continue;
     }
-    if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`))summary.notified++;
+    if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`)==='created')summary.notified++;
     await closeFollowUp(run.id,'gave_up');summary.followUp.gaveUp++;continue;
    }
    // Plus assez de temps pour une reprise média : elle attend le passage suivant (rien n'est abandonné pour autant).
@@ -185,8 +192,9 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
   summary.followUp.submitted+=submission.submitted.length;summary.submitted+=submission.submitted.length;
   // A process can stop after submitting but before notifying. Pending revisions also need the idempotent
   // notification; a failed read/RPC/notification keeps this follow-up open for the next tick.
-  const notified=!submission.reviewRequired||await notifyReview(run.id);
-  if(submission.reviewRequired&&notified)summary.notified++;
+  const review=submission.reviewRequired?await notifyReview(run.id):'exists';
+  const notified=Boolean(review);
+  if(review==='created')summary.notified++;
   if(submission.complete&&notified)await closeFollowUp(run.id,'done');
   else skip('follow_up_submission_unconfirmed');
  }
@@ -276,8 +284,9 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
   const submission=prepared.ok&&prepared.withMedia?await submitDrafts(actor,prepared.publications.map(p=>p.id)):null;
   const submitted=submission?.submitted??[];
   summary.submitted+=submitted.length;
-  const notified=!submission?.reviewRequired||await notifyReview(prepared.runId);
-  if(submission?.reviewRequired&&notified)summary.notified++;
+  const review=submission?.reviewRequired?await notifyReview(prepared.runId):'exists';
+  const notified=Boolean(review);
+  if(review==='created')summary.notified++;
   if(needsTracking&&submission?.complete&&notified)await closeFollowUp(prepared.runId,'done');
   await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId,ok:prepared.ok,publications:prepared.publications.map(p=>p.id),submitted,media_missing:prepared.mediaMissing===true});
  }
@@ -299,11 +308,11 @@ export async function prepareApprovedDeliveries(env:Record<string,string|undefin
  for(const c of candidates.data as {publication_id:string;revision_id:string;state:string}[]){
   if(c.state==='missed'){
    summary.late++;
-   if(await notify(`publication-missed:${c.publication_id}:${c.revision_id}`,'delivery_failed',`/publications/${c.publication_id}`))summary.notified++;
+   if(await notify(`publication-missed:${c.publication_id}:${c.revision_id}`,'delivery_failed',`/publications/${c.publication_id}`)==='created')summary.notified++;
    continue;}
   if(c.state==='photo_unpublishable'){
    summary.photoBlocked++;
-   if(await notify(`publication-photo-unpublishable:${c.publication_id}:${c.revision_id}`,'delivery_failed',`/publications/${c.publication_id}`))summary.notified++;
+   if(await notify(`publication-photo-unpublishable:${c.publication_id}:${c.revision_id}`,'delivery_failed',`/publications/${c.publication_id}`)==='created')summary.notified++;
    continue;}
   // Plafond sur les diffusions préparées seulement (#47) : des candidates bloquées (approbateur parti, refus serveur)
   // ne consomment plus le budget du passage au détriment des suivantes ; leur nombre reste borné par MAX_DELIVERY_CANDIDATES.

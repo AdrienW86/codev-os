@@ -350,6 +350,22 @@ test("the tick syncs Drive with the Publications read-only provider, and skips o
   assert.equal(synced.length, 0); assert.equal(unconfigured.clients, 1); assert.equal(classified.length, 2, "le classement continue sans Drive");
 });
 
+test("Drive sync skips folders read less than an hour ago and times each sub-step", async () => {
+  const fresh = uid("c", 41), stale = uid("c", 42), never = uid("c", 43);
+  const now = new Date("2026-11-11T22:00:00Z");
+  const h = tickHarness([], [{ client_id: fresh, rights_confirmed: true }, { client_id: stale, rights_confirmed: true }, { client_id: never, rights_confirmed: true }]);
+  h.fake.tables.client_media_drive_sync = [
+    { client_id: fresh, drive_folder_id: "f1", last_synced_at: "2026-11-11T21:30:00Z" },
+    { client_id: stale, drive_folder_id: "f2", last_synced_at: "2026-11-11T20:30:00Z" },
+  ];
+  const synced = [];
+  const result = await h.service.runDriveSyncTick(5, 5, { drive: () => ({}), sync: async (id) => { synced.push(id); return { added: 1 }; }, now });
+  assert.deepEqual([...synced], [never, stale], "jamais synchronisé d'abord, puis le plus ancien ; le dossier lu il y a 30 min attend");
+  assert.equal(result.clients, 2);
+  const tick = await h.service.runMediaIntelligenceTick(5, 8, { classify: async () => ({ analyzed: 0, quarantined: 0 }), sync: async () => ({ added: 0 }), drive: () => ({}), checkDrive: async () => {} });
+  for (const key of ["drive_sync_ms", "drive_check_ms", "classify_ms", "purge_ms"]) assert.equal(typeof tick[key], "number", key);
+});
+
 test("Drive sync ignores files known only under another client and imports them for this client", async () => {
   const fake = createFakeSupabase({
     publication_agent_projects: [{ project_id: uid("p", 1), client_id: CLIENT, drive_folder_id: "folder_client_a", rights_confirmed: true }],

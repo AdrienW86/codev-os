@@ -45,6 +45,34 @@ export function dropRepeatedCtas(value:AgentV2GeneratorOutput,ctx:EditorialConte
 }
 
 /**
+ * Formulation récurrente (suite de 4 mots déjà présente dans au moins deux idées) : la phrase qui la porte est retirée
+ * plutôt que de jeter toute la préparation, si ce n'est pas la phrase d'accroche et si le texte garde au moins 60 % de
+ * sa longueur et deux phrases. Rien n'est ajouté ni reformulé : on ne fait que retirer une phrase déjà écrite.
+ * Si une formulation reste (accroche, texte trop court), la garde des répétitions refuse comme avant.
+ */
+export function dropRecurringPhraseSentences(value:AgentV2GeneratorOutput,ctx:EditorialContext):AgentV2GeneratorOutput{
+ const phrases=ctx.plan.recurringPhrases;if(!phrases.length)return value;
+ return dropSentences(value,(sentence)=>{const plain=' '+normalizeText(sentence)+' ';return phrases.some(p=>plain.includes(' '+p+' '));});
+}
+
+/**
+ * Retire de chaque texte les phrases (hors accroche) qui répondent au critère, si le texte garde au moins deux phrases
+ * et 60 % de sa longueur ; sinon le texte reste tel quel et les contrôles habituels décident. Jamais d'ajout.
+ */
+export function dropSentences(value:AgentV2GeneratorOutput,hits:(sentence:string)=>boolean):AgentV2GeneratorOutput{
+ const repair=(text:string)=>{
+  const lines=text.split('\n').map(line=>line.split(/(?<=[.!?…])\s+/));
+  const total=lines.reduce((n,l)=>n+l.filter(s=>s.trim()).length,0);
+  let index=0,removed=0;
+  const kept=lines.map(line=>line.filter(sentence=>{if(!sentence.trim())return true;const first=index++===0;if(!first&&hits(sentence)){removed++;return false;}return true;}).join(' '));
+  if(!removed)return text;
+  const next=kept.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  return total-removed>=2&&next.length>=text.length*.6?next:text;
+ };
+ return {...value,publications:value.publications.map(p=>({...p,text:repair(p.text)}))};
+}
+
+/**
  * Répétitions sur tout l'historique chargé (au-delà des 3 dernières idées) : sujet identique ou très proche,
  * formulation proche, accroche déjà employée, même style d'accroche une 4e fois de suite, CTA déjà employé ou même
  * style de CTA une 3e fois de suite, formulation récurrente signalée au modèle.

@@ -11,15 +11,17 @@ export type ClientFacts = {
   /** Types d'agents du registre actifs globalement. */
   activeTypes: ReadonlySet<string>;
   automations: readonly { run_type: string; client_id: string | null; status: string }[];
-  publication: { configured: boolean; autoApprove: boolean; pendingReview: number; scheduledNext7Days: number; failedDeliveries: number } | null;
-  blog: { enabled: boolean } | null;
-  visual: { enabled: boolean } | null;
-  video: { enabled: boolean } | null;
-  mediaLibrary: { classification: boolean } | null;
+  publication: { configured: boolean; autoApprove: boolean; pendingReview: number; scheduledNext7Days: number; failedDeliveries: number; generationEnabled?: boolean; publishingEnabled?: boolean; slotsPerWeek?: number } | null;
+  blog: { enabled: boolean; perWeek?: number; socialRelay?: boolean; scheduledNext7Days?: number; publishedLast7Days?: number } | null;
+  visual: { enabled: boolean; perWeek?: number } | null;
+  video: { enabled: boolean; perWeek?: number; pace?: string } | null;
+  mediaLibrary: { classification: boolean; monthlyBudgetEur?: number } | null;
+  /** Automatisations planifiées pour ce client (ou globales) : libellé lisible de leur récurrence. */
+  schedules?: readonly { runType: string; label: string }[];
 };
 
 export type SeatState = "working" | "needs_setup" | "not_subscribed" | "off" | "on_demand";
-export type ClientSeat = { agent: HarnessAgentId; name: string; state: SeatState; detail: string; href: string };
+export type ClientSeat = { agent: HarnessAgentId; name: string; state: SeatState; detail: string; href: string; settings: string[] };
 export type ClientPlan = { seats: ClientSeat[]; todo: { label: string; href: string }[] };
 
 const active = (facts: ClientFacts, key: string) => facts.services.some((s) => s.key === key && s.lifecycle === "active");
@@ -31,7 +33,7 @@ export function buildClientPlan(facts: ClientFacts): ClientPlan {
   const seats: ClientSeat[] = [];
   const todo: ClientPlan["todo"] = [];
   const name = (id: HarnessAgentId) => harnessCharters.find((c) => c.id === id)?.name ?? id;
-  const seat = (agent: HarnessAgentId, state: SeatState, detail: string, href: string) => seats.push({ agent, name: name(agent), state, detail, href });
+  const seat = (agent: HarnessAgentId, state: SeatState, detail: string, href: string) => seats.push({ agent, name: name(agent), state, detail, href, settings: settingsOf(facts, agent) });
 
   // Pilotage
   seat("report", facts.activeTypes.has("report") && planned(facts, "report.generate", false) ? "working" : "needs_setup",
@@ -75,6 +77,43 @@ export function buildClientPlan(facts: ClientFacts): ClientPlan {
   seat("veille", facts.activeTypes.has("veille") ? "working" : "off", "Veille commune à tous les clients.", "/news");
 
   return { seats, todo };
+}
+
+const paces: Record<string, string> = { dynamic: "rythme dynamique", standard: "rythme standard", calm: "rythme posé" };
+const schedulesOf = (facts: ClientFacts, runType: string) => (facts.schedules ?? []).filter((item) => item.runType === runType).map((item) => item.label);
+
+/** Réglages propres à ce client pour un agent, lus en base (jamais de valeur par défaut présentée comme un réglage). */
+export function settingsOf(facts: ClientFacts, agent: HarnessAgentId): string[] {
+  const out: string[] = [];
+  const pub = facts.publication;
+  switch (agent) {
+    case "publications":
+      if (!pub?.configured) break;
+      if (pub.slotsPerWeek !== undefined) out.push(`${pub.slotsPerWeek} créneau(x) par semaine`);
+      if (pub.generationEnabled !== undefined) out.push(pub.generationEnabled ? "Préparation automatique active" : "Préparation automatique désactivée");
+      if (pub.publishingEnabled !== undefined) out.push(pub.publishingEnabled ? "Diffusion activée" : "Diffusion désactivée");
+      out.push(pub.autoApprove ? "Validation automatique" : "Validation manuelle");
+      break;
+    case "blog":
+      if (facts.blog?.enabled && facts.blog.perWeek) out.push(`${facts.blog.perWeek} article(s) par semaine`);
+      if (facts.blog?.enabled && facts.blog.socialRelay !== undefined) out.push(facts.blog.socialRelay ? "Relais sur les réseaux" : "Sans relais sur les réseaux");
+      break;
+    case "visual":
+      if (facts.visual?.enabled && facts.visual.perWeek) out.push(`${facts.visual.perWeek} visuel(s) par semaine`);
+      break;
+    case "video":
+      if (facts.video?.enabled && facts.video.perWeek) out.push(`${facts.video.perWeek} vidéo(s) par semaine`);
+      if (facts.video?.enabled && facts.video.pace) out.push(paces[facts.video.pace] ?? facts.video.pace);
+      break;
+    case "media-library":
+      if (facts.mediaLibrary?.classification && facts.mediaLibrary.monthlyBudgetEur !== undefined) out.push(`Budget IA ${facts.mediaLibrary.monthlyBudgetEur.toLocaleString("fr-FR")} € par mois`);
+      break;
+    case "seo": out.push(...schedulesOf(facts, "seo.analyze")); break;
+    case "monitoring": out.push(...schedulesOf(facts, "monitoring.check_sites")); break;
+    case "report": out.push(...schedulesOf(facts, "report.generate")); break;
+    default: break;
+  }
+  return out;
 }
 
 export const seatLabels: Record<SeatState, { label: string; tone: "green" | "amber" | "neutral" | "blue" }> = {

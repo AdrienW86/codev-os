@@ -1,7 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { subscriptionSchema } from "./schema";
+import { isAlertCategory, subscriptionSchema } from "./schema";
 type Env = Record<string, string | undefined>;
 export function pushConfiguration(env: Env = process.env) {
   const configured = Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
@@ -20,8 +20,8 @@ export async function flushPushNotifications(env: Env = process.env, transport =
     if (device && !deviceError) {
       const { data: preferences, error: prefsError } = await db.from("admin_notification_preferences").select("push_enabled,push_categories").eq("user_id", device.user_id).maybeSingle();
       const { data: notification, error: eventError } = await db.from("admin_notifications").select("category").eq("id", delivery.notification_id).maybeSingle();
-      // Check current opt-out and ownership again after reservation.
-      if (!prefsError && !eventError && preferences?.push_enabled && preferences.push_categories.includes(notification?.category ?? "") && device.user_id === env.AUTHORIZED_ADMIN_USER_ID && Date.now() - Date.parse(delivery.created_at) < 3600000) {
+      // Check current opt-out and ownership again after reservation. Only alerts (failures, incidents) are ever pushed.
+      if (!prefsError && !eventError && preferences?.push_enabled && isAlertCategory(notification?.category) && preferences.push_categories.includes(notification?.category ?? "") && device.user_id === env.AUTHORIZED_ADMIN_USER_ID && Date.now() - Date.parse(delivery.created_at) < 3600000) {
         const subscription = subscriptionSchema.safeParse({ deviceId: device.device_id, endpoint: device.endpoint, keys: device.keys });
         if (subscription.success) {
           try {

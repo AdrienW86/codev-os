@@ -33,6 +33,18 @@ const baseTables = (extra = {}) => ({ publication_settings: [on], publication_cl
   publication_events: [savedEvent(C, ADMIN, true)], publication_agent_projects: [{ project_id: P, client_id: C, enabled: true, rights_confirmed: true }],
   publications: [{ id: PUB(1), status: "draft", current_revision_id: REV(1) }, { id: PUB(2), status: "draft", current_revision_id: REV(2) }], admin_notifications: [], ...extra });
 
+test("scheduled preparation: « À valider » notified once a day, not once per preparation (the month ahead is prepared every 15 min)", async () => {
+  const tables = baseTables({ publication_client_settings: [{ client_id: C, auto_prepare_enabled: true, generation_enabled: true }] });
+  const { mod, deps, fake } = setup(tables);
+  const ticks = [["2026-10-12T08:00:00Z", 1], ["2026-10-12T08:15:00Z", 2], ["2026-10-12T21:45:00Z", 3], ["2026-10-12T22:15:00Z", 4]];
+  for (const [at, n] of ticks) {
+    for (const p of fake.tables.publications) p.status = "draft";
+    fake.tables.publication_client_settings[0].last_auto_prepared_at = null;
+    await mod.runScheduledPreparation(new Date(at), deps({ ...okRun(true), runId: uid("8", n) }));
+  }
+  const keys = [...new Set(fake.tables.admin_notifications.map(n => n.event_key))];
+  assert.deepEqual(keys, ["publication-review:day:2026-10-12", "publication-review:day:2026-10-13"], "Paris day: 22:15Z is already the 13th");
+});
 test("scheduled preparation: global switches closed → nothing read, nothing prepared", async () => {
   for (const settings of [{ ...on, emergency_stop: true }, { ...on, automation_enabled: false }, { ...on, generation_enabled: false }, null]) {
     const { mod, prepared, deps, fake } = setup(baseTables({ publication_settings: settings ? [settings] : [] }));
@@ -52,7 +64,7 @@ test("scheduled preparation: horizon ensured, Agent v2 called as the delegated a
   assert.equal(prepared[0][2].leadDays, 31, "a month ahead, whatever the old lead-days setting"); assert.equal(prepared[0][2].allowRealAI, true);
   assert.deepEqual(fake.tables.publications.map(p => p.status), ["pending_review", "pending_review"]);
   assert.ok(!fake.calls.some(c => /review_manual|prepare_delivery|approve/.test(String(c[1]))), "never approves nor prepares a delivery");
-  assert.deepEqual(json(fake.tables.admin_notifications.map(({ event_key, category, href }) => ({ event_key, category, href }))), [{ event_key: `publication-review:${RUN}`, category: "publication_review", href: "/publications/review" }]);
+  assert.deepEqual(json(fake.tables.admin_notifications.map(({ event_key, category, href }) => ({ event_key, category, href }))), [{ event_key: "publication-review:day:2026-10-12", category: "publication_review", href: "/publications/review" }]);
   assert.deepEqual(json(audits[0][0]), { kind: "system", worker: "publications-scheduler" });
   assert.equal(audits[0][1].metadata.delegated_actor, ADMIN); assert.deepEqual(json(audits[0][1].metadata.submitted), [PUB(1), PUB(2)]);
   assert.doesNotMatch(JSON.stringify(audits), /text|caption/i);

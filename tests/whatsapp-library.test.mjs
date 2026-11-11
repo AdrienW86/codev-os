@@ -104,7 +104,8 @@ test("new-media notifications only link to a client photothèque or the assignme
   assert.equal(schema.safeNotificationHref(`/clients/${CLIENT}?tab=media`), `/clients/${CLIENT}?tab=media`);
   assert.equal(schema.safeNotificationHref("/settings/whatsapp"), "/settings/whatsapp");
   assert.equal(schema.safeNotificationHref("https://evil.test/clients"), "/notifications");
-  assert.equal(schema.preferencesSchema.safeParse({ categories: [...schema.categories], push_enabled: false, push_categories: ["media_received"] }).success, true);
+  // Médias reçus : visibles dans la photothèque, plus de notification (seules les alertes notifient).
+  assert.equal(schema.preferencesSchema.safeParse({ categories: [...schema.alertCategories], push_enabled: false, push_categories: ["media_received"] }).success, false);
 });
 test("photothèque actions authenticate first and never write in simulation", async () => {
   let calls = 0;

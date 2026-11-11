@@ -1,14 +1,15 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { categories, preferencesSchema, subscriptionSchema } from "./schema";
+import { alertCategories, isAlertCategory, preferencesSchema, subscriptionSchema } from "./schema";
 const db = () => getSupabaseServerClient();
-const defaults = { categories: [...categories], push_enabled: false, push_categories: categories.filter((value) => value !== "analysis_completed") };
+const defaults = { categories: [...alertCategories], push_enabled: false, push_categories: [...alertCategories] };
 export async function notificationPreferences() {
   const { userId } = await requireAdmin();
   const { data, error } = await db().from("admin_notification_preferences").select("categories,push_enabled,push_categories").eq("user_id", userId).maybeSingle();
   if (error) throw new Error("Préférences indisponibles : vérifiez la migration notifications.");
-  return data ? preferencesSchema.parse(data) : defaults;
+  // Préférences enregistrées avant le passage aux seules alertes : les catégories courantes sont ignorées.
+  return data ? preferencesSchema.parse({ push_enabled: data.push_enabled, categories: data.categories.filter(isAlertCategory), push_categories: data.push_categories.filter(isAlertCategory) }) : defaults;
 }
 export async function listNotifications() {
   const { userId } = await requireAdmin(); const prefs = await notificationPreferences();
@@ -20,10 +21,9 @@ export async function listNotifications() {
   const dismissed = new Set(reads.data?.filter((row) => row.dismissed_at).map((row) => row.notification_id));
   return (events.data ?? []).filter((row) => !dismissed.has(row.id)).slice(0, 100).map((row) => ({ ...row, read: seen.has(row.id) }));
 }
+/** Pastille de la cloche : alertes non lues parmi les 100 dernières visibles (mêmes catégories que la liste). */
 export async function unreadNotificationCount() {
-  const { userId } = await requireAdmin();
-  const { data, error } = await db().rpc("codev_unread_notifications", { p_user_id: userId });
-  if (error) throw new Error("Compteur indisponible."); return data;
+  return (await listNotifications()).filter((row) => !row.read).length;
 }
 export async function markNotificationRead(id: unknown) {
   const { userId } = await requireAdmin();

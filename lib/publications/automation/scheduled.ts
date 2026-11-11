@@ -101,8 +101,11 @@ async function notify(eventKey:string,category:'publication_review'|'media_missi
  }catch{/* A lost response may follow COMMIT; leave the durable follow-up open for an idempotent retry. */}
  console.error('[publications-scheduler] notification not recorded',{category});return false;
 }
-// Une notification par préparation soumise, vers la file de validation.
-const notifyReview=(runId:string)=>notify(`publication-review:${runId}`,'publication_review','/publications/review');
+// « À valider » : une seule notification par jour (heure de Paris), vers la file de validation. Le planificateur prépare
+// le mois à venir tous les quarts d'heure : une notification par préparation en enverrait des dizaines par jour.
+const notifyReview=(now:Date)=>notify(`publication-review:day:${parisToday(now)}`,'publication_review','/publications/review');
+// « Photo manquante » : une notification par client et par jour, même clé que l'Agent v2 (jamais une par préparation).
+const notifyMediaMissing=(clientId:string,now:Date)=>notify(`media-missing:${clientId}:${now.toISOString().slice(0,10)}`,'media_missing',`/clients/${clientId}?tab=media`);
 
 // Journal : une ligne par tentative, sans texte généré. Un échec du journal n'interrompt pas le passage.
 async function audit(deps:ScheduledPreparationDeps,projectId:string,metadata:Record<string,unknown>){
@@ -154,7 +157,7 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
   if(run.status==='failed'){await closeFollowUp(id,'gave_up');summary.followUp.gaveUp++;continue;}
   if(run.status!=='completed'){skip('follow_up_preparation_unconfirmed');continue;}
   if(run.media_status==='none'){
-   if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`)){
+   if(await notifyMediaMissing(run.client_id,now)){
     summary.notified++;await closeFollowUp(id,'done');
    }
    continue;
@@ -172,7 +175,7 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
      if(released.error){skip('follow_up_release_failed');continue;}
      if((released.data as {media_status?:unknown}|null)?.media_status==='attached')continue;
     }
-    if(await notify(`media-missing:run:${run.id}`,'media_missing',`/clients/${run.client_id}?tab=media`))summary.notified++;
+    if(await notifyMediaMissing(run.client_id,now))summary.notified++;
     await closeFollowUp(run.id,'gave_up');summary.followUp.gaveUp++;continue;
    }
    // Plus assez de temps pour une reprise média : elle attend le passage suivant (rien n'est abandonné pour autant).
@@ -185,7 +188,7 @@ async function followUpRuns(now:Date,deps:ScheduledPreparationDeps,summary:Sched
   summary.followUp.submitted+=submission.submitted.length;summary.submitted+=submission.submitted.length;
   // A process can stop after submitting but before notifying. Pending revisions also need the idempotent
   // notification; a failed read/RPC/notification keeps this follow-up open for the next tick.
-  const notified=!submission.reviewRequired||await notifyReview(run.id);
+  const notified=!submission.reviewRequired||await notifyReview(now);
   if(submission.reviewRequired&&notified)summary.notified++;
   if(submission.complete&&notified)await closeFollowUp(run.id,'done');
   else skip('follow_up_submission_unconfirmed');
@@ -276,7 +279,7 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
   const submission=prepared.ok&&prepared.withMedia?await submitDrafts(actor,prepared.publications.map(p=>p.id)):null;
   const submitted=submission?.submitted??[];
   summary.submitted+=submitted.length;
-  const notified=!submission?.reviewRequired||await notifyReview(prepared.runId);
+  const notified=!submission?.reviewRequired||await notifyReview(now);
   if(submission?.reviewRequired&&notified)summary.notified++;
   if(needsTracking&&submission?.complete&&notified)await closeFollowUp(prepared.runId,'done');
   await audit(deps,projectId,{delegated_actor:actor,run_id:prepared.runId,ok:prepared.ok,publications:prepared.publications.map(p=>p.id),submitted,media_missing:prepared.mediaMissing===true});

@@ -16,6 +16,7 @@ import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/public
 import { runAutoApproval } from "@/lib/publications/automation/auto-approval";
 import { processScheduledDuePublications } from "@/lib/publications/delivery/registry";
 import { purgeExportImports } from "@/lib/whatsapp/export-import";
+import { runHarnessControl } from "@/lib/harness/control-service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export const maxDuration = 300;
 // moins, elle est sautée (« skipped ») plutôt que coupée par la plateforme. Marge pour répondre et écrire le battement.
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
-  whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000,
+  whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000,
   search_console: 60_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
@@ -74,6 +75,8 @@ async function handle(request: Request) {
   // Envois dus bornés par l'échéance du passage (#47) : premier envoi libre, suivants seulement s'ils tiennent dans le temps restant.
   const due = await step("publication_delivery_send", () => processScheduledDuePublications(process.env, undefined, { deadline }), "Envoi des publications différé.");
   const push = await step("push", () => flushPushNotifications(), "Notifications push différées.");
+  // Chef d'orchestre : contrôle quotidien de chaque client (une fois par jour dès 7 h) ; ouvre ou résout des incidents internes.
+  const harnessControl = await step("harness_control", () => runHarnessControl(new Date()), "Contrôle du chef de projet différé.");
   // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
   const searchConsole = await step("search_console", () => syncDueSearchConsole(new Date()), "Synchro Search Console différée.");
   // Reprises WhatsApp → Drive : vide la file (médias disponibles 7 jours chez Meta) et applique la conservation.
@@ -93,7 +96,7 @@ async function handle(request: Request) {
   const videoAgent = await step("video_agent", () => runVideoAgentTick(new Date()), "Agent Vidéo différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, whatsappExports, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, whatsappExports, harnessControl, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

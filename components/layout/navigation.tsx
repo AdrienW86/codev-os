@@ -11,6 +11,7 @@ type NavGroup = "Pilotage" | "Clients" | "Contenus" | "Performance" | "Système"
 const navigation: { href: string; label: string; icon: IconName; group: NavGroup; matches?: string[] }[] = [
   { href: "/dashboard", label: "Accueil", icon: "home", group: "Pilotage" },
   { href: "/agenda", label: "Agenda", icon: "calendar", group: "Pilotage" },
+  { href: "/validation", label: "À valider", icon: "check", group: "Pilotage" },
   { href: "/work", label: "Travail", icon: "work", group: "Pilotage", matches: ["/tasks", "/recommendations", "/actions"] },
   { href: "/clients", label: "Clients", icon: "clients", group: "Clients", matches: ["/projects"] },
   { href: "/acquisition", label: "Acquisition", icon: "clients", group: "Clients" },

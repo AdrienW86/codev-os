@@ -72,3 +72,16 @@ par fichier.
 
 Mise en service : appliquer `20261204000000_acquisition_multisource.sql` après
 `20261203000000_acquisition_prescribers.sql`. Aucune nouvelle variable d'environnement.
+
+## Transmission à la prospection e-mail
+
+Onglet Prospects, bloc « Transmettre cette liste à la prospection e-mail » : reprend les filtres
+affichés (catégorie, métier), un score minimal et un nombre maximal (200 par lot). Un brouillon
+est créé dans `acquisition_messages` (état `draft`) pour chaque fiche disposant d'une adresse
+générique, encore au stade découvert/vérifié/qualifié, hors `acquisition_suppressions`, hors
+`email_suppressions` (globale ou portée du client, si la migration emailing est appliquée) et
+hors adresse déjà destinataire. La fiche passe à « Brouillon prêt ». Modèle par défaut
+(recommandation mutuelle) ou modèle de l'espace, variables `{{entreprise}}`, `{{ville}}`,
+`{{metier}}`, `{{client}}`, `{{activite}}`, mention d'opposition ajoutée à chaque brouillon.
+Aucun envoi : approbation humaine et verrous de l'espace (arrêt d'urgence, expédition, quota)
+inchangés.

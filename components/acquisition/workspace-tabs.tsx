@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import type { AcquisitionMessage, AcquisitionProspect, AcquisitionSender, AcquisitionTemplate, AcquisitionWorkspace } from "@/lib/acquisition/model";
 import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/model";
 import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
-import { enrichProspectsAction } from "@/app/(cockpit)/acquisition/actions";
+import { enrichProspectsAction, handoffToEmailAction } from "@/app/(cockpit)/acquisition/actions";
+import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS } from "@/lib/acquisition/outreach";
 
 export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false }: {
   placesReady?: boolean; prescribersReady?: boolean;
@@ -75,6 +76,23 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
             {p.explanation&&<p className="mt-1 text-sm">{p.explanation}</p>}
             {p.source_url&&<a className="mt-1 inline-block break-all text-xs text-accent hover:underline" href={p.source_url} target="_blank" rel="noopener noreferrer">Preuve : {p.source_url}</a>}
           </article>)}</div>}</>}
+      {tab==="prospects" && hasPrescribers && <form action={handoffToEmailAction} className="mt-4 rounded-lg border border-border p-3 text-sm">
+        <input type="hidden" name="workspace_id" value={workspace} />
+        <input type="hidden" name="category" value={category} />
+        <input type="hidden" name="segment" value={segment} />
+        <p className="font-medium">Transmettre cette liste à la prospection e-mail</p>
+        <p className="mt-1 text-xs text-muted">Reprend les filtres ci-dessus. Un brouillon par fiche disposant d&apos;une adresse générique (contact@, info@…), hors désabonnements, rebonds et fiches déjà contactées. Rien n&apos;est envoyé : chaque brouillon se relit et s&apos;approuve dans l&apos;onglet E-mails.</p>
+        <div className="mt-2 flex flex-wrap items-end gap-3">
+          <label className="text-xs">Score minimal<input name="min_score" type="number" min={0} max={100} defaultValue={0} className="mt-1 block w-24 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm" /></label>
+          <label className="text-xs">Nombre maximal<input name="limit" type="number" min={1} max={HANDOFF_MAX} defaultValue={50} className="mt-1 block w-24 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm" /></label>
+          <label className="text-xs">Modèle<select name="template_id" defaultValue="" className="mt-1 block rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm">
+            <option value="">Modèle par défaut (recommandation mutuelle)</option>
+            {templates.filter(t=>t.workspace_id===workspace).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select></label>
+          <button type="submit" className="rounded-lg bg-accent-strong px-3 py-2 text-sm font-semibold text-accent-foreground">Préparer les e-mails</button>
+        </div>
+        <p className="mt-2 text-xs text-muted">Variables des modèles : {TEMPLATE_PLACEHOLDERS.map(v=>`{{${v}}}`).join(", ")}.</p>
+      </form>}
       {tab==="emails" && (scopedMessages.length===0?<p className="py-8 text-sm text-muted">Aucun brouillon. Les futurs envois nécessiteront une approbation explicite et un connecteur autorisé.</p>:
         <div className="divide-y divide-border">{scopedMessages.map(m=><article key={m.id} className="py-3">
           <div className="flex flex-wrap justify-between gap-2"><h3 className="font-medium">{m.subject}</h3><span className="text-xs text-muted">{m.state}</span></div>

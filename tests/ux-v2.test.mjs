@@ -104,8 +104,8 @@ test("buildWorkItems maps every source to a business section and an existing rou
 test("V2 navigation lists the daily-use entries and keeps legacy routes reachable", () => {
   const navigation = read("components/layout/navigation.tsx");
   const hrefs = [...navigation.matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
-  // 13 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
-  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/analytics", "Données et performances"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
+  // 14 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
+  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/emailing", "Newsletters"], ["/analytics", "Données et performances"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
   assert.deepEqual([...navigation.matchAll(/group: "([^"]+)"/g)].map((m) => m[1]).filter((g, i, all) => all.indexOf(g) === i), ["Pilotage", "Clients", "Contenus", "Performance", "Système"]);
   // Téléphone : barre d'onglets fixe (Accueil, Clients, Calendrier, À traiter, Menu) au-dessus de laquelle restent le
   // Directeur IA et les messages ; le contenu garde une marge basse pour ne jamais passer dessous.
@@ -114,7 +114,7 @@ test("V2 navigation lists the daily-use entries and keeps legacy routes reachabl
   const layout = read("app/(cockpit)/layout.tsx");
   assert.match(layout, /<MobileTabBar \/>/); assert.match(layout, /pb-28 sm:px-8 sm:pt-10 lg:pb-10/);
   assert.match(read("components/assistant/persistent-voice-director.tsx"), /bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\]/);
-  for (const route of ["projects", "tasks", "recommendations", "actions", "dashboard", "clients", "publications", "studio", "agents", "settings", "work", "agenda", "reports", "analytics", "finance"]) {
+  for (const route of ["projects", "tasks", "recommendations", "actions", "dashboard", "clients", "publications", "studio", "agents", "settings", "work", "agenda", "reports", "analytics", "finance", "emailing"]) {
     assert.ok(existsSync(new URL(`../app/(cockpit)/${route}/page.tsx`, import.meta.url)), `${route} page exists`);
   }
   assert.doesNotMatch(navigation, /Prototype|Version 0\.2/);
@@ -122,7 +122,7 @@ test("V2 navigation lists the daily-use entries and keeps legacy routes reachabl
 });
 
 test("new pages stay behind the admin guard; the assistant box only talks to its same-origin API", () => {
-  for (const route of ["work", "agenda", "reports", "dashboard", "finance"]) assert.match(read(`app/(cockpit)/${route}/page.tsx`), /await requireAdmin\(\);/);
+  for (const route of ["work", "agenda", "reports", "dashboard", "finance", "emailing"]) assert.match(read(`app/(cockpit)/${route}/page.tsx`), /await requireAdmin\(\);/);
   const box = read("components/dashboard/assistant-command-box.tsx");
   // Aucun fournisseur ni clé côté navigateur : uniquement /api/assistant (session admin, même origine).
   assert.doesNotMatch(box, /openai|anthropic|api_key|NEXT_PUBLIC|@\/app\//i);

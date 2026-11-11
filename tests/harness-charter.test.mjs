@@ -37,7 +37,7 @@ test("chaque appel IA d'un agent passe par son cadre de mission", () => {
   const calls = {
     "lib/blog-agent/service.ts": "withCharter('blog'", "lib/visual-agent/service.ts": "withCharter('visual'", "lib/video-agent/service.ts": "withCharter('video'",
     "lib/publications/agent-v2/openai-generator.ts": "withCharter('publications'", "lib/media-intelligence/service.ts": "withCharter('media-library'",
-    "lib/integrations/google-ads/ai-analysis.ts": 'withCharter("google-ads"', "lib/seo/opportunity-assistant.ts": 'withCharter("seo"',
+    "lib/integrations/google-ads/ai-analysis.ts": 'withCharter("google-ads"', "lib/seo/opportunity-assistant.ts": 'withCharter("seo"', "lib/emailing/newsletter-service.ts": 'withCharter("newsletter"',
   };
   for (const [file, needle] of Object.entries(calls)) assert.ok(readFileSync(file, "utf8").includes(needle), file);
 });

@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection"
+  | "prospection" | "newsletter"
   | "veille";
 
 export type HarnessCharter = {
@@ -132,6 +132,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Balayage de zone multi-sources légales", "Score et preuve par entreprise", "Brouillons de premier contact"],
     never: ["N’envoie aucun e-mail sans validation", "Ne collecte aucune donnée personnelle (nom de dirigeant, e-mail nominatif)"],
     triggers: [{ kind: "step", step: "acquisition_discovery" }, { kind: "manual" }], clientSettings: "Acquisition → client",
+  },
+  {
+    id: "newsletter", name: "Agent Newsletter", team: "contenu", expertise: "Rédacteur e-mail marketing senior",
+    mission: "Rédiger la newsletter d’un client à partir de ses articles publiés et de ses prestations confirmées, prête à relire.",
+    does: ["Brouillon de newsletter (objet, pré-en-tête, rubriques, appel à l’action)", "Contrôle anti-invention et note de qualité", "Envoi par lots après approbation"],
+    never: ["N’envoie rien sans approbation explicite", "N’écrit qu’aux contacts consentants hors liste d’exclusion", "N’invente aucun prix, délai, garantie ou chantier"],
+    triggers: [{ kind: "manual" }], clientSettings: "Newsletters → client",
   },
   {
     id: "veille", name: "Agent Veille", team: "veille", expertise: "Analyste veille tech et marketing", registryType: "veille",

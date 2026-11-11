@@ -19,3 +19,12 @@ Cette branche prépare l'écriture de mots-clés négatifs dans la campagne sél
 6. Ajouter ensuite la gestion du refus de composant Appel et les actions de conversion, avec des flux de validation distincts.
 
 La fonctionnalité Jrenov **n'est pas encore utilisable** sur cette branche.
+
+## Pilote automatique (négatifs exacts) — 2026-11
+
+- Exécuté par la veille hebdomadaire `ads.monitor` (automatisation par client), après le diagnostic expert sur 30 jours.
+- Triple verrou : `CODEV_GOOGLE_ADS_WRITES_ENABLED=true`, `CODEV_GOOGLE_ADS_AUTOPILOT=true` (Vercel, serveur) et mode client « Négatifs automatiques » sur `/advertising/manage?client=<id>` (désactivé par défaut).
+- Seule action automatique : mot-clé négatif EXACT au niveau campagne Search active, pour une exclusion déclarée par le client ou un terme hors cible coûteux (≥ 2 × seuil de gaspillage) sans lien avec les services prioritaires, les recherches qui convertissent ni le nom du client. Plafond par campagne sur 7 jours (10 par défaut) et 25 par exécution.
+- Journal `ads_autopilot_changes` écrit avant l'appel Google Ads, audit `ads.autopilot.*`, annulation (retrait du critère par son nom de ressource). Un terme annulé n'est jamais réajouté automatiquement ; un résultat incertain n'est jamais relancé.
+- Mots-clés, budgets et enchères : jamais automatiques (recommandations à valider).
+- Prérequis : migration `20261205000000_ads_autopilot` appliquée et compte OAuth autorisé en écriture sur le compte Google Ads.

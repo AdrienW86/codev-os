@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/require-admin";
 import { getBlogArticle } from "@/lib/blog-agent/service";
 import { CTA_SENTENCE, RELAY_LABELS, RELAY_PLATFORMS, articleUrl, readingMinutes, renderMarkdown } from "@/lib/blog-agent/model";
+import { auditBlogArticle } from "@/lib/blog-agent/seo";
 import { BlogArticleEditor, BlogArticleQuickActions } from "@/components/blog/blog-article-actions";
 
 export const metadata = { title: "Article de blog" };
@@ -17,7 +18,9 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ id
   const { id } = await params;
   const view = await getBlogArticle(id).catch(() => null);
   if (!view) notFound();
-  const { article: a, settings, clientName, imageUrl } = view;
+  const { article: a, settings, clientName, imageUrl, seo } = view;
+  const audit = auditBlogArticle({ title: a.title, metaDescription: a.meta_description, bodyMarkdown: a.body_markdown }, { keyword: seo.keyword, zone: seo.zone });
+  const tone = audit.score >= 80 ? "text-success" : audit.score >= 60 ? "text-warning" : "text-danger";
   const live = a.status === "published" && settings.siteUrl ? articleUrl(settings.siteUrl, settings.blogPath, a.slug) : null;
   return <div className="space-y-6">
     <div>
@@ -32,6 +35,11 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ id
       {live && <p className="mt-2 text-sm"><a href={live} target="_blank" rel="noopener noreferrer" className="text-accent-hover underline">Voir l’article sur le site →</a></p>}
       {!settings.siteUrl && <p role="alert" className="mt-2 text-sm text-danger">Adresse du site non renseignée dans les réglages de l’Agent Blog.</p>}
     </div>
+    <section data-blog-seo className="rounded-2xl border border-border bg-surface p-5 text-sm">
+      <p><span className={`font-semibold ${tone}`}>Note SEO {audit.score}/100</span> <span className="text-muted">· {audit.words} mots · expression visée : « {audit.keyword} »{seo.targetQuery ? " (recherche réelle lue dans Search Console)" : ""}</span></p>
+      {audit.issues.length > 0 ? <ul className="mt-2 space-y-1">{audit.issues.map((i) => <li key={i.code} className={i.level === "warning" ? "text-warning" : "text-muted"}>{i.message}</li>)}</ul>
+        : <p className="mt-2 text-muted">Titre, meta description, structure et lisibilité conformes.</p>}
+    </section>
     <BlogArticleQuickActions id={a.id} scheduled={a.status === "scheduled"} />
     <article className="overflow-hidden rounded-2xl border border-border bg-surface">
       {/* eslint-disable-next-line @next/next/no-img-element */}

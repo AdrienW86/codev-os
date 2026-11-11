@@ -6,7 +6,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { structuredResponse as rawStructuredResponse } from "@/lib/integrations/publications-openai";
 import type { HarnessAgentId } from "@/lib/harness/charter";
-import { budgetOf, monthStart, parseCap, type Budget, type SpendLine } from "./budget";
+import { budgetOf, estimateCallCostEur, monthStart, parseCap, type Budget, type SpendLine } from "./budget";
+import type { AIProvider } from "./types";
 
 type Scope = { agent: HarnessAgentId; clientId: string };
 type Usage = { input_tokens: number; output_tokens: number; estimated_cost_eur: number; model: string };
@@ -70,6 +71,31 @@ export async function structuredResponse(instructions: string, input: unknown, s
     if (scope) await record(scope, (error as { usage?: Usage } | null)?.usage);
     throw error;
   }
+}
+
+/**
+ * Assistant serveur mesuré (Google Ads, SEO…) : même contrat que le fournisseur, plus le plafond du client et le
+ * journal de chaque appel quand un périmètre withAiScope est actif. Hors périmètre : appel inchangé.
+ */
+export function meteredProvider(provider: AIProvider | null): AIProvider | null {
+  if (!provider) return null;
+  return {
+    id: provider.id, model: provider.model,
+    ping: (signal) => provider.ping(signal),
+    async complete(input) {
+      const scope = scopes.getStore();
+      if (scope) {
+        const budget = await clientAiBudget(scope.clientId);
+        if (budget && !budget.allowed) throw Object.assign(new Error(AI_BUDGET_EXCEEDED), { retryable: false });
+      }
+      const response = await provider.complete(input);
+      if (scope && response.usage) {
+        const { inputTokens, outputTokens } = response.usage;
+        await record(scope, { input_tokens: inputTokens, output_tokens: outputTokens, estimated_cost_eur: Math.min(1, estimateCallCostEur(provider.model, inputTokens, outputTokens)), model: provider.model.slice(0, 80) || "inconnu" });
+      }
+      return response;
+    },
+  };
 }
 
 /** Réglage du plafond mensuel du client (fiche client → Agents). */

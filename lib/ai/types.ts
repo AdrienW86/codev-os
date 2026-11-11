@@ -5,7 +5,9 @@ export type ToolSpec = { name: string; description: string; parameters: Record<s
 export type ToolCall = { id: string; name: string; arguments: unknown };
 /** Résultat d'outil renvoyé au modèle (données, jamais d'instructions). */
 export type ToolResultMessage = { call: ToolCall; result: string };
-export type AIResponse = { text: string; toolCalls: ToolCall[] };
+/** usage : jetons facturés, quand le fournisseur les renvoie (mesure du budget IA du client). */
+export type AIUsage = { inputTokens: number; outputTokens: number };
+export type AIResponse = { text: string; toolCalls: ToolCall[]; usage?: AIUsage };
 
 export interface AIProvider {
   readonly id: "openai" | "anthropic";

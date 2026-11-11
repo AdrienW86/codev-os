@@ -3,6 +3,7 @@ import "server-only";
 // IA facultative (fournisseur configuré), réponse enregistrée dans la conversation existante (agent_messages).
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { selectAIProvider } from "@/lib/ai/providers";
+import { meteredProvider, withAiScope } from "@/lib/ai/metered";
 import { searchAnalytics } from "@/lib/providers/search-console";
 import { searchConsoleAccess } from "@/lib/integrations/search-console/connection";
 import { normalizeProperty } from "@/lib/integrations/search-console/model";
@@ -26,14 +27,15 @@ export async function answerOpportunityMessage(recommendationId: string, message
   const property = normalizeProperty((connection?.metadata as { property?: unknown } | null)?.property);
   const access = property && !simulation ? await searchConsoleAccess().catch(() => null) : null;
   const deps: ConversationDeps = {
-    provider: simulation ? null : selectAIProvider(),
+    provider: simulation ? null : meteredProvider(selectAIProvider()),
     today: todayInParis(),
     search: access && property ? (period, filters, dimensions) => searchAnalytics(property, { startDate: period.start, endDate: period.end, dimensions, rowLimit: 100, dataState: "final", filters }, { accessToken: access.accessToken }) : null,
     log: (text) => console.error(text),
   };
   // Historique (hors message courant, déjà enregistré) pour l'IA : rôles conversationnels seulement.
   const turns: ChatMessage[] = (history ?? []).slice(1).reverse().flatMap((item): ChatMessage[] => item.sender_type === "admin" ? [{ role: "user" as const, content: String(item.message).slice(0, 1500) }] : item.sender_type === "agent" ? [{ role: "assistant" as const, content: String(item.message).slice(0, 1500) }] : []);
-  const reply = await replyToMessage(row, client?.name ?? "Client", message, turns, deps);
+  // Budget IA du client : au plafond, l'agent répond à partir des règles (réponse dégradée, rien d'inventé).
+  const reply = await withAiScope({ agent: "seo", clientId: row.client_id }, () => replyToMessage(row, client?.name ?? "Client", message, turns, deps));
   await createAgentMessage(recommendationId, reply.text, { source: reply.source, intent: reply.intent, opportunity_id: row.id, ...(reply.proposal ? { proposal: reply.proposal } : {}), ...(reply.degraded ? { degraded: true } : {}) });
   return reply;
 }

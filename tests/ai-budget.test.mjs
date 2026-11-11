@@ -91,3 +91,48 @@ test("Blog, Visuels et Vidéo passent par la passerelle mesurée, chacun dans so
     assert.match(source, new RegExp(`export function ${fn}\\([^)]*\\):Promise<\\w+>\\{return withAiScope\\(\\{agent:'${agent}',clientId\\}`), file);
   }
 });
+
+test("coût estimé d'un appel d'assistant : tarif connu, tarif prudent pour un modèle inconnu, jamais négatif", () => {
+  // gpt-4.1-mini : 0,40 / 1,60 par million, marge × 1,25 (comme Publications).
+  assert.equal(budget.estimateCallCostEur("gpt-4.1-mini", 1_000_000, 0), 0.5);
+  assert.equal(budget.estimateCallCostEur("gpt-4.1-mini-2025", 0, 1_000_000), 2);
+  assert.equal(budget.estimateCallCostEur("gpt-4.1", 1_000_000, 0), 2.5);
+  assert.equal(budget.estimateCallCostEur("modele-inconnu", 1_000_000, 0), 3.75, "inconnu : tarif le plus élevé, jamais zéro");
+  assert.equal(budget.estimateCallCostEur("gpt-4.1-mini", -5, Number.NaN), 0);
+});
+
+test("assistant mesuré (Google Ads, SEO, Photothèque) : plafond avant l'appel, jetons journalisés après", async () => {
+  let calls = 0;
+  const provider = { id: "openai", model: "gpt-4.1-mini", ping: async () => {}, complete: async () => { calls++; return { text: "ok", toolCalls: [], usage: { inputTokens: 1000, outputTokens: 200 } }; } };
+  const ok = gateway({ usageRows: [], cap: 1, raw: async () => ({}) });
+  const wrapped = ok.metered.meteredProvider(provider);
+  assert.equal(ok.metered.meteredProvider(null), null);
+  const response = await ok.metered.withAiScope({ agent: "google-ads", clientId: C }, () => wrapped.complete({ system: "s", messages: [], tools: [] }));
+  assert.equal(response.text, "ok");
+  assert.equal(ok.inserted.length, 1);
+  assert.equal(ok.inserted[0].agent, "google-ads");
+  assert.equal(ok.inserted[0].input_tokens, 1000);
+  assert.equal(ok.inserted[0].model, "gpt-4.1-mini");
+  assert.ok(ok.inserted[0].estimated_cost_eur > 0);
+  // Hors périmètre (assistant du cockpit) : ni contrôle ni journal.
+  await wrapped.complete({ system: "s", messages: [], tools: [] });
+  assert.equal(ok.inserted.length, 1);
+  // Au plafond : aucun appel au fournisseur.
+  const over = gateway({ usageRows: [{ agent: "seo", estimated_cost_eur: 1 }], cap: 1, raw: async () => ({}) });
+  const blocked = over.metered.meteredProvider(provider);
+  await assert.rejects(over.metered.withAiScope({ agent: "seo", clientId: C }, () => blocked.complete({ system: "s", messages: [], tools: [] })), (e) => over.metered.isBudgetExceeded(e));
+  assert.equal(calls, 2);
+  // Fournisseur sans jetons renvoyés : rien n'est inventé.
+  const silent = gateway({ usageRows: [], cap: 1, raw: async () => ({}) });
+  const quiet = silent.metered.meteredProvider({ ...provider, complete: async () => ({ text: "", toolCalls: [] }) });
+  await silent.metered.withAiScope({ agent: "seo", clientId: C }, () => quiet.complete({ system: "s", messages: [], tools: [] }));
+  assert.equal(silent.inserted.length, 0);
+});
+
+test("Google Ads, SEO et Photothèque appellent l'assistant via la passerelle mesurée", () => {
+  for (const [file, agent] of [["lib/integrations/google-ads/recommendation-core.ts", "google-ads"], ["lib/seo/conversation.ts", "seo"], ["lib/whatsapp/library.ts", "media-library"]]) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /meteredProvider\(selectAIProvider\(\)\)/, file);
+    assert.match(source, new RegExp(`withAiScope\\(\\{ agent: "${agent}", clientId`), file);
+  }
+});

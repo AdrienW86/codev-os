@@ -39,8 +39,20 @@ test("agent en pause : rien si rien n'est planifié, signalé si des exécutions
   assert.equal(fixableGaps(gaps).length, 0, "réactiver un agent reste une décision humaine");
 });
 
-test("types sans exécution attendue (Publications, Google Ads en attente de #164) ignorés", () => {
-  assert.equal(computeAgentCoverage({ agents: [agent("p", "publications"), agent("g", "google-ads"), agent("n", null)], automations: [], assignments: [] }).length, 0);
+test("types sans exécution attendue (Publications, sans type) ignorés", () => {
+  assert.equal(computeAgentCoverage({ agents: [agent("p", "publications"), agent("n", null)], automations: [], assignments: [] }).length, 0);
+});
+
+test("Google Ads : veille hebdomadaire attendue pour chaque client rattaché", () => {
+  const gaps = computeAgentCoverage({
+    agents: [agent("g", "google-ads")],
+    automations: [{ run_type: "ads.monitor", client_id: c1, status: "active" }, { run_type: "seo.analyze", client_id: c2, status: "active" }],
+    assignments: [{ agent_id: "g", client_id: c1, enabled: true }, { agent_id: "g", client_id: c2, enabled: true }],
+  });
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].clientId, c2);
+  assert.equal(gaps[0].runType, "ads.monitor");
+  assert.equal(gaps[0].kind, "missing_automation");
 });
 
 test("alerte de diffusion résolue quand la diffusion est publiée", () => {

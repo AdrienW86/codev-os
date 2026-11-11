@@ -3,7 +3,7 @@ import "server-only";
 // blanche de providerJson. Les clés restent côté serveur ; aucune n'est journalisée ni renvoyée.
 import { providerJson, type FetchLike } from "@/lib/providers/api";
 import { ProviderError } from "@/lib/providers/errors";
-import type { AIProvider, AIResponse, ChatMessage, ToolCall, ToolResultMessage, ToolSpec } from "@/lib/ai/types";
+import type { AIProvider, AIResponse, AIUsage, ChatMessage, ToolCall, ToolResultMessage, ToolSpec } from "@/lib/ai/types";
 
 type Env = Record<string, string | undefined>;
 const MAX_TOKENS = 800;
@@ -14,6 +14,11 @@ const timeoutFor = (tokens: number) => Math.min(90_000, Math.max(30_000, tokens 
 function parseArguments(raw: unknown) {
   if (typeof raw !== "string") return raw ?? {};
   try { return JSON.parse(raw); } catch { return { __invalid: true }; }
+}
+
+/** Jetons facturés renvoyés par le fournisseur ; absents ou invalides : aucune mesure inventée. */
+function usageOf(input: unknown, output: unknown): { usage?: AIUsage } {
+  return Number.isInteger(input) && Number.isInteger(output) && (input as number) >= 0 && (output as number) >= 0 ? { usage: { inputTokens: input as number, outputTokens: output as number } } : {};
 }
 
 /** Modèles de raisonnement OpenAI (gpt-5*, o1/o3/o4…) : température non réglable. */
@@ -31,7 +36,7 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
         { role: "assistant", content: null, tool_calls: toolResults.map(({ call }) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments ?? {}) } })) },
         ...toolResults.map(({ call, result }) => ({ role: "tool", tool_call_id: call.id, content: result })),
       ] : [];
-      const data = await providerJson<{ choices?: { message?: { content?: unknown; tool_calls?: { id?: unknown; function?: { name?: unknown; arguments?: unknown } }[] } }[] }>("openai", "https://api.openai.com/v1/chat/completions", {
+      const data = await providerJson<{ usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }; choices?: { message?: { content?: unknown; tool_calls?: { id?: unknown; function?: { name?: unknown; arguments?: unknown } }[] } }[] }>("openai", "https://api.openai.com/v1/chat/completions", {
         method: "POST", fetchImpl, signal, timeoutMs: timeoutFor(budget),
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -45,7 +50,7 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
       const message = data.choices?.[0]?.message;
       if (!message) throw new ProviderError("openai", "malformed");
       const toolCalls: ToolCall[] = (message.tool_calls ?? []).flatMap((call) => typeof call.function?.name === "string" ? [{ id: String(call.id ?? call.function.name), name: call.function.name, arguments: parseArguments(call.function.arguments) }] : []);
-      return { text: typeof message.content === "string" ? message.content : "", toolCalls };
+      return { text: typeof message.content === "string" ? message.content : "", toolCalls, ...usageOf(data.usage?.prompt_tokens, data.usage?.completion_tokens) };
     },
   };
 }
@@ -62,7 +67,7 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
         { role: "assistant", content: toolResults.map(({ call }) => ({ type: "tool_use", id: call.id, name: call.name, input: call.arguments ?? {} })) },
         { role: "user", content: toolResults.map(({ call, result }) => ({ type: "tool_result", tool_use_id: call.id, content: result })) },
       ] : [];
-      const data = await providerJson<{ content?: { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }[] }>("anthropic", "https://api.anthropic.com/v1/messages", {
+      const data = await providerJson<{ usage?: { input_tokens?: unknown; output_tokens?: unknown }; content?: { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }[] }>("anthropic", "https://api.anthropic.com/v1/messages", {
         method: "POST", fetchImpl, signal, timeoutMs: timeoutFor(budget),
         headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,7 +79,7 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
       if (!Array.isArray(data.content)) throw new ProviderError("anthropic", "malformed");
       const text = data.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text as string).join("\n");
       const toolCalls: ToolCall[] = data.content.flatMap((block) => block.type === "tool_use" && typeof block.name === "string" ? [{ id: String(block.id ?? block.name), name: block.name, arguments: block.input ?? {} }] : []);
-      return { text, toolCalls };
+      return { text, toolCalls, ...usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
     },
   };
 }

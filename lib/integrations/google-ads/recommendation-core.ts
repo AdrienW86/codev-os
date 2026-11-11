@@ -1,5 +1,6 @@
 import "server-only";
 import { selectAIProvider } from "@/lib/ai/providers";
+import { isBudgetExceeded, meteredProvider, withAiScope } from "@/lib/ai/metered";
 import { ProviderError } from "@/lib/providers/errors";
 import { buildAdsFindings } from "./findings";
 import { analyzeAdsWithAI, ANALYSIS_LIMITATIONS } from "./ai-analysis";
@@ -10,17 +11,19 @@ import type { AdsExpertSignals } from "./types";
 import { buildExpertDiagnosis, expertCoverage } from "./expert";
 
 /** Shared bounded analysis for interactive requests and report preparation. No external writes. */
-export async function analyzeRecommendation(rows: CampaignRow[], scope: StoredAdsScope, instructions: AdsInstructionSnapshot, mode: "ai" | "deterministic", expertSignals: AdsExpertSignals | null = null) {
+export async function analyzeRecommendation(rows: CampaignRow[], scope: StoredAdsScope, instructions: AdsInstructionSnapshot, mode: "ai" | "deterministic", expertSignals: AdsExpertSignals | null = null, clientId: string | null = null) {
   const started = performance.now();
   let ai: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = null;
   let fallback = false;
   let fallbackCode: string | null = null;
-  const provider = mode === "ai" ? selectAIProvider() : null;
+  // Passerelle mesurée : l'appel compte dans le budget IA du client et s'arrête au plafond.
+  const provider = mode === "ai" ? meteredProvider(selectAIProvider()) : null;
   if (mode === "ai") {
-    try { if (!provider) throw new Error("unavailable"); ai = await analyzeAdsWithAI(provider, rows, scope, instructions, expertSignals); }
+    try { if (!provider) throw new Error("unavailable"); const analyze = () => analyzeAdsWithAI(provider, rows, scope, instructions, expertSignals);
+      ai = clientId ? await withAiScope({ agent: "google-ads", clientId }, analyze) : await analyze(); }
     catch (error) { fallback = true;
       const kind = error instanceof Error ? error.name : "unknown";
-      const reason = error instanceof Error && /Sortie IA structurée absente/.test(error.message) ? "tool_response_missing" : error instanceof Error && kind === "ZodError" ? "structured_validation" : kind === "ProviderError" ? "provider_failure" : kind === "TimeoutError" ? "timeout" : "analysis_failure";
+      const reason = isBudgetExceeded(error) ? "ai_budget_exceeded" : error instanceof Error && /Sortie IA structurée absente/.test(error.message) ? "tool_response_missing" : error instanceof Error && kind === "ZodError" ? "structured_validation" : kind === "ProviderError" ? "provider_failure" : kind === "TimeoutError" ? "timeout" : "analysis_failure";
       fallbackCode = error instanceof ProviderError ? `provider_${error.kind}${error.code ? `_${error.code}` : ""}` : reason;
       console.error("[google-ads-ai] fallback", { provider: provider?.id ?? "none", model: provider?.model ?? "none", reason: fallbackCode });
     }

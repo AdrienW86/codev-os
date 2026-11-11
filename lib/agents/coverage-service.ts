@@ -23,6 +23,15 @@ export async function loadAgentCoverage(): Promise<AgentCoverage> {
   return { gaps, clientNames: Object.fromEntries((clients.data ?? []).map((client) => [client.id, client.name])) };
 }
 
+/** Veille Google Ads du client : chaque lundi 07:00 (Paris), lecture seule. Exige un compte Google Ads connecté. */
+async function scheduleAdsMonitor(actor: Actor & { kind: "admin" }, clientId: string): Promise<{ ok: boolean; message: string }> {
+  const { data, error } = await db().from("client_connections").select("status").eq("client_id", clientId).eq("provider", "google_ads").maybeSingle();
+  if (error) return { ok: false, message: "connexion illisible" };
+  if (data?.status !== "connected") return { ok: false, message: "compte Google Ads à connecter" };
+  const result = await createAutomation(actor, { name: "Veille des campagnes Google Ads", runType: "ads.monitor", clientId, frequency: "weekly", schedule: { time: "07:00", weekdays: [1] }, config: {} });
+  return { ok: result.ok, message: result.message ?? "" };
+}
+
 /**
  * Crée uniquement les automatisations manquantes des agents actifs, à partir des modèles recommandés.
  * Ne réactive jamais un agent ni une automatisation mis en pause par l'administrateur.
@@ -34,6 +43,11 @@ export async function createMissingAutomations(actor: Actor & { kind: "admin" })
   let created = 0;
   const failures: string[] = [];
   for (const gap of todo) {
+    if (gap.clientId && gap.runType === "ads.monitor") {
+      const result = await scheduleAdsMonitor(actor, gap.clientId);
+      if (result.ok) created++; else failures.push(`${gap.label} (${result.message})`);
+      continue;
+    }
     if (gap.clientId) {
       const result = await scheduleSeoAnalyses(actor, gap.clientId);
       if (result.ok) created++; else failures.push(gap.label);

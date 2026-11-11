@@ -174,6 +174,7 @@ function prepareHarness({ failRegister = false, failDrive = false, failRevise = 
     "@/lib/supabase/server": { getSupabaseServerClient: () => db },
     "@/lib/core/audit": { writeAudit: async (_actor, entry) => { state.audits.push(entry); } },
     "@/lib/ai/providers": { selectAIProvider: () => null },
+    "@/lib/ai/metered": { meteredProvider: (p) => p, withAiScope: (_s, work) => work() },
     "@/lib/publications/project-channels": { getPublicationProjectChannels: async () => ({ platforms: ["facebook", "instagram"] }) },
     "@/lib/publications/channels": { projectAllowsPlatform: (c, p) => c.platforms.includes(p) },
     "@/lib/publications/editor": { IMAGE_BUCKET: "publication-images" },

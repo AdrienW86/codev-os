@@ -38,4 +38,22 @@ export function parseCap(value: unknown): number | null {
   return cap >= 0 && cap <= 200 ? cap : null;
 }
 
+/**
+ * Coût estimé d'un appel de l'assistant serveur (OpenAI ou Anthropic), en euros. Tarifs publics par million de jetons
+ * (entrée, sortie) pour les modèles connus ; un modèle inconnu est compté au tarif prudent (le plus élevé),
+ * jamais à zéro. Même marge de change et de sécurité (× 1,25) que la passerelle Publications.
+ */
+const PRICES_PER_MILLION: readonly [RegExp, number, number][] = [
+  [/^gpt-4\.1-nano/i, 0.1, 0.4],
+  [/^gpt-4\.1-mini/i, 0.4, 1.6],
+  [/^gpt-4\.1/i, 2, 8],
+];
+const PRUDENT_PRICE: [number, number] = [3, 15];
+export function estimateCallCostEur(model: string, inputTokens: number, outputTokens: number): number {
+  const known = PRICES_PER_MILLION.find(([pattern]) => pattern.test(model));
+  const [input, output] = known ? [known[1], known[2]] : PRUDENT_PRICE;
+  const tokens = (value: number) => (Number.isFinite(value) && value > 0 ? value : 0);
+  return Math.ceil((tokens(inputTokens) * input + tokens(outputTokens) * output) * 1.25) / 1_000_000;
+}
+
 const round = (value: number) => Math.round(value * 10000) / 10000;

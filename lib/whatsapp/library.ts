@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import { selectAIProvider } from "@/lib/ai/providers";
+import { meteredProvider, withAiScope } from "@/lib/ai/metered";
 import { getPublicationProjectChannels } from "@/lib/publications/project-channels";
 import { projectAllowsPlatform } from "@/lib/publications/channels";
 import { IMAGE_BUCKET } from "@/lib/publications/editor";
@@ -148,13 +149,14 @@ async function assessmentsFor(clientId: string, ids: string[]) {
 
 /** Proposition de légende à relire, fondée uniquement sur la fiche client et les messages du client. */
 export async function suggestCaption(clientId: string, assets: Pick<Asset, "caption">[]): Promise<string | null> {
-  const provider = selectAIProvider();
+  const provider = meteredProvider(selectAIProvider());
   if (!provider) return null;
   const { data: client, error } = await db().from("clients").select("name,activity,geographic_area").eq("id", clientId).single();
   if (error || !client) return null;
   const prompt = captionPrompt({ clientName: client.name, activity: client.activity, area: client.geographic_area, messages: assets.flatMap(asset => asset.caption ? [asset.caption] : []) });
   try {
-    const response = await provider.complete({ system: prompt.system, messages: [{ role: "user", content: prompt.user }], tools: [], signal: AbortSignal.timeout(30000) });
+    // Compte dans le budget IA du client ; au plafond, pas de suggestion (la légende reste à écrire).
+    const response = await withAiScope({ agent: "media-library", clientId }, () => provider.complete({ system: prompt.system, messages: [{ role: "user", content: prompt.user }], tools: [], signal: AbortSignal.timeout(30000) }));
     return cleanSuggestion(response.text) || null;
   } catch { console.error("[whatsapp] Suggestion de légende indisponible."); return null; }
 }

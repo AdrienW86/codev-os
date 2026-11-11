@@ -174,6 +174,15 @@ test("Anthropic adapter: tool_use blocks and text parsed; tool results sent as t
   assert.equal(result.toolCalls[0].name, "list_news");
 });
 
+test("adapters return billed tokens when the provider sends them, nothing invented otherwise", async () => {
+  const openai = ai.createOpenAIProvider("sk", "gpt-4.1-mini", async () => jsonResponse(200, { usage: { prompt_tokens: 120, completion_tokens: 30 }, choices: [{ message: { content: "ok" } }] }));
+  assert.deepEqual(plain((await openai.complete({ system: "", messages: [], tools: [] })).usage), { inputTokens: 120, outputTokens: 30 });
+  const anthropic = ai.createAnthropicProvider("ak", "claude-x", async () => jsonResponse(200, { usage: { input_tokens: 50, output_tokens: 7 }, content: [{ type: "text", text: "ok" }] }));
+  assert.deepEqual(plain((await anthropic.complete({ system: "", messages: [], tools: [] })).usage), { inputTokens: 50, outputTokens: 7 });
+  const silent = ai.createOpenAIProvider("sk", "m", async () => jsonResponse(200, { usage: { prompt_tokens: "x" }, choices: [{ message: { content: "ok" } }] }));
+  assert.equal((await silent.complete({ system: "", messages: [], tools: [] })).usage, undefined);
+});
+
 test("provider selection: AI_PROVIDER preference, fallback to the other key, none → deterministic mode", () => {
   assert.equal(ai.selectAIProvider({}), null);
   assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a" }).id, "openai");

@@ -1,17 +1,17 @@
 // Supervision du harness : un agent actif doit avoir ses exécutions planifiées, sinon il ne travaille jamais.
 // Fonctions pures (testables) : aucune lecture ni écriture ici, voir coverage-service.ts.
 
-export type CoverageRunType = "report.generate" | "news.fetch" | "monitoring.check_sites" | "seo.analyze";
+export type CoverageRunType = "report.generate" | "news.fetch" | "monitoring.check_sites" | "seo.analyze" | "ads.monitor";
 
 /** Exécutions récurrentes attendues pour chaque type d'agent actif. */
 export type ExpectedSchedule = { runType: CoverageRunType; scope: "global" | "client"; presetId?: string; label: string };
 
-// Google Ads (ads.monitor) n'est pas encore attendu : son transport est réparé par une PR distincte (#164).
 export const expectedSchedules: Readonly<Record<string, readonly ExpectedSchedule[]>> = {
   report: [{ runType: "report.generate", scope: "global", presetId: "weekly-reports", label: "Rapports hebdomadaires" }],
   veille: [{ runType: "news.fetch", scope: "global", presetId: "tech-watch", label: "Veille quotidienne" }],
   monitoring: [{ runType: "monitoring.check_sites", scope: "global", presetId: "site-checks", label: "Contrôle quotidien des sites" }],
   seo: [{ runType: "seo.analyze", scope: "client", label: "Analyses SEO du client" }],
+  "google-ads": [{ runType: "ads.monitor", scope: "client", label: "Veille hebdomadaire des campagnes" }],
 };
 
 export type CoverageAgent = { id: string; name: string; agent_type?: string | null; enabled: boolean; status: string };

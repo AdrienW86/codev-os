@@ -21,7 +21,7 @@ export async function analyzeClientReport(clientId: string, rows: CampaignRow[],
   const instructions = { global: (agent.instructions ?? "").slice(0,10000), client: (assignment.client_instructions ?? "").slice(0,3000), business };
   const runId = await startRun({ agentId: assignment.agent_id, clientId, runType: "google_ads_read_only" });
   try {
-    const analyzed = await analyzeRecommendation(rows, scope, instructions, mode, signals);
+    const analyzed = await analyzeRecommendation(rows, scope, instructions, mode, signals, clientId);
     const metadata = { run_type: "google_ads_read_only", scope, instruction_snapshot: instructions, engine: analyzed.engine, requested_mode: mode, analysis_text: analyzed.text, analysis: analyzed.ai?.output ?? null, evidence: analyzed.ai?.evidence ?? [], expert_findings: analyzed.expert, ai_ms: analyzed.aiMs } as unknown as Json;
     const saved = await db.from("agent_runs").update({ metadata }).eq("id", runId).eq("client_id", clientId).eq("status", "running");
     if (saved.error) throw new Error("analysis save");

@@ -195,7 +195,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     }
     // Opportunités croisées : requêtes Search Console déjà synchronisées pour ce client (aucun appel Google en plus).
     if (signals) signals = { ...signals, organicQueries: await loadOrganicQueries(clientId) };
-    const analyzed = await analyzeRecommendation(selected, scope, instructionSnapshot, input.mode ?? "deterministic", signals);
+    const analyzed = await analyzeRecommendation(selected, scope, instructionSnapshot, input.mode ?? "deterministic", signals, clientId);
     const aiResult: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = analyzed.ai;
     const aiFailed = analyzed.engine === "deterministic_fallback";
     metadata.engine = analyzed.engine;

@@ -18,6 +18,7 @@ const navigation: { href: string; label: string; icon: IconName; group: NavGroup
   { href: "/finance", label: "Prestations & Finance", icon: "reports", group: "Clients" },
   { href: "/publications", label: "Publications", icon: "publications", group: "Contenus" },
   { href: "/studio", label: "Studio vidéo", icon: "monitor", group: "Contenus" },
+  { href: "/emailing", label: "Newsletters", icon: "publications", group: "Contenus" },
   { href: "/analytics", label: "Données et performances", icon: "analytics", group: "Performance" },
   { href: "/advertising", label: "Campagnes publicitaires", icon: "ads", group: "Performance" },
   { href: "/reports", label: "Rapports", icon: "reports", group: "Performance" },

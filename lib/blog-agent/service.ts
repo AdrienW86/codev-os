@@ -3,7 +3,7 @@ import {withCharter} from '@/lib/harness/charter';
 import {createHash,randomUUID} from 'node:crypto';
 import sharp from 'sharp';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {structuredResponse} from '@/lib/integrations/publications-openai';
+import {structuredResponse,withAiScope,isBudgetExceeded} from '@/lib/ai/metered';
 import {isAuthorizedAdmin} from '@/lib/admin-policy';
 import {writeAudit} from '@/lib/core/audit';
 import {assetOriginal} from '@/lib/whatsapp/originals';
@@ -101,7 +101,7 @@ async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,p
    const checked=checkArticle(value,ctx.facts,used);
    if(checked.ok)return checked.article;
    feedback=checked.reason;log('article','refused');
-  }catch{log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
+  }catch(e){if(isBudgetExceeded(e)){log('article','budget');return {error:'Plafond IA du mois atteint pour ce client : aucun article rédigé (réglage sur la fiche client → Agents).'};}log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
  }
  return {error:`Article refusé par les contrôles après 3 essais (${feedback}).`};
 }
@@ -131,7 +131,9 @@ async function notify(articleId:string){
 
 export type BlogResult={ok:true;id:string;title:string;publishAt:string}|{ok:false;message:string};
 /** Rédige un article, le programme 24 h plus tard et prévient l'administrateur (aucune publication immédiate). */
-export async function generateBlogArticle(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;now?:Date}):Promise<BlogResult>{
+/** Travail de l'agent dans son périmètre IA (agent, client) : plafond mensuel du client et journal des appels. */
+export function generateBlogArticle(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;now?:Date}):Promise<BlogResult>{return withAiScope({agent:'blog',clientId},()=>generateBlogArticleUnscoped(clientId,options));}
+async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;now?:Date}):Promise<BlogResult>{
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const now=options.now??new Date();
  const [{settings,articles},ctx]=await Promise.all([readAgent(clientId),clientBrandContext(clientId)]);

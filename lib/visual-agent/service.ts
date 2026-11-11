@@ -1,7 +1,7 @@
 import 'server-only';
 import {createHash,randomUUID} from 'node:crypto';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
-import {structuredResponse} from '@/lib/integrations/publications-openai';
+import {structuredResponse,withAiScope,isBudgetExceeded} from '@/lib/ai/metered';
 import {generateDriveId,importDriveToken,uploadDrive} from '@/lib/whatsapp/providers';
 import {checkCopy,fallbackCopy,isDue,nextService,nextTemplate,parseSettingsForm,readableOn,settingsFromRow,VISUAL_TEMPLATES,HEADLINE_MAX,SUBLINE_MAX,type VisualAgentSettings,type VisualItem,type VisualTemplate} from './model';
 import {logoColors,renderVisual} from './render';
@@ -111,7 +111,7 @@ async function writeCopy(ctx:Context,service:string,used:string[]):Promise<{head
    const checked=checkCopy(value,ctx.facts,used);
    if(checked.ok)return {headline:checked.headline,subline:checked.subline};
    feedback=checked.reason;
-  }catch{log('copy','generation_failed');break;}
+  }catch(e){log('copy',isBudgetExceeded(e)?'budget':'generation_failed');break;}
  }
  return fallbackCopy(service,ctx.client.zone);
 }
@@ -121,7 +121,9 @@ export type GenerateResult={ok:true;png:Uint8Array;service:string;headline:strin
  * Génère un visuel. preview=true : rendu seulement (aucun dépôt, aucun journal). Sinon dépôt dans le dossier Drive
  * de la photothèque du client puis journalisation (rotation des prestations, fréquence, accroches employées).
  */
-export async function generateVisual(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;preview?:boolean}):Promise<GenerateResult>{
+/** Travail de l'agent dans son périmètre IA (agent, client) : plafond mensuel du client et journal des appels. */
+export function generateVisual(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;preview?:boolean}):Promise<GenerateResult>{return withAiScope({agent:'visual',clientId},()=>generateVisualUnscoped(clientId,options));}
+async function generateVisualUnscoped(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;preview?:boolean}):Promise<GenerateResult>{
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const [{settings,items},ctx]=await Promise.all([readSettings(clientId),context(clientId)]);
  // Aperçu : prestation et mise en page tirées au hasard, pour voir la variété du rendu (rien n'est journalisé).

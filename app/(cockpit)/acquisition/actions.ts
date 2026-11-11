@@ -11,6 +11,8 @@ import { cancelDiscoveryRun, enrichWithPlaces, queueZoneScan, runPrescriberDisco
 import { ENRICHMENT_SOURCES, type EnrichmentSource } from "@/lib/acquisition/background";
 import { parseNafList } from "@/lib/acquisition/naf";
 import { resolveZoneScope } from "@/lib/acquisition/zone-scan";
+import { handoffToEmailProspecting } from "@/lib/acquisition/handoff";
+import { HANDOFF_MAX } from "@/lib/acquisition/outreach";
 
 const sourcesFrom = (data: FormData) => data.getAll("sources").filter((v): v is EnrichmentSource => typeof v === "string" && (ENRICHMENT_SOURCES as string[]).includes(v));
 
@@ -162,4 +164,26 @@ export async function cancelDiscoveryRunAction(data: FormData) {
   const ok = await cancelDiscoveryRun(runId);
   revalidatePath("/acquisition");
   redirect(`/acquisition?notice=${ok ? "run_cancelled" : "storage"}`);
+}
+
+/** Transmet la liste filtrée à la prospection e-mail : brouillons à relire, aucun envoi. */
+export async function handoffToEmailAction(data: FormData) {
+  await requireAdmin();
+  const workspaceId = text(data,"workspace_id",36);
+  const category = text(data,"category",48);
+  const segment = text(data,"segment",48);
+  const templateId = text(data,"template_id",36);
+  const minScore = Number(text(data,"min_score",3) || "0");
+  const limit = Number(text(data,"limit",3) || String(HANDOFF_MAX));
+  if (!uuid.test(workspaceId) || (category && !categories.has(category)) || (segment && !(segment in PRESCRIBER_SEGMENTS)) ||
+    (templateId && !uuid.test(templateId)) || !Number.isInteger(minScore) || minScore<0 || minScore>100 ||
+    !Number.isInteger(limit) || limit<1 || limit>HANDOFF_MAX) deny("invalid_handoff");
+  const outcome = await handoffToEmailProspecting({
+    workspaceId, filter: { category: category || undefined, segment: segment || undefined, minScore: minScore || undefined },
+    templateId: templateId || undefined, limit,
+  });
+  revalidatePath("/acquisition");
+  if (!outcome.ok) deny(`handoff_${outcome.reason}`);
+  const skipped = outcome.skipped.suppressed + outcome.skipped.already_drafted + outcome.skipped.duplicate_email;
+  redirect(`/acquisition?notice=handoff_done&found=${outcome.created}&inserted=${skipped}`);
 }

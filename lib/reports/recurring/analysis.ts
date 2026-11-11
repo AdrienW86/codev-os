@@ -4,10 +4,11 @@ import { adsBusinessSchema } from "@/lib/integrations/google-ads/business-contex
 import { analyzeRecommendation } from "@/lib/integrations/google-ads/recommendation-core";
 import type { CampaignRow } from "@/lib/integrations/google-ads/dashboard";
 import type { StoredAdsScope } from "@/lib/integrations/google-ads/scope";
+import type { AdsExpertSignals } from "@/lib/integrations/google-ads/types";
 import { startRun, finishRun, recordRecommendation } from "@/lib/agents/outputs";
 import type { Json } from "@/lib/supabase/database.types";
 /** Same bounded AI engine, scope and instruction snapshot as interactive analyses; no session dependency. */
-export async function analyzeClientReport(clientId: string, rows: CampaignRow[], scope: StoredAdsScope, mode: "ai" | "deterministic") {
+export async function analyzeClientReport(clientId: string, rows: CampaignRow[], scope: StoredAdsScope, mode: "ai" | "deterministic", signals: AdsExpertSignals | null = null) {
   const db = getSupabaseServerClient();
   const assignments = await db.from("agent_client_assignments").select("agent_id,client_instructions,agent:agents(id,agent_type,enabled,status,instructions)").eq("client_id", clientId).eq("enabled", true);
   if (assignments.error) throw new Error("assignment read");
@@ -20,8 +21,8 @@ export async function analyzeClientReport(clientId: string, rows: CampaignRow[],
   const instructions = { global: (agent.instructions ?? "").slice(0,10000), client: (assignment.client_instructions ?? "").slice(0,3000), business };
   const runId = await startRun({ agentId: assignment.agent_id, clientId, runType: "google_ads_read_only" });
   try {
-    const analyzed = await analyzeRecommendation(rows, scope, instructions, mode);
-    const metadata = { run_type: "google_ads_read_only", scope, instruction_snapshot: instructions, engine: analyzed.engine, requested_mode: mode, analysis_text: analyzed.text, analysis: analyzed.ai?.output ?? null, evidence: analyzed.ai?.evidence ?? [], ai_ms: analyzed.aiMs } as unknown as Json;
+    const analyzed = await analyzeRecommendation(rows, scope, instructions, mode, signals);
+    const metadata = { run_type: "google_ads_read_only", scope, instruction_snapshot: instructions, engine: analyzed.engine, requested_mode: mode, analysis_text: analyzed.text, analysis: analyzed.ai?.output ?? null, evidence: analyzed.ai?.evidence ?? [], expert_findings: analyzed.expert, ai_ms: analyzed.aiMs } as unknown as Json;
     const saved = await db.from("agent_runs").update({ metadata }).eq("id", runId).eq("client_id", clientId).eq("status", "running");
     if (saved.error) throw new Error("analysis save");
     await finishRun(runId, "completed", "Analyse du rapport récurrent en lecture seule.");

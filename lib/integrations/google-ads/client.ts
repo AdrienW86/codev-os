@@ -1,8 +1,8 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery, accountDailyQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery, accountDailyQuery, searchTermsQuery, impressionShareQuery, keywordQualityQuery, deviceQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
-import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic } from "./types";
+import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic, AdsExpertSignals } from "./types";
 
 export class GoogleAdsError extends Error {
   constructor(public readonly kind: "configuration" | "authentication" | "access" | "quota" | "unavailable" | "response", public readonly requestId: string | null = null) {
@@ -182,6 +182,58 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? [{ date, ...normalizeMetrics(row.metrics) }] : [];
     });
   }
+
+  // Quatre lectures indépendantes et bornées : un refus (type de campagne, droits, quota) rend le signal
+  // « indisponible » (null) sans bloquer l'analyse ni inventer de valeur.
+  async getExpertSignals(account: AdsAccount, period: AdsPeriod, campaignIds: string[], managerId?: string): Promise<AdsExpertSignals> {
+    const read = async <K extends keyof AdsExpertSignals>(kind: K, query: string): Promise<AdsExpertSignals[K]> => {
+      try { return parseExpertRows(kind, await this.#search(account.id, query, managerId)) as AdsExpertSignals[K]; } catch { return null; }
+    };
+    if (!campaignIds.length) return { searchTerms: null, impressionShare: null, keywords: null, devices: null };
+    return {
+      searchTerms: await read("searchTerms", searchTermsQuery(period, campaignIds)),
+      impressionShare: await read("impressionShare", impressionShareQuery(period, campaignIds)),
+      keywords: await read("keywords", keywordQualityQuery(period, campaignIds)),
+      devices: await read("devices", deviceQuery(period, campaignIds)),
+    };
+  }
+}
+
+/** Ratio Google Ads (0..1) ; « --  » ou valeur hors bornes → inconnu (null), jamais zéro. */
+function ratio(value: unknown): number | null {
+  const number = numeric(value);
+  return number === null || number < 0 || number > 1 ? null : number;
+}
+const count = (value: unknown) => numeric(value) ?? 0;
+const microsToUnits = (value: unknown) => (numeric(value) ?? 0) / 1_000_000;
+const campaignIdOf = (row: Row) => { const id = String(row.campaign?.id ?? ""); return /^\d{1,20}$/.test(id) ? id : null; };
+
+/** Parse pur des signaux experts (testé sans réseau). Lignes malformées ignorées, jamais complétées. */
+export function parseExpertRows(kind: "searchTerms" | "impressionShare" | "keywords" | "devices", rows: Row[]) {
+  if (kind === "searchTerms") return rows.flatMap((row) => {
+    const campaignId = campaignIdOf(row), term = text(row.searchTermView?.searchTerm);
+    if (!campaignId || !term || term.length > 200) return [];
+    return [{ campaignId, term, status: text(row.searchTermView?.status) ?? "UNKNOWN", impressions: count(row.metrics?.impressions), clicks: count(row.metrics?.clicks), cost: microsToUnits(row.metrics?.costMicros), conversions: count(row.metrics?.conversions) }];
+  });
+  if (kind === "impressionShare") return rows.flatMap((row) => {
+    const campaignId = campaignIdOf(row);
+    if (!campaignId) return [];
+    return [{ campaignId, impressionShare: ratio(row.metrics?.searchImpressionShare), budgetLost: ratio(row.metrics?.searchBudgetLostImpressionShare), rankLost: ratio(row.metrics?.searchRankLostImpressionShare), topImpressionShare: ratio(row.metrics?.searchTopImpressionShare) }];
+  });
+  if (kind === "keywords") return rows.flatMap((row) => {
+    const campaignId = campaignIdOf(row), criterion = row.adGroupCriterion as { criterionId?: unknown; keyword?: { text?: unknown; matchType?: unknown }; qualityInfo?: Record<string, unknown> } | undefined;
+    const keyword = text(criterion?.keyword?.text);
+    if (!campaignId || !keyword || keyword.length > 200) return [];
+    const score = numeric(criterion?.qualityInfo?.qualityScore);
+    return [{ campaignId, adGroupId: String(row.adGroup?.id ?? ""), criterionId: String(criterion?.criterionId ?? ""), text: keyword, matchType: text(criterion?.keyword?.matchType) ?? "UNKNOWN",
+      qualityScore: score !== null && score >= 1 && score <= 10 ? score : null, adRelevance: text(criterion?.qualityInfo?.creativeQualityScore), landingPage: text(criterion?.qualityInfo?.postClickQualityScore), expectedCtr: text(criterion?.qualityInfo?.searchPredictedCtr),
+      cost: microsToUnits(row.metrics?.costMicros), clicks: count(row.metrics?.clicks), conversions: count(row.metrics?.conversions) }];
+  });
+  return rows.flatMap((row) => {
+    const campaignId = campaignIdOf(row), device = text(row.segments?.device);
+    if (!campaignId || !device) return [];
+    return [{ campaignId, device, cost: microsToUnits(row.metrics?.costMicros), clicks: count(row.metrics?.clicks), conversions: count(row.metrics?.conversions) }];
+  });
 }
 
 // Only server services may inject a job-lease guard; browser actions always use the admin default.

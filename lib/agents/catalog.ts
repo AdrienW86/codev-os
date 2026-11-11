@@ -40,9 +40,9 @@ export const agentCatalog: readonly AgentBlueprint[] = [
     matches: nameHas(/\bseo\b|referencement/),
   },
   {
-    id: "google-ads", name: "Agent Google Ads", role: "Surveille les campagnes et propose des optimisations.",
+    id: "google-ads", name: "Agent Google Ads", role: "Consultant SEA : coupe le gaspillage, accélère ce qui est rentable et propose chaque optimisation chiffrée à valider.",
     scope: "client", services: ["google-ads"], readiness: "to-connect", plannedAutonomy: 1,
-    capabilities: [{ label: "Lecture des campagnes (lecture seule)", existsInApp: true }, { label: "Analyse coûts / conversions", existsInApp: true }, { label: "Détection d’anomalies" }, { label: "Propositions d’optimisation" }],
+    capabilities: [{ label: "Lecture des campagnes (lecture seule)", existsInApp: true }, { label: "Analyse coûts / conversions", existsInApp: true }, { label: "Termes de recherche → mots-clés négatifs et exacts", existsInApp: true }, { label: "Part d’impressions perdue (budget / classement)", existsInApp: true }, { label: "Quality Score et appareils", existsInApp: true }, { label: "Coût par lead cible et rythme du budget mensuel", existsInApp: true }, { label: "Propositions d’optimisation chiffrées", existsInApp: true }],
     matches: nameHas(/google ads|\bads\b|\bsea\b/),
   },
   {

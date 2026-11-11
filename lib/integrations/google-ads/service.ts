@@ -186,7 +186,13 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     const anomalies = selected.filter((row) => !row.localServices && row.metrics.cost !== null && row.metrics.cost > 0 && row.metrics.conversions === 0)
       .map((row) => ({ rule: "spend_without_conversions" as const, campaignId: row.id, cost: row.metrics.cost! }));
     const totals = sumCampaigns(selected).metrics;
-    const analyzed = await analyzeRecommendation(selected, scope, instructionSnapshot, input.mode ?? "deterministic");
+    // Signaux experts (termes, part d'impressions, Quality Score, appareils) : lecture seule, facultative.
+    const searchable = selected.filter((row) => !row.localServices).map((row) => row.id);
+    let signals = loaded?.expert ?? null;
+    if (!signals && searchable.length && client.getExpertSignals) {
+      try { signals = await client.getExpertSignals(account, { start: scope.start, end: scope.end, days: scope.days }, searchable, connection.metadata.manager_customer_id); } catch { signals = null; }
+    }
+    const analyzed = await analyzeRecommendation(selected, scope, instructionSnapshot, input.mode ?? "deterministic", signals);
     const aiResult: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = analyzed.ai;
     const aiFailed = analyzed.engine === "deterministic_fallback";
     metadata.engine = analyzed.engine;
@@ -213,6 +219,7 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
       await audit("google_ads.recommendation_created", clientId, connectionId, { run_id: runId, recommendation_id: recommendationId });
     }
     metadata.findings = buildAdsFindings(selected, scope);
+    metadata.expert_findings = analyzed.expert;
     metadata.analysis_text = analyzed.text;
     metadata.data_fetched_at = dataFetchedAt;
     if (aiResult) { metadata.analysis = aiResult.output; metadata.evidence = aiResult.evidence; }
@@ -264,7 +271,7 @@ export function buildCampaignRows(raw: CampaignDashboardRaw): CampaignRow[] {
 export type DashboardResult = { ok: true; data: DashboardData } | { ok: false; message: string };
 
 /** Lecture seule, à la demande : vérifie le client et SON compte associé, résout la période dans le fuseau du compte. */
-export type DashboardOptions = { daily?: boolean };
+export type DashboardOptions = { daily?: boolean; expert?: boolean };
 export async function loadCampaignDashboard(clientId: string, filters: DashboardFilters, now = new Date(), options: DashboardOptions = {}): Promise<DashboardResult> {
   await requireAdmin();
   if (!isAgentUuid(clientId)) return { ok: false, message: "Client invalide." };
@@ -313,9 +320,15 @@ async function readDashboard(connection: GoogleAdsConnection, filters: Dashboard
     if (options.daily && client.getDailyMetrics) {
       try { daily = await client.getDailyMetrics(account, { start: period.start, end: period.end, days: period.days }, connection.metadata.manager_customer_id); } catch { daily = null; }
     }
+    // Analyses : signaux experts des campagnes hors Local Services, facultatifs (un échec n'empêche rien).
+    let expert: DashboardData["expert"] = null;
+    if (options.expert && client.getExpertSignals) {
+      const ids = raw.inventory.filter((item) => item.type !== "LOCAL_SERVICES" && raw.current[item.id]).map((item) => item.id).slice(0, 50);
+      try { expert = ids.length ? await client.getExpertSignals(account, { start: period.start, end: period.end, days: period.days }, ids, connection.metadata.manager_customer_id) : null; } catch { expert = null; }
+    }
     return { ok: true, data: {
       account, period: { start: period.start, end: period.end, days: period.days, includesToday: period.includesToday, today: period.today, preset: period.preset },
-      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: new Date().toISOString(), googleReadMs: Math.round(performance.now() - started), tracking, ...(options.daily ? { daily } : {}),
+      previousPeriod: previous, campaigns: buildCampaignRows(raw), accountTotals: raw.accountTotals, accountPrevious: raw.accountPrevious, leads: raw.leads, fetchedAt: new Date().toISOString(), googleReadMs: Math.round(performance.now() - started), tracking, ...(options.daily ? { daily } : {}), ...(options.expert ? { expert } : {}),
     } };
   } catch (error) {
     safeFailure("dashboard", error);

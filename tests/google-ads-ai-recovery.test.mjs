@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { loadTs } from "./helpers/load-ts.mjs";
 const api = loadTs("lib/integrations/google-ads/ai-analysis.ts", {
   "@/lib/ai/providers": {},
-  "./dashboard": {},
+  "./dashboard": {}, "./expert": loadTs("lib/integrations/google-ads/expert.ts"),
 });
 test("recover numeric or markup narratives only, retaining source identifiers", () => {
   const original = { factIds: ["scope"], hypotheses: [], recommendations: [

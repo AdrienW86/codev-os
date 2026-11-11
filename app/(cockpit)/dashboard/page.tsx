@@ -95,6 +95,7 @@ export default async function DashboardPage() {
       </div>
       <p className="mx-auto mt-8 max-w-3xl text-center text-sm text-muted">Le directeur IA reste accessible en bas à droite sur chaque écran.</p>
       {coverage && <div className="mx-auto mt-8 max-w-3xl"><AgentCoveragePanel gaps={coverage.gaps} clientNames={coverage.clientNames} compact /></div>}
+      <p className="mx-auto mt-4 max-w-3xl text-center text-sm"><Link href="/validation" className="text-accent hover:underline">Tout ce qui attend votre décision : boîte « À valider »</Link></p>
 
       <section className="mt-14" aria-labelledby="attention-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">

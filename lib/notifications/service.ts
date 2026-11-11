@@ -2,6 +2,7 @@ import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { categories, preferencesSchema, subscriptionSchema } from "./schema";
+import { deliveryIdOf, resolvedDeliveryNotifications } from "./resolution";
 const db = () => getSupabaseServerClient();
 const defaults = { categories: [...categories], push_enabled: false, push_categories: categories.filter((value) => value !== "analysis_completed") };
 export async function notificationPreferences() {
@@ -13,12 +14,32 @@ export async function notificationPreferences() {
 export async function listNotifications() {
   const { userId } = await requireAdmin(); const prefs = await notificationPreferences();
   // Les notifications retirées (lues puis supprimées de la liste) sont exclues ; 100 visibles au plus.
-  const events = await db().from("admin_notifications").select("id,category,href,created_at").in("category", prefs.categories).order("created_at", { ascending: false }).limit(300);
+  const events = await db().from("admin_notifications").select("id,category,href,created_at,event_key").in("category", prefs.categories).order("created_at", { ascending: false }).limit(300);
   const reads = await db().from("admin_notification_reads").select("notification_id,dismissed_at").eq("user_id", userId).in("notification_id", (events.data ?? []).map((row) => row.id));
   if (events.error || reads.error) throw new Error("Notifications indisponibles.");
   const seen = new Set(reads.data?.map((row) => row.notification_id));
   const dismissed = new Set(reads.data?.filter((row) => row.dismissed_at).map((row) => row.notification_id));
-  return (events.data ?? []).filter((row) => !dismissed.has(row.id)).slice(0, 100).map((row) => ({ ...row, read: seen.has(row.id) }));
+  const resolved = await resolvedDeliveryAlerts(events.data ?? [], seen);
+  return (events.data ?? []).filter((row) => !dismissed.has(row.id)).filter((row) => !resolved.has(row.id)).slice(0, 100)
+    .map(({ event_key: _key, ...row }) => { void _key; return { ...row, read: seen.has(row.id) }; });
+}
+/**
+ * Une alerte « diffusion incertaine / en échec » dont la diffusion est depuis confirmée publiée n'a plus d'objet :
+ * elle est marquée lue (le compteur baisse) et retirée de la liste. En cas de lecture impossible, rien n'est masqué.
+ */
+async function resolvedDeliveryAlerts(events: { id: string; event_key: string | null }[], seen: Set<string>) {
+  const ids = [...new Set(events.map((event) => deliveryIdOf(event.event_key)).filter((id): id is string => Boolean(id)))];
+  if (!ids.length) return new Set<string>();
+  const { userId } = await requireAdmin();
+  const deliveries = await db().from("publication_deliveries").select("id,status").in("id", ids);
+  if (deliveries.error) return new Set<string>();
+  const resolved = resolvedDeliveryNotifications(events, deliveries.data ?? []);
+  const unread = [...resolved].filter((id) => !seen.has(id));
+  if (unread.length) {
+    const marked = await db().from("admin_notification_reads").upsert(unread.map((id) => ({ notification_id: id, user_id: userId })), { onConflict: "notification_id,user_id", ignoreDuplicates: true });
+    if (marked.error) return new Set<string>();
+  }
+  return resolved;
 }
 export async function unreadNotificationCount() {
   const { userId } = await requireAdmin();

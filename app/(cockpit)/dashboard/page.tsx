@@ -22,6 +22,8 @@ import { actionTypeLabel, countLabel } from "@/lib/presentation/labels";
 import { formatDate } from "@/lib/format-date";
 import { getActiveScenario } from "@/lib/simulation/server";
 import { SimDashboard } from "@/components/simulation/views/sim-dashboard";
+import { AgentCoveragePanel } from "@/components/agents/agent-coverage-panel";
+import { loadAgentCoverage } from "@/lib/agents/coverage-service";
 
 export const metadata: Metadata = { title: "Accueil" };
 
@@ -32,13 +34,14 @@ async function firstName() {
 export default async function DashboardPage() {
   await requireAdmin();
   if (await getActiveScenario()) return <SimDashboard name={await firstName()} />;
-  const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications, news, reportsToReview, incidents] = await Promise.all([
+  const [name, clients, projects, tasks, agents, recommendations, actions, runs, publications, news, reportsToReview, incidents, coverage] = await Promise.all([
     firstName(), listClients(), listProjects(), listTasks(), listAgents(), listRecommendations(), listActions(), listAgentRuns({ limit: 4 }),
     // Modules facultatifs sur la home : leur indisponibilité (migration non appliquée, panne) ne bloque pas la page.
     listPublications(undefined, undefined, { statuses: ["pending_review", "draft"], activeOnly: true }).catch(() => null),
     topNews(3).catch(() => []),
     listReports({ status: "ready_for_review" }).catch(() => []),
     listIncidents().then((items) => items.filter((item) => item.status !== "resolved")).catch(() => []),
+    loadAgentCoverage().catch(() => null),
   ]);
   const summary = summarizeDashboard({ clients, projects, tasks, agents, recommendations, actions });
   const pendingRecommendations = recommendations.filter((item) => item.status === "pending");
@@ -91,6 +94,7 @@ export default async function DashboardPage() {
         <p className="mt-3 text-base text-muted">Que voulez-vous faire aujourd’hui ?</p>
       </div>
       <p className="mx-auto mt-8 max-w-3xl text-center text-sm text-muted">Le directeur IA reste accessible en bas à droite sur chaque écran.</p>
+      {coverage && <div className="mx-auto mt-8 max-w-3xl"><AgentCoveragePanel gaps={coverage.gaps} clientNames={coverage.clientNames} compact /></div>}
 
       <section className="mt-14" aria-labelledby="attention-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">

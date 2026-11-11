@@ -28,13 +28,41 @@ test("brouillon : variables remplacées, sujet sur une ligne, mention d'oppositi
   const vars = outreach.templateVars(p("a", { company_name: "Atelier\nArchi" }), { name: "Toitures Martin", activity: "Couverture" });
   assert.equal(vars.metier, "architectes"); assert.equal(vars.activite, "couverture");
   const draft = outreach.draftMessage(outreach.DEFAULT_OUTREACH_TEMPLATE, vars);
-  assert.equal(draft.subject, "Toitures Martin — collaboration avec Atelier Archi");
+  assert.equal(draft.subject, "Atelier Archi et Toitures Martin");
   assert.ok(!draft.subject.includes("\n"));
-  assert.match(draft.body, /Atelier Archi \(architectes\) exerce à Strasbourg/);
+  assert.match(draft.body, /Atelier Archi exerce à Strasbourg, où Toitures Martin intervient en couverture/);
+  assert.ok(draft.body.includes(outreach.SEGMENT_BENEFITS.architects));
   assert.ok(draft.body.endsWith(outreach.OPT_OUT_FOOTER));
   assert.equal(outreach.renderTemplate("{{ Entreprise }} {{inconnu}}", vars), "Atelier Archi {{inconnu}}");
   const generic = outreach.templateVars(p("z", { segment: null, city: null }), { name: "X", activity: null });
   assert.equal(generic.ville, "votre secteur"); assert.equal(generic.metier, "professionnel");
+  assert.match(generic.benefice, /professionnel de confiance/);
+});
+
+test("expertise : un argument propre à chaque métier prescripteur, sans affirmation sur le client", () => {
+  for (const id of Object.keys(prescribers.PRESCRIBER_SEGMENTS)) {
+    const benefit = outreach.SEGMENT_BENEFITS[id];
+    assert.ok(benefit && benefit.length < 200, id);
+    assert.doesNotMatch(benefit, /garanti|24 ?h|meilleur|moins cher|prix|nous intervenons/i, id);
+  }
+});
+
+test("contrôle qualité : le modèle par défaut est prêt, les défauts courants sont signalés", () => {
+  const vars = outreach.templateVars(p("a"), { name: "Toitures Martin", activity: "Couverture" });
+  const good = outreach.auditOutreachDraft(outreach.draftMessage(outreach.DEFAULT_OUTREACH_TEMPLATE, vars), "Société a");
+  assert.equal(good.score, 100, JSON.stringify(good.issues));
+  assert.ok(good.words <= 120);
+
+  const bad = outreach.auditOutreachDraft({
+    subject: "OFFRE EXCLUSIVE et gratuite pour votre entreprise, ne manquez surtout pas cette occasion unique",
+    body: "Bonjour ! Cliquez ici https://a.fr et https://b.fr, c'est garanti ! {{inconnu}}",
+  }, "Société a");
+  const codes = bad.issues.map((i) => i.code);
+  for (const code of ["placeholder", "opt_out", "subject_long", "spam_terms", "links", "exclamation", "caps", "no_question", "not_personal", "short"]) assert.ok(codes.includes(code), code);
+  assert.equal(bad.score, 0);
+
+  const fallback = outreach.auditOutreachDraft(outreach.draftMessage(outreach.DEFAULT_OUTREACH_TEMPLATE, outreach.templateVars(p("z", { city: null }), { name: "X", activity: null })), "Société z");
+  assert.ok(fallback.issues.some((i) => i.code === "fallback"));
 });
 
 test("transmission câblée : administrateur, brouillons uniquement, exclusions emailing consultées", () => {

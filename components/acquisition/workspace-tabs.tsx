@@ -15,11 +15,15 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
   const [tab, setTab] = useState<"prospects"|"emails"|"senders"|"templates">("prospects");
   const [query, setQuery] = useState("");
   const [segment, setSegment] = useState("");
+  const [category, setCategory] = useState("");
+  const [withEmail, setWithEmail] = useState(false);
   const active = workspaces.find(w=>w.id===workspace);
-  const filtered = useMemo(()=>prospects.filter(p=>p.workspace_id===workspace && (!segment || p.segment===segment) &&
-    (p.company_name+" "+(p.website??"")+" "+p.category+" "+(p.city??"")+" "+(p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label??"":"")).toLocaleLowerCase("fr").includes(query.toLocaleLowerCase("fr"))),[prospects,workspace,query,segment]);
+  const filtered = useMemo(()=>prospects.filter(p=>p.workspace_id===workspace && (!segment || p.segment===segment) && (!category || p.category===category) && (!withEmail || Boolean(p.contact_email)) &&
+    (p.company_name+" "+(p.website??"")+" "+p.category+" "+(p.city??"")+" "+(p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label??"":"")).toLocaleLowerCase("fr").includes(query.toLocaleLowerCase("fr"))),[prospects,workspace,query,segment,category,withEmail]);
   const segmentsHere = [...new Set(prospects.filter(p=>p.workspace_id===workspace&&p.segment).map(p=>p.segment as PrescriberSegmentId))];
-  const hasPrescribers = segmentsHere.length>0;
+  const hasZone = prospects.some(p=>p.workspace_id===workspace&&p.category==="zone_company");
+  const hasPrescribers = segmentsHere.length>0 || hasZone;
+  const exportHref = `/api/acquisition/export?${new URLSearchParams({ workspace, ...(category ? { category } : {}), ...(withEmail ? { with_email: "1" } : {}) })}`;
   const scopedMessages=messages.filter(m=>m.workspace_id===workspace);
   return <section className="rounded-xl border border-border bg-surface">
     <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
@@ -51,7 +55,12 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
           <select id="acquisition-segment" value={segment} onChange={e=>setSegment(e.target.value)} className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm">
             <option value="">Tous les segments</option>{segmentsHere.map(s=><option key={s} value={s}>{PRESCRIBER_SEGMENTS[s]?.label ?? s}</option>)}
           </select>
-          <a href={`/api/acquisition/export?workspace=${encodeURIComponent(workspace)}`} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-raised">Exporter les prescripteurs (CSV)</a>
+          {hasZone && <><label htmlFor="acquisition-category" className="sr-only">Origine</label>
+            <select id="acquisition-category" value={category} onChange={e=>setCategory(e.target.value)} className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm">
+              <option value="">Prescripteurs et zone</option><option value="prescriber">Prescripteurs</option><option value="zone_company">Entreprises de la zone</option>
+            </select></>}
+          <label htmlFor="acquisition-with-email" className="flex items-center gap-2 text-sm"><input id="acquisition-with-email" type="checkbox" checked={withEmail} onChange={e=>setWithEmail(e.target.checked)} /> Avec e-mail</label>
+          <a href={exportHref} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-raised">Exporter (CSV, 10 000 lignes max)</a>
           {placesReady && <form action={enrichProspectsAction}><input type="hidden" name="workspace_id" value={workspace}/>
             <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-raised">Compléter site et téléphone (Google Places, 20 max)</button></form>}
         </div>}
@@ -60,8 +69,9 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
             <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{p.company_name}</h3>
               <span className="text-xs text-muted">{ACQUISITION_STAGES[p.stage]} · {p.score??"—"}/100</span></div>
             <p className="text-sm text-muted">{p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label ?? p.segment:ACQUISITION_CATEGORIES.find(c=>c.id===p.category)?.label} {p.website?"· "+p.website:""}</p>
-            {p.data_source==="sirene"&&<p className="text-xs text-muted">{[p.address, p.distance_km!=null?`${p.distance_km} km`:null, p.siren?`SIREN ${p.siren}`:null, p.places_phone, p.is_sole_proprietor?"entrepreneur individuel":null].filter(Boolean).join(" · ")}
-              {p.places_website&&<> · <a className="text-accent hover:underline" href={p.places_website} target="_blank" rel="noopener noreferrer">site</a></>}</p>}
+            {p.data_source==="sirene"&&<p className="text-xs text-muted">{[p.address, p.distance_km!=null?`${p.distance_km} km`:null, p.siren?`SIREN ${p.siren}`:null, p.places_phone ?? p.osm_phone, p.contact_email, p.bodacc_created_on?`créée (BODACC) le ${new Date(p.bodacc_created_on).toLocaleDateString("fr-FR")}`:null, p.is_sole_proprietor?"entrepreneur individuel":null].filter(Boolean).join(" · ")}
+              {(p.places_website ?? p.osm_website)&&<> · <a className="text-accent hover:underline" href={p.places_website ?? p.osm_website ?? undefined} target="_blank" rel="noopener noreferrer">site</a></>}
+              {p.osm_website&&!p.places_website&&<> · © contributeurs OpenStreetMap</>}</p>}
             {p.explanation&&<p className="mt-1 text-sm">{p.explanation}</p>}
             {p.source_url&&<a className="mt-1 inline-block break-all text-xs text-accent hover:underline" href={p.source_url} target="_blank" rel="noopener noreferrer">Preuve : {p.source_url}</a>}
           </article>)}</div>}</>}

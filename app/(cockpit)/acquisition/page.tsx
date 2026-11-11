@@ -13,6 +13,9 @@ import { listClients } from "@/lib/clients/data";
 const NOTICES: Record<string, string> = {
   workspace_created: "Espace créé, envois verrouillés.",
   discovery_done: "Recherche terminée : {found} prescripteur(s) trouvé(s), {inserted} nouvelle(s) fiche(s).",
+  zone_queued: "Balayage de la zone mis en file : il avance environ toutes les 15 minutes, suivez-le dans « Dernières recherches ».",
+  run_cancelled: "Recherche arrêtée. Les fiches déjà trouvées sont conservées.",
+  discovery_busy: "Une recherche est déjà en cours pour ce client : attendez sa fin ou arrêtez-la.",
   enrich_done: "Google Places : {found} fiche(s) complétée(s) sur {inserted} vérifiée(s).",
   already_exists: "Cet espace existe déjà.",
   invalid_discovery: "Paramètres de recherche invalides.",
@@ -56,7 +59,7 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
     {notice && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm">{notice}</p>}
-    {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} />}
+    {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} multisourceReady={snapshot.multisourceReady} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
     <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
     <div className="grid gap-5 lg:grid-cols-2">

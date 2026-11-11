@@ -193,7 +193,9 @@ async function remember(clientId:string,folder:string,fileId:string,row:{outcome
  * autorisé (agent avec droits confirmés, association WhatsApp active avec droits confirmés), à tour de rôle (le moins récemment synchronisé d'abord), au plus
  * `perClient` nouvelles photos par client. Sans accès Drive Publications configuré, rien n'est fait.
  */
-export async function runDriveSyncTick(maxClients=5,perClient=5,deps:{drive?:()=>MediaProvider;sync?:typeof syncDriveLibrary}={}):Promise<{clients:number;added:number}>{
+export const DRIVE_SYNC_INTERVAL_MS=60*60*1000;
+export async function runDriveSyncTick(maxClients=5,perClient=5,deps:{drive?:()=>MediaProvider;sync?:typeof syncDriveLibrary;now?:Date}={}):Promise<{clients:number;added:number}>{
+ const now=deps.now??new Date();
  const [agents,senders]=await Promise.all([db().from('publication_agent_projects').select('client_id').eq('rights_confirmed',true).limit(500),
   db().from('whatsapp_senders').select('client_id').eq('rights_confirmed',true).eq('enabled',true).limit(500)]);
  if(agents.error)throw Error('library_unavailable');
@@ -203,7 +205,11 @@ export async function runDriveSyncTick(maxClients=5,perClient=5,deps:{drive?:()=
  const states=await db().from('client_media_drive_sync').select('client_id,last_synced_at').in('client_id',clients);
  const last=new Map<string,string>();for(const s of (states.error?[]:states.data??[]) as {client_id:string;last_synced_at:string|null}[])if(s.last_synced_at&&(!last.has(s.client_id)||s.last_synced_at>last.get(s.client_id)!))last.set(s.client_id,s.last_synced_at);
  // Dernière synchronisation du client (tous dossiers) : un ancien dossier retiré ne le garde pas éternellement en tête.
- const order=clients.sort((a,b)=>(last.get(a)??'').localeCompare(last.get(b)??'')||a.localeCompare(b)).slice(0,maxClients);
+ // Un dossier synchronisé il y a moins d'une heure n'est pas relu : les nouveaux fichiers sont rares (une dizaine par
+ // semaine) et chaque lecture Drive coûte plusieurs secondes au passage du planificateur. Import manuel inchangé.
+ const fresh=(id:string)=>{const at=last.get(id);return at!==undefined&&now.getTime()-Date.parse(at)<DRIVE_SYNC_INTERVAL_MS;};
+ const order=clients.filter(id=>!fresh(id)).sort((a,b)=>(last.get(a)??'').localeCompare(last.get(b)??'')||a.localeCompare(b)).slice(0,maxClients);
+ if(!order.length)return {clients:0,added:0};
  const sync=deps.sync??syncDriveLibrary;let added=0;
  for(const clientId of order){try{added+=(await sync(clientId,perClient,{provider:drive})).added;}catch(e){log('tick_drive',codeOf(e));}}
  return {clients:order.length,added};
@@ -247,10 +253,13 @@ export async function purgeRejectedMedia(limit=10):Promise<{purged:number;failed
 // clients qui ont activé le classement, à tour de rôle (le moins récemment traité d'abord), classement borné ; enfin
 // purge éventuelle. Jamais de publication. Sans accès Drive configuré, seule la synchro est sautée.
 export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{drive?:()=>MediaProvider;classify?:typeof classifyClientMedia;sync?:typeof syncDriveLibrary;checkDrive?:()=>Promise<unknown>}={}){
- let synced=0;
- try{synced=(await runDriveSyncTick(maxClients,5,{drive:deps.drive,sync:deps.sync})).added;}catch(e){log('tick_drive',codeOf(e));}
+ // Durée de chaque sous-étape (ms) dans le résumé du passage : la lenteur se lit sans deviner.
+ let synced=0,syncedClients=0,mark=Date.now();const ms:Record<string,number>={};const lap=(name:string)=>{const t=Date.now();ms[name]=t-mark;mark=t;};
+ try{const r=await runDriveSyncTick(maxClients,5,{drive:deps.drive,sync:deps.sync});synced=r.added;syncedClients=r.clients;}catch(e){log('tick_drive',codeOf(e));}
+ lap('drive_sync_ms');
  // Originaux mis à la corbeille ou retirés du dossier Drive : la photo quitte la photothèque (réversible).
  try{await (deps.checkDrive??checkDriveAvailability)();}catch(e){log('drive_check',codeOf(e));}
+ lap('drive_check_ms');
  const {data,error}=await db().from('client_media_profiles').select('client_id').eq('ai_classification_enabled',true)
   .order('last_classified_at',{ascending:true,nullsFirst:true}).order('updated_at').limit(maxClients);
  if(error)throw Error('profile_unavailable');
@@ -265,8 +274,10 @@ export async function runMediaIntelligenceTick(maxClients=5,perClient=8,deps:{dr
    if(rotated.error)log('tick_rotation','not_recorded');
   }
  }
+ lap('classify_ms');
  let purge;try{purge=await purgeRejectedMedia();}catch(e){log('tick_purge',codeOf(e));purge={unavailable:true};}
- return {clients:classified.length,driveAdded:synced,analyzed:classified.reduce((n,r)=>n+r.analyzed,0),quarantined:classified.reduce((n,r)=>n+r.quarantined,0),purge};
+ lap('purge_ms');
+ return {...ms,drive_clients:syncedClients,clients:classified.length,driveAdded:synced,analyzed:classified.reduce((n,r)=>n+r.analyzed,0),quarantined:classified.reduce((n,r)=>n+r.quarantined,0),purge};
 }
 
 const DRIVE_RECHECK_MS=6*60*60*1000,DRIVE_CHECK_CONCURRENCY=5;

@@ -91,8 +91,9 @@ test("#3 a failed Agent v2 run pauses the project for hours (no AI call); an occ
   assert.deepEqual(json(stuck.prepared[0][2].excludeOccurrenceIds), [OCC(9)], "the exhausted occurrence is never sent to the AI again");
   assert.deepEqual(notes(stuck.fake), [{ event_key: `publication-preparation-failed:${OCC(9)}`, category: "incident", href: `/agents/${AGENT}` }]);
   assert.equal(s.notified, 1);
-  await stuck.mod.runScheduledPreparation(now, stuck.deps);
+  const again = await stuck.mod.runScheduledPreparation(now, stuck.deps);
   assert.equal(stuck.fake.tables.admin_notifications.length, 1, "notified once (idempotent event key)");
+  assert.equal(again.notified, 0, "an alert already sent is not counted again");
   // Historique illisible : échec fermé, aucun appel IA.
   const unreadable = setup(prepTables([]), { failOn: table => table === "publication_agent_v2_runs" });
   assert.equal((await unreadable.mod.runScheduledPreparation(now, unreadable.deps)).skipped.failures_unavailable, 1);
@@ -279,11 +280,16 @@ test('initial notification POST response lost after COMMIT is retried idempotent
  const from=fake.client.from;let lost=true,attempts=0;
  fake.client.from=table=>{
   const query=from(table);if(table!=='admin_notifications')return query;
-  return {...query,upsert:async(...args)=>{
-   attempts++;assert.equal(fake.tables.publication_scheduled_runs[0]?.state,'open');
-   const saved=await query.upsert(...args);
-   if(lost){lost=false;throw Error('POST notification response lost after COMMIT');}
-   return saved;
+  // upsert(...) puis éventuellement .select('id') : la réponse perdue l'est après l'écriture, dans les deux formes.
+  return {...query,upsert:(...args)=>{
+   const inner=query.upsert(...args);
+   const run=async builder=>{
+    attempts++;assert.equal(fake.tables.publication_scheduled_runs[0]?.state,'open');
+    const saved=await builder;
+    if(lost){lost=false;throw Error('POST notification response lost after COMMIT');}
+    return saved;
+   };
+   return {then:(ok,ko)=>run(inner).then(ok,ko),select:columns=>({then:(ok,ko)=>run(inner.select(columns)).then(ok,ko)})};
   }};
  };
  await mod.runScheduledPreparation(now,deps);

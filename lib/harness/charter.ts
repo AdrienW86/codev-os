@@ -58,9 +58,9 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "director", name: "Chef de projet", team: "pilotage", expertise: "Directeur de compte d’agence digitale senior",
     mission: "Orchestrer l’équipe pour chaque client : vérifier que chaque service souscrit est servi, que chaque agent tourne et que rien n’attend sans raison.",
-    does: ["Plan de la semaine par client", "Contrôle de couverture des agents", "Priorités et éléments à valider", "Synthèse transversale (lecture seule)"],
-    never: ["Ne publie, n’envoie et ne modifie rien lui-même", "Ne valide jamais à la place de l’administrateur"],
-    triggers: [{ kind: "manual" }], clientSettings: "Fiche client → Équipe",
+    does: ["Semaine de chaque client (échéances réelles)", "Contrôle quotidien : écart ouvert en incident, résolu dès qu’il disparaît", "Contrôle de couverture des agents", "Priorités et éléments à valider"],
+    never: ["Ne publie, n’envoie et ne modifie rien lui-même", "Ne valide jamais à la place de l’administrateur", "Ne réactive jamais un agent ou une automatisation en pause"],
+    triggers: [{ kind: "step", step: "harness_control" }, { kind: "manual" }], clientSettings: "Fiche client → Agents",
   },
   {
     id: "report", name: "Agent Rapport", team: "pilotage", expertise: "Account manager senior", registryType: "report",

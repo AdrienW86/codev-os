@@ -1,4 +1,6 @@
 import { StatusBadge } from "@/components/ui/status-badge";
+import { MutationForm } from "@/components/ui/mutation-form";
+import { runHarnessControlAction } from "@/app/(cockpit)/agents/coverage-actions";
 import { healthLabels } from "@/lib/harness/health";
 import { formatDateTime } from "@/lib/format-date";
 import type { TeamView } from "@/lib/harness/team-service";
@@ -12,6 +14,10 @@ export function TeamPanel({ team }: { team: TeamView }) {
         <p className="mt-1 text-sm text-muted">
           Chaque agent a une mission, un périmètre et des interdits rappelés à chaque appel IA. État réel d’après le dernier passage du planificateur{team.heartbeatAt ? ` (${formatDateTime(team.heartbeatAt)})` : ""} et les dernières exécutions.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <MutationForm action={runHarnessControlAction} label="Lancer le contrôle des clients" pendingLabel="Contrôle…" />
+          <span className="text-xs text-muted">Le chef de projet contrôle chaque client tous les matins ; chaque écart devient une alerte dans Travail, résolue dès qu’il disparaît.</span>
+        </div>
       </div>
       <div className="space-y-8">
         {team.teams.map((group) => (

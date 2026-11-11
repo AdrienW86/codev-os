@@ -28,3 +28,9 @@ Une phrase (hors accroche) portant une formulation récurrente ou un terme non c
 2. Ses appels IA passent par `withCharter("<id>", instructions)`.
 3. S’il dépend d’une exécution planifiée du registre, l’ajouter à `expectedSchedules` (`lib/agents/coverage.ts`).
 4. Sa place dans `buildClientPlan` s’il dépend d’un service client.
+
+## Chef d'orchestre : semaine et contrôle quotidien
+
+- **Semaine du client** (`lib/harness/week-plan.ts`, fiche client → Agents) : les 7 prochains jours, jour par jour, à partir des seules échéances enregistrées (diffusions programmées, articles prévus, exécutions planifiées calculées avec leur récurrence). Les agents à cadence (Visuels, Vidéo, Photothèque) sont listés à part, sans date inventée.
+- **Réglages par client** (`settingsOf` dans `lib/harness/client-plan.ts`) : chaque agent affiche ses réglages propres au client (créneaux, validation, cadence, rythme, budget IA, planifications). Rien n'est affiché pour un agent désactivé.
+- **Contrôle quotidien** (`lib/harness/control.ts` + `control-service.ts`, étape `harness_control` du planificateur) : une fois par jour à partir de 7 h (Paris), pour chaque client ayant un service actif, chaque écart (agent à régler, semaine sans diffusion alors que la diffusion est active, blog sans article sur 14 jours) ouvre un incident interne `source = system`, empreinte `harness:<client>:<code>`. Un écart disparu est résolu automatiquement. Le contrôle n'active, ne publie et ne réactive rien. Bouton « Lancer le contrôle des clients » sur /agents.

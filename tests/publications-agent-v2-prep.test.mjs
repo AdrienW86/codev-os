@@ -55,5 +55,5 @@ test('P7-prep → P7: contract with raw output and usage, the real generator is 
  assert.match(src('lib/publications/agent-v2/contract.ts'),/export interface PublicationsAgentV2Generator\{generate\(input:AgentV2GeneratorInput\):Promise<\{output:unknown;usage:AgentV2Usage\}>\}/);
  const dir=resolve(root,'lib/publications/agent-v2');for(const f of readdirSync(dir).filter(f=>f!=='openai-generator.ts')){const code=readFileSync(join(dir,f),'utf8').replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(code,/publications-openai|googleapis|drive-oauth|publications-drive|setInterval|cron|fetch\(/i,f);}
- assert.match(src('lib/publications/agent-v2/openai-generator.ts'),/structuredResponse\(AGENT_V2_INSTRUCTIONS/);
+ assert.match(src('lib/publications/agent-v2/openai-generator.ts'),/structuredResponse\(withCharter\('publications',AGENT_V2_INSTRUCTIONS\)/);
  assert.doesNotMatch(src('lib/publications/agent-service.ts'),/agent-v2/,'Agent v1 unchanged');});

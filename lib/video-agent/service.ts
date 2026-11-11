@@ -1,4 +1,5 @@
 import 'server-only';
+import {withCharter} from '@/lib/harness/charter';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
@@ -83,7 +84,7 @@ async function writeScript(ctx:ClientBrandContext,service:string,photoTexts:stri
  let feedback:string|null=null;const captionCount=Math.max(photoTexts.length-1,0);
  for(let attempt=0;attempt<3;attempt++){
   try{
-   const {value}=await structuredResponse(SCRIPT_INSTRUCTIONS,JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
+   const {value}=await structuredResponse(withCharter('video',SCRIPT_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
     photos_untrusted:photoTexts.map(t=>t.slice(0,300)),captions_expected:captionCount,facts_untrusted:ctx.facts.slice(0,3000),already_used:used.slice(0,30),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCRIPT_SCHEMA);
    const checked=checkVideoScript(value,ctx.facts,used,captionCount);

@@ -5,6 +5,7 @@ import {structuredResponse} from '@/lib/integrations/publications-openai';
 import {generateDriveId,importDriveToken,uploadDrive} from '@/lib/whatsapp/providers';
 import {checkCopy,fallbackCopy,isDue,nextService,nextTemplate,parseSettingsForm,readableOn,settingsFromRow,VISUAL_TEMPLATES,HEADLINE_MAX,SUBLINE_MAX,type VisualAgentSettings,type VisualItem,type VisualTemplate} from './model';
 import {logoColors,renderVisual} from './render';
+import {withCharter} from '@/lib/harness/charter';
 
 // Agent Visuels : pour les clients qui l'ont activé, un visuel à la charte est généré à la fréquence choisie et déposé
 // dans le dossier Drive de leur photothèque. L'import Drive, l'analyse et la photothèque font le reste : l'agent
@@ -105,7 +106,7 @@ async function writeCopy(ctx:Context,service:string,used:string[]):Promise<{head
  let feedback:string|null=null;
  for(let attempt=0;attempt<2;attempt++){
   try{
-   const {value}=await structuredResponse(COPY_INSTRUCTIONS,JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
+   const {value}=await structuredResponse(withCharter('visual',COPY_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
     facts_untrusted:ctx.facts.slice(0,3000),already_used:used.slice(0,30),...(feedback?{previous_attempt_refused:feedback}:{})}),COPY_SCHEMA);
    const checked=checkCopy(value,ctx.facts,used);
    if(checked.ok)return {headline:checked.headline,subline:checked.subline};

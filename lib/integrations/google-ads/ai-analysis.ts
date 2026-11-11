@@ -7,6 +7,7 @@ import type { StoredAdsScope } from "./scope";
 import type { AdsInstructionSnapshot } from "./business-context";
 import type { AdsExpertSignals } from "./types";
 import { buildExpertDiagnosis, expertCoverage, type ExpertFinding, type ExpertKind } from "./expert";
+import { withCharter } from "@/lib/harness/charter";
 
 const actions = ["verify_tracking", "review_geography", "review_services", "review_schedule", "review_budget", "review_landing_page", "review_capacity",
   "add_negative_keywords", "add_exact_keywords", "increase_budget", "improve_ad_rank", "improve_quality_score", "adjust_device_bids", "lower_cpa_target", "scale_volume", "align_budget_pacing"] as const;
@@ -191,7 +192,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
   });
   // Un appel, aucun outil métier exécutable, délai global. Le fournisseur est celui de l'assistant serveur.
   const response = await provider.complete({
-    system: ADS_EXPERT_SYSTEM,
+    system: withCharter("google-ads", ADS_EXPERT_SYSTEM),
     messages: [{ role: "user", content: encoded }],
     tools: [{ name: "ads_analysis_result", description: "Retour structuré de l’analyse, sans exécution.", parameters, strict: true }],
     toolChoice: "required", maxTokens: 3000,

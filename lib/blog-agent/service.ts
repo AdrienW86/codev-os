@@ -1,4 +1,5 @@
 import 'server-only';
+import {withCharter} from '@/lib/harness/charter';
 import {createHash,randomUUID} from 'node:crypto';
 import sharp from 'sharp';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
@@ -94,7 +95,7 @@ async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,p
  let feedback:string|null=null;
  for(let attempt=0;attempt<3;attempt++){
   try{
-   const {value}=await structuredResponse(INSTRUCTIONS(forbiddenTerms(ctx.facts)),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,
+   const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,
     service,angle,photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);

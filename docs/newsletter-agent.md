@@ -1,6 +1,6 @@
 # Agent Newsletter
 
-Écran : **Newsletters** (`/emailing?client=<id>`). Migration : `20261206000000_email_newsletters.sql` (à appliquer).
+Écran : **Newsletters** (`/emailing?client=<id>`). Migration : `20261207000000_email_newsletters.sql` (à appliquer).
 
 ## Ce que fait l'agent
 1. **Rédaction** (« Rédiger la newsletter »). Il part des seules sources citables du client :

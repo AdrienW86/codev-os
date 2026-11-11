@@ -76,7 +76,7 @@ test("service câblé : approbation obligatoire, exclusions relues avant chaque 
   assert.match(s, /idempotencyKey: `newsletter:\$\{id\}:\$\{p\.id\}`/);
   const actions = src("app/(cockpit)/emailing/actions.ts");
   assert.match(actions, /requireAdminWriter/); assert.match(actions, /field\(data, "confirm"\) !== "on"/);
-  const migration = src("supabase/migrations/20261206000000_email_newsletters.sql");
+  const migration = src("supabase/migrations/20261207000000_email_newsletters.sql");
   assert.match(migration, /check \(status in \('draft','cancelled'\) or approved_at is not null\)/);
   assert.match(migration, /unique \(newsletter_id, email_normalized\)/);
   assert.match(migration, /revoke all on public\.email_newsletters, public\.email_newsletter_sends from anon, authenticated/);

@@ -18,7 +18,7 @@ import { parseContactLines, type ConsentBasis } from "./contacts";
 
 // Agent Newsletter : rédaction à partir des seuls faits vérifiés du client, approbation humaine obligatoire, envoi aux
 // contacts consentants hors liste d'exclusion, par lots reprenables (journal écrit avant chaque appel au fournisseur).
-// Tables de la migration 20261206000000_email_newsletters.sql : client non typé (même approche que le socle emailing).
+// Tables de la migration 20261207000000_email_newsletters.sql : client non typé (même approche que le socle emailing).
 const db = () => getSupabaseServerClient() as unknown as SupabaseClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const SEND_BATCH = 100;

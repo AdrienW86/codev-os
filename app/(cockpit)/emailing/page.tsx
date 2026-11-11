@@ -33,7 +33,7 @@ export default async function EmailingPage({ searchParams }: { searchParams: Pro
     </form>
     {msg && <p className={`mb-4 rounded-lg border border-border p-3 text-sm ${ok === "1" ? "text-success" : "text-danger"}`}>{msg}</p>}
     {!selected ? <p className="text-sm text-muted">Choisissez un client.</p> : !view ? <p className="text-sm text-danger">Lecture impossible.</p> : !view.ready ?
-      <p className="text-sm text-warning">Migration 20261206000000_email_newsletters à appliquer.</p> : <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <p className="text-sm text-warning">Migration 20261207000000_email_newsletters à appliquer.</p> : <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <div className="space-y-4">
         <Panel className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

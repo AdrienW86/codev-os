@@ -19,6 +19,15 @@ export type CampaignDashboardRaw = {
   leads: { available: true; total: number; byType: Record<string, number>; charged: number | null } | { available: false; reason: string } | null;
 };
 export type ConversionActionDiagnostic = { id: string; name: string; category: string; type: string; status: string; primary: boolean | null; countingType: string; tagSnippets: number | null; allConversions: number | null; lastConversionDate: string | null; lastTagReceivedAt: string | null };
+/** Signaux experts (lecture seule) : termes de recherche, part d'impressions, Quality Score, appareils. */
+export type AdsSearchTerm = { campaignId: string; term: string; status: string; impressions: number; clicks: number; cost: number; conversions: number };
+export type AdsImpressionShare = { campaignId: string; impressionShare: number | null; budgetLost: number | null; rankLost: number | null; topImpressionShare: number | null };
+export type AdsKeywordQuality = { campaignId: string; adGroupId: string; criterionId: string; text: string; matchType: string; qualityScore: number | null; adRelevance: string | null; landingPage: string | null; expectedCtr: string | null; cost: number; clicks: number; conversions: number };
+export type AdsDeviceRow = { campaignId: string; device: string; cost: number; clicks: number; conversions: number };
+export type AdsExpertSignals = {
+  /** null : lecture indisponible (droits, quota, type de campagne) — jamais « aucune donnée ». */
+  searchTerms: AdsSearchTerm[] | null; impressionShare: AdsImpressionShare[] | null; keywords: AdsKeywordQuality[] | null; devices: AdsDeviceRow[] | null;
+};
 export interface GoogleAdsReadClient {
   getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]>;
   getAccountSummary(customerId: string, managerId?: string): Promise<AdsAccount>;
@@ -27,6 +36,8 @@ export interface GoogleAdsReadClient {
   getCampaignDashboard(account: AdsAccount, period: AdsPeriod, previous: AdsPeriod | null, managerId?: string): Promise<CampaignDashboardRaw>;
   /** Lecture seule : métriques du compte jour par jour (graphiques des rapports clients). */
   getDailyMetrics?(account: AdsAccount, period: AdsPeriod, managerId?: string): Promise<(AdsMetrics & { date: string })[]>;
+  /** Lecture seule : signaux experts des campagnes du périmètre ; chaque lecture échoue indépendamment (null). */
+  getExpertSignals?(account: AdsAccount, period: AdsPeriod, campaignIds: string[], managerId?: string): Promise<AdsExpertSignals>;
 }
 export type GoogleAdsConnection = {
   id: string; client_id: string; provider: string; status: string; external_account_id: string | null;

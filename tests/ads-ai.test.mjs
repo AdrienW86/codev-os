@@ -7,7 +7,8 @@ const dashboard = loadTs("lib/integrations/google-ads/dashboard.ts", { "./period
 const scopes = loadTs("lib/integrations/google-ads/scope.ts", { "./periods": periods });
 const validation = loadTs("lib/integrations/google-ads/validation.ts", { "./periods": periods });
 const business = loadTs("lib/integrations/google-ads/business-context.ts");
-const ai = loadTs("lib/integrations/google-ads/ai-analysis.ts", { "./dashboard": dashboard });
+const expert = loadTs("lib/integrations/google-ads/expert.ts");
+const ai = loadTs("lib/integrations/google-ads/ai-analysis.ts", { "./dashboard": dashboard, "./expert": expert });
 const metrics = { cost: 80, conversions: 0, clicks: 10, impressions: 200, ctr: .05, averageCpc: 8, costPerConversion: null, conversionValue: null };
 const rows = [{ id: "123", name: "Search", type: "SEARCH", status: "ENABLED", metrics, hasActivity: true, localServices: false, budget: { amount: 10, shared: false, period: "DAILY" }, subType: null, previous: null }, { id: "456", name: "LSA", type: "LOCAL_SERVICES", status: "ENABLED", metrics: { ...metrics, conversions: null }, hasActivity: true, localServices: true, budget: { amount: null, shared: null, period: null }, subType: null, previous: null }];
 const scope = { start: "2026-09-01", end: "2026-09-07", days: 7, status: "enabled", types: [], campaignIds: ["123", "456"], accountId: "1234567890", currency: "EUR", timezone: "Europe/Paris", campaignNames: { 123: "Search", 456: "LSA" } };
@@ -40,7 +41,7 @@ test("one bounded AI call uses existing provider, instructions and a non-executa
   assert.equal(data.instructions.business.advertisingMonthlyBudget, 500);
   assert.equal(data.instructions.client, snapshot.client);
   assert.match(result.text, /80 EUR/); assert.match(result.text, /Hypothèses à vérifier/); assert.match(result.text, /distincte du chiffre d’affaires/);
-  await assert.rejects(ai.analyzeAdsWithAI(provider, rows, scope, { ...snapshot, global: "x".repeat(40001) }));
+  await assert.rejects(ai.analyzeAdsWithAI(provider, rows, scope, { ...snapshot, global: "x".repeat(60001) }));
   assert.equal(calls, 1, "oversize input never calls the provider");
 });
 test("business context keeps absent budgets null, rejects extra fields and isolates storage by client", async () => {
@@ -69,9 +70,9 @@ function runSetup({ failure = false, unavailable = false, simulation = false, mo
     "./tracking-store": { readCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "./tracking": { loadCampaignTracking: async () => ({ available: true, ids: ["123"], revision: 1 }) },
     "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai,
-    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai, "./findings": { buildAdsFindings: () => [] }, "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
+    "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai, "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, context: snapshot.business }) },
-    "./findings": { buildAdsFindings: () => [] },
+    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"),
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => { released++; } }), saveAdsAnalysisMetadata: async (_id, _client, _agent, value) => { metadata = value; } },
   }, { performance });
   return { run: () => service.runGoogleAdsAnalysis(agentId, clientId, { scope: { start: scope.start, end: scope.end, status: scope.status, types: scope.types, campaignIds: scope.campaignIds }, mode }), get: () => ({ metadata, recommendations, released, calls }) };

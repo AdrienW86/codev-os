@@ -24,7 +24,7 @@ export type GoogleAdsReportOutcome = { ok: true; id: string; version: number } |
 /** Instantané des campagnes du périmètre, lu en direct (lecture seule) sur le compte associé au client. */
 export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope, expectedAccountId?: string, options?: { system: false; mode: "ai" | "deterministic" } | { system: true; mode: "ai" | "deterministic"; lease: { jobId: string; worker: string } }, expectedTimezone?: string) {
   const filters = { ...DEFAULT_FILTERS, period: { preset: "custom" as const, start: scope.start, end: scope.end }, status: "all" as const, includeUntracked: true };
-  const loaded = await (options?.system ? loadCampaignDashboardForSystem(clientId, filters, new Date(), options.lease) : loadCampaignDashboard(clientId, filters));
+  const loaded = await (options?.system ? loadCampaignDashboardForSystem(clientId, filters, new Date(), options.lease, { expert: true }) : loadCampaignDashboard(clientId, filters, new Date(), { expert: Boolean(options) }));
   if (!loaded.ok) return { ok: false as const, message: loaded.message };
   const { data } = loaded;
   if (expectedAccountId && data.account.id !== expectedAccountId) return { ok: false as const, message: "Le compte Google Ads associé à ce client a changé : ce rapport ne peut pas être actualisé." };
@@ -40,7 +40,7 @@ export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope,
   });
   if (options) {
     const { analyzeClientReport } = await import("./recurring/analysis");
-    const analyzed = await analyzeClientReport(clientId, data.campaigns.filter(row => stored.campaignIds.includes(row.id)), stored, options.mode);
+    const analyzed = await analyzeClientReport(clientId, data.campaigns.filter(row => stored.campaignIds.includes(row.id)), stored, options.mode, data.expert ?? null);
     if (!analyzed.ok) return analyzed;
     for (const section of built.internal.sections) section.lines = section.lines.map(line => line === "Rapport déterministe (sans IA), lu en lecture seule : aucune modification Google Ads." ? "Tableaux calculés depuis Google Ads ; moteur des recommandations identifié séparément. Aucune modification Google Ads." : line);
     const section = { title: analyzed.engine === "ai" ? "Recommandations personnalisées (IA)" : analyzed.engine === "deterministic_fallback" ? "Repli déterministe (IA indisponible)" : "Constats déterministes (sans IA)", lines: analyzed.text.split("\n").filter(Boolean) };

@@ -38,3 +38,27 @@ export function localServicesLeadsQuery(period: AdsPeriod) {
 
 /** Inventaire read-only des objectifs de conversion du compte. */
 export const conversionActionsQuery = "SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status, conversion_action.primary_for_goal, conversion_action.counting_type, metrics.all_conversions, metrics.conversion_last_conversion_date, metrics.conversion_last_received_request_date_time FROM conversion_action WHERE conversion_action.status != 'REMOVED'";
+
+// --- Signaux experts (lecture seule) ----------------------------------------------------------
+// Bornés au périmètre (identifiants numériques validés) et triés par coût : jamais de lecture illimitée.
+function campaignFilter(campaignIds: string[]) {
+  const ids = [...new Set(campaignIds)].filter((id) => /^\d{1,20}$/.test(id)).slice(0, 50);
+  if (!ids.length) throw new Error("Périmètre vide.");
+  return `campaign.id IN (${ids.join(", ")})`;
+}
+/** Termes de recherche réellement tapés (Search) : base des mots-clés négatifs et des nouveaux mots-clés. */
+export function searchTermsQuery(period: AdsPeriod, campaignIds: string[]) {
+  return `SELECT campaign.id, search_term_view.search_term, search_term_view.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view WHERE ${dateClause(period)} AND ${campaignFilter(campaignIds)} AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 500`;
+}
+/** Part d'impressions Search et pertes (budget / classement) : distingue « manque de budget » et « manque de qualité ». */
+export function impressionShareQuery(period: AdsPeriod, campaignIds: string[]) {
+  return `SELECT campaign.id, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share, metrics.search_top_impression_share FROM campaign WHERE ${dateClause(period)} AND ${campaignFilter(campaignIds)} AND campaign.advertising_channel_type = 'SEARCH'`;
+}
+/** Quality Score et ses trois composantes pour les mots-clés qui dépensent. */
+export function keywordQualityQuery(period: AdsPeriod, campaignIds: string[]) {
+  return `SELECT campaign.id, ad_group.id, ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.quality_info.quality_score, ad_group_criterion.quality_info.creative_quality_score, ad_group_criterion.quality_info.post_click_quality_score, ad_group_criterion.quality_info.search_predicted_ctr, metrics.cost_micros, metrics.clicks, metrics.conversions FROM keyword_view WHERE ${dateClause(period)} AND ${campaignFilter(campaignIds)} AND ad_group_criterion.status != 'REMOVED' ORDER BY metrics.cost_micros DESC LIMIT 300`;
+}
+/** Répartition par appareil (mobile, ordinateur, tablette). */
+export function deviceQuery(period: AdsPeriod, campaignIds: string[]) {
+  return `SELECT campaign.id, segments.device, metrics.cost_micros, metrics.clicks, metrics.conversions FROM campaign WHERE ${dateClause(period)} AND ${campaignFilter(campaignIds)}`;
+}

@@ -2,7 +2,7 @@
 // lignes de campagnes, totaux EXACTEMENT égaux à la somme des campagnes sélectionnées, rapprochement
 // avec le total du compte (jamais supposé identique), séparation Search / Local Services.
 import { PERIOD_PRESETS, isValidDay, type PeriodPreset, type PeriodSelection } from "./periods";
-import type { AdsAccount, AdsMetrics, AdsPeriod } from "./types";
+import type { AdsAccount, AdsExpertSignals, AdsMetrics, AdsPeriod } from "./types";
 
 export type StatusFilter = "enabled" | "paused" | "all";
 export type DashboardFilters = { period: PeriodSelection; compare: boolean; status: StatusFilter; types: string[]; campaigns: string[]; includeUntracked?: boolean };
@@ -87,6 +87,8 @@ export type DashboardData = {
   tracking?: { available: boolean; revision: number; ids: string[] | null };
   /** Rapports clients uniquement : métriques du compte jour par jour (null = non récupérées). */
   daily?: (AdsMetrics & { date: string })[] | null;
+  /** Analyses uniquement : signaux experts lus pour les campagnes du compte (null = non lus). */
+  expert?: AdsExpertSignals | null;
 };
 
 export const typeLabels: Record<string, string> = {

@@ -1,7 +1,9 @@
 // Actualités tech & IA. Source future : Agent Veille. Pour l’instant, données de démonstration statiques.
 
 export type NewsCategory = "IA" | "Développement" | "SEO" | "Ads" | "Web";
-export type NewsItem = { id: string; title: string; category: NewsCategory; source: string; summary: string; date: string; url?: string };
+export type NewsItem = { id: string; title: string; category: NewsCategory; source: string; summary: string; date: string; url?: string;
+  /** Pourquoi agir (mise à jour d’algorithme, règle, retrait…) ; absent si rien d’actionnable. */
+  impact?: string | null };
 
 /** Exemples de démonstration : aucun contenu réel, aucune veille automatique. */
 export const demoNews: readonly NewsItem[] = [

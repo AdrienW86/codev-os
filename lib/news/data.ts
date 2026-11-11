@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { NewsItem } from "@/lib/news/types";
+import { impactNote } from "@/lib/news/rank";
 
 /** Les actualités les plus pertinentes des 7 derniers jours (une par source au plus). */
 export async function topNews(limit = 3): Promise<NewsItem[]> {
@@ -12,7 +13,7 @@ export async function topNews(limit = 3): Promise<NewsItem[]> {
   for (const row of data ?? []) {
     if (sources.has(row.source_id)) continue;
     sources.add(row.source_id);
-    picked.push({ id: row.id, title: row.title, category: row.category, source: row.source_name, summary: row.summary, date: (row.published_at ?? since).slice(0, 10), url: row.url });
+    picked.push({ id: row.id, title: row.title, category: row.category, source: row.source_name, summary: row.summary, date: (row.published_at ?? since).slice(0, 10), url: row.url, impact: impactNote(row) });
     if (picked.length >= limit) break;
   }
   return picked;
@@ -25,5 +26,5 @@ export async function newsFeed(options: { category?: "IA" | "SEO" | null; days?:
   if (options.category) query = query.eq("category", options.category);
   const { data, error } = await query.order("score", { ascending: false }).limit(Math.min(options.limit ?? 60, 200));
   if (error) throw new Error("Veille indisponible.");
-  return (data ?? []).map((row) => ({ id: row.id, title: row.title, category: row.category, source: row.source_name, summary: row.summary, date: (row.published_at ?? row.fetched_at ?? since).slice(0, 10), url: row.url }));
+  return (data ?? []).map((row) => ({ id: row.id, title: row.title, category: row.category, source: row.source_name, summary: row.summary, date: (row.published_at ?? row.fetched_at ?? since).slice(0, 10), url: row.url, impact: impactNote(row) }));
 }

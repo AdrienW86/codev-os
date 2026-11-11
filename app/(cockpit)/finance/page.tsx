@@ -97,7 +97,8 @@ export default async function FinancePage({searchParams}:PageProps<"/finance">) 
   const monthly=activeContracts.filter(c=>c.billing_frequency==="mensuel").reduce((sum,c)=>sum+contractTotalCents(c.unit_price_cents,c.quantity),0);
   const annual=activeContracts.filter(c=>c.billing_frequency==="annuel").reduce((sum,c)=>sum+contractTotalCents(c.unit_price_cents,c.quantity),0);
   return <>
-    <PageHeading eyebrow="Gestion commerciale" title="Prestations & Finance" description="Catalogue global de tarifs indicatifs et contrats commerciaux propres à chaque client. Qonto, relances et URSSAF seront ajoutés sans changer les prestations existantes."/>
+    <PageHeading eyebrow="Gestion commerciale" title="Prestations & Finance" description="Catalogue global de tarifs indicatifs et contrats commerciaux propres à chaque client. Les rapprochements Qonto sont accessibles dans un écran séparé ; relances et URSSAF restent à développer."/>
+    <p className="mb-5"><Link className="inline-block rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent hover:bg-surface-raised" href="/finance/qonto">Factures et paiements Qonto →</Link></p>
     {notice&&<p role="status" className="mb-5 rounded-xl border border-border bg-surface-raised p-3 text-sm">{notice==="prestation-ok"?"Prestation enregistrée.":notice==="contrat-ok"?"Contrat client enregistré.":notice==="archivage-ok"?"État du catalogue mis à jour.":notice==="simulation"?"Aucune écriture en mode simulation.":notice}</p>}
     {unavailable?<Panel className="p-5"><p role="alert" className="text-sm text-warning">Module indisponible : appliquer d’abord la migration finance_catalog_contracts sur Supabase. Aucune donnée client n’a été modifiée.</p></Panel>:<>
       <Panel className="mb-6 p-5">

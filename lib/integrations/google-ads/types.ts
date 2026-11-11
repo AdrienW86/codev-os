@@ -27,7 +27,10 @@ export type AdsDeviceRow = { campaignId: string; device: string; cost: number; c
 export type AdsExpertSignals = {
   /** null : lecture indisponible (droits, quota, type de campagne) — jamais « aucune donnée ». */
   searchTerms: AdsSearchTerm[] | null; impressionShare: AdsImpressionShare[] | null; keywords: AdsKeywordQuality[] | null; devices: AdsDeviceRow[] | null;
+  /** Requêtes Google organiques du site (dernier instantané Search Console synchronisé) ; absent = non lues. */
+  organicQueries?: OrganicQuery[] | null;
 };
+export type OrganicQuery = { query: string; clicks: number; impressions: number; ctr: number | null; position: number | null };
 export interface GoogleAdsReadClient {
   getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]>;
   getAccountSummary(customerId: string, managerId?: string): Promise<AdsAccount>;

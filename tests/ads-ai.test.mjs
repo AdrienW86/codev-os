@@ -72,7 +72,7 @@ function runSetup({ failure = false, unavailable = false, simulation = false, mo
     "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai,
     "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => unavailable ? null : provider }, "./ai-analysis": ai, "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, context: snapshot.business }) },
-    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"),
+    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "./organic": { loadOrganicQueries: async () => null },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => { released++; } }), saveAdsAnalysisMetadata: async (_id, _client, _agent, value) => { metadata = value; } },
   }, { performance });
   return { run: () => service.runGoogleAdsAnalysis(agentId, clientId, { scope: { start: scope.start, end: scope.end, status: scope.status, types: scope.types, campaignIds: scope.campaignIds }, mode }), get: () => ({ metadata, recommendations, released, calls }) };

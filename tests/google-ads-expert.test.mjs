@@ -74,7 +74,7 @@ test("unavailable signals stay unavailable and produce no finding", () => {
   assert.equal(expert.buildExpertDiagnosis(rows, null, null, { days: 30 }, "EUR").length, 0);
   const coverage = expert.expertCoverage({ searchTerms: [], impressionShare: null, keywords: [], devices: null });
   assert.deepEqual(plain(coverage.read), ["termes de recherche", "Quality Score des mots-clés"]);
-  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil"]);
+  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil", "requêtes Search Console"]);
 });
 
 test("expert actions survive validation only with the matching expert evidence", () => {
@@ -102,7 +102,7 @@ test("the AI call carries the expert playbook, expert evidence details and a lar
   assert.match(request.system, /consultant Google Ads senior/); assert.match(request.system, /mots-clés négatifs/);
   const payload = JSON.parse(request.messages[0].content);
   assert.ok(payload.evidence.some((item) => item.kind === "excluded_terms" && /offre d'emploi/.test(item.detail)));
-  assert.equal(payload.expertSignalsMissing.length, 0);
+  assert.deepEqual(plain(payload.expertSignalsMissing), ["requêtes Search Console"]);
   assert.equal(result.output.recommendations.length, 1);
   assert.ok(result.expert.length >= 5);
 });
@@ -120,4 +120,33 @@ test("expert GAQL queries are bounded to validated campaign ids and Google Ads r
   assert.equal(terms[0].cost, 2.5);
   const keywords = client.parseExpertRows("keywords", [{ campaign: { id: "111" }, adGroup: { id: "5" }, adGroupCriterion: { criterionId: "7", keyword: { text: "toit", matchType: "EXACT" }, qualityInfo: { qualityScore: 0 } }, metrics: {} }]);
   assert.equal(keywords[0].qualityScore, null, "out-of-range quality score is unknown, not zero");
+});
+
+test("Search Console × Ads: uncovered, relevant, poorly ranked queries become keyword opportunities; dominated paid queries are flagged", () => {
+  const organic = [
+    { query: "réparation toiture lyon", clicks: 2, impressions: 400, ctr: 0.005, position: 14.2 },
+    { query: "couvreur urgence", clicks: 10, impressions: 300, ctr: 0.03, position: 12 },
+    { query: "toiture formation", clicks: 0, impressions: 200, ctr: 0, position: 30 },
+    { query: "recette tarte", clicks: 0, impressions: 900, ctr: 0, position: 40 },
+    { query: "zinguerie toiture", clicks: 1, impressions: 10, ctr: 0.1, position: 20 },
+    { query: "couvreur", clicks: 80, impressions: 300, ctr: 0.27, position: 1.8 },
+  ];
+  const findings = expert.buildExpertDiagnosis(rows, { ...signals, organicQueries: organic }, context, { days: 30 }, "EUR");
+  const gap = findings.find((item) => item.kind === "organic_gap");
+  assert.equal(gap.items.length, 1, "covered terms, exclusions, off-topic and low-volume queries are dropped");
+  assert.match(gap.items[0], /réparation toiture lyon/); assert.equal(gap.priority, "high");
+  const overlap = findings.find((item) => item.kind === "organic_overlap");
+  assert.match(overlap.items[0], /« couvreur »/);
+  assert.equal(expert.buildExpertDiagnosis(rows, { ...signals, organicQueries: null }, context, { days: 30 }, "EUR").some((item) => item.kind.startsWith("organic")), false);
+  assert.ok(expert.expertCoverage({ ...signals, organicQueries: organic }).read.includes("requêtes Search Console"));
+  const evidence = ai.analysisEvidence(rows, scope, findings);
+  const out = ai.validateAdsAIOutput({ factIds: ["scope"], hypotheses: [], recommendations: [{ action: "add_exact_keywords", priority: "high", campaignIds: ["111"], evidenceIds: ["expert:organic_gap"], rationale: "Capter la demande déjà mesurée." }] }, rows, evidence);
+  assert.equal(out.recommendations.length, 1);
+});
+
+test("organic snapshot parsing keeps only well-formed queries", () => {
+  const organicModule = loadTs("lib/integrations/google-ads/organic.ts", { "@/lib/supabase/server": {}, "@/lib/integrations/search-console/model": { SEARCH_CONSOLE_PROVIDER: "search-console", SEARCH_CONSOLE_METRIC_KEY: "performance" } });
+  assert.equal(organicModule.parseOrganicQueries({}), null);
+  const parsed = organicModule.parseOrganicQueries({ queries: [{ key: "toit", clicks: 1, impressions: 5, ctr: 0.2, position: 3 }, { key: "", clicks: 1, impressions: 1 }, { key: "x", impressions: "9" }] });
+  assert.deepEqual(plain(parsed), [{ query: "toit", clicks: 1, impressions: 5, ctr: 0.2, position: 3 }]);
 });

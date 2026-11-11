@@ -186,7 +186,7 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
   // Quatre lectures indépendantes et bornées : un refus (type de campagne, droits, quota) rend le signal
   // « indisponible » (null) sans bloquer l'analyse ni inventer de valeur.
   async getExpertSignals(account: AdsAccount, period: AdsPeriod, campaignIds: string[], managerId?: string): Promise<AdsExpertSignals> {
-    const read = async <K extends keyof AdsExpertSignals>(kind: K, query: string): Promise<AdsExpertSignals[K]> => {
+    const read = async <K extends "searchTerms" | "impressionShare" | "keywords" | "devices">(kind: K, query: string): Promise<AdsExpertSignals[K]> => {
       try { return parseExpertRows(kind, await this.#search(account.id, query, managerId)) as AdsExpertSignals[K]; } catch { return null; }
     };
     if (!campaignIds.length) return { searchTerms: null, impressionShare: null, keywords: null, devices: null };

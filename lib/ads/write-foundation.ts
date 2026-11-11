@@ -22,11 +22,13 @@ export type AdsChange =
   | { kind: "keyword_add"; customerId: string; campaignId: string; adGroupId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] }
   | { kind: "keyword_pause"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
   | { kind: "keyword_enable"; customerId: string; campaignId: string; adGroupId: string; criterionId: string }
-  | { kind: "negative_keyword_add"; customerId: string; campaignId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] };
+  | { kind: "negative_keyword_add"; customerId: string; campaignId: string; keywords: { text: string; matchType: "EXACT" | "PHRASE" }[] }
+  /** Annulation d'un négatif ajouté par CODE-V OS : uniquement par nom de ressource lu dans le journal. */
+  | { kind: "negative_keyword_remove"; customerId: string; campaignId: string; resourceNames: string[] };
 
 export type AdsMutationPreview = {
   resource: string;
-  operations: { create?: Record<string, unknown>; update?: Record<string, unknown>; updateMask?: string }[];
+  operations: { create?: Record<string, unknown>; update?: Record<string, unknown>; updateMask?: string; remove?: string }[];
 };
 
 export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
@@ -63,6 +65,12 @@ export function prepareAdsChange(change: AdsChange): AdsMutationPreview {
       update: { resourceName: `customers/${change.customerId}/adGroupCriteria/${change.adGroupId}~${change.criterionId}`,
         status: change.kind === "keyword_pause" ? "PAUSED" : "ENABLED" }, updateMask: "status",
     }] };
+  }
+  if (change.kind === "negative_keyword_remove") {
+    const pattern = new RegExp(`^customers/${change.customerId}/campaignCriteria/${change.campaignId}~\\d+$`);
+    if (!Array.isArray(change.resourceNames) || !change.resourceNames.length || change.resourceNames.length > MAX_NEGATIVES
+      || change.resourceNames.some((name) => typeof name !== "string" || !pattern.test(name))) throw new Error("Critère à retirer invalide.");
+    return { resource: "campaignCriteria", operations: [...new Set(change.resourceNames)].map((name) => ({ remove: name })) };
   }
   if (change.kind === "keyword_add" && !RESOURCE_ID.test(change.adGroupId)) throw new Error("Groupe d'annonces invalide.");
   if (!("keywords" in change)) throw new Error("Opération de mots-clés invalide.");

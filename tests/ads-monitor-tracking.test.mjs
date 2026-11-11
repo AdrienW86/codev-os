@@ -13,7 +13,7 @@ test("Scheduled monitor uses persisted client tracking, freezes scope and exclud
     "@/lib/connections/sync": { recordSync: async () => {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => fake.client },
     "@/lib/providers/google-ads": { campaignMetrics: async () => [row("tracked", "SEARCH", 10), row("untracked", "SEARCH", 999), row("lsa", "LOCAL_SERVICES", 999)] },
     "@/lib/providers/errors": errors, "@/lib/ads/anomalies": anomalies, "@/lib/agents/outputs": {}, "@/lib/runs/types": types,
-    "@/lib/integrations/google-ads/tracking-store": { readCampaignTracking: async () => ({ available: true, ids: ["tracked", "lsa"], revision: 3 }) },
+    "@/lib/ads/expert-run": { runExpertAndAutopilot: async () => ({ findings: 2, recommendations: 1, autopilot: null }) }, "@/lib/integrations/google-ads/tracking-store": { readCampaignTracking: async () => ({ available: true, ids: ["tracked", "lsa"], revision: 3 }) },
   });
   const result = await monitor.monitorAdsRun({ job: { client_id: "client-a" }, agent: { id: "agent" }, actor: {}, now: new Date("2026-10-10T12:00:00Z"), runId: "run" });
   assert.equal(result.status, "succeeded"); assert.equal(fake.tables.metric_snapshots[0].data.cost, 10);

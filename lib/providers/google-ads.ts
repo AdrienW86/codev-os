@@ -16,15 +16,17 @@ const number = (value: unknown) => {
 
 export async function campaignMetrics(customerId: string, period: { start: string; end: string }, options: { managerId?: string | null; env?: Env; fetchImpl?: FetchLike } = {}): Promise<CampaignMetrics[]> {
   const env = options.env ?? process.env;
-  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN || !env.GOOGLE_ADS_DEVELOPER_TOKEN) throw new ProviderError("google-ads", "not_configured");
+  if (!env.GOOGLE_ADS_CLIENT_ID || !env.GOOGLE_ADS_CLIENT_SECRET || !env.GOOGLE_ADS_REFRESH_TOKEN) throw new ProviderError("google-ads", "not_configured");
   const manager = options.managerId ?? env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? null;
   if (!customer.test(customerId) || (manager && !customer.test(manager))) throw new ProviderError("google-ads", "blocked");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(period.start) || !/^\d{4}-\d{2}-\d{2}$/.test(period.end)) throw new ProviderError("google-ads", "blocked");
   const token = await googleAccessToken("google-ads", { clientId: env.GOOGLE_ADS_CLIENT_ID, clientSecret: env.GOOGLE_ADS_CLIENT_SECRET, refreshToken: env.GOOGLE_ADS_REFRESH_TOKEN }, options.fetchImpl);
   const query = `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM campaign WHERE campaign.status != 'REMOVED' AND campaign.advertising_channel_type != 'LOCAL_SERVICES' AND segments.date BETWEEN '${period.start}' AND '${period.end}'`;
-  const data = await providerJson<{ results?: unknown }>("google-ads", `https://googleads.googleapis.com/v21/customers/${customerId}/googleAds:search`, {
+  const data = await providerJson<{ results?: unknown }>("google-ads", `https://googleads.googleapis.com/v25/customers/${customerId}/googleAds:search`, {
     method: "POST", fetchImpl: options.fetchImpl,
-    headers: { Authorization: `Bearer ${token}`, "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN, "Content-Type": "application/json", ...(manager ? { "login-customer-id": manager } : {}) },
+    // Aucun developer token requis depuis la transition vers les projets Google Cloud (docs/google-ads-read-only.md) ;
+    // envoyé seulement s'il est encore configuré.
+    headers: { Authorization: `Bearer ${token}`, ...(env.GOOGLE_ADS_DEVELOPER_TOKEN ? { "developer-token": env.GOOGLE_ADS_DEVELOPER_TOKEN } : {}), "Content-Type": "application/json", ...(manager ? { "login-customer-id": manager } : {}) },
     body: JSON.stringify({ query }),
   });
   if (data.results === undefined) return [];

@@ -10,6 +10,7 @@ import { openIncident, prepareAction, recordRecommendation } from "@/lib/agents/
 import { RunError, type RunHandler } from "@/lib/runs/types";
 import type { Json } from "@/lib/supabase/database.types";
 import { readCampaignTracking } from "@/lib/integrations/google-ads/tracking-store";
+import { runExpertAndAutopilot } from "@/lib/ads/expert-run";
 
 const day = (date: Date, offset: number) => { const value = new Date(date); value.setUTCDate(value.getUTCDate() + offset); return value.toISOString().slice(0, 10); };
 
@@ -53,5 +54,10 @@ export const monitorAdsRun: RunHandler = async ({ job, agent, actor, now, runId 
     await supabase.from("incidents").update({ recommendation_id: recommendation.id }).eq("id", incident.id);
     await prepareAction(actor, { recommendationId: recommendation.id, type: "ads.optimization", parameters: { campaign: anomaly.campaign, change: proposed.check, expected_effect: proposed.expected }, incidentId: incident.id });
   }
-  return { status: "succeeded", summary: `${totals.campaigns} campagne(s) hors Local Services analysée(s) : ${totals.cost.toFixed(2)} € dépensés, ${totals.conversions} conversion(s), ${anomalies.length} anomalie(s).`, data: { anomalies: anomalies.length } };
+  // Diagnostic expert sur 30 jours + pilote automatique : une panne ici n'annule pas la veille (résultat partiel).
+  let expert: Awaited<ReturnType<typeof runExpertAndAutopilot>> | null = null;
+  try { expert = await runExpertAndAutopilot({ job, agent, actor, now }, { external_account_id: connection.external_account_id, metadata: connection.metadata }, tracking.ids); }
+  catch { expert = null; }
+  const expertText = expert ? ` Diagnostic expert : ${expert.findings} levier(s), ${expert.recommendations} nouvelle(s) recommandation(s).${expert.autopilot ? ` Pilote automatique : ${expert.autopilot.applied} mot(s)-clé(s) négatif(s) appliqué(s)${expert.autopilot.uncertain ? `, ${expert.autopilot.uncertain} incertain(s)` : ""}${expert.autopilot.skipped ? `, ${expert.autopilot.skipped} non appliqué(s) (écriture désactivée côté serveur ou doublon)` : ""}.` : ""}` : " Diagnostic expert indisponible pour cette exécution.";
+  return { status: "succeeded", summary: `${totals.campaigns} campagne(s) hors Local Services analysée(s) : ${totals.cost.toFixed(2)} € dépensés, ${totals.conversions} conversion(s), ${anomalies.length} anomalie(s).${expertText}`, data: { anomalies: anomalies.length, expert } };
 };

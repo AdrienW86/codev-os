@@ -13,7 +13,8 @@ import type { AdsExpertSignals } from "./types";
 
 export type ExpertKind =
   | "wasted_terms" | "excluded_terms" | "converting_terms" | "budget_limited" | "budget_limited_unproven"
-  | "rank_limited" | "low_quality" | "device_gap" | "cpa_above_target" | "cpa_below_target" | "pacing_over" | "pacing_under";
+  | "rank_limited" | "low_quality" | "device_gap" | "cpa_above_target" | "cpa_below_target" | "pacing_over" | "pacing_under"
+  | "organic_gap" | "organic_overlap";
 
 export type ExpertFinding = {
   id: string; kind: ExpertKind; /** null : constat du périmètre entier (rythme de dépense). */
@@ -188,8 +189,53 @@ export function buildExpertDiagnosis(rows: CampaignRow[], signals: AdsExpertSign
       expectedImpact: "Utiliser le budget prévu pour générer davantage de demandes qualifiées.", items: [`Projection : ${money.format(projected)} / mois`, `Budget : ${money.format(monthly)} / mois`] });
   }
 
+  findings.push(...organicOpportunities(signals, business, money));
+
   const rank = { high: 0, medium: 1, low: 2 };
   return findings.sort((a, b) => rank[a.priority] - rank[b.priority] || a.id.localeCompare(b.id));
+}
+
+// --- Opportunités croisées Google Ads × Search Console ----------------------------------------
+const STOP = new Set(["pour", "avec", "dans", "votre", "notre", "leur", "plus", "moins", "comment", "quel", "quelle", "quels", "quelles", "pourquoi", "avis", "prix", "tarif", "tarifs", "cout", "pres", "chez", "mois", "entre", "sans", "the", "and", "for"]);
+const tokens = (value: string) => norm(value).split(/[^a-z0-9]+/).filter((word) => word.length >= 4 && !STOP.has(word));
+
+/**
+ * Requêtes réellement tapées sur Google (Search Console) où le site est peu visible en organique (au-delà de la
+ * 8e position ou sans position) et que les annonces ne couvrent pas encore : nouvelles opportunités de mots-clés.
+ * Une requête n'est retenue que si elle partage un mot significatif avec les services prioritaires du client ou
+ * les mots-clés déjà achetés (pertinence métier), et jamais si elle contient une exclusion déclarée.
+ * À l'inverse, une requête déjà payée où le site est dans le top 3 organique avec un bon CTR est signalée pour
+ * un test d'incrémentalité (risque de payer des clics qui seraient venus gratuitement).
+ */
+export function organicOpportunities(signals: AdsExpertSignals | null | undefined, business: AdsBusinessContext | null, money: Intl.NumberFormat): ExpertFinding[] {
+  const organic = signals?.organicQueries;
+  if (!organic?.length) return [];
+  const exclusions = exclusionWords(business?.exclusions);
+  const bought = [...(signals?.keywords ?? []).map((item) => item.text), ...(signals?.searchTerms ?? []).filter((item) => item.status === "ADDED").map((item) => item.term)];
+  const covered = new Set([...bought, ...(signals?.searchTerms ?? []).map((item) => item.term)].map((item) => norm(item).replace(/[[\]"+]/g, "").trim()));
+  const vocabulary = new Set([...tokens(business?.priorityServices ?? ""), ...bought.flatMap(tokens)]);
+  if (!vocabulary.size) return [];
+  const relevant = (query: string) => tokens(query).some((word) => vocabulary.has(word));
+  const findings: ExpertFinding[] = [];
+
+  const gaps = organic.filter((row) => row.impressions >= 30 && (row.position === null || row.position > 8) && !covered.has(norm(row.query).trim()) && relevant(row.query) && !matchesExclusion(row.query, exclusions))
+    .sort((a, b) => b.impressions - a.impressions);
+  if (gaps.length) findings.push({ id: "expert:organic_gap", kind: "organic_gap", campaignId: null, priority: gaps.some((row) => row.impressions >= 200) ? "high" : "medium",
+    title: "Recherches Google à capter : peu visibles en organique, absentes des annonces",
+    detail: `${gaps.length} requête(s) liées aux services du client totalisent ${gaps.reduce((sum, row) => sum + row.impressions, 0).toLocaleString("fr-FR")} impressions Google sans que le site soit en première page ni que les annonces les ciblent.`,
+    action: "Les ajouter en mots-clés « expression » dans le groupe d’annonces du service correspondant, avec une annonce qui reprend la requête ; en parallèle, créer ou renforcer la page qui y répond (SEO).",
+    expectedImpact: "Demande réelle et déjà mesurée captée immédiatement par les annonces, pendant que le référencement progresse.",
+    items: gaps.slice(0, MAX_ITEMS).map((row) => `« ${row.query} » (${row.impressions.toLocaleString("fr-FR")} impressions, position ${row.position === null ? "inconnue" : row.position.toLocaleString("fr-FR", { maximumFractionDigits: 1 })})`) });
+
+  const paid = new Map((signals?.searchTerms ?? []).filter((term) => term.cost > 0).map((term) => [norm(term.term).trim(), term]));
+  const overlap = organic.filter((row) => row.position !== null && row.position <= 3 && (row.ctr ?? 0) >= 0.15 && paid.has(norm(row.query).trim()));
+  if (overlap.length) findings.push({ id: "expert:organic_overlap", kind: "organic_overlap", campaignId: null, priority: "low",
+    title: "Clics payés sur des requêtes déjà dominées en organique",
+    detail: `${overlap.length} requête(s) achetées en Ads où le site est déjà dans le top 3 naturel avec un bon taux de clic.`,
+    action: "Tester une baisse d’enchère ou une exclusion temporaire (deux à quatre semaines) et mesurer les clics totaux, organiques + payés, avant de généraliser.",
+    expectedImpact: `Jusqu’à ${money.format(overlap.reduce((sum, row) => sum + (paid.get(norm(row.query).trim())?.cost ?? 0), 0))} réallouables si les clics organiques compensent.`,
+    items: overlap.slice(0, MAX_ITEMS).map((row) => `« ${row.query} » (organique position ${row.position!.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}, Ads ${money.format(paid.get(norm(row.query).trim())!.cost)})`) });
+  return findings;
 }
 
 const deviceNames: Record<string, string> = { MOBILE: "Mobile", DESKTOP: "Ordinateur", TABLET: "Tablette", CONNECTED_TV: "TV connectée", OTHER: "Autre" };
@@ -197,7 +243,8 @@ export const deviceLabel = (device: string) => deviceNames[device] ?? device;
 
 /** Lecture des signaux experts disponibles / indisponibles (affichée dans les limites de l'analyse). */
 export function expertCoverage(signals: AdsExpertSignals | null | undefined) {
-  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil" };
+  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil", organicQueries: "requêtes Search Console" };
   const keys = Object.keys(labels) as (keyof AdsExpertSignals)[];
-  return { read: signals ? keys.filter((key) => signals[key] !== null).map((key) => labels[key]) : [], missing: keys.filter((key) => !signals || signals[key] === null).map((key) => labels[key]) };
+  const present = (key: keyof AdsExpertSignals) => Boolean(signals) && signals![key] !== null && signals![key] !== undefined;
+  return { read: keys.filter(present).map((key) => labels[key]), missing: keys.filter((key) => !present(key)).map((key) => labels[key]) };
 }

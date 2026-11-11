@@ -40,7 +40,7 @@ export async function googleAdsReportSnapshot(clientId: string, scope: AdsScope,
   });
   if (options) {
     const { analyzeClientReport } = await import("./recurring/analysis");
-    const analyzed = await analyzeClientReport(clientId, data.campaigns.filter(row => stored.campaignIds.includes(row.id)), stored, options.mode, data.expert ?? null);
+    const analyzed = await analyzeClientReport(clientId, data.campaigns.filter(row => stored.campaignIds.includes(row.id)), stored, options.mode, data.expert ? { ...data.expert, organicQueries: await (await import("@/lib/integrations/google-ads/organic")).loadOrganicQueries(clientId) } : null);
     if (!analyzed.ok) return analyzed;
     for (const section of built.internal.sections) section.lines = section.lines.map(line => line === "Rapport déterministe (sans IA), lu en lecture seule : aucune modification Google Ads." ? "Tableaux calculés depuis Google Ads ; moteur des recommandations identifié séparément. Aucune modification Google Ads." : line);
     const section = { title: analyzed.engine === "ai" ? "Recommandations personnalisées (IA)" : analyzed.engine === "deterministic_fallback" ? "Repli déterministe (IA indisponible)" : "Constats déterministes (sans IA)", lines: analyzed.text.split("\n").filter(Boolean) };

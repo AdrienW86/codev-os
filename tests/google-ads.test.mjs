@@ -102,7 +102,7 @@ function serviceSetup({ deny = false, connected = true, assigned = true, active 
     "./ai-analysis": {},
     "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/providers": { selectAIProvider: () => null }, "./ai-analysis": { ANALYSIS_LIMITATIONS: [] }, "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, revision: 0, context: null }) },
-    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"),
+    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "./organic": { loadOrganicQueries: async () => null },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => {} }), saveAdsAnalysisMetadata: async (_id, _client, _agent, metadata) => { runs.at(-1).metadata = JSON.parse(JSON.stringify(metadata)); } },
   });
   return { service, calls, audits, recommendations, runs, changes };

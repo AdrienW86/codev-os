@@ -27,7 +27,7 @@ export async function runHarnessControl(now = new Date(), options: { force?: boo
   for (const clientId of clientIds) {
     try {
       const snapshot = await loadClientSnapshot(clientId, now);
-      const current = controlFindings(snapshot.facts, snapshot.plan);
+      const current = controlFindings(snapshot.facts, snapshot.plan, now);
       findings += current.length;
       const keep = new Set(current.map((finding) => controlFingerprint(clientId, finding.code)));
       for (const finding of current) {

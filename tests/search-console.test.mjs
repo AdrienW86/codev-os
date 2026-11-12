@@ -326,6 +326,17 @@ test("sync: no property, no connection and quota errors never produce data", asy
   assert.equal(h.fake.tables.search_console_sync_runs.at(-1).error_kind, "rate_limited");
 });
 
+test("daily sync keeps the real failure cause (access refused) on the daily run", async () => {
+  const h = harness({ google: { analytics: () => json(403, { error: { status: "PERMISSION_DENIED" } }) } });
+  h.fake.tables.client_connections.push({ id: "c-a", client_id: CLIENT_A, provider: "search-console", scope: "client", status: "configured", metadata: { property: "sc-domain:exemple.fr" } });
+  await connect(h);
+  const summary = await sync.syncDueSearchConsole(new Date("2026-10-12T05:00:00Z"), { deps: h.deps });
+  assert.equal(summary.failed, 1);
+  const daily = h.fake.tables.search_console_sync_runs.filter((run) => run.trigger === "daily");
+  assert.equal(daily.at(-1).status, "failed");
+  assert.equal(daily.at(-1).error_kind, "unauthorized", "la cause n'est plus réduite à « indisponible »");
+});
+
 // ——— Rapports ———
 
 test("report line: totals over the report period, comparison only when the previous period is complete", () => {

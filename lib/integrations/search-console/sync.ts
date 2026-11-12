@@ -4,7 +4,7 @@ import "server-only";
 // Écrit un instantané `metric_snapshots` (clé = période demandée par l'interface) et l'historique quotidien
 // `search_console_daily_metrics`. Une erreur garde le type normalisé (ProviderError), jamais la réponse de Google.
 import { recordSync } from "@/lib/connections/sync";
-import { ProviderError } from "@/lib/providers/errors";
+import { ProviderError, type ProviderErrorKind } from "@/lib/providers/errors";
 import { searchAnalytics, type QueryRow, type SearchDimension } from "@/lib/providers/search-console";
 import { presetPeriod } from "@/lib/analytics/view-model";
 import { productionSearchConsoleDeps, searchConsoleAccess, type SearchConsoleDeps } from "@/lib/integrations/search-console/connection";
@@ -16,7 +16,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import type { SearchConsoleSyncTrigger } from "@/lib/supabase/search-console.types";
 
 type Db = SearchConsoleDeps["db"];
-export type SyncResult = { ok: true; snapshot: SearchConsoleSnapshot; warning: string | null } | { ok: false; reason: "not_connected" | "no_property" | "invalid" | "unavailable"; error: string | null };
+export type SyncResult = { ok: true; snapshot: SearchConsoleSnapshot; warning: string | null } | { ok: false; reason: "not_connected" | "no_property" | "invalid" | "unavailable"; error: string | null; kind?: ProviderErrorKind };
 
 const MAX_DAYS = 366;
 const errorKind = (error: unknown) => error instanceof ProviderError ? error.kind : "internal";
@@ -127,7 +127,7 @@ export async function syncSearchConsole(clientId: string, requested: Period, tri
     await recordSync(clientId, SEARCH_CONSOLE_PROVIDER, failure instanceof ProviderError ? failure : new Error("Synchronisation Search Console indisponible."));
     await finishRun(db, run, failure);
     if (!(failure instanceof ProviderError)) console.error("[search-console] sync", { kind: "internal" });
-    return { ok: false, reason: "unavailable", error: errorMessage(failure) };
+    return { ok: false, reason: "unavailable", error: errorMessage(failure), ...(failure instanceof ProviderError ? { kind: failure.kind } : {}) };
   }
 }
 
@@ -169,12 +169,13 @@ export async function syncDueSearchConsole(now = new Date(), options: { budgetMs
     if (Date.now() - started > budget) { summary.pending++; continue; }
     const run = await claimDailyRun(deps.db, row.client_id, property, syncDate);
     if (!run) continue;
-    let failure: string | null = null;
+    let failure: string | null = null, kind: ProviderErrorKind = "unavailable";
     for (const days of DAILY_PRESETS) {
       const result = await syncSearchConsole(row.client_id, presetPeriod(days, now), "daily", deps, { runId: null });
-      if (!result.ok) { failure = result.error ?? result.reason; break; }
+      if (!result.ok) { failure = result.error ?? result.reason; kind = result.kind ?? "unavailable"; break; }
     }
-    await finishRun(deps.db, run, failure ? new ProviderError("search-console", "unavailable") : null);
+    // La vraie cause est conservée (accès refusé, quota…) : le contrôle quotidien peut dire quoi faire.
+    await finishRun(deps.db, run, failure ? new ProviderError("search-console", kind) : null);
     const ok = !failure;
     if (ok) summary.synced++; else summary.failed++;
   }

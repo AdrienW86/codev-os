@@ -18,6 +18,8 @@ export type ClientFacts = {
   mediaLibrary: { classification: boolean; monthlyBudgetEur?: number } | null;
   /** Automatisations planifiées pour ce client (ou globales) : libellé lisible de leur récurrence. */
   schedules?: readonly { runType: string; label: string }[];
+  /** Search Console du client : dernière synchronisation réussie et cause du dernier échec quotidien. */
+  searchConsole?: { property: string; lastSyncAt: string | null; lastFailureKind: string | null } | null;
 };
 
 export type SeatState = "working" | "needs_setup" | "not_subscribed" | "off" | "on_demand";

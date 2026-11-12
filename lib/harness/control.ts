@@ -7,7 +7,10 @@ export type ControlFinding = { code: string; severity: "medium" | "high"; title:
 export const controlFingerprint = (clientId: string, code: string) => `harness:${clientId}:${code}`.slice(0, 200);
 export const controlPrefix = (clientId: string) => `harness:${clientId}:`;
 
-export function controlFindings(facts: ClientFacts, plan: ClientPlan): ControlFinding[] {
+const SEARCH_CONSOLE_STALE_MS = 3 * 86_400_000;
+const frenchDate = (iso: string) => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" }).format(new Date(iso));
+
+export function controlFindings(facts: ClientFacts, plan: ClientPlan, now = new Date()): ControlFinding[] {
   const findings: ControlFinding[] = [];
   for (const seat of plan.seats) {
     if (seat.state === "needs_setup") findings.push({ code: `setup:${seat.agent}`, severity: "medium", title: `${seat.name} : ${seat.detail}` });
@@ -21,6 +24,15 @@ export function controlFindings(facts: ClientFacts, plan: ClientPlan): ControlFi
   const blogWorking = plan.seats.some((seat) => seat.agent === "blog" && seat.state === "working");
   if (blogWorking && blog?.scheduledNext7Days === 0 && blog.publishedLast7Days === 0) {
     findings.push({ code: "blog:idle", severity: "medium", title: "Agent Blog : aucun article publié sur 7 jours ni prévu sur les 7 prochains." });
+  }
+  // Search Console : sans données fraîches, l'Agent SEO travaille sur des chiffres périmés. La cause est nommée.
+  const sc = facts.searchConsole;
+  if (sc && (!sc.lastSyncAt || now.getTime() - Date.parse(sc.lastSyncAt) > SEARCH_CONSOLE_STALE_MS)) {
+    const since = sc.lastSyncAt ? `depuis le ${frenchDate(sc.lastSyncAt)}` : "depuis sa connexion";
+    const why = sc.lastFailureKind === "unauthorized"
+      ? ` : Google refuse l'accès à ${sc.property}, ajoutez le compte Google de l'application comme utilisateur de la propriété`
+      : sc.lastFailureKind === "not_found" ? ` : propriété ${sc.property} introuvable, vérifiez son nom` : "";
+    findings.push({ code: "search-console:stale", severity: "high", title: `Search Console ne se synchronise plus ${since}${why}.` });
   }
   return findings;
 }

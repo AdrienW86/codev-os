@@ -62,6 +62,13 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
     optional(db.from("client_video_agents").select("enabled,per_week,pace").eq("client_id", clientId).maybeSingle()),
     optional(db.from("client_media_profiles").select("ai_classification_enabled,ai_monthly_budget_eur").eq("client_id", clientId).maybeSingle()),
   ]);
+  const [scConnectionRow, scRunRow] = await Promise.all([
+    optional(db.from("client_connections").select("metadata,last_sync_at").eq("client_id", clientId).eq("provider", "search-console").maybeSingle()),
+    optional(db.from("search_console_sync_runs").select("status,error_kind").eq("client_id", clientId).eq("trigger", "daily").order("started_at", { ascending: false }).limit(1).maybeSingle()),
+  ]);
+  const scConnection = scConnectionRow as { metadata: unknown; last_sync_at: string | null } | null;
+  const scRun = scRunRow as { status: string; error_kind: string | null } | null;
+  const scProperty = (scConnection?.metadata as { property?: unknown } | null)?.property;
   if (client.error || !client.data) throw new Error("client read");
   const runnable = (a: { enabled: boolean; status: string } | null | undefined) => Boolean(a && a.enabled && a.status === "Actif");
   type AssignmentRow = { enabled: boolean; agent: { agent_type: string | null; enabled: boolean; status: string } | { agent_type: string | null; enabled: boolean; status: string }[] | null };
@@ -95,6 +102,10 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
     visual: visual ? { enabled: flag(visual, "enabled"), perWeek: num(visual, "per_week") } : null,
     video: video ? { enabled: flag(video, "enabled"), perWeek: num(video, "per_week"), pace: typeof field(video, "pace") === "string" ? String(field(video, "pace")) : undefined } : null,
     mediaLibrary: media ? { classification: flag(media, "ai_classification_enabled"), monthlyBudgetEur: num(media, "ai_monthly_budget_eur") } : null,
+    searchConsole: typeof scProperty === "string" && scProperty ? {
+      property: scProperty, lastSyncAt: scConnection?.last_sync_at ?? null,
+      lastFailureKind: scRun?.status === "failed" ? scRun.error_kind ?? null : null,
+    } : null,
     schedules: clientAutomations.flatMap((row) => { const label = scheduleLabel(row); return label ? [{ runType: row.run_type, label }] : []; }),
   };
   const plan = buildClientPlan(facts);

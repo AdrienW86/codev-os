@@ -58,6 +58,20 @@ test("scheduled preparation: horizon ensured, Agent v2 called as the delegated a
   assert.doesNotMatch(JSON.stringify(audits), /text|caption/i);
 });
 
+test("scheduled preparation: the horizon is ensured once a day per project, again after a channel setting change", async () => {
+  const { mod, deps, fake } = setup(baseTables());
+  const ensured = { client_id: C, action: "publication.occurrences_ensured", metadata: { project_id: P, start_date: "2026-10-12", end_date: "2026-11-12" }, created_at: "2026-10-12T05:00:00Z" };
+  fake.tables.publication_events = [...(fake.tables.publication_events ?? []), ensured];
+  assert.equal(await mod.occurrencesEnsured(C, P, "2026-10-12", "2026-11-12"), true);
+  assert.equal(await mod.occurrencesEnsured(C, P, "2026-10-13", "2026-11-13"), false, "new day, new horizon");
+  assert.equal(await mod.occurrencesEnsured(C, uid("3", 9), "2026-10-12", "2026-11-12"), false, "other project");
+  fake.tables.publication_events.push({ client_id: C, action: "publication.channel_schedule_configured", metadata: {}, created_at: "2026-10-12T06:00:00Z" });
+  assert.equal(await mod.occurrencesEnsured(C, P, "2026-10-12", "2026-11-12"), false, "a schedule saved since then re-ensures");
+  fake.tables.publication_events = [ensured];
+  await mod.runScheduledPreparation(now, deps(okRun(true)));
+  assert.ok(!fake.calls.some(c => c[1] === "publication_channel_occurrences_ensure"), "already ensured today: no RPC");
+});
+
 test("scheduled preparation: drafts without a photo stay drafts (no submission, no review notification)", async () => {
   const { mod, deps, fake } = setup(baseTables());
   const r = await mod.runScheduledPreparation(now, deps(okRun(false)));

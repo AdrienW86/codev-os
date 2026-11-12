@@ -159,6 +159,22 @@ test("contrôle quotidien : chaque écart nommé, empreinte stable par client, u
   assert.equal(control.controlDue(new Date("2026-11-13T06:05:00Z"), "2026-11-12T06:05:00Z"), true, "nouveau jour");
 });
 
+test("contrôle quotidien : Search Console figée signalée avec sa cause, rien si la synchro est récente", () => {
+  const plan = loadTs("lib/harness/client-plan.ts", { "./charter": charter });
+  const control = loadTs("lib/harness/control.ts");
+  const now = new Date("2026-11-12T07:00:00Z");
+  const base = { clientId: "44444444-4444-4444-8444-444444444444", website: null, services: [], assignedTypes: new Set(), activeTypes: new Set(), automations: [], publication: null, blog: null, visual: null, video: null, mediaLibrary: null };
+  const stale = { ...base, searchConsole: { property: "sc-domain:exemple.fr", lastSyncAt: "2026-10-13T07:46:00Z", lastFailureKind: "unauthorized" } };
+  const finding = control.controlFindings(stale, plan.buildClientPlan(stale), now).find((item) => item.code === "search-console:stale");
+  assert.equal(finding.severity, "high");
+  assert.match(finding.title, /depuis le 13\/10/);
+  assert.match(finding.title, /refuse l'accès à sc-domain:exemple\.fr/);
+  const fresh = { ...base, searchConsole: { property: "sc-domain:exemple.fr", lastSyncAt: "2026-11-11T23:00:00Z", lastFailureKind: null } };
+  assert.ok(!control.controlFindings(fresh, plan.buildClientPlan(fresh), now).some((item) => item.code === "search-console:stale"));
+  const unknown = { ...stale, searchConsole: { ...stale.searchConsole, lastFailureKind: "unavailable" } };
+  assert.doesNotMatch(control.controlFindings(unknown, plan.buildClientPlan(unknown), now).find((item) => item.code === "search-console:stale").title, /refuse/, "cause inconnue : rien d'inventé");
+});
+
 test("le contrôle quotidien est branché dans le passage du planificateur et rattaché au chef de projet", () => {
   const route = readFileSync("app/api/internal/scheduler/tick/route.ts", "utf8");
   assert.match(route, /step\("harness_control", \(\) => runHarnessControl\(new Date\(\)\)/);

@@ -230,6 +230,22 @@ export async function runScheduledPreparation(now=new Date(),deps:ScheduledPrepa
  }
  return summary;
 }
+// Créneaux déjà créés aujourd'hui pour ce projet et cet horizon, sans réglage de canal enregistré depuis ? Lecture
+// seule du journal publication_events ; illisible ou ambigu : on recrée (idempotent), jamais l'inverse.
+const CHANNEL_CONFIG_ACTIONS=['publication.channel_configured','publication.channel_schedule_configured','publication.channel_account_assigned','publication.cadence_saved','publication.agent_configured'];
+export async function occurrencesEnsured(clientId:string,projectId:string,start:string,end:string):Promise<boolean>{
+ try{
+  const {data,error}=await db().from('publication_events').select('action,metadata').eq('client_id',clientId)
+   .in('action',['publication.occurrences_ensured',...CHANNEL_CONFIG_ACTIONS]).order('created_at',{ascending:false}).limit(20);
+  if(error||!data)return false;
+  for(const row of data as {action:string;metadata:Record<string,unknown>|null}[]){
+   if(row.action!=='publication.occurrences_ensured')return false;
+   const m=row.metadata??{};
+   if(m.project_id===projectId)return m.start_date===start&&m.end_date===end;
+  }
+ }catch{/* recréation idempotente */}
+ return false;
+}
 async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPreparationDeps,summary:ScheduledPreparationSummary,skip:(reason:string)=>void,left:()=>number){
  const actor=await delegatedActor(client.client_id,deps.isAdmin);
  if(!actor){skip('no_delegated_admin');return;}
@@ -245,8 +261,13 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
   if(failures.backoff){skip('failure_backoff');continue;}
   summary.notified+=await notifyExhausted(failures.exhausted,failures.agentId,now);
   // Créneaux de l'horizon (idempotent) : la fréquence configurée par canal décide seule des occurrences.
-  const ensured=await db().rpc('publication_channel_occurrences_ensure',{p_project_id:projectId,p_start_date:today,p_end_date:addDays(today,leadDays),p_actor_id:actor});
-  if(ensured.error){skip((ensured.error as DbError)?.code==='23514'?'channels_not_configured':'occurrences_unavailable');continue;}
+  // Une fois par jour et par horizon suffit (1,5 s et une ligne de journal par appel) ; tout réglage de canal ou de
+  // cadence enregistré depuis relance la création au passage suivant.
+  const horizonEnd=addDays(today,leadDays);
+  if(!await occurrencesEnsured(client.client_id,projectId,today,horizonEnd)){
+   const ensured=await db().rpc('publication_channel_occurrences_ensure',{p_project_id:projectId,p_start_date:today,p_end_date:horizonEnd,p_actor_id:actor});
+   if(ensured.error){skip((ensured.error as DbError)?.code==='23514'?'channels_not_configured':'occurrences_unavailable');continue;}
+  }
   let prepared:AgentV2Result;
   const options={allowRealAI:true,leadDays,now,...(failures.exhausted.length?{excludeOccurrenceIds:failures.exhausted}:{})};
   try{prepared=await deps.prepare(actor,projectId,options);}

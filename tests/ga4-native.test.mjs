@@ -74,6 +74,17 @@ test("GA4 API reads property reports only from authenticated official endpoint",
   assert.equal(calls.length, 1);
 });
 
+test("GA4 landing pages never retain a query string or fragment in snapshots", () => {
+  const report = { rows: [{
+    dimensionValues: [{ value: "/devis?email=private@example.fr&phone=0612345678#section" }],
+    metricValues: [{ value: "7" }, { value: "0.4" }, { value: "0.6" }],
+  }] };
+  const sanitized = api.parseGa4Dimensions(report, { stripQuery: true });
+  assert.equal(sanitized[0].label, "/devis");
+  assert.equal(JSON.stringify(sanitized).includes("private@example.fr"), false);
+  assert.equal(JSON.stringify(sanitized).includes("0612345678"), false);
+});
+
 test("GA4 config reuses OAuth client but never combines Google grants implicitly", () => {
   const cfg = config.ga4OAuthConfig(ENV);
   assert.equal(cfg.credentials, "business_profile");

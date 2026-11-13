@@ -20,7 +20,7 @@ export default async function PerformancePage() {
       .catch(() => null),
   ]);
   return <>
-    <PageHeading eyebrow="Performance" title="Audits techniques" description="Le même moteur PageSpeed que sur code-v.fr, avec rattachement aux clients et historique privé." />
+    <PageHeading eyebrow="Performance" title="Audits techniques" description="Mesures Lighthouse, historique des clients et analyses contextualisées par l’agent Performance, en lecture seule." />
     <PerformanceAnalyzer clients={clients.map(c => ({ id: c.id, name: c.name, website: c.website }))}
       history={history as Pick<PerformanceAudit, "id" | "client_id" | "url" | "strategy" | "scores" | "analyzed_at">[] | null} />
   </>;

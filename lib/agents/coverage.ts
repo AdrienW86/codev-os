@@ -11,7 +11,7 @@ export const expectedSchedules: Readonly<Record<string, readonly ExpectedSchedul
   veille: [{ runType: "news.fetch", scope: "global", presetId: "tech-watch", label: "Veille quotidienne" }],
   monitoring: [{ runType: "monitoring.check_sites", scope: "global", presetId: "site-checks", label: "Contrôle quotidien des sites" }],
   seo: [{ runType: "seo.analyze", scope: "client", label: "Analyses SEO du client" }],
-  "google-ads": [{ runType: "ads.monitor", scope: "client", label: "Veille hebdomadaire des campagnes" }],
+  "google-ads": [{ runType: "ads.monitor", scope: "client", label: "Veille quotidienne des campagnes" }],
 };
 
 export type CoverageAgent = { id: string; name: string; agent_type?: string | null; enabled: boolean; status: string };

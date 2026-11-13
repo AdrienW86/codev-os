@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { loadTs } from "./helpers/load-ts.mjs";
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -74,7 +75,7 @@ test("unavailable signals stay unavailable and produce no finding", () => {
   assert.equal(expert.buildExpertDiagnosis(rows, null, null, { days: 30 }, "EUR").length, 0);
   const coverage = expert.expertCoverage({ searchTerms: [], impressionShare: null, keywords: [], devices: null });
   assert.deepEqual(plain(coverage.read), ["termes de recherche", "Quality Score des mots-clés"]);
-  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil", "requêtes Search Console"]);
+  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil", "requêtes Search Console", "Planificateur de mots-clés", "recommandations Google"]);
 });
 
 test("expert actions survive validation only with the matching expert evidence", () => {
@@ -102,7 +103,7 @@ test("the AI call carries the expert playbook, expert evidence details and a lar
   assert.match(request.system, /consultant Google Ads senior/); assert.match(request.system, /mots-clés négatifs/);
   const payload = JSON.parse(request.messages[0].content);
   assert.ok(payload.evidence.some((item) => item.kind === "excluded_terms" && /offre d'emploi/.test(item.detail)));
-  assert.deepEqual(plain(payload.expertSignalsMissing), ["requêtes Search Console"]);
+  assert.deepEqual(plain(payload.expertSignalsMissing), ["requêtes Search Console", "Planificateur de mots-clés", "recommandations Google"]);
   assert.equal(result.output.recommendations.length, 1);
   assert.ok(result.expert.length >= 5);
 });
@@ -149,4 +150,73 @@ test("organic snapshot parsing keeps only well-formed queries", () => {
   assert.equal(organicModule.parseOrganicQueries({}), null);
   const parsed = organicModule.parseOrganicQueries({ queries: [{ key: "toit", clicks: 1, impressions: 5, ctr: 0.2, position: 3 }, { key: "", clicks: 1, impressions: 1 }, { key: "x", impressions: "9" }] });
   assert.deepEqual(plain(parsed), [{ query: "toit", clicks: 1, impressions: 5, ctr: 0.2, position: 3 }]);
+});
+
+test("keyword sources: planner ideas, Google recommendations and geo targets parsed strictly", () => {
+  const ideas = client.parseKeywordIdeas({ results: [
+    { text: "Démoussage Toiture", keywordIdeaMetrics: { avgMonthlySearches: "320", competition: "LOW", lowTopOfPageBidMicros: "1200000", highTopOfPageBidMicros: "3400000" } },
+    { text: "démoussage toiture", keywordIdeaMetrics: { avgMonthlySearches: "999" } },
+    { text: "", keywordIdeaMetrics: {} },
+    { text: "toit", keywordIdeaMetrics: { competition: "WEIRD", lowTopOfPageBidMicros: "0" } },
+  ] });
+  assert.deepEqual(plain(ideas), [
+    { text: "démoussage toiture", avgMonthlySearches: 320, competition: "LOW", lowBid: 1.2, highBid: 3.4 },
+    { text: "toit", avgMonthlySearches: null, competition: null, lowBid: null, highBid: null },
+  ], "duplicates dropped, unknown values stay null, never zero");
+  assert.deepEqual(plain(client.parseKeywordIdeas({})), []);
+  assert.throws(() => client.parseKeywordIdeas({ results: "x" }));
+  const recs = client.parseRecommendedKeywords([
+    { recommendation: { campaign: "customers/1/campaigns/111", keywordRecommendation: { keyword: { text: "Couvreur Perpignan", matchType: "PHRASE" } } } },
+    { recommendation: { campaign: "customers/1/campaigns/999", keywordRecommendation: { keyword: { text: "hors périmètre" } } } },
+  ], ["111"]);
+  assert.deepEqual(plain(recs), [{ campaignId: "111", text: "couvreur perpignan", matchType: "PHRASE" }]);
+  assert.equal(client.pickGeoTarget({ geoTargetConstantSuggestions: [
+    { geoTargetConstant: { resourceName: "geoTargetConstants/2250", status: "ENABLED", countryCode: "FR", targetType: "Country" } },
+    { geoTargetConstant: { resourceName: "geoTargetConstants/1006094", status: "ENABLED", countryCode: "FR", targetType: "City" } },
+  ] }), "geoTargetConstants/1006094");
+  assert.equal(client.pickGeoTarget({ geoTargetConstantSuggestions: [{ geoTargetConstant: { resourceName: "geoTargetConstants/1", status: "ENABLED", countryCode: "ES", targetType: "City" } }] }), null);
+  assert.match(queries.keywordRecommendationsQuery(), /FROM recommendation WHERE recommendation\.type = 'KEYWORD'/);
+});
+
+test("keyword opportunities: relevant, uncovered, non-excluded ideas ranked by measured demand and cross-source confirmation", () => {
+  const ctx = { ...context, priorityServices: "réparation toiture, démoussage" };
+  const ideas = [
+    { text: "démoussage toiture", avgMonthlySearches: 320, competition: "LOW", lowBid: 1.2, highBid: 3.4 },
+    { text: "réparation toiture perpignan", avgMonthlySearches: 90, competition: "MEDIUM", lowBid: 2, highBid: 5 },
+    { text: "formation couvreur", avgMonthlySearches: 900, competition: "LOW", lowBid: 1, highBid: 2 },
+    { text: "toiture gratuit", avgMonthlySearches: 500, competition: null, lowBid: null, highBid: null },
+    { text: "recette tarte", avgMonthlySearches: 9000, competition: "LOW", lowBid: 0.1, highBid: 0.2 },
+    { text: "couvreur", avgMonthlySearches: 5000, competition: "HIGH", lowBid: 2, highBid: 6 },
+    { text: "démoussage toit rare", avgMonthlySearches: 10, competition: "LOW", lowBid: 1, highBid: 2 },
+  ];
+  const recommended = [{ campaignId: "111", text: "réparation toiture perpignan", matchType: "PHRASE" }, { campaignId: "111", text: "toiture fuite", matchType: "BROAD" }];
+  const organic = [{ query: "réparation toiture perpignan", clicks: 0, impressions: 60, ctr: 0, position: 15 }];
+  const findings = expert.buildExpertDiagnosis(rows, { ...signals, organicQueries: organic, keywordIdeas: ideas, recommendedKeywords: recommended }, ctx, { days: 30 }, "EUR");
+  const found = findings.find((item) => item.kind === "keyword_ideas");
+  assert.ok(found);
+  assert.equal(found.items.length, 3, "excluded, noise, off-topic, covered and low-volume ideas are dropped");
+  assert.match(found.items[0], /« réparation toiture perpignan » · 90 recherches\/mois · haut de page .*2,00.*5,00.* · concurrence moyenne · recommandé par Google · 60 impressions Search Console/);
+  assert.match(found.items[1], /« démoussage toiture » · 320 recherches\/mois/);
+  assert.match(found.items[2], /« toiture fuite » · recommandé par Google/);
+  assert.match(found.detail, /Planificateur de mots-clés, recommandations Google du compte, Search Console/);
+  assert.equal(expert.buildExpertDiagnosis(rows, signals, ctx, { days: 30 }, "EUR").some((item) => item.kind === "keyword_ideas"), false, "no source read: no opportunity invented");
+  const coverage = expert.expertCoverage({ ...signals, keywordIdeas: null, recommendedKeywords: recommended });
+  assert.ok(coverage.read.includes("recommandations Google")); assert.ok(coverage.missing.includes("Planificateur de mots-clés"));
+  const evidence = ai.analysisEvidence(rows, scope, findings);
+  const out = ai.validateAdsAIOutput({ factIds: ["scope"], hypotheses: [], recommendations: [{ action: "add_exact_keywords", priority: "high", campaignIds: ["111"], evidenceIds: ["expert:keyword_ideas"], rationale: "Demande chiffrée par Google." }] }, rows, evidence);
+  assert.equal(out.recommendations.length, 1);
+});
+
+test("keyword seeds: declared services, converting terms, then related Search Console queries; never an exclusion", () => {
+  const seeds = expert.keywordSeeds({ ...signals, organicQueries: [{ query: "Réparation toiture Lyon", impressions: 400, clicks: 1, ctr: 0, position: 14 }, { query: "recette tarte", impressions: 900, clicks: 0, ctr: 0, position: 40 }] },
+    { ...context, priorityServices: "Réparation toiture\nDémoussage, formation" });
+  assert.deepEqual(plain(seeds), ["reparation toiture", "demoussage", "couvreur", "couvreur urgence", "reparation toiture lyon"]);
+  assert.deepEqual(plain(expert.keywordSeeds(null, null)), []);
+});
+
+test("daily watch: new client automations run every day at 07:00; keyword sources wired into the watch and the manual analysis", () => {
+  const coverage = readFileSync(new URL("../lib/agents/coverage-service.ts", import.meta.url), "utf8");
+  assert.match(coverage, /runType: "ads\.monitor", clientId, frequency: "daily", schedule: \{ time: "07:00" \}/);
+  assert.match(readFileSync(new URL("../lib/ads/expert-run.ts", import.meta.url), "utf8"), /withKeywordSources\(reader, summary, signals/);
+  assert.match(readFileSync(new URL("../lib/integrations/google-ads/service.ts", import.meta.url), "utf8"), /withKeywordSources\(client, account, signals/);
 });

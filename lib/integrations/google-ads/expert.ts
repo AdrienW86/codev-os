@@ -14,7 +14,7 @@ import type { AdsExpertSignals } from "./types";
 export type ExpertKind =
   | "wasted_terms" | "excluded_terms" | "converting_terms" | "budget_limited" | "budget_limited_unproven"
   | "rank_limited" | "low_quality" | "device_gap" | "cpa_above_target" | "cpa_below_target" | "pacing_over" | "pacing_under"
-  | "organic_gap" | "organic_overlap";
+  | "organic_gap" | "organic_overlap" | "keyword_ideas";
 
 export type ExpertFinding = {
   id: string; kind: ExpertKind; /** null : constat du périmètre entier (rythme de dépense). */
@@ -190,6 +190,7 @@ export function buildExpertDiagnosis(rows: CampaignRow[], signals: AdsExpertSign
   }
 
   findings.push(...organicOpportunities(signals, business, money));
+  findings.push(...keywordOpportunities(signals, business, money));
 
   const rank = { high: 0, medium: 1, low: 2 };
   return findings.sort((a, b) => rank[a.priority] - rank[b.priority] || a.id.localeCompare(b.id));
@@ -238,12 +239,92 @@ export function organicOpportunities(signals: AdsExpertSignals | null | undefine
   return findings;
 }
 
+/**
+ * Graines du Planificateur de mots-clés : services prioritaires déclarés, termes qui convertissent, puis requêtes
+ * Search Console les plus vues liées à ces services ; au plus 20, jamais une exclusion.
+ */
+export function keywordSeeds(signals: AdsExpertSignals | null | undefined, business: AdsBusinessContext | null): string[] {
+  const exclusions = exclusionWords(business?.exclusions);
+  const services = (business?.priorityServices ?? "").split(/[\n,;/|]+|\s+-\s+/).map((item) => item.trim()).filter((item) => item.length >= 3 && item.length <= 60);
+  const converting = (signals?.searchTerms ?? []).filter((term) => term.conversions > 0).sort((a, b) => b.conversions - a.conversions).map((term) => term.term);
+  const vocabulary = new Set([...services.flatMap(tokens), ...(signals?.keywords ?? []).flatMap((item) => tokens(item.text))]);
+  const organic = (signals?.organicQueries ?? []).filter((row) => tokens(row.query).some((word) => vocabulary.has(word))).sort((a, b) => b.impressions - a.impressions).map((row) => row.query);
+  const seen = new Set<string>(), seeds: string[] = [];
+  for (const seed of [...services, ...converting.slice(0, 8), ...organic.slice(0, 8)]) {
+    const value = norm(seed).replace(/[[\]"+]/g, " ").replace(/\s+/g, " ").trim();
+    if (value.length < 3 || value.length > 80 || seen.has(value) || matchesExclusion(value, exclusions)) continue;
+    seen.add(value); seeds.push(value);
+    if (seeds.length >= 20) break;
+  }
+  return seeds;
+}
+
+// --- Nouvelles opportunités de mots-clés : Planificateur × recommandations Google × Search Console ----------
+/** Intentions sans valeur commerciale pour une entreprise locale (emploi, formation, gratuit, bricolage, documents). */
+const NOISE = /\b(gratuit\w*|emploi|emplois|recrutement|salaire|formation|stage|ecole|diplome|cap|pdf|youtube|wikipedia|definition|soi meme|tuto\w*|occasion|leboncoin|leroy|castorama|brico\w*)\b/;
+const MIN_VOLUME = 20;
+/**
+ * Mots-clés absents des annonces, liés aux services du client, jamais exclus, classés par demande réelle :
+ * volume mensuel du Planificateur de mots-clés (Google), confirmés par une recommandation Google du compte et/ou
+ * des impressions Search Console. Les volumes et enchères sont ceux renvoyés par Google ; rien n'est estimé ici.
+ * Une proposition n'est jamais une écriture : l'ajout reste soumis à validation.
+ */
+export function keywordOpportunities(signals: AdsExpertSignals | null | undefined, business: AdsBusinessContext | null, money: Intl.NumberFormat): ExpertFinding[] {
+  const ideas = signals?.keywordIdeas ?? [], recommended = signals?.recommendedKeywords ?? [];
+  if (!ideas.length && !recommended.length) return [];
+  const exclusions = exclusionWords(business?.exclusions);
+  const bought = [...(signals?.keywords ?? []).map((item) => item.text), ...(signals?.searchTerms ?? []).filter((item) => item.status === "ADDED").map((item) => item.term)];
+  const key = (value: string) => norm(value).replace(/[[\]"+]/g, " ").replace(/\s+/g, " ").trim();
+  const covered = new Set([...bought, ...(signals?.searchTerms ?? []).map((item) => item.term)].map(key));
+  const vocabulary = new Set([...tokens(business?.priorityServices ?? ""), ...bought.flatMap(tokens)]);
+  if (!vocabulary.size) return [];
+  const organic = new Map((signals?.organicQueries ?? []).map((row) => [key(row.query), row]));
+  const googleSays = new Set(recommended.map((item) => key(item.text)));
+  const keep = (text: string) => !covered.has(key(text)) && !NOISE.test(key(text)) && tokens(text).some((word) => vocabulary.has(word)) && !matchesExclusion(text, exclusions);
+  type Candidate = { text: string; volume: number | null; low: number | null; high: number | null; competition: string | null; google: boolean; impressions: number | null; score: number };
+  const candidates = new Map<string, Candidate>();
+  for (const idea of ideas) {
+    if ((idea.avgMonthlySearches ?? 0) < MIN_VOLUME || !keep(idea.text)) continue;
+    candidates.set(key(idea.text), { text: idea.text, volume: idea.avgMonthlySearches, low: idea.lowBid, high: idea.highBid, competition: idea.competition, google: false, impressions: null, score: 0 });
+  }
+  for (const item of recommended) {
+    if (!keep(item.text)) continue;
+    const found = candidates.get(key(item.text));
+    if (found) found.google = true; else candidates.set(key(item.text), { text: item.text, volume: null, low: null, high: null, competition: null, google: true, impressions: null, score: 0 });
+  }
+  for (const [k, candidate] of candidates) {
+    candidate.google ||= googleSays.has(k);
+    candidate.impressions = organic.get(k)?.impressions ?? null;
+    // Demande mesurée d'abord (log du volume), puis confirmation par une autre source, puis concurrence faible.
+    candidate.score = Math.log10(1 + (candidate.volume ?? 0)) * 10 + (candidate.google ? 12 : 0) + (candidate.impressions ? 8 : 0) + (candidate.competition === "LOW" ? 3 : candidate.competition === "HIGH" ? -2 : 0);
+  }
+  const ranked = [...candidates.values()].sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+  if (!ranked.length) return [];
+  const level: Record<string, string> = { LOW: "faible", MEDIUM: "moyenne", HIGH: "forte" };
+  const volume = ranked.reduce((sum, item) => sum + (item.volume ?? 0), 0);
+  const confirmed = ranked.filter((item) => (item.volume !== null ? 1 : 0) + (item.google ? 1 : 0) + (item.impressions ? 1 : 0) >= 2).length;
+  const sources = [ideas.length ? "Planificateur de mots-clés" : null, recommended.length ? "recommandations Google du compte" : null, signals?.organicQueries?.length ? "Search Console" : null].filter(Boolean).join(", ");
+  return [{ id: "expert:keyword_ideas", kind: "keyword_ideas", campaignId: null, priority: volume >= 500 || confirmed >= 3 ? "high" : "medium",
+    title: "Nouveaux mots-clés à fort potentiel, absents des annonces",
+    detail: `${ranked.length} mot(s)-clé(s) liés aux services du client et non couverts${volume ? `, ${volume.toLocaleString("fr-FR")} recherches par mois selon Google` : ""}${confirmed ? ` ; ${confirmed} confirmé(s) par au moins deux sources` : ""}. Sources : ${sources}.`,
+    action: "Ajouter les plus pertinents en « expression » ou « exact » dans le groupe d’annonces du service correspondant, avec une annonce et une page qui y répondent ; enchère de départ dans la fourchette haut de page indiquée.",
+    expectedImpact: "Demande nouvelle et chiffrée captée sans élargir le ciblage à l’aveugle ; volumes et coûts estimés par Google, à valider sur deux à quatre semaines.",
+    items: ranked.slice(0, MAX_ITEMS).map((item) => [
+      `« ${item.text} »`,
+      item.volume !== null ? `${item.volume.toLocaleString("fr-FR")} recherches/mois` : null,
+      item.low !== null && item.high !== null ? `haut de page ${money.format(item.low)} à ${money.format(item.high)}` : item.high !== null ? `haut de page jusqu’à ${money.format(item.high)}` : null,
+      item.competition ? `concurrence ${level[item.competition] ?? item.competition}` : null,
+      item.google ? "recommandé par Google" : null,
+      item.impressions ? `${item.impressions.toLocaleString("fr-FR")} impressions Search Console` : null,
+    ].filter(Boolean).join(" · ")) }];
+}
+
 const deviceNames: Record<string, string> = { MOBILE: "Mobile", DESKTOP: "Ordinateur", TABLET: "Tablette", CONNECTED_TV: "TV connectée", OTHER: "Autre" };
 export const deviceLabel = (device: string) => deviceNames[device] ?? device;
 
 /** Lecture des signaux experts disponibles / indisponibles (affichée dans les limites de l'analyse). */
 export function expertCoverage(signals: AdsExpertSignals | null | undefined) {
-  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil", organicQueries: "requêtes Search Console" };
+  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil", organicQueries: "requêtes Search Console", keywordIdeas: "Planificateur de mots-clés", recommendedKeywords: "recommandations Google" };
   const keys = Object.keys(labels) as (keyof AdsExpertSignals)[];
   const present = (key: keyof AdsExpertSignals) => Boolean(signals) && signals![key] !== null && signals![key] !== undefined;
   return { read: keys.filter(present).map((key) => labels[key]), missing: keys.filter((key) => !present(key)).map((key) => labels[key]) };

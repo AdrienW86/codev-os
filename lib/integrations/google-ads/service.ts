@@ -21,7 +21,7 @@ import { loadCampaignTracking } from "./tracking";
 import { selectAIProvider } from "@/lib/ai/providers";
 import { analyzeAdsWithAI } from "./ai-analysis";
 import { analyzeRecommendation } from "./recommendation-core";
-import { loadOrganicQueries } from "./organic";
+import { withKeywordSources } from "./keyword-sources";
 import { buildAdsFindings } from "./findings";
 import { getAdsBusinessContext } from "./context-service";
 import { reserveAdsAnalysis, saveAdsAnalysisMetadata } from "./analysis-state";
@@ -193,8 +193,8 @@ export async function runGoogleAdsAnalysis(agentId: string, clientId: string, in
     if (!signals && searchable.length && client.getExpertSignals) {
       try { signals = await client.getExpertSignals(account, { start: scope.start, end: scope.end, days: scope.days }, searchable, connection.metadata.manager_customer_id); } catch { signals = null; }
     }
-    // Opportunités croisées : requêtes Search Console déjà synchronisées pour ce client (aucun appel Google en plus).
-    if (signals) signals = { ...signals, organicQueries: await loadOrganicQueries(clientId) };
+    // Opportunités : Search Console déjà synchronisée, Planificateur de mots-clés et recommandations Google (lecture seule).
+    if (signals) signals = await withKeywordSources(client, account, signals, { clientId, business: instructionSnapshot.business, managerId: connection.metadata.manager_customer_id });
     const analyzed = await analyzeRecommendation(selected, scope, instructionSnapshot, input.mode ?? "deterministic", signals, clientId);
     const aiResult: Awaited<ReturnType<typeof analyzeAdsWithAI>> | null = analyzed.ai;
     const aiFailed = analyzed.engine === "deterministic_fallback";

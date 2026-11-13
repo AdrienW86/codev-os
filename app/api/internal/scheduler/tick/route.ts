@@ -6,7 +6,6 @@ import { claimSchedulerRun, finishSchedulerRun, stepCounts, type SchedulerStep, 
 import { ensureGlobalAgents } from "@/lib/services/domain";
 import { flushPushNotifications } from "@/lib/notifications/push";
 import { syncDueSearchConsole } from "@/lib/integrations/search-console/sync";
-import { syncDueGa4 } from "@/lib/integrations/ga4/daily";
 import { ingestionEnabled, processMediaBatch, purgeExpiredPersonalData } from "@/lib/whatsapp/service";
 import { runVisualAgentTick } from "@/lib/visual-agent/service";
 import { runVideoAgentTick } from "@/lib/video-agent/service";
@@ -28,7 +27,7 @@ export const maxDuration = 300;
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000,
-  search_console: 60_000, google_analytics: 30_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
+  search_console: 60_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -80,7 +79,6 @@ async function handle(request: Request) {
   const harnessControl = await step("harness_control", () => runHarnessControl(new Date()), "Contrôle du chef de projet différé.");
   // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
   const searchConsole = await step("search_console", () => syncDueSearchConsole(new Date()), "Synchro Search Console différée.");
-  const googleAnalytics = await step("google_analytics", () => syncDueGa4(new Date()), "Synchro Google Analytics différée.");
   // Reprises WhatsApp → Drive : vide la file (médias disponibles 7 jours chez Meta) et applique la conservation.
   const whatsapp = await step("whatsapp", async () => ingestionEnabled() ? { ...await processMediaBatch({ kind: "system", worker: "whatsapp-scheduler" }, 20, 60000), retention: await purgeExpiredPersonalData() } : { disabled: true }, "Import WhatsApp différé.");
   // Agent Visuels : au plus un visuel par client dû (clients qui l'ont activé), déposé dans son Drive avant la synchro.
@@ -98,7 +96,7 @@ async function handle(request: Request) {
   const videoAgent = await step("video_agent", () => runVideoAgentTick(new Date()), "Agent Vidéo différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, whatsappExports, harnessControl, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, whatsappExports, harnessControl, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

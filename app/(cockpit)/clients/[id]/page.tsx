@@ -15,6 +15,7 @@ import { parseFilters } from "@/lib/integrations/google-ads/dashboard";
 import { ANALYSIS_ENGINE_NOTE, loadCampaignDashboard } from "@/lib/integrations/google-ads/service";
 import { loadGoogleAdsDashboardAction, prepareGoogleAdsReportAction, runGoogleAdsScopeAnalysisAction, runGoogleAdsScopeAIAnalysisAction } from "@/app/(cockpit)/clients/[id]/google-ads-actions";
 import { ClientSourcesPanel } from "@/components/clients/client-sources-panel";
+import { readGa4Connection } from "@/lib/integrations/ga4/connection";
 import { ClientHealthPanel } from "@/components/clients/client-health-panel";
 import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
@@ -105,6 +106,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
   const searchConsoleProperties = tab === "agents" ? (await safeRead("search-console-properties", async () => {
     const connection = await readSearchConsoleConnection();
+    return connection?.status === "active" ? connection.properties : null;
+  }, null)).data : null;
+  const ga4Properties = tab === "agents" ? (await safeRead("ga4-properties", async () => {
+    const connection = await readGa4Connection();
     return connection?.status === "active" ? connection.properties : null;
   }, null)).data : null;
   const health = tab === "health"
@@ -224,7 +229,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
             <ClientAiBudgetPanel clientId={client.id} budget={aiBudget} claude={claudeRouting} anthropicConfigured={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />
-            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} /></div>
+            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} ga4Properties={ga4Properties} /></div>
           </>
         );
       })()}

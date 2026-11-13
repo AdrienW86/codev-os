@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { PerformanceAgentPanel } from "./performance-ai-panel";
 
 type Client = { id: string; name: string; website: string | null };
 type Scores = { performance: number | null; seo: number | null; accessibility: number | null; bestPractices: number | null };
 type Report = {
-  url: string; strategy: "mobile" | "desktop"; analyzedAt: string; saved: boolean;
+  url: string; strategy: "mobile" | "desktop"; analyzedAt: string; saved: boolean; auditId: string | null;
   scores: Scores;
   lab: Record<"lcp" | "fcp" | "cls" | "tbt" | "speedIndex", { display: string }>;
   field: { lcpMs: number | null; inpMs: number | null; cls: number | null; scope: string };
@@ -33,10 +34,11 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [report, setReport] = useState<Report | null>(null);
+  const [agentAuditId, setAgentAuditId] = useState<string | null>(null);
   async function analyze(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
-    setLoading(true); setError(""); setReport(null);
+    setLoading(true); setError(""); setReport(null); setAgentAuditId(null);
     try {
       const response = await fetch("/api/performance", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -45,6 +47,7 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Analyse indisponible.");
       setReport(data as Report);
+      setAgentAuditId(data.saved ? data.auditId ?? null : null);
       router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : "Une erreur s'est produite."); }
     finally { setLoading(false); }
@@ -104,14 +107,15 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
         <li className="py-3" key={item.id}><p className="font-medium">{item.title}</p>{item.savingsMs != null && <p className="mt-1 text-xs text-accent">Économie potentielle : {(item.savingsMs / 1000).toFixed(2)} s</p>}<p className="mt-1 text-sm text-muted">{item.description}</p></li>
       ) : <li className="py-4 text-sm text-muted">Aucune optimisation majeure signalée par ce test.</li>}</ul>
     </section>}
+    <PerformanceAgentPanel key={agentAuditId ?? "no-audit"} auditId={agentAuditId} />
     <section className="rounded-2xl border border-border bg-surface p-5 sm:p-7">
       <h2 className="text-lg font-semibold">Historique des analyses</h2>
       <p className="mt-1 text-sm text-muted">Les 30 derniers audits conservés dans CODE-V OS, pour comparer les performances dans le temps.</p>
       {history === null ? <p className="mt-5 rounded-lg bg-surface-raised p-4 text-sm text-muted">Historique indisponible. Appliquer la migration performance_audits dans Supabase.</p>
       : history.length === 0 ? <p className="mt-5 text-sm text-muted">Aucun audit enregistré.</p>
-      : <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border text-muted"><th className="px-2 py-3">Date</th><th className="px-2 py-3">Site</th><th className="px-2 py-3">Client</th><th className="px-2 py-3">Appareil</th><th className="px-2 py-3">Performance</th></tr></thead><tbody>{history.map(item => {
+      : <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border text-muted"><th className="px-2 py-3">Date</th><th className="px-2 py-3">Site</th><th className="px-2 py-3">Client</th><th className="px-2 py-3">Appareil</th><th className="px-2 py-3">Performance</th><th className="px-2 py-3">Agent</th></tr></thead><tbody>{history.map(item => {
         const scores = item.scores as Partial<Scores> | null;
-        return <tr key={item.id} className="border-b border-border/60"><td className="whitespace-nowrap px-2 py-3">{new Date(item.analyzed_at).toLocaleDateString("fr-FR")}</td><td className="max-w-56 truncate px-2 py-3" title={item.url}>{host(item.url)}</td><td className="px-2 py-3">{clients.find(c => c.id === item.client_id)?.name || "—"}</td><td className="px-2 py-3">{item.strategy}</td><td className={"px-2 py-3 font-semibold " + scoreColor(scores?.performance)}>{scores?.performance ?? "—"}</td></tr>;
+        return <tr key={item.id} className="border-b border-border/60"><td className="whitespace-nowrap px-2 py-3">{new Date(item.analyzed_at).toLocaleDateString("fr-FR")}</td><td className="max-w-56 truncate px-2 py-3" title={item.url}>{host(item.url)}</td><td className="px-2 py-3">{clients.find(c => c.id === item.client_id)?.name || "—"}</td><td className="px-2 py-3">{item.strategy}</td><td className={"px-2 py-3 font-semibold " + scoreColor(scores?.performance)}>{scores?.performance ?? "—"}</td><td className="px-2 py-3"><button type="button" className="text-accent underline hover:no-underline" onClick={() => setAgentAuditId(item.id)}>Interpréter</button></td></tr>;
       })}</tbody></table></div>}
     </section>
     <p className="text-xs text-muted">Les résultats varient selon les conditions de test. Les audits sont en lecture seule et les recommandations ne sont jamais appliquées automatiquement.</p>

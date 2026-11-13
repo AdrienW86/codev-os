@@ -6,13 +6,14 @@ import type { ClientSource } from "@/lib/connections/service";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { saveClientSourceAction } from "@/app/(cockpit)/clients/[id]/source-actions";
 import { propertyLabel, type DiscoveredProperty } from "@/lib/integrations/search-console/model";
+import type { Ga4Property } from "@/lib/integrations/ga4/model";
 
 const field = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
 
 /** Identifiants des sources de données du client (aucun secret saisi ni affiché). */
-export function ClientSourcesPanel({ clientId, sources, unavailable, searchConsoleProperties = null }: { clientId: string; sources: ClientSource[]; unavailable: boolean;
+export function ClientSourcesPanel({ clientId, sources, unavailable, searchConsoleProperties = null, ga4Properties = null }: { clientId: string; sources: ClientSource[]; unavailable: boolean;
   /** Propriétés du compte Google connecté (null : Search Console non connecté → saisie libre). */
-  searchConsoleProperties?: DiscoveredProperty[] | null }) {
+  searchConsoleProperties?: DiscoveredProperty[] | null; ga4Properties?: Ga4Property[] | null }) {
   return (
     <Panel className="p-6">
       <h2 className="font-semibold">Sources de données</h2>
@@ -21,8 +22,10 @@ export function ClientSourcesPanel({ clientId, sources, unavailable, searchConso
         <ul className="mt-4 grid gap-5 md:grid-cols-3">
           {sourceDefinitions.map((definition) => {
             const source = sources.find((item) => item.provider === definition.provider);
-            const ready = definition.provider === "search-console" ? searchConsoleProperties !== null || isProviderConfigured(definition.provider) : isProviderConfigured(definition.provider);
+            const ready = definition.provider === "search-console" ? searchConsoleProperties !== null || isProviderConfigured(definition.provider)
+              : definition.provider === "google-analytics" ? ga4Properties !== null : isProviderConfigured(definition.provider);
             const choices = definition.provider === "search-console" && searchConsoleProperties?.length ? searchConsoleProperties : null;
+            const ga4Choices = definition.provider === "google-analytics" && ga4Properties?.length ? ga4Properties : null;
             return (
               <li key={definition.provider} className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -32,7 +35,11 @@ export function ClientSourcesPanel({ clientId, sources, unavailable, searchConso
                 <p className="mt-1 text-xs text-muted">{definition.help} Utilisé par {definition.agent}.</p>
                 <MutationForm action={saveClientSourceAction} fields={{ client_id: clientId, provider: definition.provider }} label="Enregistrer" className="mt-2 space-y-2">
                   <label className="block text-xs text-muted">{definition.label}
-                    {choices ? (
+                    {ga4Choices ? <select name="value" defaultValue={source?.value ?? ""} className={field}>
+                      <option value="">— Aucune propriété GA4 —</option>
+                      {source?.value && !ga4Choices.some((item) => item.id === source.value) && <option value={source.value}>{source.value} (hors des propriétés accessibles)</option>}
+                      {ga4Choices.map(item => <option key={item.id} value={item.id}>{item.name} ({item.id})</option>)}
+                    </select> : choices ? (
                       <select name="value" defaultValue={source?.value ?? ""} className={field}>
                         <option value="">— Aucune propriété —</option>
                         {source?.value && !choices.some((item) => item.property === source.value) && <option value={source.value}>{propertyLabel(source.value)} (inaccessible avec le compte connecté)</option>}

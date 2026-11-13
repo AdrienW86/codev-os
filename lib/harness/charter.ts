@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection" | "newsletter"
+  | "prospection" | "newsletter" | "copywriter"
   | "veille";
 
 export type HarnessCharter = {
@@ -139,6 +139,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Brouillon de newsletter (objet, pré-en-tête, rubriques, appel à l’action)", "Contrôle anti-invention et note de qualité", "Envoi par lots après approbation"],
     never: ["N’envoie rien sans approbation explicite", "N’écrit qu’aux contacts consentants hors liste d’exclusion", "N’invente aucun prix, délai, garantie ou chantier"],
     triggers: [{ kind: "manual" }], clientSettings: "Newsletters → client",
+  },
+  {
+    id: "copywriter", name: "Agent Copywriter", team: "contenu", expertise: "Copywriter senior (rédaction commerciale et éditoriale)",
+    mission: "Rendre les textes du client clairs, naturels et fidèles à sa voix : relecture de style des agents rédacteurs et réécriture à la demande.",
+    does: ["Note de naturel des articles, newsletters et publications (formules toutes faites, rythme, ton)", "Consignes de style communes aux agents rédacteurs", "Réécriture à la demande d’un texte commercial, avec contrôle anti-invention"],
+    never: ["N’ajoute aucun fait, chiffre, promesse, adresse ou coordonnée absents du texte d’origine et des faits du client", "Ne publie ni n’envoie aucun texte", "Ne promet jamais qu’un texte échappera aux détecteurs d’IA"],
+    triggers: [{ kind: "manual" }], clientSettings: "Fiche client → Consignes de communication",
   },
   {
     id: "veille", name: "Agent Veille", team: "veille", expertise: "Analyste veille tech et marketing", registryType: "veille",

@@ -2,7 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { withCharter } from "@/lib/harness/charter";
-import { structuredResponse } from "@/lib/integrations/publications-openai";
+import { structuredResponse, withAiScope, isBudgetExceeded } from "@/lib/ai/metered";
+import { STYLE_GOOD_SCORE, addressFromGuidelines, auditStyle, styleFeedback, type StyleAudit } from "@/lib/copywriter/style";
 import { oauthBaseUrl } from "@/lib/integrations/publications-oauth/config";
 import { clientBrandContext } from "@/lib/visual-agent/service";
 import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-agent/model";
@@ -11,7 +12,7 @@ import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { UNSUBSCRIBE_PATH, isBlockedBy, normalizeEmail, unsubscribeHeaders, unsubscribeToken } from "./policy";
 import {
-  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, renderNewsletter, sourceFacts,
+  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, newsletterProse, renderNewsletter, sourceFacts,
   type NewsletterContent, type NewsletterSource,
 } from "./newsletter";
 import { parseContactLines, type ConsentBasis } from "./contacts";
@@ -26,7 +27,8 @@ export const SEND_BATCH = 100;
 type Outcome = { ok: boolean; message: string };
 export type NewsletterRow = {
   id: string; client_id: string; status: "draft" | "approved" | "sending" | "sent" | "cancelled"; subject: string; preheader: string;
-  content: NewsletterContent; sources: NewsletterSource[]; audit: { score?: number; words?: number; issues?: { level: string; code: string; message: string }[] };
+  content: NewsletterContent; sources: NewsletterSource[];
+  audit: { score?: number; words?: number; issues?: { level: string; code: string; message: string }[]; style?: Pick<StyleAudit, "score" | "issues"> };
   sent_count: number; failed_count: number; skipped_count: number; approved_at: string | null; sent_at: string | null; created_at: string;
 };
 const COLUMNS = "id,client_id,status,subject,preheader,content,sources,audit,sent_count,failed_count,skipped_count,approved_at,sent_at,created_at";
@@ -34,7 +36,7 @@ const COLUMNS = "id,client_id,status,subject,preheader,content,sources,audit,sen
 export type NewsletterView = { ready: boolean; newsletters: NewsletterRow[]; contacts: { subscribed: number; other: number }; sources: NewsletterSource[]; sending: { enabled: boolean; reason: string | null } };
 
 /** Faits citables : articles publiés (90 jours, adresse publique), prestations confirmées, profil. */
-async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; site: string | null }> {
+async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; site: string | null; guidelines: string }> {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
   const [ctx, agent, articles, client] = await Promise.all([
     clientBrandContext(clientId),
@@ -50,7 +52,7 @@ async function gatherSources(clientId: string): Promise<{ sources: NewsletterSou
     })),
     ...ctx.services.slice(0, 8).map((s) => ({ kind: "service" as const, title: s, summary: `Prestation proposée par ${ctx.client.name}.`, url: null })),
   ];
-  return { sources, client: ctx.client, facts: ctx.facts, site };
+  return { sources, client: ctx.client, facts: ctx.facts, site, guidelines: ctx.guidelines };
 }
 
 export async function getNewsletterView(clientId: string): Promise<NewsletterView> {
@@ -69,17 +71,27 @@ export async function getNewsletterView(clientId: string): Promise<NewsletterVie
   };
 }
 
-/** Rédige un brouillon (deux essais au plus, le second avec le motif du refus). Aucun envoi. */
+/**
+ * Rédige un brouillon, deux essais au plus : le second reçoit le motif du refus, ou les remarques de qualité et de
+ * style (Copywriter) quand le premier brouillon accepté est sous 80 ou sous 75 ; le meilleur brouillon accepté est
+ * gardé. Appels IA comptés dans le budget du client. Aucun envoi.
+ */
 export async function generateNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
   if (!process.env.OPENAI_API_KEY) return { ok: false, message: "IA non configurée (OPENAI_API_KEY) : rédaction impossible." };
-  const { sources, client, facts, site } = await gatherSources(clientId);
+  return withAiScope({ agent: "newsletter", clientId }, () => draftNewsletter(actor, clientId));
+}
+
+type Draft = { content: NewsletterContent; audit: ReturnType<typeof auditNewsletter>; style: StyleAudit };
+async function draftNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
+  const { sources, client, facts, site, guidelines } = await gatherSources(clientId);
   if (!sources.length) return { ok: false, message: "Aucun fait à raconter : publiez un article ou confirmez des prestations du client d'abord." };
   const allowedUrls = [...sources.map((s) => s.url).filter((u): u is string => Boolean(u)), ...(site ? [site] : [])];
   const allFacts = sourceFacts(sources, client, facts);
+  const address = addressFromGuidelines(guidelines);
   const previous = await db().from("email_newsletters").select("subject").eq("client_id", clientId).order("created_at", { ascending: false }).limit(12);
   if (previous.error) return { ok: false, message: "Migration Newsletters non appliquée." };
-  let feedback: string | null = null;
+  let feedback: string | null = null, best: Draft | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     let value: unknown;
     try {
@@ -88,18 +100,26 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
         sources, site_url: site, facts_untrusted: facts.slice(0, 4000), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
       }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000 }));
-    } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
+    } catch (error) {
+      if (best) break;
+      return { ok: false, message: isBudgetExceeded(error) ? "Plafond IA du mois atteint pour ce client (réglage sur la fiche client → Agents)." : "Rédaction indisponible (IA). Réessayez plus tard." };
+    }
     const checked = checkNewsletter(value, { facts: allFacts, allowedUrls });
     if (!checked.ok) { feedback = checked.reason; continue; }
     const audit = auditNewsletter(checked.content);
-    const { data, error } = await db().from("email_newsletters").insert({
-      client_id: clientId, subject: checked.content.subject, preheader: checked.content.preheader, content: checked.content, sources, audit, created_by: actor.userId,
-    }).select("id").single();
-    if (error || !data) return { ok: false, message: "Enregistrement du brouillon impossible." };
-    await writeAudit(actor, { action: "newsletter.drafted", resource_type: "email_newsletter", resource_id: data.id, metadata: { client_id: clientId, score: audit.score } });
-    return { ok: true, message: `Brouillon rédigé (qualité ${audit.score}/100). Relisez-le avant de l'approuver.` };
+    const style = auditStyle(newsletterProse(checked.content), { address });
+    if (!best || audit.score + style.score > best.audit.score + best.style.score) best = { content: checked.content, audit, style };
+    if (audit.score >= 80 && style.score >= STYLE_GOOD_SCORE) break;
+    feedback = [audit.score < 80 ? `note de qualité ${audit.score}/100 ; à corriger : ${audit.issues.map((i) => i.message).join(" ")}` : "", style.score < STYLE_GOOD_SCORE ? styleFeedback(style) : ""].filter(Boolean).join(" ; ");
   }
-  return { ok: false, message: `Brouillon refusé par le contrôle anti-invention (${feedback}). Aucun texte n'a été enregistré.` };
+  if (!best) return { ok: false, message: `Brouillon refusé par le contrôle anti-invention (${feedback}). Aucun texte n'a été enregistré.` };
+  const { content, audit, style } = best;
+  const { data, error } = await db().from("email_newsletters").insert({
+    client_id: clientId, subject: content.subject, preheader: content.preheader, content, sources, audit: { ...audit, style: { score: style.score, issues: style.issues } }, created_by: actor.userId,
+  }).select("id").single();
+  if (error || !data) return { ok: false, message: "Enregistrement du brouillon impossible." };
+  await writeAudit(actor, { action: "newsletter.drafted", resource_type: "email_newsletter", resource_id: data.id, metadata: { client_id: clientId, score: audit.score, style_score: style.score } });
+  return { ok: true, message: `Brouillon rédigé (qualité ${audit.score}/100, naturel ${style.score}/100). Relisez-le avant de l'approuver.` };
 }
 
 async function readNewsletter(id: string): Promise<NewsletterRow | null> {

@@ -1,6 +1,7 @@
 // Agent Newsletter (pur, testable) : consignes d'expert, schéma de sortie, contrôle anti-invention, contrôle qualité
 // (délivrabilité et lisibilité) et rendu HTML/texte sûr d'une newsletter de client.
 import { unsupportedClaims } from "@/lib/publications/agent-v2/selection";
+import { COPY_STYLE_RULES } from "@/lib/copywriter/style";
 
 export type NewsletterSection = { title: string; body: string; url: string | null };
 export type NewsletterContent = {
@@ -21,7 +22,8 @@ Méthode d'expert :
 - 1 à 3 rubriques courtes (titre + 2 à 4 phrases). Une rubrique qui reprend un article met son adresse exacte dans url, sinon url = null.
 - Un seul appel à l'action, vers une adresse fournie (article ou site), ou null s'il n'y en a pas.
 - 150 à 300 mots au total, phrases courtes, lisibles sur mobile.
-Interdits : n'invente aucun prix, pourcentage, promotion, garantie, certification, délai, avis, nombre de clients ou chantier réalisé ; n'utilise que les adresses fournies ; aucun HTML ni markdown ; aucune mention de l'IA.`;
+Interdits : n'invente aucun prix, pourcentage, promotion, garantie, certification, délai, avis, nombre de clients ou chantier réalisé ; n'utilise que les adresses fournies ; aucun HTML ni markdown ; aucune mention de l'IA.
+${COPY_STYLE_RULES}`;
 
 const nullableString = { type: ["string", "null"] };
 export const NEWSLETTER_SCHEMA = {
@@ -37,6 +39,8 @@ export const NEWSLETTER_SCHEMA = {
 const clean = (v: unknown, max: number) => typeof v === "string" ? v.replace(/[<>]/g, "").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim().slice(0, max) : "";
 const MARKUP = /<[a-z!/]|\]\(|\*\*|^#{1,6}\s/im;
 export const wordCount = (text: string) => text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+/** Texte relu par le Copywriter : pré-en-tête, introduction, rubriques et signature (l'objet suit ses propres règles). */
+export const newsletterProse = (c: NewsletterContent) => [c.preheader, c.intro, ...c.sections.map((s) => s.body), c.signoff].join("\n\n");
 export const contentText = (c: NewsletterContent) => [c.intro, ...c.sections.flatMap((s) => [s.title, s.body]), c.cta?.label ?? "", c.signoff].join("\n");
 
 /** Faits autorisés (texte) pour le contrôle anti-invention. */

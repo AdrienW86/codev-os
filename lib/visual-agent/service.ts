@@ -23,7 +23,8 @@ const BUCKET='brand-assets',UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const log=(step:string,code?:string)=>console.error('[visual-agent]',{step,...(code?{code}:{})});
 export type VisualAgentView={settings:VisualAgentSettings;items:(VisualItem&{subline:string|null;drive_file_id:string|null;trigger:string})[];services:string[];folderReady:boolean;logoPreview:string|null};
 
-export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null};
+/** guidelines : consignes de communication du client (ton, tutoiement…), utilisées par le Copywriter ; déjà incluses dans facts. */
+export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null;guidelines:string};
 type Context=ClientBrandContext;
 /** Faits vérifiés du client (nom, activité, zone, prestations, consignes) : partagés avec l'Agent Vidéo. */
 export async function clientBrandContext(clientId:string):Promise<ClientBrandContext>{return context(clientId);}
@@ -44,7 +45,7 @@ async function context(clientId:string):Promise<Context>{
  const str=(v:unknown)=>typeof v==='string'?v:'';
  const facts=[c.name,c.activity??'',zone??'',...services,str(p.activity_summary),str(p.communication_guidelines),str(st.editorial_brief),...rows.map(r=>r.editorial_rules??'')].join('\n');
  // Dossier de dépôt : celui des envois WhatsApp (déjà accessible à l'application), sinon celui de la photothèque de l'agent.
- return {client:{name:c.name,activity:c.activity??null,zone},services,facts,folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
+ return {client:{name:c.name,activity:c.activity??null,zone},services,facts,guidelines:str(p.communication_guidelines).trim().slice(0,2000),folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
 }
 async function readSettings(clientId:string){
  const [row,items]=await Promise.all([db().from('client_visual_agents').select('*').eq('client_id',clientId).maybeSingle(),

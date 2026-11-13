@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { getBlogArticle } from "@/lib/blog-agent/service";
 import { CTA_SENTENCE, RELAY_LABELS, RELAY_PLATFORMS, articleUrl, readingMinutes, renderMarkdown } from "@/lib/blog-agent/model";
 import { auditBlogArticle } from "@/lib/blog-agent/seo";
+import { STYLE_GOOD_SCORE, auditStyle } from "@/lib/copywriter/style";
 import { BlogArticleEditor, BlogArticleQuickActions } from "@/components/blog/blog-article-actions";
 
 export const metadata = { title: "Article de blog" };
@@ -21,6 +22,9 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ id
   const { article: a, settings, clientName, imageUrl, seo } = view;
   const audit = auditBlogArticle({ title: a.title, metaDescription: a.meta_description, bodyMarkdown: a.body_markdown }, { keyword: seo.keyword, zone: seo.zone });
   const tone = audit.score >= 80 ? "text-success" : audit.score >= 60 ? "text-warning" : "text-danger";
+  // Relecture du Copywriter : chapô, corps et résumés (le titre et la meta description relèvent de la note SEO).
+  const style = auditStyle([a.excerpt, a.body_markdown, ...Object.values(a.social ?? {})].join("\n\n"));
+  const styleTone = style.score >= STYLE_GOOD_SCORE ? "text-success" : style.score >= 55 ? "text-warning" : "text-danger";
   const live = a.status === "published" && settings.siteUrl ? articleUrl(settings.siteUrl, settings.blogPath, a.slug) : null;
   return <div className="space-y-6">
     <div>
@@ -39,6 +43,9 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ id
       <p><span className={`font-semibold ${tone}`}>Note SEO {audit.score}/100</span> <span className="text-muted">· {audit.words} mots · expression visée : « {audit.keyword} »{seo.targetQuery ? " (recherche réelle lue dans Search Console)" : ""}</span></p>
       {audit.issues.length > 0 ? <ul className="mt-2 space-y-1">{audit.issues.map((i) => <li key={i.code} className={i.level === "warning" ? "text-warning" : "text-muted"}>{i.message}</li>)}</ul>
         : <p className="mt-2 text-muted">Titre, meta description, structure et lisibilité conformes.</p>}
+      <p data-blog-style className="mt-4"><span className={`font-semibold ${styleTone}`}>Naturel {style.score}/100</span> <span className="text-muted">· relecture de style de l’Agent Copywriter</span></p>
+      {style.issues.length > 0 ? <ul className="mt-2 space-y-1">{style.issues.map((i) => <li key={i.code} className={i.level === "warning" ? "text-warning" : "text-muted"}>{i.message}</li>)}</ul>
+        : <p className="mt-2 text-muted">Ni formule toute faite, ni tic d’écriture repéré.</p>}
     </section>
     <BlogArticleQuickActions id={a.id} scheduled={a.status === "scheduled"} />
     <article className="overflow-hidden rounded-2xl border border-border bg-surface">

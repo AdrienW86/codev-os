@@ -13,7 +13,7 @@
 - Variables Supabase actuelles inchangées.
 
 ## Schéma SQL
-Appliquer **après fusion** la migration supabase/migrations/20261113000000_performance_audits.sql dans l'environnement ciblé. La table active RLS, retire les droits anon/authenticated et donne l'accès exclusivement au service_role server-only. Sans migration, les audits restent affichables mais ne peuvent pas être archivés, et la page indique que l'historique est indisponible.
+Appliquer **après fusion** la migration supabase/migrations/20261205010000_performance_audits.sql dans l'environnement ciblé. La table active RLS, retire les droits anon/authenticated et donne l'accès exclusivement au service_role server-only. Sans migration, les audits restent affichables mais ne peuvent pas être archivés, et la page indique que l'historique est indisponible.
 
 ## Non inclus dans cette première version
 - Exécutions planifiées par client, alertes de baisse de score, baseline/compensation, rapport PDF serveur, suggestions IA et création de missions automatiquement.

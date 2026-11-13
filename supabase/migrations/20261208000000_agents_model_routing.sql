@@ -82,3 +82,14 @@ begin
  insert into public.publication_events(actor_type,actor_id,action,client_id,resource_type,resource_id,metadata)
  values('admin',p_actor_id,'publication.agent_v2_failed',r.client_id,'project',r.project_id,jsonb_build_object('run_id',r.id,'project_id',r.project_id,'code',p_error_code));
 end $$;
+
+-- Activation de Claude client par client (fiche client → Agents). Sans ligne, ou case décochée : OpenAI comme avant.
+create table if not exists public.client_ai_settings(
+ client_id uuid primary key references public.clients(id) on delete cascade,
+ claude_enabled boolean not null default false,
+ updated_by text check(updated_by is null or updated_by ~ '^user_[a-zA-Z0-9_-]{1,200}$'),
+ updated_at timestamptz not null default now()
+);
+alter table public.client_ai_settings enable row level security;
+revoke all on public.client_ai_settings from public, anon, authenticated;
+grant select, insert, update on public.client_ai_settings to service_role;

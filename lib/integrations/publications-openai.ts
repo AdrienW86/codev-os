@@ -4,12 +4,14 @@ import 'server-only';
 // Les clés restent côté serveur ; aucune n'est journalisée ni renvoyée.
 import type {Usage} from '@/lib/publications/ai/provider';
 import {estimateCallCostEur} from '@/lib/ai/budget';
+import {claudeEnabledFor} from '@/lib/ai/client-routing';
 import {anthropicMessages,anthropicSchema,modelForAgent,OPENAI_AGENT_MODEL,type ModelChoice} from '@/lib/ai/models';
 export const PUBLICATIONS_MODEL=OPENAI_AGENT_MODEL;
-export type StructuredOptions={maxOutputTokens?:number;timeoutMs?:number;/** Agent du harness : choisit la famille de modèle. Absent : parcours OpenAI historique. */agent?:string};
+export type StructuredOptions={maxOutputTokens?:number;timeoutMs?:number;/** Agent du harness : choisit la famille de modèle. Absent : parcours OpenAI historique. */agent?:string;
+ /** Client concerné : Claude seulement s'il est activé pour lui (fiche client → Agents). */clientId?:string};
 const MAX_INPUT_TOKENS=80000;
 export async function structuredResponse(instructions:string,input:unknown,schema:unknown,options:StructuredOptions={}):Promise<{value:unknown;usage:Usage}>{
- const choice=modelForAgent(options.agent,process.env);
+ const choice=modelForAgent(options.agent,process.env,{claudeAllowed:options.agent?await claudeEnabledFor(options.clientId):false});
  return choice.provider==='anthropic'?anthropicStructured(choice,instructions,input,schema,options):openaiStructured(instructions,input,schema,options,choice.model);
 }
 function parsed(text:string,usage:Usage){let value:unknown;try{value=JSON.parse(text);}catch{throw Object.assign(Error('AI invalid output'),{usage});}return {value,usage};}

@@ -8,6 +8,9 @@ import { structuredResponse as rawStructuredResponse, type StructuredOptions } f
 import type { HarnessAgentId } from "@/lib/harness/charter";
 import { budgetOf, estimateCallCostEur, monthStart, parseCap, type Budget, type SpendLine } from "./budget";
 import type { AIProvider } from "./types";
+import { claudeEnabledFor } from "./client-routing";
+import { modelForAgent } from "./models";
+import { createAnthropicProvider } from "./providers";
 
 type Scope = { agent: HarnessAgentId; clientId: string };
 type Usage = { input_tokens: number; output_tokens: number; estimated_cost_eur: number; model: string };
@@ -59,7 +62,7 @@ async function record(scope: Scope, usage: Usage | undefined) {
 export async function structuredResponse(instructions: string, input: unknown, schema: unknown, options: StructuredOptions = {}) {
   const scope = scopes.getStore();
   // L'agent du périmètre choisit le modèle (famille rédaction, vision…) quand l'appelant ne le précise pas.
-  if (!options.agent && scope) options = { ...options, agent: scope.agent };
+  if (scope) options = { ...options, agent: options.agent ?? scope.agent, clientId: options.clientId ?? scope.clientId };
   if (scope) {
     const budget = await clientAiBudget(scope.clientId);
     if (budget && !budget.allowed) throw Object.assign(new Error(AI_BUDGET_EXCEEDED), { retryable: false });
@@ -90,14 +93,24 @@ export function meteredProvider(provider: AIProvider | null): AIProvider | null 
         const budget = await clientAiBudget(scope.clientId);
         if (budget && !budget.allowed) throw Object.assign(new Error(AI_BUDGET_EXCEEDED), { retryable: false });
       }
-      const response = await provider.complete(input);
+      // Client activé sur Claude (fiche client → Agents) : même appel, sur le modèle Claude de la famille de l'agent.
+      const used = scope ? await claudeProviderFor(scope, provider) : provider;
+      const response = await used.complete(input);
       if (scope && response.usage) {
         const { inputTokens, outputTokens } = response.usage;
-        await record(scope, { input_tokens: inputTokens, output_tokens: outputTokens, estimated_cost_eur: Math.min(1, estimateCallCostEur(provider.model, inputTokens, outputTokens)), model: provider.model.slice(0, 80) || "inconnu" });
+        await record(scope, { input_tokens: inputTokens, output_tokens: outputTokens, estimated_cost_eur: Math.min(1, estimateCallCostEur(used.model, inputTokens, outputTokens)), model: used.model.slice(0, 80) || "inconnu" });
       }
       return response;
     },
   };
+}
+
+async function claudeProviderFor(scope: Scope, provider: AIProvider): Promise<AIProvider> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key || process.env.AGENTS_AI_PROVIDER?.trim().toLowerCase() === "openai" || !(await claudeEnabledFor(scope.clientId))) return provider;
+  const choice = modelForAgent(scope.agent, process.env, { claudeAllowed: true });
+  if (choice.provider !== "anthropic" || (provider.id === "anthropic" && provider.model === choice.model)) return provider;
+  return createAnthropicProvider(key, choice.model);
 }
 
 /** Réglage du plafond mensuel du client (fiche client → Agents). */

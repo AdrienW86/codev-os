@@ -14,7 +14,7 @@ export type AgentMediaCandidate={id:string;categories:string[];description:strin
 // Une des dernières publications du projet : sujet, textes par plateforme et description de sa photo (anti-répétition).
 export type PreviousPublication={subject:string;texts:{platform:PublicationPlatform;text:string}[];media:string|null};
 // Everything the generator may receive: only facts actually stored (no fictitious fallback), no secret.
-export type AgentV2GeneratorInput={client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
+export type AgentV2GeneratorInput={/** Client (routage du modèle, jamais transmis au modèle). */clientId?:string;client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
  channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[];
  previousPublications?:PreviousPublication[];priorityTopics?:string[];
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).

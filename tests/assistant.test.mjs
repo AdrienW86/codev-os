@@ -205,7 +205,7 @@ test("adapters return billed tokens when the provider sends them, nothing invent
 test("provider selection: AI_PROVIDER preference, fallback to the other key, none → deterministic mode", () => {
   assert.equal(ai.selectAIProvider({}), null);
   assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a" }).id, "openai");
-  assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b" }).id, "anthropic", "sans préférence : Claude en priorité");
+  assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b" }).id, "openai", "sans préférence : OpenAI d'abord, Claude client par client");
   assert.equal(ai.selectAIProvider({ ANTHROPIC_API_KEY: "b" }).model, "claude-opus-5-5");
   assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b", AI_PROVIDER: "openai" }).id, "openai");
   assert.equal(ai.selectAIProvider({ ANTHROPIC_API_KEY: "b" }).id, "anthropic");

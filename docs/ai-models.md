@@ -1,9 +1,13 @@
 # Modèles IA par agent
 
 Chaque agent du harness appartient à une famille. Le modèle est choisi par famille dans `lib/ai/models.ts`, au
-moment de chaque appel, sans redéploiement autre qu'une variable d'environnement.
+moment de chaque appel.
 
-| Famille | Agents | Modèle (clé Anthropic présente) | Réflexion |
+**Activation client par client** : Claude ne sert que les clients cochés dans la fiche client → Agents → « Modèle des
+agents » (table `client_ai_settings`, lue avec un cache d'une minute, `lib/ai/client-routing.ts`). Les autres clients
+restent sur OpenAI. `AGENTS_AI_PROVIDER=anthropic` force Claude pour tous les clients.
+
+| Famille | Agents | Modèle (clé Anthropic + client activé) | Réflexion |
 |---|---|---|---|
 | Rédaction | Publications, Blog, Visuels, Vidéo, Newsletter, Copywriter | Claude Opus 5.5 | high |
 | Vision | Photothèque (observation des photos) | Claude Opus 5.5, image 1280 px | high |
@@ -14,8 +18,9 @@ Sans `ANTHROPIC_API_KEY`, tout reste sur OpenAI (`gpt-4.1-mini-2025-04-14`), com
 un agent (ancien parcours Publications v1) reste sur OpenAI tant que sa clé existe. La transcription vocale reste sur
 OpenAI.
 
-L'assistant serveur (`selectAIProvider` : Google Ads, conversation SEO, légende WhatsApp, assistant) prend Claude
-Opus 5.5 en priorité quand `AI_PROVIDER` n'est pas réglé. `AI_PROVIDER=openai` garde l'ancien comportement.
+L'assistant serveur (`selectAIProvider`) garde OpenAI d'abord ; les appels faits pour un client activé (analyse
+Google Ads, conversation SEO, légende WhatsApp) passent sur Claude via `meteredProvider`. L'assistant de l'interface,
+sans client, ne change pas (sauf `AI_PROVIDER=anthropic`).
 
 ## Réglages facultatifs (Vercel → Settings → Environment Variables)
 
@@ -43,7 +48,8 @@ Une valeur invalide est ignorée.
 ## Ordre de mise en service
 
 1. Appliquer la migration `20261208000000_agents_model_routing` (plafond d'une préparation Publications porté de
-   0,10 € à 2 €). Sans elle, une préparation rédigée par Claude est refusée à l'enregistrement.
+   0,10 € à 2 €, table `client_ai_settings`). Sans elle, aucun client ne passe sur Claude.
 2. Ajouter `ANTHROPIC_API_KEY` dans Vercel (Production), puis redéployer.
-3. Relever le plafond IA de chaque client (fiche client → Agents → Budget IA, 5 € par défaut, jusqu'à 200 €) et le
-   budget mensuel de l'Agent Publications.
+3. Fiche client → Agents → « Modèle des agents » : Claude Opus 5.5 pour les clients choisis.
+4. Relever les budgets de ces clients : plafond IA du client (Blog, Visuels, Vidéo, Google Ads, SEO ; migration
+   `20261206000000_ai_usage_budget` requise), budget mensuel de l'Agent Publications, budget IA de la Photothèque.

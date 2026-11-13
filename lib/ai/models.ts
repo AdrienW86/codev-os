@@ -1,6 +1,7 @@
 // Choix du modèle IA par agent (harness). Module pur : aucune lecture réseau, aucune clé renvoyée ni journalisée.
-// Chaque agent appartient à une famille (rédaction, vision, contrôle, stratégie). Clé Anthropic présente : la famille
-// tourne sur le modèle Claude recommandé (réglable par variable d'environnement) ; sinon, comportement d'avant (OpenAI).
+// Chaque agent appartient à une famille (rédaction, vision, contrôle, stratégie). Clé Anthropic présente et client
+// activé (fiche client → Agents) : la famille tourne sur le modèle Claude recommandé (réglable par variable
+// d'environnement) ; sinon, comportement d'avant (OpenAI).
 
 type Env = Record<string, string | undefined>;
 
@@ -35,12 +36,13 @@ const clean = (value: string | undefined) => value?.trim() || undefined;
 
 /**
  * Modèle d'un agent. Réglages facultatifs (Vercel → Environment Variables) :
- * - AGENTS_AI_PROVIDER=openai|anthropic : force un fournisseur pour tous les agents (par défaut : Anthropic si sa clé existe) ;
+ * - AGENTS_AI_PROVIDER=openai|anthropic : force un fournisseur pour tous les agents et tous les clients (par défaut : Claude
+ *   pour les seuls clients activés, claudeAllowed) ;
  * - AI_MODEL_WRITING / AI_MODEL_VISION / AI_MODEL_REVIEW / AI_MODEL_STRATEGY : autre modèle Claude pour une famille ;
  * - AI_EFFORT_<FAMILLE> : low | medium | high | xhigh | max.
  * Une valeur invalide est ignorée (jamais transmise au fournisseur).
  */
-export function modelForAgent(agent: string | undefined, env: Env = process.env): ModelChoice {
+export function modelForAgent(agent: string | undefined, env: Env = process.env, options: { claudeAllowed?: boolean } = {}): ModelChoice {
   const hasOpenAI = Boolean(clean(env.OPENAI_API_KEY)), hasAnthropic = Boolean(clean(env.ANTHROPIC_API_KEY));
   const forced = clean(env.AGENTS_AI_PROVIDER)?.toLowerCase();
   const family = agent ? agentFamilies[agent] : undefined;
@@ -62,7 +64,8 @@ export function modelForAgent(agent: string | undefined, env: Env = process.env)
   if (forced === "anthropic" && hasAnthropic) return anthropic();
   // Agent non rattaché à une famille : parcours historique inchangé tant qu'OpenAI est disponible.
   if (!family) return hasOpenAI || !hasAnthropic ? openai() : anthropic();
-  return hasAnthropic ? anthropic() : openai();
+  // Client non activé : OpenAI comme avant ; sans clé OpenAI, Claude plutôt qu'une panne.
+  return hasAnthropic && (options.claudeAllowed || !hasOpenAI) ? anthropic() : openai();
 }
 
 /** Modèles Claude qui refusent l'appel d'outil forcé (tool_choice any/tool → erreur 400) : « auto » à la place. */

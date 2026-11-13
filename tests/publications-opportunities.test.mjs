@@ -97,9 +97,9 @@ test('provider errors log a generic code and the exact failing stage, never the 
 test('Claude transport: chosen per agent, structured output without unsupported constraints, no temperature, served model metered, refusal and truncation fail closed',async()=>{
  const requests=[];let reply={model:'claude-opus-5-5',stop_reason:'end_turn',usage:{input_tokens:2000,output_tokens:1000,cache_read_input_tokens:0},content:[{type:'thinking',thinking:''},{type:'text',text:'{"fixture":true}'}]};
  const env={OPENAI_API_KEY:'openai-fixture',ANTHROPIC_API_KEY:'anthropic-fixture'};
- const adapter=load('lib/integrations/publications-openai.ts',{}, {process:{env},fetch:async(url,args)=>{requests.push({url,args});return {ok:true,json:async()=>reply};}});
+ const C='11111111-1111-4111-8111-111111111111';const adapter=load('lib/integrations/publications-openai.ts',{'@/lib/ai/client-routing':{claudeEnabledFor:async id=>id===C}}, {process:{env},fetch:async(url,args)=>{requests.push({url,args});return {ok:true,json:async()=>reply};}});
  const schema={type:'object',additionalProperties:false,required:['text'],properties:{text:{type:'string',maxLength:500}}};
- const r=await adapter.structuredResponse('Known instructions',[{role:'user',content:[{type:'input_text',text:'Photo 1'},{type:'input_image',image_url:'data:image/jpeg;base64,QUJD',detail:'low'}]}],schema,{agent:'media-library'});
+ const r=await adapter.structuredResponse('Known instructions',[{role:'user',content:[{type:'input_text',text:'Photo 1'},{type:'input_image',image_url:'data:image/jpeg;base64,QUJD',detail:'low'}]}],schema,{agent:'media-library',clientId:C});
  assert.equal(requests[0].url,'https://api.anthropic.com/v1/messages');
  const body=JSON.parse(requests[0].args.body);
  assert.equal(body.model,'claude-opus-5-5');assert.equal(body.temperature,undefined);assert.equal(body.system,'Known instructions');
@@ -108,6 +108,7 @@ test('Claude transport: chosen per agent, structured output without unsupported 
  assert.equal(requests[0].args.headers['x-api-key'],'anthropic-fixture');
  assert.equal(r.value.fixture,true);assert.equal(r.usage.model,'claude-opus-5-5');assert.equal(r.usage.estimated_cost_eur,.035,'(2000 × 4 $ + 1000 × 20 $) × 1,25 / 1 M');
  await adapter.structuredResponse('i','legacy',{type:'object'}).catch(()=>null);assert.equal(requests[1].url,'https://api.openai.com/v1/responses','appel non rattaché à un agent : parcours OpenAI inchangé');
- reply={...reply,stop_reason:'refusal'};await assert.rejects(()=>adapter.structuredResponse('i','x',{type:'object'},{agent:'blog'}),e=>e.message==='AI refused'&&e.usage.estimated_cost_eur>0);
- reply={...reply,stop_reason:'max_tokens'};await assert.rejects(()=>adapter.structuredResponse('i','x',{type:'object'},{agent:'blog'}),e=>e.message==='AI incomplete');
+ await adapter.structuredResponse('i','x',{type:'object'},{agent:'blog',clientId:'22222222-2222-4222-8222-222222222222'}).catch(()=>null);assert.equal(requests[2].url,'https://api.openai.com/v1/responses','client non activé : OpenAI comme avant');
+ reply={...reply,stop_reason:'refusal'};await assert.rejects(()=>adapter.structuredResponse('i','x',{type:'object'},{agent:'blog',clientId:C}),e=>e.message==='AI refused'&&e.usage.estimated_cost_eur>0);
+ reply={...reply,stop_reason:'max_tokens'};await assert.rejects(()=>adapter.structuredResponse('i','x',{type:'object'},{agent:'blog',clientId:C}),e=>e.message==='AI incomplete');
 });

@@ -50,6 +50,9 @@ function gateway({ usageRows = [], cap = null, missing = false, failRead = false
     "@/lib/supabase/server": { getSupabaseServerClient: () => db },
     "@/lib/integrations/publications-openai": { structuredResponse: raw },
     "./budget": budget,
+    "./client-routing": { claudeEnabledFor: async () => false },
+    "./models": loadTs("lib/ai/models.ts"),
+    "./providers": { createAnthropicProvider: () => { throw new Error("Claude must not be used for a client that is not enabled"); } },
   });
   return { metered, inserted };
 }

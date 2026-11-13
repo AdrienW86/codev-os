@@ -102,8 +102,8 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
 }
 
 /**
- * Choix du fournisseur : AI_PROVIDER=openai|anthropic s'il est configuré, sinon Anthropic (Claude Opus 5.5) en priorité,
- * puis OpenAI.
+ * Choix du fournisseur : AI_PROVIDER=openai|anthropic s'il est configuré, sinon le premier disponible (OpenAI d'abord).
+ * Les appels faits pour un client activé sur Claude passent sur Claude via meteredProvider (lib/ai/metered.ts).
  * `null` : aucun fournisseur → l'orchestrateur utilise l'analyseur d'intentions déterministe.
  */
 export function selectAIProvider(env: Env = process.env, fetchImpl?: FetchLike): AIProvider | null {
@@ -114,7 +114,7 @@ export function selectAIProvider(env: Env = process.env, fetchImpl?: FetchLike):
     ? (openai ? createOpenAIProvider(openai, env.ASSISTANT_OPENAI_MODEL?.trim() || "gpt-4.1-mini", fetchImpl) : null)
     : (anthropic ? createAnthropicProvider(anthropic, env.ASSISTANT_ANTHROPIC_MODEL?.trim() || ANTHROPIC_AGENT_MODEL, fetchImpl) : null);
   if (preferred === "openai" || preferred === "anthropic") return build(preferred) ?? build(preferred === "openai" ? "anthropic" : "openai");
-  return build("anthropic") ?? build("openai");
+  return build("openai") ?? build("anthropic");
 }
 
 export type { AIResponse, ChatMessage, ToolSpec, ToolResultMessage };

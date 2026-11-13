@@ -3,12 +3,13 @@
 // de la connexion Google Search Console), jamais dans les métadonnées d'une connexion.
 import { normalizeProperty } from "@/lib/integrations/search-console/model";
 
-export type SourceProvider = "search-console" | "vercel" | "github";
+export type SourceProvider = "search-console" | "google-analytics" | "vercel" | "github";
 
 export type SourceDefinition = { provider: SourceProvider; label: string; field: "property" | "project_id" | "repository"; placeholder: string; help: string; pattern: RegExp; agent: string };
 
 export const sourceDefinitions: SourceDefinition[] = [
   { provider: "search-console", label: "Search Console", field: "property", placeholder: "sc-domain:exemple.fr", help: "Propriété telle qu’affichée dans Search Console (domaine ou préfixe d’URL), parmi celles du compte Google connecté.", pattern: /^(sc-domain:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+|https?:\/\/[a-z0-9.-]+\.[a-z]{2,}\/(?:[^\s?#]*\/)?)$/i, agent: "Agent SEO & Site" },
+  { provider: "google-analytics", label: "Google Analytics 4", field: "property_id", placeholder: "564222159", help: "ID numérique de propriété GA4 du compte connecté, en lecture seule.", pattern: /^[1-9][0-9]{0,19}$/, agent: "Agents SEO, Google Ads et Rapports" },
   { provider: "vercel", label: "Vercel", field: "project_id", placeholder: "prj_… ou nom-du-projet", help: "Identifiant ou nom du projet Vercel : déploiements, Web Analytics et données agrégées utilisées dans les rapports.", pattern: /^[a-z0-9_.-]{1,100}$/i, agent: "Agents Monitoring Technique, SEO & Site et Rapport" },
   { provider: "github", label: "GitHub", field: "repository", placeholder: "organisation/depot", help: "Dépôt du site, lu en lecture seule pour le monitoring et le contexte SEO des pages.", pattern: /^[a-z0-9](?:[a-z0-9-]{0,38})\/[a-z0-9._-]{1,100}$/i, agent: "Agents Monitoring Technique et SEO & Site" },
 ];

@@ -53,8 +53,8 @@ export const agentCatalog: readonly AgentBlueprint[] = [
   },
   {
     id: "monitoring", name: "Agent Monitoring Technique", role: "Veille sur la disponibilité et la santé technique des sites.",
-    scope: "project", services: ["maintenance", "website"], readiness: "coming-soon", plannedAutonomy: 1,
-    capabilities: [{ label: "Disponibilité" }, { label: "PageSpeed / Lighthouse" }, { label: "Déploiements Vercel" }, { label: "Erreurs" }, { label: "Audit du code" }, { label: "Détection de régressions" }],
+    scope: "project", services: ["maintenance", "website"], readiness: "coming-soon", plannedAutonomy: 1, appHref: "/performance",
+    capabilities: [{ label: "Disponibilité" }, { label: "PageSpeed / Lighthouse", existsInApp: true }, { label: "Analyse IA des audits clients", existsInApp: true }, { label: "Déploiements Vercel" }, { label: "Erreurs" }, { label: "Audit du code" }, { label: "Détection de régressions" }],
     matches: nameHas(/monitoring|maintenance|technique/),
   },
   {

@@ -53,13 +53,15 @@ export async function POST(request: NextRequest) {
     return failure("Impossible de joindre CODE-V Performance.", 502);
   }
   let saved = false;
+  let auditId: string | null = null;
   try {
-    const { error } = await getSupabaseServerClient().from("performance_audits").insert({
+    const { data, error } = await getSupabaseServerClient().from("performance_audits").insert({
       client_id: clientId, url: report.url, strategy: report.strategy, source: report.source,
       scores: report.scores, lab: report.lab, field: report.field, opportunities: report.opportunities,
       analyzed_at: report.analyzedAt,
-    });
-    saved = !error;
+    }).select("id").single();
+    saved = !error && Boolean(data?.id);
+    auditId = saved ? data!.id : null;
   } catch { /* L'absence de migration n'empêche pas l'audit. */ }
-  return NextResponse.json({ ...report, saved }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ...report, saved, auditId }, { headers: { "Cache-Control": "no-store" } });
 }

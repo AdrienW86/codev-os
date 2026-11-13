@@ -10,7 +10,8 @@ export type OpenOccurrenceCandidate={occurrenceId:string;projectId:string;client
 // Never a file name, URL, storage path, Drive id, token or credential.
 // source : catalogue Drive de l'agent ou photothèque du client (socle lots 4-5) ; les deux passent par les mêmes RPC.
 // services (PR #42) : prestations vérifiées que la photo illustre d'après sa description (contexte non fiable, choix seulement).
-export type AgentMediaCandidate={id:string;categories:string[];description:string|null;used:boolean;source?:'catalog'|'library';services?:string[]};
+export type AgentMediaCandidate={id:string;categories:string[];description:string|null;used:boolean;source?:'catalog'|'library';services?:string[];
+ /** Fiche photo validée par un administrateur (lot 2) : seul énoncé citable sur le chantier de cette photo. */confirmedJob?:string};
 // Une des dernières publications du projet : sujet, textes par plateforme et description de sa photo (anti-répétition).
 export type PreviousPublication={subject:string;texts:{platform:PublicationPlatform;text:string}[];media:string|null};
 // Everything the generator may receive: only facts actually stored (no fictitious fallback), no secret.

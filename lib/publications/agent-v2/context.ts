@@ -2,6 +2,7 @@ import 'server-only';
 import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from '../validation';
+import {clientMemoryFor} from '@/lib/client-memory/service';
 import type {AgentMediaCandidate,AgentV2GeneratorInput,OpenOccurrenceCandidate,PreviousPublication} from './contract';
 import {libraryCandidates,type LibraryAssessment,type LibraryRow,type LibraryUse} from './library-pool';
 import type {PublicationPlatform} from '../types';
@@ -31,7 +32,7 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  const project=await db.from('projects').select('id,client_id,name').eq('id',projectId).maybeSingle();
  if(project.error||!project.data)throw new AgentV2ContextError('context_unavailable');
  const clientId=project.data.client_id;
- const [client,config,channels,settings,recent,profile,library,assessed,libraryUses]=await Promise.all([
+ const [client,config,channels,settings,recent,profile,library,assessed,libraryUses,memory]=await Promise.all([
   db.from('clients').select('name,activity,geographic_area').eq('id',clientId).maybeSingle(),
   db.from('publication_agent_projects').select('enabled,rights_confirmed,verified_services,editorial_rules,drive_folder_id').eq('project_id',projectId).eq('client_id',clientId).maybeSingle(),
   db.from('publication_project_channels').select('platform,enabled,editorial_rules').eq('project_id',projectId).eq('client_id',clientId),
@@ -40,7 +41,8 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   db.from('client_media_profiles').select('services,priority_topics,communication_guidelines').eq('client_id',clientId).maybeSingle(),
   db.from('whatsapp_assets').select('id,library_status,media_kind,mime_type,size,width,height,purged_at,imported_at,claimed_agent_v2_run_id,sha256').eq('client_id',clientId).eq('media_kind','image').order('imported_at',{ascending:false}).limit(300),
   db.from('whatsapp_asset_assessments').select('asset_id,verdict,confidential,sensitive,manual_verdict,description,topics,quality,quality_issues,business_relevance,publishability').eq('client_id',clientId),
-  db.from('whatsapp_asset_uses').select('asset_id,publication_id,used_at').eq('client_id',clientId)]);
+  db.from('whatsapp_asset_uses').select('asset_id,publication_id,used_at').eq('client_id',clientId),
+  clientMemoryFor(clientId,'publications')]);
  if(client.error||!client.data||config.error||channels.error||!channels.data||settings.error||recent.error||!recent.data||profile.error||library.error||assessed.error||libraryUses.error)throw new AgentV2ContextError('context_unavailable');
  if(!config.data?.enabled||!config.data.rights_confirmed)throw new AgentV2ContextError('agent_disabled');
  const strings=(v:unknown)=>Array.isArray(v)?v.filter((s):s is string=>typeof s==='string'&&s.trim()!=='').map(s=>s.trim()):[];
@@ -90,5 +92,6 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   rules:[config.data.editorial_rules,settings.data?.editorial_brief??'',profile.data?.communication_guidelines??''].map(r=>r.trim()).filter(Boolean).join('\n').slice(0,8000),
   channelRules:enabled.flatMap(c=>c.editorial_rules?.trim()?[{platform:c.platform,rules:c.editorial_rules.trim()}]:[]),
   occurrences:[...occurrences],media:candidates,previousSubjects:rows.map(p=>p.subject).filter((s):s is string=>Boolean(s)).slice(0,20),
-  previousPublications,priorityTopics,editorial:{history,plan}}};
+  previousPublications,priorityTopics,editorial:{history,plan},
+  ...(memory?.facts.length?{confirmedFacts:memory.facts.slice(0,80)}:{}),...(memory?.exclusions.length?{clientExclusions:memory.exclusions.slice(0,30)}:{})}};
 }

@@ -55,7 +55,7 @@ async function readAgent(clientId:string){
 export type BlogAgentView={settings:BlogAgentSettings;defaultSite:string|null;articles:BlogArticle[];services:string[];photoCount:number};
 export async function getBlogAgent(clientId:string):Promise<BlogAgentView>{
  if(!UUID.test(clientId))throw Error('Invalid client');
- const [{settings,articles},ctx,photos,client]=await Promise.all([readAgent(clientId),clientBrandContext(clientId),
+ const [{settings,articles},ctx,photos,client]=await Promise.all([readAgent(clientId),clientBrandContext(clientId,'blog'),
   publishablePhotos(clientId).catch(()=>({candidates:[]})),db().from('clients').select('website').eq('id',clientId).maybeSingle()]);
  return {settings,articles,services:ctx.services,photoCount:photos.candidates.length,defaultSite:normalizeSiteUrl((client.data as {website?:unknown}|null)?.website)};
 }
@@ -106,7 +106,7 @@ async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,p
  const keyword=target?.query??service;
  for(let attempt=0;attempt<3;attempt++){
   try{
-   const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,
+   const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,
     service,angle,...(target?{target_query_untrusted:target.query}:{}),photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);
@@ -150,7 +150,7 @@ export function generateBlogArticle(clientId:string,options:{trigger:'scheduled'
 async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'scheduled'|'manual';actorId?:string|null;now?:Date}):Promise<BlogResult>{
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const now=options.now??new Date();
- const [{settings,articles},ctx]=await Promise.all([readAgent(clientId),clientBrandContext(clientId)]);
+ const [{settings,articles},ctx]=await Promise.all([readAgent(clientId),clientBrandContext(clientId,'blog')]);
  if(!settings.siteUrl)return {ok:false,message:'Adresse du site du client manquante dans les réglages de l’Agent Blog.'};
  const service=nextBlogService(ctx.services,articles);
  if(!service)return {ok:false,message:'Aucune prestation confirmée : renseignez-les dans l’onglet Photothèque.'};
@@ -197,7 +197,7 @@ export async function updateBlogArticle(userId:string,id:string,form:FormData):P
  const social={...current.article.social};
  for(const p of RELAY_PLATFORMS){const v=form.get(`social_${p}`);if(typeof v==='string')social[p]=v.trim();}
  // Mêmes contrôles qu'à la rédaction, sauf le titre déjà employé (c'est le sien) ; les faits du client font foi.
- const ctx=await clientBrandContext(current.article.client_id);
+ const ctx=await clientBrandContext(current.article.client_id,'blog');
  const checked=checkArticle({title:form.get('title'),meta_description:form.get('meta_description'),excerpt:form.get('excerpt'),image_alt:form.get('image_alt')??current.article.image_alt,
   body_markdown:form.get('body_markdown'),social},ctx.facts,[]);
  if(!checked.ok)return {ok:false,message:`Modification refusée : ${checked.reason}.`};

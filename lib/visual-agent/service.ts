@@ -1,4 +1,5 @@
 import 'server-only';
+import {clientMemoryFor} from '@/lib/client-memory/service';
 import {createHash,randomUUID} from 'node:crypto';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {structuredResponse,withAiScope,isBudgetExceeded} from '@/lib/ai/metered';
@@ -23,16 +24,19 @@ const BUCKET='brand-assets',UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const log=(step:string,code?:string)=>console.error('[visual-agent]',{step,...(code?{code}:{})});
 export type VisualAgentView={settings:VisualAgentSettings;items:(VisualItem&{subline:string|null;drive_file_id:string|null;trigger:string})[];services:string[];folderReady:boolean;logoPreview:string|null};
 
-export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null};
+export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null;
+ /** Ce que le client ne veut jamais voir écrit (mémoire client, faits « À ne jamais dire »). */exclusions:string[]};
 type Context=ClientBrandContext;
 /** Faits vérifiés du client (nom, activité, zone, prestations, consignes) : partagés avec l'Agent Vidéo. */
-export async function clientBrandContext(clientId:string):Promise<ClientBrandContext>{return context(clientId);}
-async function context(clientId:string):Promise<Context>{
- const [client,profile,agents,settings]=await Promise.all([
+export async function clientBrandContext(clientId:string,agent='visual'):Promise<ClientBrandContext>{return context(clientId,agent);}
+async function context(clientId:string,agent='visual'):Promise<Context>{
+ const [client,profile,agents,settings,memory]=await Promise.all([
   db().from('clients').select('name,activity,geographic_area').eq('id',clientId).maybeSingle(),
   db().from('client_media_profiles').select('services,activity_summary,communication_guidelines').eq('client_id',clientId).maybeSingle(),
   db().from('publication_agent_projects').select('verified_services,editorial_rules,drive_folder_id,rights_confirmed').eq('client_id',clientId),
-  db().from('publication_client_settings').select('editorial_brief').eq('client_id',clientId).maybeSingle()]);
+  db().from('publication_client_settings').select('editorial_brief').eq('client_id',clientId).maybeSingle(),
+  // Mémoire client : faits confirmés de l'agent (null si non installée : contexte d'avant).
+  clientMemoryFor(clientId,agent)]);
  if(client.error||!client.data||agents.error)throw Error('context_unavailable');
  const c=client.data as {name:string;activity:string|null;geographic_area:string|null},p=(profile.data??{}) as Row,st=(settings.data??{}) as Row;
  const rows=(agents.data??[]) as {verified_services:unknown;editorial_rules:string|null;drive_folder_id:string|null;rights_confirmed:boolean}[];
@@ -42,9 +46,9 @@ async function context(clientId:string):Promise<Context>{
  const services=[...new Set([...rows.flatMap(r=>list(r.verified_services)),...list(p.services)])];
  const zone=typeof c.geographic_area==='string'&&c.geographic_area.trim()?c.geographic_area.trim():null;
  const str=(v:unknown)=>typeof v==='string'?v:'';
- const facts=[c.name,c.activity??'',zone??'',...services,str(p.activity_summary),str(p.communication_guidelines),str(st.editorial_brief),...rows.map(r=>r.editorial_rules??'')].join('\n');
+ const facts=[c.name,c.activity??'',zone??'',...services,str(p.activity_summary),str(p.communication_guidelines),str(st.editorial_brief),...rows.map(r=>r.editorial_rules??''),memory?.text??''].join('\n');
  // Dossier de dépôt : celui des envois WhatsApp (déjà accessible à l'application), sinon celui de la photothèque de l'agent.
- return {client:{name:c.name,activity:c.activity??null,zone},services,facts,folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
+ return {client:{name:c.name,activity:c.activity??null,zone},services,facts,exclusions:memory?.exclusions??[],folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
 }
 async function readSettings(clientId:string){
  const [row,items]=await Promise.all([db().from('client_visual_agents').select('*').eq('client_id',clientId).maybeSingle(),
@@ -106,7 +110,7 @@ async function writeCopy(ctx:Context,service:string,used:string[]):Promise<{head
  let feedback:string|null=null;
  for(let attempt=0;attempt<2;attempt++){
   try{
-   const {value}=await structuredResponse(withCharter('visual',COPY_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
+   const {value}=await structuredResponse(withCharter('visual',COPY_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,service,
     facts_untrusted:ctx.facts.slice(0,3000),already_used:used.slice(0,30),...(feedback?{previous_attempt_refused:feedback}:{})}),COPY_SCHEMA);
    const checked=checkCopy(value,ctx.facts,used);
    if(checked.ok)return {headline:checked.headline,subline:checked.subline};

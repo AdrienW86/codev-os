@@ -56,7 +56,7 @@ export async function publishablePhotos(clientId:string):Promise<{candidates:Pho
 }
 export async function getVideoAgent(clientId:string):Promise<VideoAgentView>{
  if(!UUID.test(clientId))throw Error('Invalid client');
- const [{settings,items},ctx,photos]=await Promise.all([readAgent(clientId),clientBrandContext(clientId),publishablePhotos(clientId).catch(()=>({candidates:[],rows:new Map()}))]);
+ const [{settings,items},ctx,photos]=await Promise.all([readAgent(clientId),clientBrandContext(clientId,'video'),publishablePhotos(clientId).catch(()=>({candidates:[],rows:new Map()}))]);
  return {settings,items,services:ctx.services,photoCount:photos.candidates.length};
 }
 export async function saveVideoAgent(userId:string,clientId:string,form:FormData):Promise<{ok:boolean;message:string}>{
@@ -84,7 +84,7 @@ async function writeScript(ctx:ClientBrandContext,service:string,photoTexts:stri
  let feedback:string|null=null;const captionCount=Math.max(photoTexts.length-1,0);
  for(let attempt=0;attempt<3;attempt++){
   try{
-   const {value}=await structuredResponse(withCharter('video',SCRIPT_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,activity:ctx.client.activity,zone:ctx.client.zone,service,
+   const {value}=await structuredResponse(withCharter('video',SCRIPT_INSTRUCTIONS),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,service,
     photos_untrusted:photoTexts.map(t=>t.slice(0,300)),captions_expected:captionCount,facts_untrusted:ctx.facts.slice(0,3000),already_used:used.slice(0,30),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCRIPT_SCHEMA);
    const checked=checkVideoScript(value,ctx.facts,used,captionCount);
@@ -103,7 +103,7 @@ async function generateAgentVideoUnscoped(clientId:string,options:{trigger:'sche
  if(!UUID.test(clientId))return {ok:false,message:'Client invalide.'};
  const ffmpegPath=typeof ffmpegStatic==='string'?ffmpegStatic:null;
  if(!ffmpegPath)return {ok:false,message:'Moteur vidéo indisponible sur le serveur.'};
- const [{settings,items},ctx,photos]=await Promise.all([readAgent(clientId),clientBrandContext(clientId),publishablePhotos(clientId)]);
+ const [{settings,items},ctx,photos]=await Promise.all([readAgent(clientId),clientBrandContext(clientId,'video'),publishablePhotos(clientId)]);
  const choice=chooseServiceAndPhotos(ctx.services,photos.candidates,items);
  if(!choice)return {ok:false,message:'Pas assez de photos publiables pour une même prestation (2 au moins).'};
  // Originaux relus dans Drive ; une photo illisible est simplement écartée (il en faut au moins 2).

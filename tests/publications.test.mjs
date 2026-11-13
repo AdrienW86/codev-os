@@ -313,6 +313,8 @@ function settingsMocks(context) {
     "@/lib/automations/supervision": { listAutomationSupervision: async () => [] }, "@/lib/clients/data": { listClients: async () => [] },
     "@/lib/system/health": { getSystemHealth: async () => null }, "@/lib/system/providers": { isProviderConfigured: () => false },
     "@/components/settings/search-console-panel": { SearchConsolePanel: () => null },
+    "@/components/settings/google-analytics-panel": { GoogleAnalyticsPanel: () => null },
+    "@/lib/integrations/ga4/connection": { ga4Status: async () => null, ga4Outcomes: {}, isGa4Outcome: () => false },
     "@/lib/integrations/search-console/connection": { isOAuthOutcome: () => false, oauthOutcomeMessages: {}, searchConsoleStatus: async () => null },
     "@/lib/core/safe-read": { safeRead: async (_scope, read, fallback) => { try { return { data: await read(), unavailable: false }; } catch { return { data: fallback, unavailable: true }; } } },
   };

@@ -30,6 +30,8 @@ import { loadClientPlan } from "@/lib/harness/client-plan-service";
 import { clientAiBudget } from "@/lib/ai/metered";
 import { ClientAiBudgetPanel } from "@/components/agents/client-ai-budget-panel";
 import { readClientClaude } from "@/lib/ai/client-routing";
+import { clientMemoryView } from "@/lib/client-memory/service";
+import { ClientMemoryPanel } from "@/components/clients/client-memory-panel";
 import { getBlogAgent } from "@/lib/blog-agent/service";
 import { ProjectCard, TaskCard } from "@/components/work/work-cards";
 import { ConfirmDeleteForm } from "@/components/ui/confirm-delete-form";
@@ -94,6 +96,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const tab: TabId = tabIds.includes(search.tab as TabId) ? (search.tab as TabId) : "overview";
   const teamPlan = tab === "agents" ? await loadClientPlan(client.id).catch(() => null) : null;
   const aiBudget = tab === "agents" ? await clientAiBudget(client.id).catch(() => "unavailable" as const) : null;
+  const memoryFacts = tab === "agents" ? await clientMemoryView(client.id).catch(() => "unavailable" as const) : null;
   const claudeRouting = tab === "agents" ? await readClientClaude(client.id).catch(() => "unavailable" as const) : null;
   const sources = tab === "agents" ? await safeRead("sources", () => listClientSources(client.id), []) : { data: [], unavailable: false };
   // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
@@ -213,6 +216,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         return (
           <>
             {teamPlan && <ClientTeamPanel plan={teamPlan} />}
+            <ClientMemoryPanel clientId={client.id} facts={memoryFacts} />
             <ClientAiBudgetPanel clientId={client.id} budget={aiBudget} claude={claudeRouting} anthropicConfigured={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />

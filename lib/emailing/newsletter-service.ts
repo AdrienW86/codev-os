@@ -35,10 +35,10 @@ const COLUMNS = "id,client_id,status,subject,preheader,content,sources,audit,sen
 export type NewsletterView = { ready: boolean; newsletters: NewsletterRow[]; contacts: { subscribed: number; other: number }; sources: NewsletterSource[]; sending: { enabled: boolean; reason: string | null } };
 
 /** Faits citables : articles publiés (90 jours, adresse publique), prestations confirmées, profil. */
-async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; site: string | null }> {
+async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; exclusions: string[]; site: string | null }> {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
   const [ctx, agent, articles, client] = await Promise.all([
-    clientBrandContext(clientId),
+    clientBrandContext(clientId, "newsletter"),
     db().from("client_blog_agents").select("*").eq("client_id", clientId).maybeSingle(),
     db().from("blog_articles").select("slug,title,excerpt,published_at").eq("client_id", clientId).eq("status", "published").gte("published_at", since).order("published_at", { ascending: false }).limit(6),
     db().from("clients").select("website").eq("id", clientId).maybeSingle(),
@@ -51,7 +51,7 @@ async function gatherSources(clientId: string): Promise<{ sources: NewsletterSou
     })),
     ...ctx.services.slice(0, 8).map((s) => ({ kind: "service" as const, title: s, summary: `Prestation proposée par ${ctx.client.name}.`, url: null })),
   ];
-  return { sources, client: ctx.client, facts: ctx.facts, site };
+  return { sources, client: ctx.client, facts: ctx.facts, exclusions: ctx.exclusions, site };
 }
 
 export async function getNewsletterView(clientId: string): Promise<NewsletterView> {
@@ -74,7 +74,7 @@ export async function getNewsletterView(clientId: string): Promise<NewsletterVie
 export async function generateNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
   if (!agentsAiConfigured(process.env)) return { ok: false, message: "IA non configurée (ANTHROPIC_API_KEY ou OPENAI_API_KEY) : rédaction impossible." };
-  const { sources, client, facts, site } = await gatherSources(clientId);
+  const { sources, client, facts, exclusions, site } = await gatherSources(clientId);
   if (!sources.length) return { ok: false, message: "Aucun fait à raconter : publiez un article ou confirmez des prestations du client d'abord." };
   const allowedUrls = [...sources.map((s) => s.url).filter((u): u is string => Boolean(u)), ...(site ? [site] : [])];
   const allFacts = sourceFacts(sources, client, facts);
@@ -86,7 +86,7 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
     try {
       ({ value } = await structuredResponse(withCharter("newsletter", NEWSLETTER_INSTRUCTIONS), JSON.stringify({
         client: client.name, activity: client.activity, zone: client.zone, month: new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }),
-        sources, site_url: site, facts_untrusted: facts.slice(0, 4000), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
+        sources, site_url: site, facts_untrusted: facts.slice(0, 4000), ...(exclusions.length ? { client_exclusions_never_write: exclusions } : {}), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
       }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000, agent: "newsletter", clientId }));
     } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }

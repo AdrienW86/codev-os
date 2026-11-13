@@ -274,7 +274,7 @@ function contextWith(tables) {
   const db = { from(table) { log.push(table); const filters = []; const rows = () => ({ data: json((tables[table] ?? []).filter(r => filters.every(f => f(r)))), error: null });
     const q = { select: () => q, order: () => q, limit: () => q, eq(k, v) { filters.push(r => r[k] === v); return q; }, in(k, vs) { filters.push(r => vs.includes(r[k])); return q; },
       maybeSingle: async () => ({ data: rows().data[0] ?? null, error: null }), then(ok, ko) { return Promise.resolve(rows()).then(ok, ko); } }; return q; } };
-  return { log, m: load("lib/publications/agent-v2/context.ts", { "@/lib/require-admin": { requireAdmin: async () => {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => db } }) };
+  return { log, m: load("lib/publications/agent-v2/context.ts", { "@/lib/client-memory/service": { clientMemoryFor: async () => null }, "@/lib/require-admin": { requireAdmin: async () => {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => db } }) };
 }
 test("contexte : historique, plan, doublons SHA-256 et catalogue déjà publié, sans lecture supplémentaire", async () => {
   const asset = (n, sha, extra = {}) => ({ id: A(n), client_id: C, library_status: "validated", media_kind: "image", mime_type: "image/jpeg", size: 200000, width: 1600, height: 1200, purged_at: null, imported_at: `2026-10-0${n}T08:00:00Z`, claimed_agent_v2_run_id: null, sha256: sha, caption: "Facture de M. Martin", drive_file_id: "secret_drive_file", ...extra });

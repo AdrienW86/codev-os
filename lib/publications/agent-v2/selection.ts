@@ -54,7 +54,7 @@ export function unsupportedClaims(text:string,facts:string):string[]{
 // produits par le modèle de vision à partir de l'image (qui peut contenir du texte : devis, prix, garantie) : ce ne sont
 // jamais des faits autorisés, seulement un contexte non fiable pour choisir la photo.
 export function factsOf(input:AgentV2GeneratorInput):string{
- return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules)].join('\n');
+ return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules),...(input.confirmedFacts??[])].join('\n');
 }
 
 /** Termes métier que ce client ne propose pas (absents de ses faits) : nommés au modèle pour éviter des refus en série. */

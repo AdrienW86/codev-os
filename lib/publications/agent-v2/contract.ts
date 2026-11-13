@@ -17,6 +17,8 @@ export type PreviousPublication={subject:string;texts:{platform:PublicationPlatf
 export type AgentV2GeneratorInput={/** Client (routage du modèle, jamais transmis au modèle). */clientId?:string;client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
  channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[];
  previousPublications?:PreviousPublication[];priorityTopics?:string[];
+ // Mémoire client (lot 1 du socle éditorial) : faits confirmés citables, et ce que le client ne veut jamais voir écrit.
+ confirmedFacts?:string[];clientExclusions?:string[];
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).
  editorial?:EditorialContext;
  // Relance après un refus du contrôle éditorial : motif du refus précédent, à corriger (jamais un fait).

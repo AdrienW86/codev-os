@@ -40,11 +40,11 @@ export function parseGa4Totals(body: Ga4Report): Ga4Metric {
     eventCount: count(v[6]),
   };
 }
-export function parseGa4Dimensions(body: Ga4Report, opts: { labelIndex?: number } = {}): Ga4DimensionRow[] {
+export function parseGa4Dimensions(body: Ga4Report, opts: { labelIndex?: number; stripQuery?: boolean } = {}): Ga4DimensionRow[] {
   return (body.rows ?? []).slice(0, 50).map(row => {
     const v = values(row);
     return {
-      label: (row.dimensionValues?.[opts.labelIndex ?? 0]?.value ?? "(inconnu)").slice(0, 240),
+      label: (opts.stripQuery ? (row.dimensionValues?.[opts.labelIndex ?? 0]?.value ?? "(inconnu)").split(/[?#]/, 1)[0] : (row.dimensionValues?.[opts.labelIndex ?? 0]?.value ?? "(inconnu)")).slice(0, 240),
       sessions: count(v[0]), engagementRate: rate(v[1]), bounceRate: rate(v[2]),
     };
   });

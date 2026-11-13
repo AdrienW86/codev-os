@@ -5,7 +5,7 @@ import type { ProviderId } from "@/lib/agents/registry";
 export type Env = Record<string, string | undefined>;
 
 export type ProviderRequirement = {
-  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech" | "credentials" | "google-drive-import" | "whatsapp-webhook" | "whatsapp-ingestion" | "push" | "email-webhook";
+  id: ProviderId | "clerk" | "supabase" | "scheduler" | "speech" | "credentials" | "google-drive-import" | "whatsapp-webhook" | "whatsapp-ingestion" | "push" | "email-webhook" | "google-analytics";
   label: string;
   /** Variables indispensables. */
   required: string[];
@@ -34,6 +34,10 @@ export const providerRequirements: ProviderRequirement[] = [
   ], description: "Clics, impressions, CTR, positions, requêtes et pages (Données et performances, Agent SEO, rapports).", setup: "Client OAuth Google (scope webmasters.readonly, dédié ou partagé avec Google Business Profile) puis « Connecter Google Search Console » dans Paramètres → Connexions ; une propriété par fiche client.", docs: "docs/integrations.md#search-console" },
   { id: "pagespeed", label: "PageSpeed Insights", required: [], optional: ["PAGESPEED_API_KEY"], description: "Performances Lighthouse (Agent SEO, Agent Monitoring).", setup: "Fonctionne sans clé avec un quota réduit ; ajouter une clé API Google pour un usage régulier.", docs: "docs/integrations.md#pagespeed" },
   { id: "http", label: "Contrôles HTTP", required: [], description: "Disponibilité et temps de réponse des sites.", setup: "Aucune configuration ; seules les URL publiques https des clients sont contrôlées.", docs: "docs/integrations.md#monitoring" },
+  { id: "google-analytics", label: "Google Analytics 4", required: [], anyOf: [
+    ["PUBLICATIONS_OAUTH_BASE_URL", "PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID", "GOOGLE_ANALYTICS_CLIENT_ID", "GOOGLE_ANALYTICS_CLIENT_SECRET"],
+    ["PUBLICATIONS_OAUTH_BASE_URL", "PUBLICATION_CREDENTIALS_KEY", "PUBLICATION_CREDENTIALS_KEY_ID", "GOOGLE_BUSINESS_PROFILE_CLIENT_ID", "GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET"],
+  ], description: "Sessions, rebond, engagement, pages d’entrée et événements du site (lecture seule).", setup: "Autoriser le scope analytics.readonly en OAuth dans Paramètres → Connexions ; associer l’ID numérique de propriété GA4 au client.", docs: "docs/integrations.md#google-analytics" },
   { id: "vercel", label: "Vercel", required: ["VERCEL_TOKEN"], optional: ["VERCEL_TEAM_ID"], description: "Déploiements et builds des sites clients.", setup: "Jeton Vercel en lecture ; identifiant de projet renseigné par client.", docs: "docs/integrations.md#vercel" },
   { id: "github", label: "GitHub", required: ["GITHUB_TOKEN"], optional: ["GITHUB_SEO_WRITE_TOKEN"], description: "Derniers changements des dépôts clients (lecture seule) ; PR SEO approuvées si un jeton d’écriture distinct est fourni.", setup: "GITHUB_TOKEN : jeton à granularité fine, lecture seule (contents, metadata). GITHUB_SEO_WRITE_TOKEN (facultatif) : jeton distinct, Contents et Pull requests en écriture, limité aux dépôts des sites clients.", docs: "docs/seo-keyword-opportunities.md#execution-controlee" },
   { id: "google-ads", label: "Google Ads", required: ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET", "GOOGLE_ADS_REFRESH_TOKEN"], optional: ["GOOGLE_ADS_LOGIN_CUSTOMER_ID", "CODEV_GOOGLE_ADS_WRITES_ENABLED", "CODEV_GOOGLE_ADS_AUTOPILOT"], description: "Campagnes (Agent Google Ads) ; écritures et pilote automatique désactivés sauf activation explicite.", setup: "Client OAuth du projet Google Cloud (accès Google Ads API), jeton de rafraîchissement ; identifiant client par fiche client. Plus de developer token depuis la transition Google Cloud.", docs: "docs/integrations.md#google-ads" },

@@ -5,7 +5,7 @@ import { normalizeProperty } from "@/lib/integrations/search-console/model";
 
 export type SourceProvider = "search-console" | "google-analytics" | "vercel" | "github";
 
-export type SourceDefinition = { provider: SourceProvider; label: string; field: "property" | "project_id" | "repository"; placeholder: string; help: string; pattern: RegExp; agent: string };
+export type SourceDefinition = { provider: SourceProvider; label: string; field: "property" | "property_id" | "project_id" | "repository"; placeholder: string; help: string; pattern: RegExp; agent: string };
 
 export const sourceDefinitions: SourceDefinition[] = [
   { provider: "search-console", label: "Search Console", field: "property", placeholder: "sc-domain:exemple.fr", help: "Propriété telle qu’affichée dans Search Console (domaine ou préfixe d’URL), parmi celles du compte Google connecté.", pattern: /^(sc-domain:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+|https?:\/\/[a-z0-9.-]+\.[a-z]{2,}\/(?:[^\s?#]*\/)?)$/i, agent: "Agent SEO & Site" },

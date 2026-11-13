@@ -77,7 +77,7 @@ export function Ga4Dashboard({ clients, client, period, state }: {
         className={`rounded-lg border px-4 py-2 text-sm ${period.preset === days ? "border-accent bg-surface text-foreground font-semibold" : "border-border text-muted"}`}>{days} jours</Link>)}
     </nav>
     {state.status === "not_connected" ? <div className="rounded-xl border border-border bg-surface p-5">
-      <p className="font-semibold">Google Analytics n'est pas prêt pour {client.name}.</p>
+      <p className="font-semibold">Google Analytics n&apos;est pas prêt pour {client.name}.</p>
       <p className="mt-2 text-sm text-muted">{state.reason === "connection" ? "Connectez l'accès Google Analytics en lecture seule." : "Associez une propriété GA4 à ce client."}</p>
       <Link href={state.reason === "connection" ? "/settings?tab=connections" : `/clients/${client.id}?tab=agents`} className="mt-3 inline-block text-sm text-accent underline">Configurer la connexion GA4</Link>
     </div> : state.status === "unavailable" ? <p role="alert" className="rounded-xl border border-border p-5 text-sm text-warning">{state.error ?? "Google Analytics est temporairement indisponible."}</p> : <>

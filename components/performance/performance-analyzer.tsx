@@ -77,7 +77,13 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
       <p className="mt-3 text-xs text-muted">L&apos;analyse utilise Google PageSpeed Insights. Aucune modification n&apos;est effectuée sur le site testé.</p>
     </form>
     {loading && <p role="status" className="rounded-lg bg-surface-raised p-4 text-sm">Exécution d&apos;une mesure réelle en laboratoire…</p>}
-    {error && <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">{error}</p>}
+    {error && <div role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm">
+      <p className="text-danger">{error}</p>
+      <a href="https://pagespeed.web.dev/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium text-accent underline">
+        Tester directement sur Google PageSpeed Insights
+      </a>
+      <p className="mt-1 text-xs text-muted">Ce test externe ne sera pas enregistré dans l&apos;historique CODE-V OS.</p>
+    </div>}
     {report && <section className="rounded-2xl border border-border bg-surface p-5 sm:p-7" aria-label="Rapport">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div><h2 className="text-xl font-semibold">Rapport : {host(report.url)}</h2><p className="mt-1 text-xs text-muted">{report.strategy} · {new Date(report.analyzedAt).toLocaleString("fr-FR")} · {report.saved ? "Enregistré dans Supabase" : "Non enregistré (migration ou stockage indisponible)"}</p></div>

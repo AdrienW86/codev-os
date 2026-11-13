@@ -13,9 +13,9 @@ export default async function PerformancePage() {
   await requireAdmin();
   const [clients, history] = await Promise.all([
     listClients(),
-    getSupabaseServerClient().from("performance_audits")
+    Promise.resolve(getSupabaseServerClient().from("performance_audits")
       .select("id,client_id,url,strategy,scores,analyzed_at")
-      .order("analyzed_at", { ascending: false }).limit(30)
+      .order("analyzed_at", { ascending: false }).limit(30))
       .then(({ data, error }) => error ? null : data)
       .catch(() => null),
   ]);

@@ -1,5 +1,12 @@
 {
   "crons": [
-    { "path": "/api/internal/scheduler/tick", "schedule": "*/15 * * * *" }
+    {
+      "path": "/api/internal/scheduler/tick",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/internal/google-analytics/sync",
+      "schedule": "0 * * * *"
+    }
   ]
 }

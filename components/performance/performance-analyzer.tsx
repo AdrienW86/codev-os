@@ -107,7 +107,7 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
         <li className="py-3" key={item.id}><p className="font-medium">{item.title}</p>{item.savingsMs != null && <p className="mt-1 text-xs text-accent">Économie potentielle : {(item.savingsMs / 1000).toFixed(2)} s</p>}<p className="mt-1 text-sm text-muted">{item.description}</p></li>
       ) : <li className="py-4 text-sm text-muted">Aucune optimisation majeure signalée par ce test.</li>}</ul>
     </section>}
-    <PerformanceAgentPanel auditId={agentAuditId} />
+    <PerformanceAgentPanel key={agentAuditId ?? "no-audit"} auditId={agentAuditId} />
     <section className="rounded-2xl border border-border bg-surface p-5 sm:p-7">
       <h2 className="text-lg font-semibold">Historique des analyses</h2>
       <p className="mt-1 text-sm text-muted">Les 30 derniers audits conservés dans CODE-V OS, pour comparer les performances dans le temps.</p>

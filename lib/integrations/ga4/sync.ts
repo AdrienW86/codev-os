@@ -51,7 +51,7 @@ export async function syncGa4(clientId: string, period: Period, deps: Ga4Deps = 
     const snapshot: Ga4Snapshot = {
       version: GA4_SNAPSHOT_VERSION,
       property, period, totals: parseGa4Totals(totals),
-      daily: parseGa4Daily(get(0)), pages: parseGa4Dimensions(get(1)),
+      daily: parseGa4Daily(get(0)), pages: parseGa4Dimensions(get(1), { stripQuery: true }),
       channels: parseGa4Dimensions(get(2)), devices: parseGa4Dimensions(get(3)),
       events: parseGa4Events(get(4)), sections,
     };

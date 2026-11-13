@@ -13,7 +13,7 @@ const intents = loadTs("lib/assistant/intents.ts", { "@/lib/assistant/text": tex
 const orchestrator = loadTs("lib/assistant/orchestrator.ts", { "@/lib/assistant/tools": tools, "@/lib/assistant/intents": intents, "@/lib/assistant/ads-intents": adsIntents, ...publications.mocks });
 const errors = loadTs("lib/providers/errors.ts");
 const api = loadTs("lib/providers/api.ts", { "@/lib/providers/errors": errors });
-const ai = loadTs("lib/ai/providers.ts", { "@/lib/providers/api": api, "@/lib/providers/errors": errors });
+const ai = loadTs("lib/ai/providers.ts", { "@/lib/providers/api": api, "@/lib/providers/errors": errors, "@/lib/ai/models": loadTs("lib/ai/models.ts") });
 const guard = loadTs("lib/core/request-guard.ts", {}, { Headers, Request });
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const TODAY = "2026-10-09";
@@ -174,6 +174,25 @@ test("Anthropic adapter: tool_use blocks and text parsed; tool results sent as t
   assert.equal(result.toolCalls[0].name, "list_news");
 });
 
+test("Anthropic adapter: no temperature, forced tool use mapped to auto on Opus 5.5, thinking blocks replayed with their tool call", async () => {
+  const bodies = [];
+  const reply = { content: [{ type: "thinking", thinking: "", signature: "sig" }, { type: "tool_use", id: "tu1", name: "list_news", input: {} }] };
+  const fetchImpl = async (_url, init) => { bodies.push(JSON.parse(init.body)); return jsonResponse(200, reply); };
+  const opus = ai.createAnthropicProvider("ak", "claude-opus-5-5", fetchImpl);
+  const first = await opus.complete({ system: "S", messages: [{ role: "user", content: "veille" }], tools: tools.toolSpecs(), toolChoice: "required", maxTokens: 3000 });
+  assert.equal(bodies[0].temperature, undefined, "température refusée par les modèles Claude actuels");
+  assert.deepEqual(plain(bodies[0].tool_choice), { type: "auto", disable_parallel_tool_use: true });
+  assert.equal(bodies[0].max_tokens, 12000, "marge de réflexion : 4 × le plafond demandé");
+  await opus.complete({ system: "S", messages: [{ role: "user", content: "veille" }], tools: tools.toolSpecs(), toolResults: [{ call: first.toolCalls[0], result: "{}" }] });
+  const replay = bodies[1].messages;
+  assert.equal(replay[1].role, "assistant");
+  assert.equal(replay[1].content[0].type, "thinking", "réflexion renvoyée telle quelle avant l'appel d'outil");
+  assert.equal(replay[2].content[0].type, "tool_result");
+  const older = ai.createAnthropicProvider("ak", "claude-opus-5", fetchImpl);
+  await older.complete({ system: "S", messages: [{ role: "user", content: "x" }], tools: tools.toolSpecs(), toolChoice: "required" });
+  assert.equal(bodies[2].tool_choice.type, "any", "modèle qui accepte l'appel forcé : inchangé");
+});
+
 test("adapters return billed tokens when the provider sends them, nothing invented otherwise", async () => {
   const openai = ai.createOpenAIProvider("sk", "gpt-4.1-mini", async () => jsonResponse(200, { usage: { prompt_tokens: 120, completion_tokens: 30 }, choices: [{ message: { content: "ok" } }] }));
   assert.deepEqual(plain((await openai.complete({ system: "", messages: [], tools: [] })).usage), { inputTokens: 120, outputTokens: 30 });
@@ -186,6 +205,9 @@ test("adapters return billed tokens when the provider sends them, nothing invent
 test("provider selection: AI_PROVIDER preference, fallback to the other key, none → deterministic mode", () => {
   assert.equal(ai.selectAIProvider({}), null);
   assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a" }).id, "openai");
+  assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b" }).id, "openai", "sans préférence : OpenAI d'abord, Claude client par client");
+  assert.equal(ai.selectAIProvider({ ANTHROPIC_API_KEY: "b" }).model, "claude-opus-5-5");
+  assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b", AI_PROVIDER: "openai" }).id, "openai");
   assert.equal(ai.selectAIProvider({ ANTHROPIC_API_KEY: "b" }).id, "anthropic");
   assert.equal(ai.selectAIProvider({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b", AI_PROVIDER: "anthropic" }).id, "anthropic");
   assert.equal(ai.selectAIProvider({ ANTHROPIC_API_KEY: "b", AI_PROVIDER: "openai" }).id, "anthropic");

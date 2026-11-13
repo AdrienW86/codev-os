@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Simulation UX" };
 export default async function SimulationSettingsPage() {
   await requireAdmin();
   // Seule la présence de la clé est transmise (booléen), jamais sa valeur.
-  const realAIAvailable = Boolean(process.env.OPENAI_API_KEY);
+  const realAIAvailable = Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
   return (
     <>
       <Link href="/settings" className="mb-6 inline-block text-xs text-accent hover:underline">← Paramètres</Link>

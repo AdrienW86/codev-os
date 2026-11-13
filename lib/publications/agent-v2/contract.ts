@@ -14,7 +14,7 @@ export type AgentMediaCandidate={id:string;categories:string[];description:strin
 // Une des dernières publications du projet : sujet, textes par plateforme et description de sa photo (anti-répétition).
 export type PreviousPublication={subject:string;texts:{platform:PublicationPlatform;text:string}[];media:string|null};
 // Everything the generator may receive: only facts actually stored (no fictitious fallback), no secret.
-export type AgentV2GeneratorInput={client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
+export type AgentV2GeneratorInput={/** Client (routage du modèle, jamais transmis au modèle). */clientId?:string;client:{name:string;activity:string|null;zone:string|null};project:{name:string};services:string[];rules:string;
  channelRules:{platform:PublicationPlatform;rules:string}[];occurrences:OpenOccurrenceCandidate[];media:AgentMediaCandidate[];previousSubjects:string[];
  previousPublications?:PreviousPublication[];priorityTopics?:string[];
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).
@@ -27,4 +27,5 @@ export type AgentV2Usage={input_tokens:number;output_tokens:number;estimated_cos
 // The provider returns the raw structured output (validated afterwards, fail closed) and its usage.
 export interface PublicationsAgentV2Generator{generate(input:AgentV2GeneratorInput):Promise<{output:unknown;usage:AgentV2Usage}>}
 
-export const AGENT_V2_LIMITS={subject:300,angle:3000,text:10000,cta:500,maxPublicationsPerIdea:3,maxCost:.1} as const;
+// maxCost : plafond d’une exécution (2 € depuis la migration 20261208000000, modèles Claude) ; unknownCost : coût retenu quand le fournisseur ne renvoie aucune mesure.
+export const AGENT_V2_LIMITS={subject:300,angle:3000,text:10000,cta:500,maxPublicationsPerIdea:3,maxCost:2,unknownCost:.1} as const;

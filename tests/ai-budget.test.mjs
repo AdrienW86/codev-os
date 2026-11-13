@@ -50,6 +50,9 @@ function gateway({ usageRows = [], cap = null, missing = false, failRead = false
     "@/lib/supabase/server": { getSupabaseServerClient: () => db },
     "@/lib/integrations/publications-openai": { structuredResponse: raw },
     "./budget": budget,
+    "./client-routing": { claudeEnabledFor: async () => false },
+    "./models": loadTs("lib/ai/models.ts"),
+    "./providers": { createAnthropicProvider: () => { throw new Error("Claude must not be used for a client that is not enabled"); } },
   });
   return { metered, inserted };
 }
@@ -97,7 +100,11 @@ test("coût estimé d'un appel d'assistant : tarif connu, tarif prudent pour un 
   assert.equal(budget.estimateCallCostEur("gpt-4.1-mini", 1_000_000, 0), 0.5);
   assert.equal(budget.estimateCallCostEur("gpt-4.1-mini-2025", 0, 1_000_000), 2);
   assert.equal(budget.estimateCallCostEur("gpt-4.1", 1_000_000, 0), 2.5);
-  assert.equal(budget.estimateCallCostEur("modele-inconnu", 1_000_000, 0), 3.75, "inconnu : tarif le plus élevé, jamais zéro");
+  assert.equal(budget.estimateCallCostEur("modele-inconnu", 1_000_000, 0), 12.5, "inconnu : tarif le plus élevé, jamais zéro");
+  assert.equal(budget.estimateCallCostEur("claude-opus-5-5", 1_000_000, 1_000_000), 30, "Opus 5.5 : 4 $ + 20 $ × 1,25");
+  assert.equal(budget.estimateCallCostEur("claude-sonnet-5-5", 0, 1_000_000), 12.5);
+  assert.equal(budget.estimateCallCostEur("claude-sonnet-4-6", 1_000_000, 0), 3.75);
+  assert.equal(budget.estimateCallCostEur("claude-fable-5-2", 1_000_000, 0), 10);
   assert.equal(budget.estimateCallCostEur("gpt-4.1-mini", -5, Number.NaN), 0);
 });
 

@@ -30,7 +30,7 @@ export async function adaptImage(bytes:Uint8Array,platform:PublicationPlatform){
   if(output.length<=MAX_DERIVATIVE_BYTES)return {bytes:new Uint8Array(output),width,height,mime_type:'image/jpeg' as const};}
  throw Error('Derivative too large');
 }
-export async function visionPreview(bytes:Uint8Array){if(bytes.length>8388608)throw Error('Image too large');const input=sharp(bytes,{limitInputPixels:24000000,animated:false,failOn:'warning'});const metadata=await input.metadata();if(!['jpeg','png','webp'].includes(metadata.format??'')||metadata.pages&&metadata.pages>1)throw Error('Unsupported image');return input.rotate().resize(640,640,{fit:'inside',withoutEnlargement:true}).jpeg({quality:65}).toBuffer();}
+export async function visionPreview(bytes:Uint8Array){if(bytes.length>8388608)throw Error('Image too large');const input=sharp(bytes,{limitInputPixels:24000000,animated:false,failOn:'warning'});const metadata=await input.metadata();if(!['jpeg','png','webp'].includes(metadata.format??'')||metadata.pages&&metadata.pages>1)throw Error('Unsupported image');return input.rotate().resize(1280,1280,{fit:'inside',withoutEnlargement:true}).jpeg({quality:80}).toBuffer();}
 // Image ajoutée à la main : convertie en JPEG (Instagram et TikTok refusent le PNG) et ramenée à 1080 px de large au
 // plus (TikTok refuse une photo plus grande : « picture_size_check_failed »), sans recadrage ni agrandissement ;
 // transparence aplatie sur fond blanc. Qualité réduite au besoin pour rester ≤ 768 Ko.

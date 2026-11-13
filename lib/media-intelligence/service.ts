@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {structuredResponse} from '@/lib/integrations/publications-openai';
+import {agentsAiConfigured} from '@/lib/ai/models';
 import {drivePresenceReader,driveReadProvider,type DrivePresence} from '@/lib/integrations/publications-drive';
 import {visionPreview} from '@/lib/publications/media/transform';
 import type {Usage} from '@/lib/publications/ai/provider';
@@ -58,7 +59,7 @@ export async function classifyClientMedia(clientId:string,options:{assetIds?:str
  const profile=await getMediaProfile(clientId);
  if(!profile.saved){result.stopped='no_profile';return result;}
  if(options.scheduled&&!profile.aiClassificationEnabled){result.stopped='disabled';return result;}
- if(!deps.vision&&!process.env.OPENAI_API_KEY){result.stopped='no_key';return result;}
+ if(!deps.vision&&!agentsAiConfigured(process.env)){result.stopped='no_key';return result;}
  const [{data:client,error:clientError},assessed]=await Promise.all([db().from('clients').select('name,activity').eq('id',clientId).single(),
   db().from('whatsapp_asset_assessments').select('asset_id,profile_version').eq('client_id',clientId)]);
  if(clientError||!client||assessed.error)throw Error('library_unavailable');
@@ -75,7 +76,7 @@ export async function classifyClientMedia(clientId:string,options:{assetIds?:str
  const human=(a:AssetRow)=>typeof a.status_changed_by==='string'&&/^user_/.test(a.status_changed_by);
  const todo=((assets??[]) as AssetRow[]).filter(a=>options.assetIds?.length||((versions.get(a.id)??0)<profile.version&&(a.classification_failures??0)<MAX_FAILURES&&cooled(a)&&!human(a)))
   .slice(0,Math.max(0,Math.min(options.limit,20)));
- const vision=deps.vision??structuredResponse,download=deps.download??(asset=>assetOriginal({...asset,media_kind:'image'}));
+ const vision=deps.vision??((instructions:string,input:unknown,schema:unknown)=>structuredResponse(instructions,input,schema,{agent:'media-library',clientId})),download=deps.download??(asset=>assetOriginal({...asset,media_kind:'image'}));
  for(const asset of todo){
   const spend=await db().rpc('client_media_ai_month_spend',{p_client_id:clientId});
   if(spend.error)throw Error('budget_unavailable');

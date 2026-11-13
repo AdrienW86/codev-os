@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { withCharter } from "@/lib/harness/charter";
 import { structuredResponse } from "@/lib/integrations/publications-openai";
+import { agentsAiConfigured } from "@/lib/ai/models";
 import { oauthBaseUrl } from "@/lib/integrations/publications-oauth/config";
 import { clientBrandContext } from "@/lib/visual-agent/service";
 import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-agent/model";
@@ -72,7 +73,7 @@ export async function getNewsletterView(clientId: string): Promise<NewsletterVie
 /** Rédige un brouillon (deux essais au plus, le second avec le motif du refus). Aucun envoi. */
 export async function generateNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
-  if (!process.env.OPENAI_API_KEY) return { ok: false, message: "IA non configurée (OPENAI_API_KEY) : rédaction impossible." };
+  if (!agentsAiConfigured(process.env)) return { ok: false, message: "IA non configurée (ANTHROPIC_API_KEY ou OPENAI_API_KEY) : rédaction impossible." };
   const { sources, client, facts, site } = await gatherSources(clientId);
   if (!sources.length) return { ok: false, message: "Aucun fait à raconter : publiez un article ou confirmez des prestations du client d'abord." };
   const allowedUrls = [...sources.map((s) => s.url).filter((u): u is string => Boolean(u)), ...(site ? [site] : [])];
@@ -87,7 +88,7 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
         client: client.name, activity: client.activity, zone: client.zone, month: new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }),
         sources, site_url: site, facts_untrusted: facts.slice(0, 4000), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
-      }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000 }));
+      }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000, agent: "newsletter", clientId }));
     } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
     const checked = checkNewsletter(value, { facts: allFacts, allowedUrls });
     if (!checked.ok) { feedback = checked.reason; continue; }

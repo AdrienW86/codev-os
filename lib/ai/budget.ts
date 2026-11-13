@@ -47,8 +47,18 @@ const PRICES_PER_MILLION: readonly [RegExp, number, number][] = [
   [/^gpt-4\.1-nano/i, 0.1, 0.4],
   [/^gpt-4\.1-mini/i, 0.4, 1.6],
   [/^gpt-4\.1/i, 2, 8],
+  // Claude (tarifs publics Anthropic, novembre 2026). Les plus précis d'abord.
+  [/^claude-fable-5-2|^claude-mythos-5-2/i, 8, 40],
+  [/^claude-fable|^claude-mythos/i, 10, 50],
+  [/^claude-opus-5-5/i, 4, 20],
+  [/^claude-opus/i, 5, 25],
+  [/^claude-sonnet-4/i, 3, 15],
+  [/^claude-sonnet/i, 2, 10],
+  [/^claude-haiku-5-5/i, 0.1, 0.5],
+  [/^claude-haiku/i, 1, 5],
 ];
-const PRUDENT_PRICE: [number, number] = [3, 15];
+/** Modèle inconnu : tarif le plus élevé de la table, jamais sous-estimé. */
+const PRUDENT_PRICE: [number, number] = [10, 50];
 export function estimateCallCostEur(model: string, inputTokens: number, outputTokens: number): number {
   const known = PRICES_PER_MILLION.find(([pattern]) => pattern.test(model));
   const [input, output] = known ? [known[1], known[2]] : PRUDENT_PRICE;

@@ -3,7 +3,7 @@ import "server-only";
 import { ProviderError, errorDetailsFromBody, kindFromStatus } from "@/lib/providers/errors";
 
 const ALLOWED_HOSTS = new Set([
-  "oauth2.googleapis.com", "searchconsole.googleapis.com", "www.googleapis.com", "pagespeedonline.googleapis.com",
+  "oauth2.googleapis.com", "searchconsole.googleapis.com", "analyticsadmin.googleapis.com", "analyticsdata.googleapis.com", "www.googleapis.com", "pagespeedonline.googleapis.com",
   "googleads.googleapis.com", "api.vercel.com", "api.github.com", "api.openai.com", "api.anthropic.com", "api.resend.com",
 ]);
 

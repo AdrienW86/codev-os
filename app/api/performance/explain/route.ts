@@ -28,6 +28,10 @@ const analysisSchema = z.object({
 function error(message: string, status: number) {
   return NextResponse.json({ error: message }, { status, headers });
 }
+function stripUrlParameters(raw: string) {
+  try { const url = new URL(raw); url.search = ""; url.hash = ""; return url.toString(); }
+  catch { return "URL indisponible"; }
+}
 function decodeAnalysis(value: string) {
   const cleaned = value.trim().replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, "");
   try { return analysisSchema.safeParse(JSON.parse(cleaned)); } catch { return null; }
@@ -65,22 +69,25 @@ export async function POST(request: Request) {
       name: item.name.slice(0, 100), type: item.type, status: item.status,
     }));
   }
-  const { data: previous } = await supabase.from("performance_audits")
+  // Historique strictement sur la même page, le même support ET le même client :
+  // pas de comparaison involontaire avec les audits d'un autre client.
+  let previousQuery = supabase.from("performance_audits")
     .select("scores,lab,field,analyzed_at")
-    .eq("url", audit.url).eq("strategy", audit.strategy).lt("analyzed_at", audit.analyzed_at)
-    .order("analyzed_at", { ascending: false }).limit(3);
+    .eq("url", audit.url).eq("strategy", audit.strategy).lt("analyzed_at", audit.analyzed_at);
+  previousQuery = audit.client_id ? previousQuery.eq("client_id", audit.client_id) : previousQuery.is("client_id", null);
+  const { data: previous } = await previousQuery.order("analyzed_at", { ascending: false }).limit(3);
 
   const provider = selectAIProvider();
   if (!provider) return error("Aucun fournisseur IA configuré sur le serveur CODE-V OS.", 503);
 
   // Audit et champs clients sont des DONNÉES NON FIABLES : aucune instruction dans ces champs n'est exécutable.
   const evidence = {
-    auditedPage: audit.url,
+    auditedPage: stripUrlParameters(audit.url),
     device: audit.strategy,
     auditedAt: audit.analyzed_at,
     client: client ? { name: client.name.slice(0, 120), company: client.company_name?.slice(0, 120) ?? null,
       activity: client.activity?.slice(0, 180) ?? null, area: client.geographic_area?.slice(0, 180) ?? null,
-      website: client.website?.slice(0, 500) ?? null } : null,
+      website: client.website ? stripUrlParameters(client.website.slice(0, 500)) : null } : null,
     recentProjects: projects,
     lighthouse: { scores: audit.scores, lab: audit.lab, field: audit.field },
     opportunities: Array.isArray(audit.opportunities) ? audit.opportunities.slice(0, 8) : [],

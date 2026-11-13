@@ -61,6 +61,58 @@ Un compte Google (celui de l’agence) est autorisé **une fois** en OAuth 2.0 ;
 - **Révocation** : « Déconnecter » supprime le jeton de CODE-V OS sans appeler Google, car le client OAuth peut être partagé avec Google Business Profile et une révocation Google retirerait aussi cet accès pour ce compte. Révocation complète, en connaissance de cause : https://myaccount.google.com/permissions. Un accès révoqué côté Google est détecté (`invalid_grant`) et affiché « Accès révoqué » ; il suffit de reconnecter.
 - **Vérifier** : Paramètres → Connexions → statut « Connecté » et propriétés listées ; Données et performances → onglet « Référencement · Google Search Console » ; Automatisation « Analyse SEO » → résumé « Search Console : N clics ».
 
+<a id="google-analytics"></a>
+## Google Analytics 4 — API native, données et performances, agents et rapports (lecture seule)
+
+Connecteur natif sans Windsor.ai. Une seule autorisation Google OAuth pour le compte de l'agence, puis une
+**propriété numérique GA4 par fiche client**, sans partage des métriques entre clients.
+
+- **API officielles** : Google Analytics Admin API `v1beta/accountSummaries` (découverte) et Google Analytics
+  Data API `v1beta/properties/{id}:runReport` (lecture).
+- **Portée OAuth unique** : `https://www.googleapis.com/auth/analytics.readonly`. Les autorisations Google
+  Ads, Search Console, Business Profile et Drive existantes ne sont pas modifiées. Le flux ne réutilise pas
+  leurs jetons et désactive la fusion implicite des scopes (`include_granted_scopes=false`).
+- **Configuration côté Vercel CODE-V OS** : `PUBLICATIONS_OAUTH_BASE_URL`,
+  `PUBLICATION_CREDENTIALS_KEY`, `PUBLICATION_CREDENTIALS_KEY_ID`, déjà utilisés pour les
+  connexions existantes. Client Google OAuth Web : facultativement
+  `GOOGLE_ANALYTICS_CLIENT_ID` et `GOOGLE_ANALYTICS_CLIENT_SECRET` (ensemble), sinon le
+  client Google Business Profile actuel est réutilisé avec un consentement GA4 séparé.
+- **URI de redirection obligatoire dans Google Cloud Console** :
+  `https://os.code-v.fr/api/integrations/google-analytics/callback`.
+  Local, facultatif : `http://localhost:3000/api/integrations/google-analytics/callback`.
+- **API à activer sur le projet Google Cloud OAuth** : Google Analytics Data API et Google Analytics Admin API.
+  Le compte Google autorisé doit avoir au minimum l'accès lecteur aux propriétés des clients.
+- **Migration à appliquer avant toute connexion OAuth** :
+  `supabase/migrations/20261212000000_native_google_analytics.sql`. Extension additive des contraintes
+  `integration_credential_secrets` et `integration_oauth_states`, sans modification des jetons Search Console.
+  Un coffre AES-256-GCM indépendant (AAD spécifique à GA4) protège le refresh token GA4.
+- **Connexion** : Paramètres → Connexions → Google Analytics 4 → Connecter.
+  État OAuth haché, unique, lié à l'administrateur et expirant après 10 minutes ; PKCE S256.
+  Le callback ne renvoie aucun jeton ni code dans l'interface.
+- **Association client** : fiche client → Agents → Sources de données → Google Analytics 4.
+  Sélectionner parmi les propriétés accessibles (ou saisir l'identifiant numérique si la liste
+  n'est pas disponible). Une propriété est affectée à un client maximum.
+- **Affichage** : Données et performances → Engagement · Google Analytics 4.
+  Sessions, utilisateurs, taux de rebond, engagement, pages d'entrée, canaux, appareils et événements.
+  Périodes 7/30/90 jours, synchronisation manuelle et réutilisation pendant 6 h.
+- **Synchronisation planifiée** : une propriété cliente due par passage, fenêtre de 7 jours
+  terminée à la veille, au maximum une fois par 23 h. Les périodes 30 et 90 jours sont
+  également actualisées à l'ouverture du tableau de bord.
+- **Base** : instantanés déjà supportés par `metric_snapshots`
+  (`provider='google-analytics'`, `metric_key='audience'`).
+- **Confidentialité** : aucune valeur de formulaire, e-mail, téléphone ni données personnelles
+  envoyées ou conservées dans le connecteur. Les appels et messages réels ne sont pas
+  déduits des seuls clics ; les chiffres sont ceux collectés par GA4 sous consentement.
+  Les métriques GA4 et Vercel ne sont jamais additionnées.
+- **Déconnexion** : supprime uniquement le jeton GA4 local et conserve l'historique.
+  Ne révoque jamais globalement Google, ce qui pourrait interrompre d'autres connexions.
+- **Premier client de test** : JRENOV, identifiant de propriété `564222159`
+  (différent de l'identifiant Web `G-REMJP2W0BK`).
+
+**Mise en production** : migration, autorisation URI + API Google, connexion OAuth dans l'OS,
+association explicite à JRENOV, synchronisation et vérification des métriques. Ces
+étapes ne sont pas accomplies par la simple fusion du code.
+
 <a id="pagespeed"></a>
 ## PageSpeed Insights
 

@@ -22,6 +22,8 @@ import { getSystemHealth } from "@/lib/system/health";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { safeRead } from "@/lib/core/safe-read";
 import { SearchConsolePanel } from "@/components/settings/search-console-panel";
+import { GoogleAnalyticsPanel } from "@/components/settings/google-analytics-panel";
+import { ga4Status, ga4Outcomes, isGa4Outcome } from "@/lib/integrations/ga4/connection";
 import { isOAuthOutcome, oauthOutcomeMessages, searchConsoleStatus } from "@/lib/integrations/search-console/connection";
 
 export const metadata: Metadata = { title: "Paramètres" };
@@ -40,21 +42,23 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   await requireAdmin();
-  const { tab: rawTab, gsc } = await searchParams;
+  const { tab: rawTab, gsc, ga4 } = await searchParams;
   const tab: TabId = tabs.some((item) => item.id === rawTab) ? (rawTab as TabId) : "general";
   const scenario = await getActiveScenario();
   // Lectures limitées à l’onglet affiché.
   const real = !scenario;
-  const [publicationSettings, agents, automations, clients, health, searchConsole] = await Promise.all([
+  const [publicationSettings, agents, automations, clients, health, searchConsole, googleAnalytics] = await Promise.all([
     tab === "security" ? getPublicationSettingsState() : Promise.resolve(null),
     tab === "agents" ? listAgents() : Promise.resolve([]),
     real && tab === "automations" ? safeRead("automations", () => listAutomationSupervision(), []) : Promise.resolve({ data: [], unavailable: false }),
     real && tab === "automations" ? safeRead("clients", () => listClients(), []) : Promise.resolve({ data: [], unavailable: false }),
     real && (tab === "system" || tab === "connections") ? safeRead("health", () => getSystemHealth(), null) : Promise.resolve({ data: null, unavailable: false }),
     real && tab === "connections" ? safeRead("search-console", () => searchConsoleStatus(), null) : Promise.resolve({ data: null, unavailable: false }),
+    real && tab === "connections" ? safeRead("google-analytics", () => ga4Status(), null) : Promise.resolve({ data: null, unavailable: false }),
   ]);
   // Retour du callback OAuth (?gsc=…) : vocabulaire fermé, aucune valeur Google n'est relayée.
   const searchConsoleBanner = isOAuthOutcome(gsc) ? { ok: gsc === "success", message: oauthOutcomeMessages[gsc] } : null;
+  const ga4Banner = isGa4Outcome(ga4) ? { ok: ga4 === "success", message: ga4Outcomes[ga4] } : null;
 
   return (
     <>
@@ -74,7 +78,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </Panel>
       )}
 
-      {tab === "connections" && (scenario ? <SimConnections /> : <><SystemStatus errors={health.data?.connectionErrors ?? []} /><div id="search-console" className="mt-8 scroll-mt-24"><SearchConsolePanel status={searchConsole.data} banner={searchConsoleBanner} unavailable={searchConsole.unavailable} /></div><div className="mt-8"><RealConnections /></div></>)}
+      {tab === "connections" && (scenario ? <SimConnections /> : <><SystemStatus errors={health.data?.connectionErrors ?? []} /><div id="search-console" className="mt-8 scroll-mt-24"><SearchConsolePanel status={searchConsole.data} banner={searchConsoleBanner} unavailable={searchConsole.unavailable} /></div><div id="google-analytics" className="mt-8 scroll-mt-24"><GoogleAnalyticsPanel status={googleAnalytics.data} banner={ga4Banner} unavailable={googleAnalytics.unavailable} /></div><div className="mt-8"><RealConnections /></div></>)}
 
       {tab === "agents" && <AgentsSettings agents={agents} />}
 

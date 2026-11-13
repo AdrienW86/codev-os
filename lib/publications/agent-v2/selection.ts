@@ -56,6 +56,13 @@ export function unsupportedClaims(text:string,facts:string):string[]{
 export function factsOf(input:AgentV2GeneratorInput):string{
  return [input.client.name,input.client.activity??'',input.client.zone??'',input.project.name,...input.services,...(input.priorityTopics??[]),input.rules,...input.channelRules.map(c=>c.rules),...(input.confirmedFacts??[])].join('\n');
 }
+// Faits d'une préparation : ceux du client, plus le chantier confirmé de la SEULE photo choisie (lot 2). Le chantier
+// d'une autre photo n'est jamais citable : une commune ou une intervention ne passe pas d'une photo à l'autre.
+export function factsWithPhoto(input:AgentV2GeneratorInput,value:Pick<AgentV2GeneratorOutput,'publications'>):string{
+ const mediaId=value.publications.find(p=>p.mediaId)?.mediaId??null;
+ const job=mediaId?input.media.find(m=>m.id===mediaId)?.confirmedJob:undefined;
+ return job?`${factsOf(input)}\n${job}`:factsOf(input);
+}
 
 /** Termes métier que ce client ne propose pas (absents de ses faits) : nommés au modèle pour éviter des refus en série. */
 export function forbiddenServiceTerms(input:AgentV2GeneratorInput):string[]{
@@ -171,7 +178,7 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
  const repairedTexts=repaired.publications.map(p=>p.text.toLocaleLowerCase('fr'));
  let value=repairedTexts.some((t,i)=>repairedTexts.slice(i+1).some(u=>t===u||textSimilarity(t,u)>=VARIANT_SIMILARITY_THRESHOLD))?withoutCtas:repaired;
  // Anti-invention: when the full context is known, every claim must already be in the stored facts.
- if(input.client&&input.project){const facts=factsOf(input as AgentV2GeneratorInput);
+ if(input.client&&input.project){const facts=factsWithPhoto(input as AgentV2GeneratorInput,value);
   // Le motif (termes refusés, sans le texte) est conservé : il dit quoi corriger au lieu d'un refus muet.
   // Phrase portant un terme non confirmé (hors accroche) : retirée plutôt que de jeter la préparation ; un CTA
   // concerné est retiré (facultatif). Le sujet, l'angle et l'accroche restent soumis au refus.
@@ -196,7 +203,7 @@ export function validateGeneratorOutput(input:Pick<AgentV2GeneratorInput,'occurr
 // Gardes de l'intelligence éditoriale (PR #42), dans l'ordre : lieux (quand les faits sont connus), historique, photo.
 function editorialRefusal(input:Pick<AgentV2GeneratorInput,'occurrences'|'media'>&Partial<AgentV2GeneratorInput>,value:AgentV2GeneratorOutput):EditorialRefusal|null{
  const all=[value.idea.subject,value.idea.angle,...value.publications.flatMap(p=>[p.text,p.cta??''])];
- if(input.client&&input.project){const place=placeRefusal(all,factsOf(input as AgentV2GeneratorInput));if(place)return place;}
+ if(input.client&&input.project){const place=placeRefusal(all,factsWithPhoto(input as AgentV2GeneratorInput,value));if(place)return place;}
  const repeated=input.editorial?historyRefusal(value,input.editorial):null;if(repeated)return repeated;
  const mediaId=value.publications[0]?.mediaId??null;
  return mediaId?photoRefusal(value.idea.subject,input.media.find(m=>m.id===mediaId),input.services??[]):null;

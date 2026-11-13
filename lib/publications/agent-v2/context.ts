@@ -3,6 +3,8 @@ import {requireAdmin} from '@/lib/require-admin';
 import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from '../validation';
 import {clientMemoryFor} from '@/lib/client-memory/service';
+import {photoRecordsOf} from '@/lib/photo-records/service';
+import {confirmedJobText,type PhotoRecord} from '@/lib/photo-records/model';
 import type {AgentMediaCandidate,AgentV2GeneratorInput,OpenOccurrenceCandidate,PreviousPublication} from './contract';
 import {libraryCandidates,type LibraryAssessment,type LibraryRow,type LibraryUse} from './library-pool';
 import type {PublicationPlatform} from '../types';
@@ -32,7 +34,7 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  const project=await db.from('projects').select('id,client_id,name').eq('id',projectId).maybeSingle();
  if(project.error||!project.data)throw new AgentV2ContextError('context_unavailable');
  const clientId=project.data.client_id;
- const [client,config,channels,settings,recent,profile,library,assessed,libraryUses,memory]=await Promise.all([
+ const [client,config,channels,settings,recent,profile,library,assessed,libraryUses,memory,photoRecords]=await Promise.all([
   db.from('clients').select('name,activity,geographic_area').eq('id',clientId).maybeSingle(),
   db.from('publication_agent_projects').select('enabled,rights_confirmed,verified_services,editorial_rules,drive_folder_id').eq('project_id',projectId).eq('client_id',clientId).maybeSingle(),
   db.from('publication_project_channels').select('platform,enabled,editorial_rules').eq('project_id',projectId).eq('client_id',clientId),
@@ -42,7 +44,9 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   db.from('whatsapp_assets').select('id,library_status,media_kind,mime_type,size,width,height,purged_at,imported_at,claimed_agent_v2_run_id,sha256').eq('client_id',clientId).eq('media_kind','image').order('imported_at',{ascending:false}).limit(300),
   db.from('whatsapp_asset_assessments').select('asset_id,verdict,confidential,sensitive,manual_verdict,description,topics,quality,quality_issues,business_relevance,publishability').eq('client_id',clientId),
   db.from('whatsapp_asset_uses').select('asset_id,publication_id,used_at').eq('client_id',clientId),
-  clientMemoryFor(clientId,'publications')]);
+  clientMemoryFor(clientId,'publications'),
+  // Fiches photo (lot 2) : facultatives ; illisibles, aucune photo n'est exclue ni confirmée (contexte d'avant).
+  photoRecordsOf(clientId).catch(()=>new Map<string,PhotoRecord>())]);
  if(client.error||!client.data||config.error||channels.error||!channels.data||settings.error||recent.error||!recent.data||profile.error||library.error||assessed.error||libraryUses.error)throw new AgentV2ContextError('context_unavailable');
  if(!config.data?.enabled||!config.data.rights_confirmed)throw new AgentV2ContextError('agent_disabled');
  const strings=(v:unknown)=>Array.isArray(v)?v.filter((s):s is string=>typeof s==='string'&&s.trim()!=='').map(s=>s.trim()):[];
@@ -73,8 +77,10 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  // Doublons exacts : les usages d'une photo valent pour ses copies ; une copie d'une photo publiée via le catalogue
  // n'est jamais reproposée (règle « jamais réutilisée » du catalogue).
  const expandedUses=usesWithDuplicates(assetRows,libUses,usedCatalogHashes,assetId=>({asset_id:assetId,publication_id:'',used_at:now.toISOString()}));
- const pool=libraryCandidates(assetRows,assessments,expandedUses,
-  {allowed:settings.data?.media_reuse_allowed===true,afterDays:Number(settings.data?.media_reuse_after_days??180)},recentIds,now);
+ // Photo exclue par un administrateur : jamais proposée ; chantier confirmé : énoncé citable joint à la photo.
+ const pool=libraryCandidates(assetRows.filter(r=>photoRecords.get(r.id)?.status!=='excluded'),assessments,expandedUses,
+  {allowed:settings.data?.media_reuse_allowed===true,afterDays:Number(settings.data?.media_reuse_after_days??180)},recentIds,now)
+  .map(m=>{const job=confirmedJobText(photoRecords.get(m.id)??null);return job?{...m,confirmedJob:job}:m;});
  // Photo de chaque publication récente : description du catalogue ou de l'évaluation (jamais un nom de fichier).
  const describe=(publicationId:string)=>{const c=uses.data.find(u=>u.publication_id===publicationId);if(c)return catalog.find(m=>m.id===c.media_id)?.description??null;
   const l=libUses.find(u=>u.publication_id===publicationId);return l?assessments.find(a=>a.asset_id===l.asset_id)?.description||null:null;};

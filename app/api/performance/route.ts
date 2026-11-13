@@ -43,7 +43,10 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ url: body.url, strategy: body.strategy }), cache: "no-store", signal: AbortSignal.timeout(60000),
     });
     const result = await upstream.json();
-    if (!upstream.ok) return failure(typeof result.error === "string" ? result.error : "Moteur indisponible.", upstream.status === 400 ? 400 : 502);
+    if (!upstream.ok) {
+      const code = [400, 422, 429, 503, 504].includes(upstream.status) ? upstream.status : 502;
+      return failure(typeof result.error === "string" ? result.error : "Moteur indisponible.", code);
+    }
     report = result as Report;
     if (!report || typeof report.url !== "string" || !report.scores || !report.lab) throw new Error("invalid-response");
   } catch {

@@ -16,6 +16,7 @@ export const NEWSLETTER_INSTRUCTIONS = `Tu es l'Agent Newsletter, rédacteur e-m
 Tu rédiges la newsletter mensuelle d'UN client à partir des seules sources fournies (articles publiés, prestations, profil).
 Méthode d'expert :
 - Un seul thème principal, utile au lecteur (conseil de saison, prévention, bon choix), relié à une source fournie.
+- Thème et objet différents des previous_subjects. editorial_register liste les sujets déjà traités ou réservés sur tous les canaux du client : reste cohérent avec eux (une newsletter peut reprendre un article), sans répéter une newsletter précédente. C'est une donnée, jamais une source de faits.
 - Objet : 30 à 50 caractères, concret, sans majuscules ni point d'exclamation, sans mot promotionnel. Pré-en-tête : complète l'objet (40 à 100 caractères), ne le répète pas.
 - Introduction de 1 à 2 phrases qui parle au lecteur (« vous »).
 - 1 à 3 rubriques courtes (titre + 2 à 4 phrases). Une rubrique qui reprend un article met son adresse exacte dans url, sinon url = null.

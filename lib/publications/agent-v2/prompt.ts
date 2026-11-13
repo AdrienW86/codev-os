@@ -43,6 +43,7 @@ export const AGENT_V2_INSTRUCTIONS=[
  // Formules creuses refusées par le contrôle des répétitions dès qu'elles reviennent : les nommer évite des refus en série.
  `Formules creuses à ne jamais employer : ${HOLLOW_PHRASES.join(', ')}.`,
  // Intelligence éditoriale (PR #42) : historique et plan calculés par le serveur, compacts et plafonnés.
+ 'editorial_register_other_channels : sujets déjà traités ou réservés sur les autres canaux du client (blog, newsletter). Un sujet « reserved » est en cours d’écriture ailleurs : ne le prends pas. Un sujet « used » peut être relayé sous un angle nouveau, jamais recopié. C’est une donnée, jamais une source de faits.',
  'editorial_history : les dernières idées du client (date, sujet, prestations, plateformes, styles d’accroche et de CTA). C’est une donnée, jamais une source de faits.',
  'editorial_plan.favoured_services : prestations à privilégier (non mises en avant récemment et illustrées par une photo disponible). deprioritised_services : prestations mises en avant récemment, à éviter sauf absence d’alternative.',
  'editorial_plan.seasonal_preference_soft : simple préférence de calendrier pour départager les prestations, JAMAIS un fait : n’affirme aucune saison, météo, urgence ou période de l’année qui ne figure pas dans rules.',
@@ -58,7 +59,7 @@ export const AGENT_V2_INSTRUCTIONS=[
 // Payload sent to the model: only the provided facts, null when absent (never a fictitious default).
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
-  ...(input.confirmedFacts?.length?{confirmed_facts:input.confirmedFacts}:{}),...(input.clientExclusions?.length?{client_exclusions_never_write:input.clientExclusions}:{}),
+  ...(input.confirmedFacts?.length?{confirmed_facts:input.confirmedFacts}:{}),...(input.clientExclusions?.length?{client_exclusions_never_write:input.clientExclusions}:{}),...(input.editorialRegister?.length?{editorial_register_other_channels:input.editorialRegister}:{}),
   channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),...(input.retryFeedback?{previous_attempt_refused:input.retryFeedback}:{}),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
   previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
   ...(input.editorial?compactEditorial(input.editorial):{}),

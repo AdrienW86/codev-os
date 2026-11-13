@@ -4,6 +4,8 @@ import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isPublicationUuid} from '../validation';
 import {clientMemoryFor} from '@/lib/client-memory/service';
 import {photoRecordsOf} from '@/lib/photo-records/service';
+import {readRegister} from '@/lib/editorial-register/service';
+import {registerBrief,type RegisterEntry} from '@/lib/editorial-register/model';
 import {confirmedJobText,type PhotoRecord} from '@/lib/photo-records/model';
 import type {AgentMediaCandidate,AgentV2GeneratorInput,OpenOccurrenceCandidate,PreviousPublication} from './contract';
 import {libraryCandidates,type LibraryAssessment,type LibraryRow,type LibraryUse} from './library-pool';
@@ -34,7 +36,7 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
  const project=await db.from('projects').select('id,client_id,name').eq('id',projectId).maybeSingle();
  if(project.error||!project.data)throw new AgentV2ContextError('context_unavailable');
  const clientId=project.data.client_id;
- const [client,config,channels,settings,recent,profile,library,assessed,libraryUses,memory,photoRecords]=await Promise.all([
+ const [client,config,channels,settings,recent,profile,library,assessed,libraryUses,memory,photoRecords,register]=await Promise.all([
   db.from('clients').select('name,activity,geographic_area').eq('id',clientId).maybeSingle(),
   db.from('publication_agent_projects').select('enabled,rights_confirmed,verified_services,editorial_rules,drive_folder_id').eq('project_id',projectId).eq('client_id',clientId).maybeSingle(),
   db.from('publication_project_channels').select('platform,enabled,editorial_rules').eq('project_id',projectId).eq('client_id',clientId),
@@ -46,9 +48,12 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   db.from('whatsapp_asset_uses').select('asset_id,publication_id,used_at').eq('client_id',clientId),
   clientMemoryFor(clientId,'publications'),
   // Fiches photo (lot 2) : facultatives ; illisibles, aucune photo n'est exclue ni confirmée (contexte d'avant).
-  photoRecordsOf(clientId).catch(()=>new Map<string,PhotoRecord>())]);
+  photoRecordsOf(clientId).catch(()=>new Map<string,PhotoRecord>()),
+  // Registre éditorial (lot 3) : sujets des autres canaux (blog, newsletter, réservations) ; illisible, contexte d'avant.
+  readRegister(clientId).catch(()=>[] as RegisterEntry[])]);
  if(client.error||!client.data||config.error||channels.error||!channels.data||settings.error||recent.error||!recent.data||profile.error||library.error||assessed.error||libraryUses.error)throw new AgentV2ContextError('context_unavailable');
  if(!config.data?.enabled||!config.data.rights_confirmed)throw new AgentV2ContextError('agent_disabled');
+ const otherChannels=registerBrief(register.filter(e=>e.channel!=='social'),new Date(),20);
  const strings=(v:unknown)=>Array.isArray(v)?v.filter((s):s is string=>typeof s==='string'&&s.trim()!=='').map(s=>s.trim()):[];
  const services=[...new Set([...strings(config.data.verified_services),...strings(profile.data?.services)])];
  // Les 3 dernières idées (sujets distincts) du CLIENT, tous projets confondus (même photothèque, même audience) :
@@ -99,5 +104,6 @@ export async function loadAgentV2Context(projectId:string,occurrences:readonly O
   channelRules:enabled.flatMap(c=>c.editorial_rules?.trim()?[{platform:c.platform,rules:c.editorial_rules.trim()}]:[]),
   occurrences:[...occurrences],media:candidates,previousSubjects:rows.map(p=>p.subject).filter((s):s is string=>Boolean(s)).slice(0,20),
   previousPublications,priorityTopics,editorial:{history,plan},
-  ...(memory?.facts.length?{confirmedFacts:memory.facts.slice(0,80)}:{}),...(memory?.exclusions.length?{clientExclusions:memory.exclusions.slice(0,30)}:{})}};
+  ...(memory?.facts.length?{confirmedFacts:memory.facts.slice(0,80)}:{}),...(memory?.exclusions.length?{clientExclusions:memory.exclusions.slice(0,30)}:{}),
+  ...(otherChannels.length?{editorialRegister:otherChannels}:{})}};
 }

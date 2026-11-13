@@ -99,7 +99,7 @@ function contextWith(tables, { fail = [] } = {}) {
   const db = { from(table) { log.push(table); const filters = []; const rows = () => fail.includes(table) ? { data: null, error: { message: "down" } } : { data: json((tables[table] ?? []).filter(r => filters.every(f => f(r)))), error: null };
     const q = { select: () => q, order: () => q, limit: () => q, eq(k, v) { filters.push(r => r[k] === v); return q; }, in(k, vs) { filters.push(r => vs.includes(r[k])); return q; },
       maybeSingle: async () => { const r = rows(); return { data: r.data?.[0] ?? null, error: r.error }; }, then(ok, ko) { return Promise.resolve(rows()).then(ok, ko); } }; return q; } };
-  return { log, m: load("lib/publications/agent-v2/context.ts", { "@/lib/client-memory/service": { clientMemoryFor: async () => null }, "@/lib/require-admin": { requireAdmin: async () => {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => db } }) };
+  return { log, m: load("lib/publications/agent-v2/context.ts", { "@/lib/client-memory/service": { clientMemoryFor: async () => null }, "@/lib/editorial-register/service": { readRegister: async () => [] }, "@/lib/require-admin": { requireAdmin: async () => {} }, "@/lib/supabase/server": { getSupabaseServerClient: () => db } }) };
 }
 const tables = () => ({
   projects: [{ id: P, client_id: C, name: "Réseaux" }], clients: [{ id: C, name: "Toitures Dupont", activity: "Couverture", geographic_area: null }],

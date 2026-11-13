@@ -47,7 +47,7 @@ export async function syncGa4(clientId: string, period: Period, deps: Ga4Deps = 
       const result = optional[i];
       sections[names[i]] = result.status === "fulfilled" ? { ok: true } : { ok: false, error: "API Analytics indisponible pour cette section." };
     }
-    const get = (i: number) => optional[i].status === "fulfilled" ? optional[i].value : { rows: [] };
+    const get = (i: number) => { const result = optional[i]; return result?.status === "fulfilled" ? result.value : { rows: [] }; };
     const snapshot: Ga4Snapshot = {
       version: GA4_SNAPSHOT_VERSION,
       property, period, totals: parseGa4Totals(totals),

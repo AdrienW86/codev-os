@@ -34,7 +34,7 @@ export async function readGa4Connection(db: Db = getSupabaseServerClient()): Pro
   const metadata = data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata) ? data.metadata as Record<string, unknown> : {};
   return {
     id: data.id, status: data.status, reference: isSecretReference(data.credential_reference) ? data.credential_reference : null,
-    properties: storedGa4Properties(metadata), connectedAt: data.connected_at, lastError: data.last_error, metadata,
+    properties: storedGa4Properties(metadata), connectedAt: data.connected_at, lastError: data.last_error ?? null, metadata,
   };
 }
 export async function ga4Status(deps: Ga4Deps = ga4Deps()) {

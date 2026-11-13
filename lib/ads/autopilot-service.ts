@@ -36,7 +36,7 @@ export async function saveAutopilotMode(clientId: string, mode: unknown): Promis
   const { error } = await db().from("ads_autopilot_settings").upsert({ client_id: clientId, mode, updated_by: userId, updated_at: new Date().toISOString() }, { onConflict: "client_id" });
   if (error) return { ok: false, message: "Réglage non enregistré : migration 20261205000000_ads_autopilot à appliquer." };
   await writeAudit({ kind: "admin", userId }, { action: "ads.autopilot.configured", resource_type: "client", resource_id: clientId, metadata: { mode } });
-  return { ok: true, message: mode === "off" ? "Pilote automatique désactivé." : "Pilote automatique activé : mots-clés négatifs appliqués à la prochaine veille hebdomadaire." };
+  return { ok: true, message: mode === "off" ? "Pilote automatique désactivé." : "Pilote automatique activé : mots-clés négatifs appliqués à la prochaine veille quotidienne." };
 }
 
 export async function listAutopilotChanges(clientId: string, limit = 50): Promise<AutopilotChange[] | null> {

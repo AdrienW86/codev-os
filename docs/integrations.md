@@ -99,6 +99,7 @@ Un compte Google (celui de l’agence) est autorisé **une fois** en OAuth 2.0 ;
 - **Scope** : `https://www.googleapis.com/auth/adwords`. Le jeton développeur doit être approuvé (niveau « Basic » minimum pour les comptes réels).
 - **Par client** : fiche client → Agents → Google Ads (identifiant client à 10 chiffres) ; exploration dans l’onglet **Campagnes**. Voir [google-ads-read-only.md](google-ads-read-only.md).
 - **Lecture seule** : tableau de bord par campagne, rapports Google Ads à périmètre figé, analyse déterministe (sans IA). **Aucune modification de campagne ni de budget**.
+- **Veille quotidienne (`ads.monitor`, 07:00 Paris)** : anomalies sur 7 jours, diagnostic expert sur 30 jours et opportunités de mots-clés croisant quatre sources en lecture seule : termes de recherche du compte, requêtes Search Console synchronisées, **Planificateur de mots-clés** (volumes mensuels, concurrence et enchères haut de page estimés par Google, ciblés sur la zone du client) et **recommandations « mot-clé » de Google** pour le compte. Une source refusée (niveau d'accès du jeton développeur, quota) est signalée « non lue », jamais remplacée. L'ajout d'un mot-clé reste une proposition à valider.
 
 <a id="email"></a>
 ## E-mail (Resend) — envoi des rapports

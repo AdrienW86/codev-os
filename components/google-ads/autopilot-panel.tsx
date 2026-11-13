@@ -17,7 +17,7 @@ export function AutopilotPanel(props: Props) {
   return <section className="mt-6 space-y-4 rounded-xl border border-border p-5" aria-label="Pilote automatique Google Ads">
     <div>
       <h3 className="font-semibold">Pilote automatique — {props.clientName}</h3>
-      <p className="mt-1 text-sm text-muted">À chaque veille hebdomadaire, l’agent ajoute seul des mots-clés négatifs exacts sur les recherches hors cible : exclusions que vous avez déclarées, ou termes coûteux sans conversion sans lien avec vos services. {props.maxPerCampaignWeek} au plus par campagne et par semaine. Mots-clés, budgets et enchères restent des propositions à valider. Chaque ajout est journalisé et annulable.</p>
+      <p className="mt-1 text-sm text-muted">À chaque veille quotidienne, l’agent ajoute seul des mots-clés négatifs exacts sur les recherches hors cible : exclusions que vous avez déclarées, ou termes coûteux sans conversion sans lien avec vos services. {props.maxPerCampaignWeek} au plus par campagne et par semaine. Mots-clés, budgets et enchères restent des propositions à valider. Chaque ajout est journalisé et annulable.</p>
     </div>
     {!props.available ? <p className="text-sm text-warning">Migration 20261205000000_ads_autopilot à appliquer avant d’activer le pilote.</p> : <>
       {!props.serverEnabled && <p className="text-sm text-warning">Écritures désactivées côté serveur : le pilote ne modifiera rien tant que CODEV_GOOGLE_ADS_WRITES_ENABLED et CODEV_GOOGLE_ADS_AUTOPILOT ne valent pas « true ».</p>}

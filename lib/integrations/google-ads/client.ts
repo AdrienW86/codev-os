@@ -1,8 +1,8 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
-import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery, accountDailyQuery, searchTermsQuery, impressionShareQuery, keywordQualityQuery, deviceQuery } from "./queries";
+import { accountSummaryQuery, campaignsQuery, campaignPerformanceQuery, accountPerformanceQuery, campaignInventoryQuery, campaignMetricsQuery, localServicesLeadsQuery, conversionActionsQuery, accountDailyQuery, searchTermsQuery, impressionShareQuery, keywordQualityQuery, deviceQuery, keywordRecommendationsQuery } from "./queries";
 import { normalizeCustomerId } from "./validation";
-import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic, AdsExpertSignals } from "./types";
+import type { AdsAccount, AdsCampaign, AdsMetrics, AdsPeriod, CampaignDashboardRaw, GoogleAdsReadClient, ConversionActionDiagnostic, AdsExpertSignals, AdsKeywordIdea, AdsRecommendedKeyword, KeywordIdeaRequest } from "./types";
 
 export class GoogleAdsError extends Error {
   constructor(public readonly kind: "configuration" | "authentication" | "access" | "quota" | "unavailable" | "response", public readonly requestId: string | null = null) {
@@ -86,6 +86,31 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
     } catch (error) {
       const mapped = error instanceof GoogleAdsError ? error : new GoogleAdsError("unavailable");
       console.error("[google-ads]", { type: mapped.kind, requestId: mapped.requestId, customerId, operation: "search" });
+      throw mapped;
+    }
+  }
+
+  /** Appel de service en lecture seule (Planificateur de mots-clés, suggestion de zones) : même transport et même bail. */
+  async #post(endpoint: "keywordIdeas" | "geoSuggest", body: unknown, customerId: string, managerId?: string): Promise<Record<string, unknown>> {
+    await this.authorize();
+    if (normalizeCustomerId(customerId) !== customerId || managerId && normalizeCustomerId(managerId) !== managerId) throw new GoogleAdsError("configuration");
+    try {
+      const token = await this.#accessToken();
+      await this.authorize();
+      // Deux services de lecture seule, et eux seuls : idées de mots-clés et suggestion de zones géographiques.
+      const url = endpoint === "keywordIdeas" ? `https://googleads.googleapis.com/v25/customers/${customerId}:generateKeywordIdeas` : `https://googleads.googleapis.com/v25/geoTargetConstants:suggest`;
+      const response = await fetch(url, {
+        method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(managerId ? { "login-customer-id": managerId } : {}) },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw failure(response);
+      const data = await response.json();
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new GoogleAdsError("response");
+      return data as Record<string, unknown>;
+    } catch (error) {
+      const mapped = error instanceof GoogleAdsError ? error : new GoogleAdsError("unavailable");
+      console.error("[google-ads]", { type: mapped.kind, requestId: mapped.requestId, customerId, operation: endpoint });
       throw mapped;
     }
   }
@@ -190,13 +215,74 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       try { return parseExpertRows(kind, await this.#search(account.id, query, managerId)) as AdsExpertSignals[K]; } catch { return null; }
     };
     if (!campaignIds.length) return { searchTerms: null, impressionShare: null, keywords: null, devices: null };
+    let recommendedKeywords: AdsRecommendedKeyword[] | null;
+    try { recommendedKeywords = parseRecommendedKeywords(await this.#search(account.id, keywordRecommendationsQuery(), managerId), campaignIds); } catch { recommendedKeywords = null; }
     return {
       searchTerms: await read("searchTerms", searchTermsQuery(period, campaignIds)),
       impressionShare: await read("impressionShare", impressionShareQuery(period, campaignIds)),
       keywords: await read("keywords", keywordQualityQuery(period, campaignIds)),
       devices: await read("devices", deviceQuery(period, campaignIds)),
+      recommendedKeywords,
     };
   }
+
+  // Planificateur de mots-clés : zone du client (suggestion Google) sinon France, langue française, réseau de recherche.
+  // Un refus (niveau d'accès du jeton développeur, quota) rend la source « indisponible » (null), jamais vide.
+  async getKeywordIdeas(account: AdsAccount, request: KeywordIdeaRequest, managerId?: string): Promise<AdsKeywordIdea[] | null> {
+    const seeds = [...new Set(request.seeds.map((seed) => seed.trim().toLowerCase()).filter((seed) => seed.length >= 3 && seed.length <= 80))].slice(0, 20);
+    if (!seeds.length) return null;
+    let geo = FRANCE_GEO;
+    const place = request.zone?.split(/[,;(]|\s+et\s+|\s+-\s+/i)[0]?.trim();
+    if (place && place.length >= 2 && place.length <= 80) {
+      try { geo = pickGeoTarget(await this.#post("geoSuggest", { locale: "fr", countryCode: "FR", locationNames: { names: [place] } }, account.id, managerId)) ?? FRANCE_GEO; } catch { geo = FRANCE_GEO; }
+    }
+    try {
+      const body = await this.#post("keywordIdeas", { language: FRENCH, geoTargetConstants: [geo], keywordPlanNetwork: "GOOGLE_SEARCH", includeAdultKeywords: false, pageSize: 200, keywordSeed: { keywords: seeds } }, account.id, managerId);
+      return parseKeywordIdeas(body);
+    } catch { return null; }
+  }
+}
+
+const FRANCE_GEO = "geoTargetConstants/2250", FRENCH = "languageConstants/1002";
+const GEO_TYPES = new Set(["City", "Municipality", "Department", "County", "Region", "Postal Code", "Arrondissement", "Canton"]);
+/** Première zone française active proposée par Google pour le nom de la zone du client ; null sinon. */
+export function pickGeoTarget(body: unknown): string | null {
+  const list = (body as { geoTargetConstantSuggestions?: unknown } | null)?.geoTargetConstantSuggestions;
+  if (!Array.isArray(list)) return null;
+  for (const item of list.slice(0, 20)) {
+    const geo = (item as { geoTargetConstant?: { resourceName?: unknown; status?: unknown; countryCode?: unknown; targetType?: unknown } } | null)?.geoTargetConstant;
+    const name = typeof geo?.resourceName === "string" ? geo.resourceName : "";
+    if (/^geoTargetConstants\/\d{1,12}$/.test(name) && geo?.status === "ENABLED" && geo?.countryCode === "FR" && GEO_TYPES.has(String(geo?.targetType))) return name;
+  }
+  return null;
+}
+const COMPETITION = new Set(["LOW", "MEDIUM", "HIGH"]);
+/** Idées du Planificateur : texte, volume mensuel moyen, concurrence, enchères haut de page (micros → unités). Lignes malformées ignorées. */
+export function parseKeywordIdeas(body: unknown): AdsKeywordIdea[] {
+  const results = (body as { results?: unknown } | null)?.results;
+  if (results !== undefined && !Array.isArray(results)) throw new GoogleAdsError("response");
+  const seen = new Set<string>();
+  return (results ?? []).slice(0, 500).flatMap((row: unknown) => {
+    const item = row as { text?: unknown; keywordIdeaMetrics?: Record<string, unknown> } | null;
+    const text = typeof item?.text === "string" ? item.text.trim().toLowerCase() : "";
+    if (!text || text.length > 80 || seen.has(text)) return [];
+    seen.add(text);
+    const metrics = item?.keywordIdeaMetrics ?? {};
+    const volume = numeric(metrics.avgMonthlySearches), low = numeric(metrics.lowTopOfPageBidMicros), high = numeric(metrics.highTopOfPageBidMicros);
+    return [{ text, avgMonthlySearches: volume !== null && volume >= 0 ? volume : null, competition: COMPETITION.has(String(metrics.competition)) ? metrics.competition as "LOW" | "MEDIUM" | "HIGH" : null,
+      lowBid: low !== null && low > 0 ? low / 1_000_000 : null, highBid: high !== null && high > 0 ? high / 1_000_000 : null }];
+  });
+}
+/** Recommandations « mot-clé » de Google limitées aux campagnes du périmètre. */
+export function parseRecommendedKeywords(rows: Row[], campaignIds: string[]): AdsRecommendedKeyword[] {
+  const allowed = new Set(campaignIds);
+  return rows.flatMap((row) => {
+    const rec = row.recommendation as { campaign?: unknown; keywordRecommendation?: { keyword?: { text?: unknown; matchType?: unknown } } } | undefined;
+    const text = typeof rec?.keywordRecommendation?.keyword?.text === "string" ? rec.keywordRecommendation.keyword.text.trim().toLowerCase() : "";
+    const campaignId = typeof rec?.campaign === "string" ? rec.campaign.match(/campaigns\/(\d{1,20})$/)?.[1] ?? null : null;
+    if (!text || text.length > 80 || (campaignId && !allowed.has(campaignId))) return [];
+    return [{ campaignId, text, matchType: typeof rec?.keywordRecommendation?.keyword?.matchType === "string" ? rec.keywordRecommendation.keyword.matchType : "UNKNOWN" }];
+  });
 }
 
 /** Ratio Google Ads (0..1) ; « --  » ou valeur hors bornes → inconnu (null), jamais zéro. */

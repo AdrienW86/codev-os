@@ -89,7 +89,7 @@ function serviceSetup({ deny = false, connected = true, dashboardError = null } 
     "./ai-analysis": {},
     "./recommendation-core": loadTs("lib/integrations/google-ads/recommendation-core.ts", { "@/lib/ai/metered": { meteredProvider: (p) => p, withAiScope: (_s, work) => work(), isBudgetExceeded: () => false }, "@/lib/ai/providers": { selectAIProvider: () => null }, "./ai-analysis": { ANALYSIS_LIMITATIONS: [] }, "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "@/lib/providers/errors": { ProviderError: class extends Error {} } }, { performance }),
     "./context-service": { getAdsBusinessContext: async () => ({ available: true, revision: 0, context: null }) },
-    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "./organic": { loadOrganicQueries: async () => null },
+    "./findings": { buildAdsFindings: () => [] }, "./expert": loadTs("lib/integrations/google-ads/expert.ts"), "./keyword-sources": { withKeywordSources: async (_reader, _account, signals) => ({ ...signals, organicQueries: null, keywordIdeas: null }) },
     "./analysis-state": { reserveAdsAnalysis: async () => ({ acquired: true, release: async () => {} }), saveAdsAnalysisMetadata: async (_id, _client, _agent, metadata) => { runs.at(-1).metadata = plain(metadata); } },
   });
   return { service, calls, audits, recommendations, runs };
@@ -360,12 +360,13 @@ test("GAQL builders only select, are date-bounded and never read lead contact de
   assert.throws(() => queries.localServicesLeadsQuery({ ...period, end: "2026-09-30' OR '1'='1" }));
 });
 
+// Lecture seule : recherche GAQL, plus le Planificateur de mots-clés et la suggestion de zones (services sans écriture).
 test("the Google Ads integration exposes no write path", () => {
   const directory = new URL("../lib/integrations/google-ads/", import.meta.url);
   for (const file of readdirSync(directory)) {
     const source = readFileSync(new URL(file, directory), "utf8");
     assert.doesNotMatch(source, /:mutate|googleAds:mutate|campaigns:mutate|campaignBudgets|\bmutate\(/, file);
-    for (const url of source.match(/https:\/\/[^\s`"']+/g) ?? []) assert.match(url, /^https:\/\/(googleads\.googleapis\.com\/v\d+\/customers\/\$\{(?:customerId|account)\}\/googleAds:search|oauth2\.googleapis\.com\/token)$/, `${file}: ${url}`);
+    for (const url of source.match(/https:\/\/[^\s`"']+/g) ?? []) assert.match(url, /^https:\/\/(googleads\.googleapis\.com\/v\d+\/customers\/\$\{(?:customerId|account)\}\/googleAds:search|googleads\.googleapis\.com\/v\d+\/customers\/\$\{customerId\}:generateKeywordIdeas|googleads\.googleapis\.com\/v\d+\/geoTargetConstants:suggest|oauth2\.googleapis\.com\/token)$/, `${file}: ${url}`);
   }
 });
 

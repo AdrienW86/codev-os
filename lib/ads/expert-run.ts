@@ -1,13 +1,13 @@
 import "server-only";
-// Étape experte de la veille hebdomadaire Google Ads (job « ads.monitor ») : diagnostic expert sur 30 jours
-// (termes, part d'impressions, Quality Score, appareils, Search Console) → recommandations dédoublonnées, puis
+// Étape experte de la veille quotidienne Google Ads (job « ads.monitor ») : diagnostic expert sur 30 jours
+// (termes, part d'impressions, Quality Score, appareils, Search Console, Planificateur de mots-clés, recommandations Google) → recommandations dédoublonnées, puis
 // pilote automatique prudent si le client l'a activé. Lecture via le transport principal, gardé par le bail du job.
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createGoogleAdsReadClient } from "@/lib/integrations/google-ads/client";
 import { buildCampaignRows } from "@/lib/integrations/google-ads/service";
 import { buildExpertDiagnosis } from "@/lib/integrations/google-ads/expert";
 import { adsBusinessSchema } from "@/lib/integrations/google-ads/business-context";
-import { loadOrganicQueries } from "@/lib/integrations/google-ads/organic";
+import { withKeywordSources } from "@/lib/integrations/google-ads/keyword-sources";
 import { openIncident, recordRecommendation } from "@/lib/agents/outputs";
 import { planAutopilot } from "@/lib/ads/autopilot";
 import { applyAutopilot, autopilotJournal, readAutopilotSettings } from "@/lib/ads/autopilot-service";
@@ -33,14 +33,14 @@ export async function runExpertAndAutopilot(context: Pick<RunContext, "job" | "a
     .filter((row) => !row.localServices && row.status === "ENABLED" && (trackedIds === null || trackedIds.includes(row.id)));
   if (!rows.length) return { findings: 0, recommendations: 0, autopilot: null };
   const signals = reader.getExpertSignals ? await reader.getExpertSignals(summary, period, rows.map((row) => row.id), manager) : null;
-  const organicQueries = await loadOrganicQueries(clientId);
   const [{ data: contextRow }, { data: client }] = await Promise.all([
     supabase.from("client_ads_context").select("context").eq("client_id", clientId).maybeSingle(),
     supabase.from("clients").select("name").eq("id", clientId).maybeSingle(),
   ]);
   const parsed = adsBusinessSchema.safeParse(contextRow?.context);
   const business = parsed.success ? parsed.data : null;
-  const enriched = signals ? { ...signals, organicQueries } : null;
+  // Sources d'opportunités : Search Console, Planificateur de mots-clés (zone du client) et recommandations Google.
+  const enriched = signals ? await withKeywordSources(reader, summary, signals, { clientId, business, managerId: manager }) : null;
   const findings = buildExpertDiagnosis(rows, enriched, business, period, summary.currency);
 
   // Recommandations : une par constat haute ou moyenne priorité, tant que le constat reste ouvert (incident dédoublonné).

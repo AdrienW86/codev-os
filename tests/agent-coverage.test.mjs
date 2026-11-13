@@ -43,7 +43,7 @@ test("types sans exécution attendue (Publications, sans type) ignorés", () => 
   assert.equal(computeAgentCoverage({ agents: [agent("p", "publications"), agent("n", null)], automations: [], assignments: [] }).length, 0);
 });
 
-test("Google Ads : veille hebdomadaire attendue pour chaque client rattaché", () => {
+test("Google Ads : veille quotidienne attendue pour chaque client rattaché", () => {
   const gaps = computeAgentCoverage({
     agents: [agent("g", "google-ads")],
     automations: [{ run_type: "ads.monitor", client_id: c1, status: "active" }, { run_type: "seo.analyze", client_id: c2, status: "active" }],

@@ -23,12 +23,12 @@ export async function loadAgentCoverage(): Promise<AgentCoverage> {
   return { gaps, clientNames: Object.fromEntries((clients.data ?? []).map((client) => [client.id, client.name])) };
 }
 
-/** Veille Google Ads du client : chaque lundi 07:00 (Paris), lecture seule. Exige un compte Google Ads connecté. */
+/** Veille Google Ads du client : chaque jour à 07:00 (Paris), lecture seule. Exige un compte Google Ads connecté. */
 async function scheduleAdsMonitor(actor: Actor & { kind: "admin" }, clientId: string): Promise<{ ok: boolean; message: string }> {
   const { data, error } = await db().from("client_connections").select("status").eq("client_id", clientId).eq("provider", "google_ads").maybeSingle();
   if (error) return { ok: false, message: "connexion illisible" };
   if (data?.status !== "connected") return { ok: false, message: "compte Google Ads à connecter" };
-  const result = await createAutomation(actor, { name: "Veille des campagnes Google Ads", runType: "ads.monitor", clientId, frequency: "weekly", schedule: { time: "07:00", weekdays: [1] }, config: {} });
+  const result = await createAutomation(actor, { name: "Veille des campagnes Google Ads", runType: "ads.monitor", clientId, frequency: "daily", schedule: { time: "07:00" }, config: {} });
   return { ok: result.ok, message: result.message ?? "" };
 }
 

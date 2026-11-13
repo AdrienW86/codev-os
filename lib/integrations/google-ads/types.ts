@@ -29,7 +29,14 @@ export type AdsExpertSignals = {
   searchTerms: AdsSearchTerm[] | null; impressionShare: AdsImpressionShare[] | null; keywords: AdsKeywordQuality[] | null; devices: AdsDeviceRow[] | null;
   /** Requêtes Google organiques du site (dernier instantané Search Console synchronisé) ; absent = non lues. */
   organicQueries?: OrganicQuery[] | null;
+  /** Idées du Planificateur de mots-clés (volumes mensuels et enchères haut de page estimés par Google) ; absent = non lues. */
+  keywordIdeas?: AdsKeywordIdea[] | null;
+  /** Mots-clés proposés par Google lui-même dans les recommandations du compte ; absent = non lues. */
+  recommendedKeywords?: AdsRecommendedKeyword[] | null;
 };
+export type AdsKeywordIdea = { text: string; avgMonthlySearches: number | null; competition: "LOW" | "MEDIUM" | "HIGH" | null; lowBid: number | null; highBid: number | null };
+export type AdsRecommendedKeyword = { campaignId: string | null; text: string; matchType: string };
+export type KeywordIdeaRequest = { seeds: string[]; zone: string | null; language: "fr" };
 export type OrganicQuery = { query: string; clicks: number; impressions: number; ctr: number | null; position: number | null };
 export interface GoogleAdsReadClient {
   getConversionActionDiagnostics(customerId: string, managerId?: string): Promise<ConversionActionDiagnostic[]>;
@@ -41,6 +48,8 @@ export interface GoogleAdsReadClient {
   getDailyMetrics?(account: AdsAccount, period: AdsPeriod, managerId?: string): Promise<(AdsMetrics & { date: string })[]>;
   /** Lecture seule : signaux experts des campagnes du périmètre ; chaque lecture échoue indépendamment (null). */
   getExpertSignals?(account: AdsAccount, period: AdsPeriod, campaignIds: string[], managerId?: string): Promise<AdsExpertSignals>;
+  /** Lecture seule : Planificateur de mots-clés (idées, volumes, enchères estimées) ; null si l'accès est refusé. */
+  getKeywordIdeas?(account: AdsAccount, request: KeywordIdeaRequest, managerId?: string): Promise<AdsKeywordIdea[] | null>;
 }
 export type GoogleAdsConnection = {
   id: string; client_id: string; provider: string; status: string; external_account_id: string | null;

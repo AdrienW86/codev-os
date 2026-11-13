@@ -62,3 +62,7 @@ export function keywordQualityQuery(period: AdsPeriod, campaignIds: string[]) {
 export function deviceQuery(period: AdsPeriod, campaignIds: string[]) {
   return `SELECT campaign.id, segments.device, metrics.cost_micros, metrics.clicks, metrics.conversions FROM campaign WHERE ${dateClause(period)} AND ${campaignFilter(campaignIds)}`;
 }
+/** Recommandations « mot-clé » que Google propose lui-même pour le compte (lecture seule, jamais appliquées d'ici). */
+export function keywordRecommendationsQuery() {
+  return "SELECT recommendation.type, recommendation.campaign, recommendation.keyword_recommendation.keyword.text, recommendation.keyword_recommendation.keyword.match_type FROM recommendation WHERE recommendation.type = 'KEYWORD' AND recommendation.dismissed = FALSE LIMIT 200";
+}

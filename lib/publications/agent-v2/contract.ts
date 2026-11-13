@@ -27,4 +27,5 @@ export type AgentV2Usage={input_tokens:number;output_tokens:number;estimated_cos
 // The provider returns the raw structured output (validated afterwards, fail closed) and its usage.
 export interface PublicationsAgentV2Generator{generate(input:AgentV2GeneratorInput):Promise<{output:unknown;usage:AgentV2Usage}>}
 
-export const AGENT_V2_LIMITS={subject:300,angle:3000,text:10000,cta:500,maxPublicationsPerIdea:3,maxCost:.1} as const;
+// maxCost : plafond d’une exécution (2 € depuis la migration 20261208000000, modèles Claude) ; unknownCost : coût retenu quand le fournisseur ne renvoie aucune mesure.
+export const AGENT_V2_LIMITS={subject:300,angle:3000,text:10000,cta:500,maxPublicationsPerIdea:3,maxCost:2,unknownCost:.1} as const;

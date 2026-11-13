@@ -196,7 +196,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
     messages: [{ role: "user", content: encoded }],
     tools: [{ name: "ads_analysis_result", description: "Retour structuré de l’analyse, sans exécution.", parameters, strict: true }],
     toolChoice: "required", maxTokens: 3000,
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(120_000),
   });
   if (response.toolCalls.length !== 1 || response.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
   let output: AdsAIOutput;
@@ -217,7 +217,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
       messages: [{ role: "user", content: JSON.stringify({ allowedCampaignIds: campaignIds, allowedEvidenceIds: proofIds, firstOutput: response.toolCalls[0].arguments, validationHint: hint }) }],
       tools: [{ name: "ads_analysis_result", description: "Retour structuré corrigé, sans exécution.", parameters, strict: true }],
       toolChoice: "required", maxTokens: 3000,
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(120_000),
     });
     if (corrected.toolCalls.length !== 1 || corrected.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
     retryUsed = true;

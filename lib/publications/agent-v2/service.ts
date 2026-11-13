@@ -81,7 +81,7 @@ async function notifyMissingPhoto(db:{from(table:string):unknown},clientId:strin
  catch{console.error('[publications-agent-v2] missing photo notification not recorded');return false;}
 }
 function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
- if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.maxCost};
+ if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.unknownCost};
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
 }
 export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';

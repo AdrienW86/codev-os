@@ -75,7 +75,7 @@ export async function classifyClientMedia(clientId:string,options:{assetIds?:str
  const human=(a:AssetRow)=>typeof a.status_changed_by==='string'&&/^user_/.test(a.status_changed_by);
  const todo=((assets??[]) as AssetRow[]).filter(a=>options.assetIds?.length||((versions.get(a.id)??0)<profile.version&&(a.classification_failures??0)<MAX_FAILURES&&cooled(a)&&!human(a)))
   .slice(0,Math.max(0,Math.min(options.limit,20)));
- const vision=deps.vision??structuredResponse,download=deps.download??(asset=>assetOriginal({...asset,media_kind:'image'}));
+ const vision=deps.vision??((instructions:string,input:unknown,schema:unknown)=>structuredResponse(instructions,input,schema,{agent:'media-library'})),download=deps.download??(asset=>assetOriginal({...asset,media_kind:'image'}));
  for(const asset of todo){
   const spend=await db().rpc('client_media_ai_month_spend',{p_client_id:clientId});
   if(spend.error)throw Error('budget_unavailable');

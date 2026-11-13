@@ -3,6 +3,7 @@ import "server-only";
 // blanche de providerJson. Les clés restent côté serveur ; aucune n'est journalisée ni renvoyée.
 import { providerJson, type FetchLike } from "@/lib/providers/api";
 import { ProviderError } from "@/lib/providers/errors";
+import { ANTHROPIC_AGENT_MODEL, rejectsForcedToolUse } from "@/lib/ai/models";
 import type { AIProvider, AIResponse, AIUsage, ChatMessage, ToolCall, ToolResultMessage, ToolSpec } from "@/lib/ai/types";
 
 type Env = Record<string, string | undefined>;
@@ -55,7 +56,14 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
   };
 }
 
+/**
+ * Blocs bruts de chaque réponse Claude (réflexion comprise), rattachés à l'appel d'outil qu'ils contiennent : renvoyés
+ * tels quels au tour suivant, comme l'exige la réflexion adaptative (un tour d'outil sans sa réflexion est refusé).
+ */
+const anthropicTurns = new WeakMap<ToolCall, unknown[]>();
+
 export function createAnthropicProvider(apiKey: string, model: string, fetchImpl?: FetchLike): AIProvider {
+  const forcedToolRejected = rejectsForcedToolUse(model);
   return {
     id: "anthropic", model,
     async ping(signal) {
@@ -63,29 +71,39 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
     },
     async complete({ system, messages, tools, toolChoice = "auto", toolResults = [], signal, maxTokens }) {
       const budget = outputBudget(maxTokens);
-      const pending = toolResults.length ? [
-        { role: "assistant", content: toolResults.map(({ call }) => ({ type: "tool_use", id: call.id, name: call.name, input: call.arguments ?? {} })) },
-        { role: "user", content: toolResults.map(({ call, result }) => ({ type: "tool_result", tool_use_id: call.id, content: result })) },
-      ] : [];
+      // Un tour par appel d'outil : la réponse d'origine (réflexion + appel), puis son résultat.
+      const pending = toolResults.flatMap(({ call, result }) => [
+        { role: "assistant", content: anthropicTurns.get(call) ?? [{ type: "tool_use", id: call.id, name: call.name, input: call.arguments ?? {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: call.id, content: result }] },
+      ]);
+      // Réflexion adaptative toujours active sur les modèles récents : la sortie couvre réflexion + réponse.
+      const maxOutput = Math.min(budget * 4, 32000);
       const data = await providerJson<{ usage?: { input_tokens?: unknown; output_tokens?: unknown }; content?: { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }[] }>("anthropic", "https://api.anthropic.com/v1/messages", {
-        method: "POST", fetchImpl, signal, timeoutMs: timeoutFor(budget),
+        method: "POST", fetchImpl, signal, timeoutMs: Math.min(180_000, timeoutFor(maxOutput)),
         headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
         body: JSON.stringify({
-          model, max_tokens: budget, temperature: 0.2, system,
+          // Pas de température : refusée (400) par les modèles Claude actuels.
+          model, max_tokens: maxOutput, system,
           messages: [...messages, ...pending],
-          ...(tools.length ? { tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters })), tool_choice: toolChoice === "required" ? { type: "any" } : { type: "auto" } } : {}),
+          ...(tools.length ? {
+            tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters, ...(tool.strict ? { strict: true } : {}) })),
+            // Appel forcé refusé par Opus 5.5 / Sonnet 5.5 / Fable 5.x : « auto » + consigne ; un seul appel par tour.
+            tool_choice: { type: toolChoice === "required" && !forcedToolRejected ? "any" : "auto", disable_parallel_tool_use: true },
+          } : {}),
         }),
       });
       if (!Array.isArray(data.content)) throw new ProviderError("anthropic", "malformed");
       const text = data.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text as string).join("\n");
       const toolCalls: ToolCall[] = data.content.flatMap((block) => block.type === "tool_use" && typeof block.name === "string" ? [{ id: String(block.id ?? block.name), name: block.name, arguments: block.input ?? {} }] : []);
+      for (const call of toolCalls) anthropicTurns.set(call, data.content);
       return { text, toolCalls, ...usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
     },
   };
 }
 
 /**
- * Choix du fournisseur : AI_PROVIDER=openai|anthropic s'il est configuré, sinon le premier disponible.
+ * Choix du fournisseur : AI_PROVIDER=openai|anthropic s'il est configuré, sinon Anthropic (Claude Opus 5.5) en priorité,
+ * puis OpenAI.
  * `null` : aucun fournisseur → l'orchestrateur utilise l'analyseur d'intentions déterministe.
  */
 export function selectAIProvider(env: Env = process.env, fetchImpl?: FetchLike): AIProvider | null {
@@ -94,9 +112,9 @@ export function selectAIProvider(env: Env = process.env, fetchImpl?: FetchLike):
   const preferred = env.AI_PROVIDER?.trim().toLowerCase();
   const build = (id: "openai" | "anthropic") => id === "openai"
     ? (openai ? createOpenAIProvider(openai, env.ASSISTANT_OPENAI_MODEL?.trim() || "gpt-4.1-mini", fetchImpl) : null)
-    : (anthropic ? createAnthropicProvider(anthropic, env.ASSISTANT_ANTHROPIC_MODEL?.trim() || "claude-sonnet-5-5", fetchImpl) : null);
+    : (anthropic ? createAnthropicProvider(anthropic, env.ASSISTANT_ANTHROPIC_MODEL?.trim() || ANTHROPIC_AGENT_MODEL, fetchImpl) : null);
   if (preferred === "openai" || preferred === "anthropic") return build(preferred) ?? build(preferred === "openai" ? "anthropic" : "openai");
-  return build("openai") ?? build("anthropic");
+  return build("anthropic") ?? build("openai");
 }
 
 export type { AIResponse, ChatMessage, ToolSpec, ToolResultMessage };

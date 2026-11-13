@@ -87,7 +87,7 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
         client: client.name, activity: client.activity, zone: client.zone, month: new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }),
         sources, site_url: site, facts_untrusted: facts.slice(0, 4000), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
-      }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000 }));
+      }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000, agent: "newsletter" }));
     } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
     const checked = checkNewsletter(value, { facts: allFacts, allowedUrls });
     if (!checked.ok) { feedback = checked.reason; continue; }

@@ -4,7 +4,7 @@ import "server-only";
 // Table absente (migration non appliquée) : rien n'est mesuré ni bloqué, comportement d'avant. Lecture en échec : appel refusé.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { structuredResponse as rawStructuredResponse } from "@/lib/integrations/publications-openai";
+import { structuredResponse as rawStructuredResponse, type StructuredOptions } from "@/lib/integrations/publications-openai";
 import type { HarnessAgentId } from "@/lib/harness/charter";
 import { budgetOf, estimateCallCostEur, monthStart, parseCap, type Budget, type SpendLine } from "./budget";
 import type { AIProvider } from "./types";
@@ -56,8 +56,10 @@ async function record(scope: Scope, usage: Usage | undefined) {
 }
 
 /** structuredResponse mesuré : refusé avant l'appel si le plafond du client serait dépassé, journalisé après. */
-export async function structuredResponse(instructions: string, input: unknown, schema: unknown, options: { maxOutputTokens?: number; timeoutMs?: number } = {}) {
+export async function structuredResponse(instructions: string, input: unknown, schema: unknown, options: StructuredOptions = {}) {
   const scope = scopes.getStore();
+  // L'agent du périmètre choisit le modèle (famille rédaction, vision…) quand l'appelant ne le précise pas.
+  if (!options.agent && scope) options = { ...options, agent: scope.agent };
   if (scope) {
     const budget = await clientAiBudget(scope.clientId);
     if (budget && !budget.allowed) throw Object.assign(new Error(AI_BUDGET_EXCEEDED), { retryable: false });

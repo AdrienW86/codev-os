@@ -9,6 +9,8 @@ import { resolveChannel, resolveCompare, resolvePeriod } from "@/lib/analytics/v
 import { getSeoDashboard, listSeoClients, type SeoDashboardState } from "@/lib/integrations/search-console/dashboard";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
 import { SeoDashboard } from "@/components/analytics/seo-dashboard";
+import { Ga4Dashboard } from "@/components/analytics/google-analytics-dashboard";
+import { getGa4Dashboard, listGa4Clients, type Ga4DashboardState } from "@/lib/integrations/ga4/dashboard";
 import { PageHeading } from "@/components/ui/primitives";
 import { EmptyState, InlineNotice } from "@/components/ui/states";
 import { ModuleUnavailable } from "@/components/ui/module-unavailable";
@@ -17,7 +19,7 @@ import { Tabs } from "@/components/ui/tabs";
 export const metadata: Metadata = { title: "Données et performances" };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Source = "audience" | "seo";
+type Source = "audience" | "seo" | "ga4";
 
 // Deux sources distinctes, jamais additionnées : Vercel Web Analytics (visiteurs du site) et Google Search Console
 // (clics organiques depuis Google). Client, période et comparaison restent dans l'URL quand on change d'onglet.
@@ -25,23 +27,24 @@ function sourceTabs(params: Record<string, string | string[] | undefined>, curre
   const href = (source: Source) => {
     const next = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) if (typeof value === "string" && key !== "source" && key !== "channel") next.set(key, value);
-    if (source === "seo") next.set("source", "seo");
+    if (source !== "audience") next.set("source", source);
     return `/analytics?${next.toString()}`;
   };
   return <Tabs label="Source des données" current={current} items={[
     { id: "audience", label: "Audience · Vercel Web Analytics", href: href("audience") },
     { id: "seo", label: "Référencement · Google Search Console", href: href("seo") },
+    { id: "ga4", label: "Engagement · Google Analytics 4", href: href("ga4") },
   ]} />;
 }
 
 // Tableau de bord centralisé : un seul écran pour tous les clients, client choisi dans l'URL (?client=…).
 export default async function AnalyticsPage({ searchParams }: PageProps<"/analytics">) {
   await requireAdmin();
-  const heading = <PageHeading eyebrow="Pilotage" title="Données et performances" description="Audience des sites clients (Vercel Web Analytics) et référencement naturel (Google Search Console)." />;
+  const heading = <PageHeading eyebrow="Pilotage" title="Données et performances" description="Vercel Analytics, Google Search Console et Google Analytics 4 : audience, référencement et engagement." />;
   if (await getActiveScenario()) return <>{heading}<InlineNotice tone="info" title="Mode simulation actif">Les données Analytics réelles ne sont pas affichées en simulation. Quittez la simulation depuis les paramètres pour consulter ce tableau de bord.</InlineNotice></>;
 
   const params = await searchParams;
-  const source: Source = params.source === "seo" ? "seo" : "audience";
+  const source: Source = params.source === "seo" ? "seo" : params.source === "ga4" ? "ga4" : "audience";
   const tabs = sourceTabs(params, source);
   const clients = await safeRead("analytics-clients", () => listAnalyticsClients(), []);
   if (clients.unavailable) return <>{heading}<ModuleUnavailable module="Données et performances" /></>;
@@ -58,6 +61,20 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
 
   const period = resolvePeriod(params);
   const today = new Date().toISOString().slice(0, 10);
+
+  if (source === "ga4") {
+    const ga4Clients = await safeRead("ga4-clients", () => listGa4Clients(), []);
+    if (ga4Clients.unavailable) return <>{tabs}<ModuleUnavailable module="Google Analytics 4" /></>;
+    const ga4Client = ga4Clients.data.find((item) => item.id === requested.id);
+    if (!ga4Client) return <>{tabs}<ModuleUnavailable module="Google Analytics 4" /></>;
+    const fallback: Ga4DashboardState = { status: "unavailable", error: ga4Client.lastError };
+    const state = await safeRead("ga4-dashboard", () => getGa4Dashboard(ga4Client, period), fallback);
+    return <>{tabs}<Ga4Dashboard
+      key={`${ga4Client.id}:${period.start}:${period.end}`}
+      clients={ga4Clients.data.map(({ id, name, property }) => ({ id, name, property }))}
+      client={{ id: ga4Client.id, name: ga4Client.name }} period={period} state={state.data}
+    /></>;
+  }
 
   if (source === "seo") {
     // Le sélecteur client choisit aussi la propriété Search Console associée à CE client (jamais celle d'un autre).

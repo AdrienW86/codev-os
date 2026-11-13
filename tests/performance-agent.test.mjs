@@ -34,7 +34,7 @@ test("An audit must be persisted before the agent runs, including from history",
   assert.match(route, /\.select\("id"\)\.single\(\)/);
   assert.match(route, /saved, auditId/);
   assert.match(ui, /setAgentAuditId\(item.id\)/);
-  assert.match(ui, /<PerformanceAgentPanel auditId=\{agentAuditId\}/);
+  assert.match(ui, /<PerformanceAgentPanel key=\{agentAuditId \?\? "no-audit"\} auditId=\{agentAuditId\}/);
   assert.match(panel, /"\/api\/performance\/explain"/);
   assert.match(panel, /disabled=\{!auditId \|\| loading\}/);
   assert.match(panel, /Aucun changement n&apos;est exécuté/);

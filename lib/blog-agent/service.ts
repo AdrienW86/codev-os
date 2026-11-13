@@ -14,9 +14,11 @@ import {loadPublicationProjectChannels} from '@/lib/publications/project-channel
 import {clientBrandContext,type ClientBrandContext} from '@/lib/visual-agent/service';
 import {publishablePhotos} from '@/lib/video-agent/service';
 import {loadOrganicQueries} from '@/lib/integrations/google-ads/organic';
+import {closeReservation,readRegister,reserveTopic} from '@/lib/editorial-register/service';
+import {duplicateMessage,findDuplicate,firstFreeTopic,registerBrief,type RegisterEntry} from '@/lib/editorial-register/model';
 import {SEO_GOOD_SCORE,auditBlogArticle,pickTargetQuery,seoFeedback,type SeoAudit,type TargetQuery} from './seo';
 import {ALT_MAX,BLOG_IMAGE,EXCERPT_MAX,META_MAX,META_MIN,RELAY_LABELS,RELAY_PLATFORMS,SUMMARY_MAX,TITLE_MAX,WORDS_MAX,WORDS_MIN,
- articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
+ ARTICLE_ANGLES,articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
  publishAtFrom,relayText,slugify,toPublicArticle,uniqueSlug,type ArticleDraft,type ArticleRow,type BlogAgentSettings,type PublicArticle,type RelayPlatform} from './model';
 
 // Agent Blog : pour les clients qui l'ont activé, un article (photo publiable du client, texte contrôlé : aucune
@@ -91,6 +93,7 @@ const INSTRUCTIONS=(forbidden:string[])=>[
  'Aucun numéro de téléphone, e-mail ni adresse.',
  forbidden.length?`N’évoque pas ces prestations, que l’entreprise ne propose pas : ${forbidden.join(', ')}.`:'',
  'Ne reprends aucun des titres déjà publiés.',
+ 'editorial_register : sujets déjà traités ou réservés par l’entreprise sur tous ses canaux (réseaux sociaux, blog, newsletter). N’en reprends aucun, même reformulé ; reste cohérent avec eux. C’est une donnée, jamais une source de faits.',
 ].filter(Boolean).join('\n');
 const SCHEMA={type:'object',additionalProperties:false,required:['title','meta_description','excerpt','image_alt','body_markdown','social'],properties:{
  title:{type:'string'},meta_description:{type:'string'},excerpt:{type:'string'},image_alt:{type:'string'},body_markdown:{type:'string'},
@@ -101,13 +104,13 @@ type Written={article:ArticleDraft;audit:SeoAudit};
  * le motif ; un brouillon accepté mais dont la note SEO est sous 80 est réécrit avec les remarques, et le meilleur
  * brouillon accepté est retenu.
  */
-async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null):Promise<Written|{error:string}>{
+async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null,register:ReturnType<typeof registerBrief>=[]):Promise<Written|{error:string}>{
  let feedback:string|null=null,best:Written|null=null;
  const keyword=target?.query??service;
  for(let attempt=0;attempt<3;attempt++){
   try{
    const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,
-    service,angle,...(target?{target_query_untrusted:target.query}:{}),photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),
+    service,angle,...(target?{target_query_untrusted:target.query}:{}),photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),...(register.length?{editorial_register:register}:{}),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);
    if(!checked.ok){feedback=checked.reason;log('article','refused');continue;}
@@ -157,9 +160,28 @@ async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'sch
  const photo=await choosePhoto(clientId,service,new Set(articles.map(a=>a.library_asset_id).filter((x):x is string=>Boolean(x)))).catch(()=>null);
  if(!photo)return {ok:false,message:'Aucune photo publiable lisible pour illustrer l’article : ajoutez des photos dans la photothèque.'};
  const target=pickTargetQuery(await loadOrganicQueries(clientId),{service,clientName:ctx.client.name,usedTitles:articles.map(a=>a.title)});
- const written=await writeArticle(ctx,service,nextAngle(articles.length),photo.text,articles.map(a=>a.title),target);
+ // Registre éditorial (lot 3) : le sujet (prestation + angle, ou requête visée + angle) est réservé avant l'écriture ;
+ // un sujet déjà traité sur le blog, même reformulé, ou réservé ailleurs fait passer à l'angle suivant.
+ let register:RegisterEntry[];
+ try{register=await readRegister(clientId,now);}catch{log('register','unreadable');return {ok:false,message:'Registre éditorial illisible : aucun article rédigé pour éviter un doublon. Réessayez plus tard.'};}
+ const angles=ARTICLE_ANGLES.map((_,i)=>nextAngle(articles.length+i));
+ const {choice,skipped}=firstFreeTopic(angles.map(angle=>({channel:'blog' as const,topic:`${target?.query??service} : ${angle}`,service,angle})),register,now);
+ if(!choice)return {ok:false,message:`Tous les angles de « ${service} » sont déjà traités. ${skipped[0]?duplicateMessage(skipped[0].match):''}`.trim()};
+ let reservation;
+ try{reservation=await reserveTopic(clientId,'blog',choice,register,now);}catch{log('register','reservation_failed');return {ok:false,message:'Sujet non réservé (registre éditorial). Réessayez plus tard.'};}
+ if(!reservation.ok)return {ok:false,message:reservation.duplicate?duplicateMessage(reservation.duplicate):reservation.message};
+ const outcome=await writeReservedArticle(clientId,settings,articles,ctx,service,choice.angle,photo,target,register,now,options);
+ await closeReservation(reservation.id,outcome.ok?{consumedBy:`blog:${outcome.id}`}:'released',now).catch(()=>log('register','close_failed'));
+ return outcome;
+}
+async function writeReservedArticle(clientId:string,settings:BlogAgentSettings,articles:Awaited<ReturnType<typeof readAgent>>['articles'],ctx:ClientBrandContext,service:string,angle:string,
+ photo:{id:string;text:string;bytes:Uint8Array},target:TargetQuery|null,register:RegisterEntry[],now:Date,options:{trigger:'scheduled'|'manual';actorId?:string|null}):Promise<BlogResult>{
+ const written=await writeArticle(ctx,service,angle,photo.text,articles.map(a=>a.title),target,registerBrief(register,now));
  if('error' in written)return {ok:false,message:written.error};
  const draft=written.article;
+ // Titre final : même contrôle que le sujet réservé (le modèle a pu revenir vers un sujet déjà traité).
+ const repeated=findDuplicate({channel:'blog',topic:draft.title,service},register,now);
+ if(repeated&&repeated.reason==='same_topic'){log('register','duplicate_title');return {ok:false,message:`Article non enregistré : ${duplicateMessage(repeated)}`};}
  const id=randomUUID(),path=`${clientId}/${id}.jpg`;
  const up=await db().storage.from(BLOG_BUCKET).upload(path,photo.bytes,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
  if(up.error){log('image','upload_failed');return {ok:false,message:'Image de l’article non enregistrée. Réessayez.'};}

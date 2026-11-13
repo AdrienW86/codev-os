@@ -66,7 +66,7 @@ function contextWith(tables,{fail=[]}={}){const log=[],calls=[];
  const db={from(table){log.push(table);const f=[];const rows=()=>fail.includes(table)?{data:null,error:{message:'down'}}:{data:json((tables[table]??[]).filter(r=>f.every(x=>x(r)))),error:null};
   const q={select:()=>q,order:()=>q,limit:()=>q,eq(k,v){f.push(r=>r[k]===v);return q;},in(k,vs){f.push(r=>vs.includes(r[k]));return q;},
    maybeSingle:async()=>{const r=rows();return {data:r.data?.[0]??null,error:r.error};},then(ok,ko){return Promise.resolve(rows()).then(ok,ko);}};return q;}};
- return {log,calls,m:load('lib/publications/agent-v2/context.ts',{'@/lib/client-memory/service':{clientMemoryFor:async()=>null},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db}})};}
+ return {log,calls,m:load('lib/publications/agent-v2/context.ts',{'@/lib/client-memory/service':{clientMemoryFor:async()=>null},'@/lib/editorial-register/service':{readRegister:async()=>[]},'@/lib/require-admin':{requireAdmin:async()=>{calls.push('admin');}},'@/lib/supabase/server':{getSupabaseServerClient:()=>db}})};}
 const ctxTables=()=>({projects:[{id:P,client_id:C,name:'Réseaux sociaux'}],clients:[{id:C,name:'Toitures Dupont',activity:'Couverture',geographic_area:null,notes:'Note privée',website:'https://x'}],
  publication_agent_projects:[{project_id:P,client_id:C,enabled:true,rights_confirmed:true,verified_services:['Couverture'],editorial_rules:'Ton sobre',drive_folder_id:'folder00000001'}],
  publication_project_channels:[{project_id:P,client_id:C,platform:'facebook',enabled:true,editorial_rules:'Pas d’emoji'},{project_id:P,client_id:C,platform:'instagram',enabled:false,editorial_rules:'X'}],

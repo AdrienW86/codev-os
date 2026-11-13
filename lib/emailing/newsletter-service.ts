@@ -9,6 +9,8 @@ import { clientBrandContext } from "@/lib/visual-agent/service";
 import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-agent/model";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import { writeAudit } from "@/lib/core/audit";
+import { readRegister } from "@/lib/editorial-register/service";
+import { duplicateMessage, findDuplicate, registerBrief, type RegisterEntry } from "@/lib/editorial-register/model";
 import type { Actor } from "@/lib/core/actor";
 import { UNSUBSCRIBE_PATH, isBlockedBy, normalizeEmail, unsubscribeHeaders, unsubscribeToken } from "./policy";
 import {
@@ -80,6 +82,10 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
   const allFacts = sourceFacts(sources, client, facts);
   const previous = await db().from("email_newsletters").select("subject").eq("client_id", clientId).order("created_at", { ascending: false }).limit(12);
   if (previous.error) return { ok: false, message: "Migration Newsletters non appliquée." };
+  // Registre éditorial (lot 3) : sujets de tous les canaux transmis pour rester cohérent ; objet déjà utilisé refusé.
+  let register: RegisterEntry[];
+  try { register = await readRegister(clientId); } catch { return { ok: false, message: "Registre éditorial illisible : aucun brouillon rédigé pour éviter un doublon. Réessayez plus tard." }; }
+  const now = new Date();
   let feedback: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     let value: unknown;
@@ -87,11 +93,14 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
       ({ value } = await structuredResponse(withCharter("newsletter", NEWSLETTER_INSTRUCTIONS), JSON.stringify({
         client: client.name, activity: client.activity, zone: client.zone, month: new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }),
         sources, site_url: site, facts_untrusted: facts.slice(0, 4000), ...(exclusions.length ? { client_exclusions_never_write: exclusions } : {}), previous_subjects: (previous.data ?? []).map((p: { subject: string }) => p.subject),
+        editorial_register: registerBrief(register, now),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
       }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000, agent: "newsletter", clientId }));
     } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
     const checked = checkNewsletter(value, { facts: allFacts, allowedUrls });
     if (!checked.ok) { feedback = checked.reason; continue; }
+    const repeated = findDuplicate({ channel: "newsletter", topic: checked.content.subject }, register, now);
+    if (repeated?.reason === "same_topic") { feedback = `objet trop proche d'une newsletter déjà rédigée. ${duplicateMessage(repeated)}`; continue; }
     const audit = auditNewsletter(checked.content);
     const { data, error } = await db().from("email_newsletters").insert({
       client_id: clientId, subject: checked.content.subject, preheader: checked.content.preheader, content: checked.content, sources, audit, created_by: actor.userId,
@@ -100,7 +109,7 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
     await writeAudit(actor, { action: "newsletter.drafted", resource_type: "email_newsletter", resource_id: data.id, metadata: { client_id: clientId, score: audit.score } });
     return { ok: true, message: `Brouillon rédigé (qualité ${audit.score}/100). Relisez-le avant de l'approuver.` };
   }
-  return { ok: false, message: `Brouillon refusé par le contrôle anti-invention (${feedback}). Aucun texte n'a été enregistré.` };
+  return { ok: false, message: `Brouillon refusé par les contrôles (${feedback}). Aucun texte n'a été enregistré.` };
 }
 
 async function readNewsletter(id: string): Promise<NewsletterRow | null> {

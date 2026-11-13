@@ -20,6 +20,8 @@ export type AgentV2GeneratorInput={/** Client (routage du modèle, jamais transm
  previousPublications?:PreviousPublication[];priorityTopics?:string[];
  // Mémoire client (lot 1 du socle éditorial) : faits confirmés citables, et ce que le client ne veut jamais voir écrit.
  confirmedFacts?:string[];clientExclusions?:string[];
+ // Registre éditorial (lot 3) : sujets récents des autres canaux du client (blog, newsletter, réservations en cours).
+ editorialRegister?:{date:string;channel:'social'|'blog'|'newsletter';topic:string;status:'used'|'reserved'}[];
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).
  editorial?:EditorialContext;
  // Relance après un refus du contrôle éditorial : motif du refus précédent, à corriger (jamais un fait).

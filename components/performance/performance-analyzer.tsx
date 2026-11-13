@@ -72,11 +72,11 @@ export function PerformanceAnalyzer({ clients, history }: { clients: Client[]; h
         <button disabled={loading} type="submit" className="rounded-lg bg-accent-strong px-5 py-3 font-semibold text-accent-foreground disabled:opacity-60">
           {loading ? "Test Lighthouse en cours…" : "Lancer l'audit"}
         </button>
-        <a href="https://www.code-v.fr/outils/analyse-site" target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">Voir l'outil public</a>
+        <a href="https://www.code-v.fr/outils/analyse-site" target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">Voir l&apos;outil public</a>
       </div>
-      <p className="mt-3 text-xs text-muted">L'analyse utilise Google PageSpeed Insights. Aucune modification n'est effectuée sur le site testé.</p>
+      <p className="mt-3 text-xs text-muted">L&apos;analyse utilise Google PageSpeed Insights. Aucune modification n&apos;est effectuée sur le site testé.</p>
     </form>
-    {loading && <p role="status" className="rounded-lg bg-surface-raised p-4 text-sm">Exécution d'une mesure réelle en laboratoire…</p>}
+    {loading && <p role="status" className="rounded-lg bg-surface-raised p-4 text-sm">Exécution d&apos;une mesure réelle en laboratoire…</p>}
     {error && <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">{error}</p>}
     {report && <section className="rounded-2xl border border-border bg-surface p-5 sm:p-7" aria-label="Rapport">
       <div className="flex flex-wrap items-start justify-between gap-4">

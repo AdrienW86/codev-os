@@ -1,8 +1,8 @@
 // Types des tables Google Search Console (migration 20261022000000_search_console_integration.sql).
 type Table<Row, Insert, Update = Partial<Insert>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
 
-export type IntegrationCredentialSecretRow = { reference: string; provider: "search-console"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
-export type IntegrationOAuthStateRow = { id: string; state_hash: string; provider: "search-console"; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
+export type IntegrationCredentialSecretRow = { reference: string; provider: "search-console" | "google-analytics"; key_id: string; iv: string; ciphertext: string; auth_tag: string; created_at: string };
+export type IntegrationOAuthStateRow = { id: string; state_hash: string; provider: "search-console" | "google-analytics"; actor_id: string; created_at: string; expires_at: string; consumed_at: string | null };
 export type SearchConsoleDailyRow = { client_id: string; property: string; date: string; clicks: number; impressions: number; position: number | null; fetched_at: string };
 export type SearchConsoleSyncTrigger = "daily" | "manual" | "dashboard";
 export type SearchConsoleSyncRunRow = { id: string; client_id: string; property: string; trigger: SearchConsoleSyncTrigger; sync_date: string; status: "running" | "succeeded" | "failed"; error_kind: string | null; started_at: string; finished_at: string | null };

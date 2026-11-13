@@ -68,6 +68,9 @@ export function modelForAgent(agent: string | undefined, env: Env = process.env,
   return hasAnthropic && (options.claudeAllowed || !hasOpenAI) ? anthropic() : openai();
 }
 
+/** Au moins un fournisseur IA configuré pour les agents (OpenAI ou Anthropic). */
+export const agentsAiConfigured = (env: Env = process.env) => Boolean(clean(env.OPENAI_API_KEY) || clean(env.ANTHROPIC_API_KEY));
+
 /** Modèles Claude qui refusent l'appel d'outil forcé (tool_choice any/tool → erreur 400) : « auto » à la place. */
 export const rejectsForcedToolUse = (model: string) => /^claude-(opus-5-5|sonnet-5-5|fable-5-[12]|mythos-5-[12])/.test(model);
 

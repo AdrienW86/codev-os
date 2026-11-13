@@ -188,7 +188,7 @@ test("action : administrateur d'abord, modèle simulé par défaut, IA réelle s
 test("page et interface : admin, rapport lisible, jetons de design uniquement, aucune action serveur importée par le composant", async () => {
   const page = src("app/(cockpit)/settings/simulation/page.tsx");
   assert.ok(page.indexOf("await requireAdmin()") < page.indexOf("process.env.OPENAI_API_KEY"), "admin before anything");
-  assert.match(page, /realAIAvailable = Boolean\(process\.env\.OPENAI_API_KEY\)/, "only a boolean reaches the client");
+  assert.match(page, /realAIAvailable = Boolean\(process\.env\.OPENAI_API_KEY \|\| process\.env\.ANTHROPIC_API_KEY\)/, "only a boolean reaches the client");
   assert.match(page, /<PublicationPipelineLab scenarios=\{pipelineScenarioSummaries\(\)\} run=\{runPublicationSimulationAction\}/);
   const ui = src("components/simulation/publication-pipeline-lab.tsx");
   assert.doesNotMatch(ui, /#[0-9a-fA-F]{3,8}\b|\b(bg|text|border)-(red|green|blue|amber|yellow|slate|gray|zinc|neutral|emerald|rose)-\d/, "design tokens only");

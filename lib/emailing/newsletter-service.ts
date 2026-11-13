@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { withCharter } from "@/lib/harness/charter";
 import { structuredResponse } from "@/lib/integrations/publications-openai";
+import { agentsAiConfigured } from "@/lib/ai/models";
 import { oauthBaseUrl } from "@/lib/integrations/publications-oauth/config";
 import { clientBrandContext } from "@/lib/visual-agent/service";
 import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-agent/model";
@@ -72,7 +73,7 @@ export async function getNewsletterView(clientId: string): Promise<NewsletterVie
 /** Rédige un brouillon (deux essais au plus, le second avec le motif du refus). Aucun envoi. */
 export async function generateNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
-  if (!process.env.OPENAI_API_KEY) return { ok: false, message: "IA non configurée (OPENAI_API_KEY) : rédaction impossible." };
+  if (!agentsAiConfigured(process.env)) return { ok: false, message: "IA non configurée (ANTHROPIC_API_KEY ou OPENAI_API_KEY) : rédaction impossible." };
   const { sources, client, facts, site } = await gatherSources(clientId);
   if (!sources.length) return { ok: false, message: "Aucun fait à raconter : publiez un article ou confirmez des prestations du client d'abord." };
   const allowedUrls = [...sources.map((s) => s.url).filter((u): u is string => Boolean(u)), ...(site ? [site] : [])];

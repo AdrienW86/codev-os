@@ -11,7 +11,7 @@ export async function runPublicationSimulationAction(_state:SimulationRunState,f
  await requireAdmin();
  const request=parseSimulationForm(form,pipelineScenarioSummaries().map(s=>s.id));
  if(!request)return {error:"Scénario ou résultat de diffusion invalide."};
- if(request.realAI&&!process.env.OPENAI_API_KEY)return {error:"IA réelle indisponible : aucune clé serveur configurée. Relancez avec le modèle simulé."};
+ if(request.realAI&&!process.env.OPENAI_API_KEY&&!process.env.ANTHROPIC_API_KEY)return {error:"IA réelle indisponible : aucune clé serveur configurée. Relancez avec le modèle simulé."};
  try{
   const report=await runPublicationSimulation(request,{now:new Date(),...(request.realAI?{generator:openaiAgentV2Generator(),aiMode:"real" as const}:{})});
   return {report};

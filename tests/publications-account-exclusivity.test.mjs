@@ -97,7 +97,7 @@ test('trigger UI and scope: only the admin action calls it, no cron / route / da
    assert.doesNotMatch(src(f),/processDuePublications\b|runOnePublicationJobInProduction/,`${f}: no other trigger`);}}
  assert.equal(readdirSync(resolve(root,'app/api'),{recursive:true}).filter(f=>/cron|worker|publish/i.test(f)).length,0,'no cron / worker / publish route');
  // Le seul cron Vercel autorisé est le planificateur central (docs/automation.md) ; aucun cron ne vise la diffusion.
- if(existsSync(resolve(root,'vercel.json')))assert.deepEqual((JSON.parse(src('vercel.json')).crons??[]).map(c=>c.path),['/api/internal/scheduler/tick'],'only the central scheduler cron');
+ if(existsSync(resolve(root,'vercel.json')))assert.deepEqual((JSON.parse(src('vercel.json')).crons??[]).map(c=>c.path),['/api/internal/scheduler/tick','/api/internal/google-analytics/sync'],'only the central scheduler and isolated read-only GA4 sync cron');
  const list=readdirSync(resolve(root,'supabase/migrations')).filter(f=>f<'20261015').sort();assert.equal(list.length,23);assert.equal(list[22],'20261014000000_publications_account_client_exclusivity.sql');
  const sql=src('supabase/migrations/20261014000000_publications_account_client_exclusivity.sql').replace(/--[^\n]*/g,'');
  assert.doesNotMatch(sql,/security definer|create policy|cron|http|insert into public\.publication_jobs|drop |alter table/i);});

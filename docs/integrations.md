@@ -83,7 +83,7 @@ Connecteur natif sans Windsor.ai. Une seule autorisation Google OAuth pour le co
 - **API à activer sur le projet Google Cloud OAuth** : Google Analytics Data API et Google Analytics Admin API.
   Le compte Google autorisé doit avoir au minimum l'accès lecteur aux propriétés des clients.
 - **Migration à appliquer avant toute connexion OAuth** :
-  `supabase/migrations/20261206000000_native_google_analytics.sql`. Extension additive des contraintes
+  `supabase/migrations/20261212000000_native_google_analytics.sql`. Extension additive des contraintes
   `integration_credential_secrets` et `integration_oauth_states`, sans modification des jetons Search Console.
   Un coffre AES-256-GCM indépendant (AAD spécifique à GA4) protège le refresh token GA4.
 - **Connexion** : Paramètres → Connexions → Google Analytics 4 → Connecter.

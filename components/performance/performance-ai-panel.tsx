@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Priority = { level: "haute" | "moyenne" | "faible"; title: string; evidence: string; explanation: string; action: string };
 type Analysis = { summary: string; context: string; priorities: Priority[]; nextSteps: string[]; limitations: string[] };
@@ -13,7 +13,6 @@ export function PerformanceAgentPanel({ auditId }: { auditId: string | null }) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  useEffect(() => { setResult(null); setError(""); }, [auditId]);
 
   async function explain() {
     if (!auditId || loading) return;

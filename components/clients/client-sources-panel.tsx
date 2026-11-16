@@ -6,23 +6,29 @@ import type { ClientSource } from "@/lib/connections/service";
 import { isProviderConfigured } from "@/lib/system/providers";
 import { saveClientSourceAction } from "@/app/(cockpit)/clients/[id]/source-actions";
 import { propertyLabel, type DiscoveredProperty } from "@/lib/integrations/search-console/model";
+import { analyticsPropertyLabel, type DiscoveredAnalyticsProperty } from "@/lib/integrations/google-analytics/model";
 
 const field = "mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
 
 /** Identifiants des sources de données du client (aucun secret saisi ni affiché). */
-export function ClientSourcesPanel({ clientId, sources, unavailable, searchConsoleProperties = null }: { clientId: string; sources: ClientSource[]; unavailable: boolean;
+export function ClientSourcesPanel({ clientId, sources, unavailable, searchConsoleProperties = null, analyticsProperties = null }: { clientId: string; sources: ClientSource[]; unavailable: boolean;
   /** Propriétés du compte Google connecté (null : Search Console non connecté → saisie libre). */
-  searchConsoleProperties?: DiscoveredProperty[] | null }) {
+  searchConsoleProperties?: DiscoveredProperty[] | null;
+  /** Propriétés GA4 du compte Google connecté (null : Google Analytics non connecté → saisie libre). */
+  analyticsProperties?: DiscoveredAnalyticsProperty[] | null }) {
   return (
     <Panel className="p-6">
       <h2 className="font-semibold">Sources de données</h2>
       <p className="mt-1 text-sm text-muted">Identifiants utilisés par les agents pour ce client. Les accès (jetons) se configurent côté serveur : Paramètres → Connexions.</p>
       {unavailable ? <p className="mt-4 text-sm text-warning">Sources indisponibles (migration du noyau V1 à appliquer).</p> : (
-        <ul className="mt-4 grid gap-5 md:grid-cols-3">
+        <ul className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {sourceDefinitions.map((definition) => {
             const source = sources.find((item) => item.provider === definition.provider);
-            const ready = definition.provider === "search-console" ? searchConsoleProperties !== null || isProviderConfigured(definition.provider) : isProviderConfigured(definition.provider);
-            const choices = definition.provider === "search-console" && searchConsoleProperties?.length ? searchConsoleProperties : null;
+            const ready = definition.provider === "search-console" ? searchConsoleProperties !== null || isProviderConfigured(definition.provider)
+              : definition.provider === "google-analytics" ? analyticsProperties !== null : isProviderConfigured(definition.provider);
+            const choices = definition.provider === "search-console" && searchConsoleProperties?.length ? searchConsoleProperties.map((item) => ({ value: item.property, label: propertyLabel(item.property) }))
+              : definition.provider === "google-analytics" && analyticsProperties?.length ? analyticsProperties.map((item) => ({ value: item.property, label: analyticsPropertyLabel(item) })) : null;
+            const unknownLabel = definition.provider === "google-analytics" ? `Propriété ${source?.value}` : propertyLabel(source?.value ?? "");
             return (
               <li key={definition.provider} className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -35,8 +41,8 @@ export function ClientSourcesPanel({ clientId, sources, unavailable, searchConso
                     {choices ? (
                       <select name="value" defaultValue={source?.value ?? ""} className={field}>
                         <option value="">— Aucune propriété —</option>
-                        {source?.value && !choices.some((item) => item.property === source.value) && <option value={source.value}>{propertyLabel(source.value)} (inaccessible avec le compte connecté)</option>}
-                        {choices.map((item) => <option key={item.property} value={item.property}>{propertyLabel(item.property)}</option>)}
+                        {source?.value && !choices.some((item) => item.value === source.value) && <option value={source.value}>{unknownLabel} (inaccessible avec le compte connecté)</option>}
+                        {choices.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                       </select>
                     ) : <input name="value" defaultValue={source?.value ?? ""} placeholder={definition.placeholder} maxLength={300} autoComplete="off" spellCheck={false} className={field} />}
                   </label>

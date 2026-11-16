@@ -1,9 +1,12 @@
 import "server-only";
 // Sources d'opportunités de mots-clés ajoutées aux signaux experts (lecture seule) : requêtes Search Console déjà
 // synchronisées, Planificateur de mots-clés Google (zone du client, français) et recommandations Google du compte
-// (lues avec les signaux). Chaque source indisponible reste « non lue » (null) : rien n'est complété ni inventé.
+// (lues avec les signaux), comportement des visiteurs Ads sur le site (Google Analytics 4, dernier instantané).
+// Chaque source indisponible reste « non lue » (null) : rien n'est complété ni inventé.
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadOrganicQueries } from "./organic";
+import { latestAnalyticsSnapshot } from "@/lib/integrations/google-analytics/sync";
+import { adsAnalyticsSignals, parseAnalyticsSnapshot } from "@/lib/integrations/google-analytics/model";
 import { keywordSeeds } from "./expert";
 import type { AdsBusinessContext } from "./business-context";
 import type { AdsAccount, AdsExpertSignals, GoogleAdsReadClient } from "./types";
@@ -20,5 +23,6 @@ export async function withKeywordSources(reader: GoogleAdsReadClient, account: A
       try { keywordIdeas = await reader.getKeywordIdeas(account, { seeds, zone, language: "fr" }, options.managerId); } catch { keywordIdeas = null; }
     }
   }
-  return { ...signals, organicQueries, keywordIdeas };
+  const analytics = await latestAnalyticsSnapshot(getSupabaseServerClient(), options.clientId).then((row) => adsAnalyticsSignals(parseAnalyticsSnapshot(row?.data)), () => null);
+  return { ...signals, organicQueries, keywordIdeas, analytics };
 }

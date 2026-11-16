@@ -5,12 +5,15 @@ import { missingSeoSchema } from "./schema-availability";
 //  - quotidien : nouvelles données Search Console (28 j consolidés vs 28 j précédents), détection des opportunités,
 //    déduplication, changements significatifs, mesure des interventions déployées ;
 //  - hebdomadaire (et lancement manuel) : en plus, contenu des pages (GitHub), sujets et zones absents, PageSpeed.
+//  - Google Analytics 4 (dernier instantané synchronisé, aucun appel Google ici) : engagement et événements clés des
+//    pages d'arrivée organiques, joints aux opportunités ; constats « trafic sans demande » en hebdomadaire.
 // Constats → opportunités et recommandations ; aucune modification du site sans action approuvée.
 import { recordSync } from "@/lib/connections/sync";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { searchAnalytics, type QueryRow, type SearchDimension, type SearchFilter } from "@/lib/providers/search-console";
 import { searchConsoleAccess } from "@/lib/integrations/search-console/connection";
 import { normalizeProperty } from "@/lib/integrations/search-console/model";
+import { GOOGLE_ANALYTICS_METRIC_KEY, GOOGLE_ANALYTICS_PROVIDER, organicLandingPages, parseAnalyticsSnapshot, pathOfLanding, seoAnalyticsInsights, type AnalyticsSnapshot, type OrganicLanding } from "@/lib/integrations/google-analytics/model";
 import { pageSpeed, type PageSpeedResult } from "@/lib/providers/pagespeed";
 import { readSeoPageContexts, type SeoPageContext } from "@/lib/providers/github";
 import { ProviderError } from "@/lib/providers/errors";
@@ -56,12 +59,14 @@ function legacyFindings(items: DetectedOpportunity[]) {
   }).slice(0, 20);
 }
 
-function attachContext(items: DetectedOpportunity[], github: SeoPageContext[], vercel: { rows: { label: string; visitors?: number; pageviews?: number }[]; period: Period | null }) {
+function attachContext(items: DetectedOpportunity[], github: SeoPageContext[], vercel: { rows: { label: string; visitors?: number; pageviews?: number }[]; period: Period | null }, analytics: { rows: OrganicLanding[]; period: Period | null } = { rows: [], period: null }) {
   const githubByUrl = new Map(github.map((item) => [item.targetUrl, item]));
+  const analyticsByPath = new Map(analytics.rows.map((row) => [row.path, row]));
   return items.map((item) => {
     if (!item.targetUrl) return item;
     const source = githubByUrl.get(item.targetUrl);
     const traffic = vercel.rows.find((row) => row.label === pathOf(item.targetUrl!));
+    const engagement = analyticsByPath.get(pathOfLanding(pathOf(item.targetUrl!)));
     const signals = source && item.category !== "declining_page" && item.category !== "cannibalization" ? pageSignals(item.keyword, source) : [];
     return {
       ...item,
@@ -70,6 +75,7 @@ function attachContext(items: DetectedOpportunity[], github: SeoPageContext[], v
         ...item.evidence,
         ...(source ? { github: { repository: source.repository, branch: source.branch, path: source.path, sha: source.sha, title: source.title, description: source.description, h1: source.h1 }, pageSignals: signals } : {}),
         ...(traffic ? { vercel: { visitors: traffic.visitors ?? null, pageviews: traffic.pageviews ?? null, period: vercel.period } } : {}),
+        ...(engagement ? { googleAnalytics: { organicSessions: engagement.sessions, engagementRate: engagement.engagementRate, keyEvents: engagement.keyEvents, keyEventRate: engagement.keyEventRate, period: analytics.period } } : {}),
       },
     };
   });
@@ -88,17 +94,21 @@ export const analyzeSeoRun: RunHandler = async (args) => {
   }
   const depth = analysisDepth(job.payload, job.trigger);
   const trigger: AnalysisTrigger = job.trigger === "schedule" ? "schedule" : job.trigger === "assistant" ? "assistant" : job.trigger === "system" ? "system" : "manual";
-  const [{ data: client, error }, { data: searchConnection }, { data: githubConnection }, { data: adsContext }, { data: vercelSnapshot }] = await Promise.all([
+  const [{ data: client, error }, { data: searchConnection }, { data: githubConnection }, { data: adsContext }, { data: vercelSnapshot }, { data: analyticsRow }] = await Promise.all([
     supabase.from("clients").select("id,name,company_name,activity,geographic_area,website").eq("id", job.client_id).maybeSingle(),
     supabase.from("client_connections").select("metadata").eq("client_id", job.client_id).eq("provider", "search-console").maybeSingle(),
     supabase.from("client_connections").select("metadata").eq("client_id", job.client_id).eq("provider", "github").maybeSingle(),
     supabase.from("client_ads_context").select("context").eq("client_id", job.client_id).maybeSingle(),
     supabase.from("metric_snapshots").select("period_start,period_end,data").eq("client_id", job.client_id).eq("provider", "vercel").eq("metric_key", "web_analytics").order("fetched_at", { ascending: false }).limit(1).maybeSingle(),
+    // Instantané GA4 de moins de 10 jours (synchro quotidienne) ; plus ancien, il n'est pas utilisé.
+    supabase.from("metric_snapshots").select("data,fetched_at").eq("client_id", job.client_id).eq("provider", GOOGLE_ANALYTICS_PROVIDER).eq("metric_key", GOOGLE_ANALYTICS_METRIC_KEY).gte("fetched_at", new Date(now.getTime() - 10 * 86_400_000).toISOString()).order("fetched_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (error || !client) throw new RunError("Client introuvable.", false);
   const property = normalizeProperty(record(searchConnection?.metadata).property);
   const repository = typeof record(githubConnection?.metadata).repository === "string" ? record(githubConnection?.metadata).repository as string : null;
   const { current, previous } = analysisPeriods(now);
+  const analytics: AnalyticsSnapshot | null = parseAnalyticsSnapshot(analyticsRow?.data);
+  const organicLandings = organicLandingPages(analytics) ?? [];
 
   // Historique : une analyse planifiée par client, profondeur et jour.
   const { data: analysis, error: analysisError } = await supabase.from("seo_opportunity_analyses").insert({ client_id: client.id, depth, trigger, analysis_date: parisDate(now), property, agent_run_id: runId }).select("id").maybeSingle();
@@ -151,7 +161,7 @@ export const analyzeSeoRun: RunHandler = async (args) => {
       const vercelData = record(vercelSnapshot?.data);
       const vercelRows = Array.isArray(vercelData.topPages) ? (vercelData.topPages as { label: string; visitors?: number; pageviews?: number }[]).filter((row) => typeof row?.label === "string") : [];
       sources.vercel = vercelSnapshot ? { ok: true, period: { start: vercelSnapshot.period_start, end: vercelSnapshot.period_end } } : { ok: false, error: "no_snapshot" };
-      detected = attachContext(detected, github, { rows: vercelRows, period: vercelSnapshot ? { start: vercelSnapshot.period_start, end: vercelSnapshot.period_end } : null });
+      detected = attachContext(detected, github, { rows: vercelRows, period: vercelSnapshot ? { start: vercelSnapshot.period_start, end: vercelSnapshot.period_end } : null }, { rows: organicLandings, period: analytics?.period ?? null });
 
       const store: StoreDeps = {
         db: supabase,
@@ -177,6 +187,20 @@ export const analyzeSeoRun: RunHandler = async (args) => {
       sources.searchConsole = { ok: false, error: property ? "not_connected" : "no_property" };
       notes.push(property ? "Search Console non connectée" : "Propriété Search Console non renseignée");
     }
+
+    // Google Analytics 4 : ce que deviennent les visiteurs venus de Google (engagement, événements clés), indépendant de Search Console.
+    if (analytics?.totals) {
+      const organic = organicLandings.reduce((sum, row) => sum + row.sessions, 0);
+      const organicKeyEvents = organicLandings.reduce((sum, row) => sum + row.keyEvents, 0);
+      const insights = seoAnalyticsInsights(analytics);
+      sources.googleAnalytics = { ok: true, property: analytics.property, period: analytics.period, sessions: analytics.totals.sessions, organicSessions: organic, organicKeyEvents, insights: insights.length, thresholded: analytics.thresholded };
+      notes.push(`Google Analytics : ${organic.toLocaleString("fr-FR")} sessions organiques, ${organicKeyEvents.toLocaleString("fr-FR")} événement(s) clé(s)`);
+      if (depth === "weekly") {
+        for (const insight of insights) {
+          await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: insight.title, reason: `${insight.detail}${insight.items.length ? ` Détail : ${insight.items.join(" ; ")}.` : ""} Action : ${insight.action} Source : Google Analytics 4 (propriété ${analytics.property}).`, severity: insight.priority, payload: { source: "seo_google_analytics", kind: insight.id, items: insight.items, period: analytics.period } });
+        }
+      }
+    } else sources.googleAnalytics = { ok: false, error: analyticsRow ? "invalid_snapshot" : "no_snapshot" };
 
     // PageSpeed (hebdomadaire / manuel) : performances techniques du site, indépendantes de Search Console.
     const url = depth === "weekly" ? siteUrl(client.website) : null;

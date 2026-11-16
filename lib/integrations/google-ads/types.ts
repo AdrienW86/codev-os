@@ -1,3 +1,4 @@
+import type { AdsAnalyticsSignals } from "@/lib/integrations/google-analytics/model";
 export type AdsPeriod = { start: string; end: string; days: number };
 export type AdsAccount = { id: string; name: string | null; currency: string; timezone: string };
 export type AdsMetrics = {
@@ -33,6 +34,8 @@ export type AdsExpertSignals = {
   keywordIdeas?: AdsKeywordIdea[] | null;
   /** Mots-clés proposés par Google lui-même dans les recommandations du compte ; absent = non lues. */
   recommendedKeywords?: AdsRecommendedKeyword[] | null;
+  /** Comportement des visiteurs Ads sur le site selon Google Analytics 4 (dernier instantané synchronisé) ; absent = non lu. */
+  analytics?: AdsAnalyticsSignals | null;
 };
 export type AdsKeywordIdea = { text: string; avgMonthlySearches: number | null; competition: "LOW" | "MEDIUM" | "HIGH" | null; lowBid: number | null; highBid: number | null };
 export type AdsRecommendedKeyword = { campaignId: string | null; text: string; matchType: string };

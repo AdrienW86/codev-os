@@ -61,6 +61,25 @@ Un compte Google (celui de l’agence) est autorisé **une fois** en OAuth 2.0 ;
 - **Révocation** : « Déconnecter » supprime le jeton de CODE-V OS sans appeler Google, car le client OAuth peut être partagé avec Google Business Profile et une révocation Google retirerait aussi cet accès pour ce compte. Révocation complète, en connaissance de cause : https://myaccount.google.com/permissions. Un accès révoqué côté Google est détecté (`invalid_grant`) et affiché « Accès révoqué » ; il suffit de reconnecter.
 - **Vérifier** : Paramètres → Connexions → statut « Connecté » et propriétés listées ; Données et performances → onglet « Référencement · Google Search Console » ; Automatisation « Analyse SEO » → résumé « Search Console : N clics ».
 
+<a id="google-analytics"></a>
+
+## Google Analytics 4 — Agent SEO, Agent Google Ads
+
+Même modèle que Search Console : un compte Google (celui de l’agence) autorisé **une fois** en OAuth 2.0, puis **une** propriété GA4 par client (une propriété ne peut être associée qu’à un seul client).
+
+- **Scope** : `https://www.googleapis.com/auth/analytics.readonly` uniquement (lecture seule), `include_granted_scopes=false` : jeton distinct de Search Console, Business Profile et Drive.
+- **API à activer** dans Google Cloud Console → API et services → Bibliothèque (même projet que le client OAuth) : *Google Analytics Data API* et *Google Analytics Admin API*.
+- **Écran de consentement OAuth** : ajouter le scope `.../auth/analytics.readonly` (Google Cloud → API et services → Écran de consentement → Accès aux données).
+- **URI de redirection à ajouter** au client OAuth Web utilisé : `https://os.code-v.fr/api/integrations/google-analytics/callback` (affichée aussi dans Paramètres → Connexions → Google Analytics 4).
+- **Variables** (Vercel → Settings → Environment Variables, Production) : aucune nouvelle variable obligatoire. `GOOGLE_ANALYTICS_CLIENT_ID` / `GOOGLE_ANALYTICS_CLIENT_SECRET` sont **facultatives** ; absentes, le client OAuth de Search Console (`GOOGLE_SEARCH_CONSOLE_CLIENT_ID/SECRET`) puis celui de Google Business Profile est réutilisé. Une paire partielle désactive la connexion. `PUBLICATIONS_OAUTH_BASE_URL` et `PUBLICATION_CREDENTIALS_KEY(_ID)` existantes (domaine de chiffrement distinct `google-analytics`).
+- **Accès aux propriétés** : le compte Google connecté doit avoir au moins le rôle *Lecteur* sur chaque propriété GA4 client (Google Analytics → Administration → Gestion des accès à la propriété).
+- **Migration** : `supabase/migrations/20261212000000_google_analytics_integration.sql` (élargit seulement les contraintes `provider` des tables de jetons et d’états OAuth) à appliquer avant de connecter.
+- **Par client** : fiche client → Agents → Sources de données → Google Analytics 4 → propriété choisie parmi celles découvertes (identifiant numérique).
+- **Synchronisation** : quotidienne par le planificateur (étape `google_analytics`), 30 jours terminés la veille + 30 jours précédents, au plus une réussite par client et par jour, un essai au plus toutes les 3 h en cas d’échec. Instantané `metric_snapshots` (provider `google-analytics`, metric_key `ga4`) : totaux, canaux, pages de destination × canal, source/support, campagnes Google Ads (liaison Ads ↔ GA4 nécessaire), événements clés, appareils. Un bloc refusé est marqué non récupéré ; un accès refusé ou un quota épuisé fait échouer toute la synchro (rien de partiel).
+- **Agent SEO** (`seo.analyze`) : engagement et événements clés des pages d’arrivée organiques joints aux opportunités ; en hebdomadaire, recommandations « pages qui attirent du trafic Google sans générer de demande », « visiteurs Google qui repartent sans interagir » ou « aucun événement clé mesuré ».
+- **Agent Google Ads** (`ads.monitor` et analyse IA) : preuves `expert:analytics_tracking_gap` (événements clés GA4 des visiteurs Ads alors que Google Ads ne compte aucune conversion, ou l’inverse) et `expert:analytics_landing` (pages d’arrivée payantes peu engageantes ou sans événement clé) ; l’action « Améliorer la page de destination » peut s’appuyer sur cette dernière.
+- **Vérifier** : Paramètres → Connexions → Google Analytics 4 « Connecté » ; fiche client → Sources de données « Prêt » ; le lendemain, résumé de l’Analyse SEO « Google Analytics : N sessions organiques ».
+
 <a id="pagespeed"></a>
 ## PageSpeed Insights
 

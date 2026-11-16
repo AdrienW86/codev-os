@@ -14,7 +14,7 @@ import type { AdsExpertSignals } from "./types";
 export type ExpertKind =
   | "wasted_terms" | "excluded_terms" | "converting_terms" | "budget_limited" | "budget_limited_unproven"
   | "rank_limited" | "low_quality" | "device_gap" | "cpa_above_target" | "cpa_below_target" | "pacing_over" | "pacing_under"
-  | "organic_gap" | "organic_overlap" | "keyword_ideas";
+  | "organic_gap" | "organic_overlap" | "keyword_ideas" | "analytics_tracking_gap" | "analytics_landing";
 
 export type ExpertFinding = {
   id: string; kind: ExpertKind; /** null : constat du périmètre entier (rythme de dépense). */
@@ -191,6 +191,7 @@ export function buildExpertDiagnosis(rows: CampaignRow[], signals: AdsExpertSign
 
   findings.push(...organicOpportunities(signals, business, money));
   findings.push(...keywordOpportunities(signals, business, money));
+  findings.push(...analyticsOpportunities([...scoped.values()], signals));
 
   const rank = { high: 0, medium: 1, low: 2 };
   return findings.sort((a, b) => rank[a.priority] - rank[b.priority] || a.id.localeCompare(b.id));
@@ -319,12 +320,55 @@ export function keywordOpportunities(signals: AdsExpertSignals | null | undefine
     ].filter(Boolean).join(" · ")) }];
 }
 
+// --- Google Ads × Google Analytics 4 : ce que font les visiteurs payants une fois sur le site -------------
+/**
+ * Mesure croisée et qualité des pages d'arrivée, à partir du dernier instantané GA4 (30 jours terminés la veille,
+ * même fenêtre que la veille Ads) : événements clés GA4 attribués aux campagnes alors que Google Ads ne compte aucune
+ * conversion (import ou balise manquants), conversions Ads jamais confirmées par GA4, pages d'arrivée payantes où
+ * les visiteurs repartent sans interagir. Seuils prudents ; chiffres repris tels que lus dans GA4 et Google Ads.
+ */
+export function analyticsOpportunities(rows: CampaignRow[], signals: AdsExpertSignals | null | undefined): ExpertFinding[] {
+  const ga = signals?.analytics;
+  if (!ga) return [];
+  const findings: ExpertFinding[] = [];
+  const period = `${ga.period.start} → ${ga.period.end}`;
+  const cost = rows.reduce((sum, row) => sum + (row.metrics.cost ?? 0), 0);
+  const conversions = rows.reduce((sum, row) => sum + (row.metrics.conversions ?? 0), 0);
+  const fr = (value: number) => value.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  const source = ga.paid?.source === "ads_campaigns" ? "campagnes Google Ads liées à GA4" : "trafic google / cpc";
+  if (ga.paid && ga.paid.keyEvents >= 3 && conversions === 0 && cost > 0) findings.push({ id: "expert:analytics_tracking_gap", kind: "analytics_tracking_gap", campaignId: null, priority: "high",
+    title: "Google Analytics voit des demandes venues des annonces que Google Ads ne compte pas",
+    detail: `Sur ${period}, GA4 attribue ${fr(ga.paid.keyEvents)} événement(s) clé(s) aux visiteurs Google Ads (${source}) alors que Google Ads n’enregistre aucune conversion : les enchères optimisent à l’aveugle.`,
+    action: "Importer les événements clés GA4 dans Google Ads (Objectifs → Conversions → Importer depuis Google Analytics 4) ou corriger la balise de conversion Ads, puis vérifier qu’une conversion de test remonte.",
+    expectedImpact: "Les enchères et les recommandations s’appuient enfin sur les vraies demandes, ce qui conditionne toutes les autres optimisations.",
+    items: [`GA4 : ${fr(ga.paid.sessions)} sessions Ads, ${fr(ga.paid.keyEvents)} événement(s) clé(s)`, "Google Ads : 0 conversion sur le périmètre"] });
+  else if (ga.paid && ga.keyEventsTracked && ga.paid.sessions >= 50 && ga.paid.keyEvents === 0 && conversions >= 5) findings.push({ id: "expert:analytics_tracking_gap", kind: "analytics_tracking_gap", campaignId: null, priority: "medium",
+    title: "Conversions Google Ads non confirmées par Google Analytics",
+    detail: `Google Ads compte ${fr(conversions)} conversion(s) alors que GA4 n’attribue aucun événement clé aux ${fr(ga.paid.sessions)} sessions venues des annonces sur ${period} : l’action de conversion Ads mesure peut-être autre chose qu’une demande (vue de page, clic non qualifié) ou en double.`,
+    action: "Contrôler les actions de conversion principales dans Google Ads (catégorie, déclencheur, comptage « une seule ») et les comparer aux événements clés GA4 avant toute décision de budget.",
+    expectedImpact: "Évite d’augmenter des budgets sur la base de conversions qui ne sont pas des demandes réelles.",
+    items: [`Google Ads : ${fr(conversions)} conversion(s)`, `GA4 : ${fr(ga.paid.sessions)} sessions Ads, 0 événement clé`] });
+
+  const weak = ga.landings.filter((row) => row.sessions >= 30 && ((row.engagementRate !== null && row.engagementRate < 0.4) || (ga.keyEventsTracked && row.sessions >= 50 && row.keyEvents === 0))).slice(0, MAX_ITEMS);
+  const weakCampaigns = ga.campaigns.filter((row) => row.sessions >= 30 && row.engagementRate !== null && row.engagementRate < 0.35).slice(0, 5);
+  if (weak.length || weakCampaigns.length) findings.push({ id: "expert:analytics_landing", kind: "analytics_landing", campaignId: null, priority: weak.some((row) => row.sessions >= 100) ? "high" : "medium",
+    title: "Visiteurs payants qui repartent sans agir",
+    detail: `Sur ${period}, GA4 montre ${weak.length ? `${weak.length} page(s) d’arrivée des annonces` : ""}${weak.length && weakCampaigns.length ? " et " : ""}${weakCampaigns.length ? `${weakCampaigns.length} campagne(s)` : ""} avec peu de sessions engagées ou aucun événement clé : chaque clic payé y est en grande partie perdu.`,
+    action: "Envoyer chaque groupe d’annonces vers la page du service recherché, avec le téléphone et un formulaire court visibles dès le premier écran sur mobile ; vérifier la vitesse et la cohérence annonce / page.",
+    expectedImpact: "Plus de demandes pour le même budget, et un meilleur Quality Score (expérience sur la page de destination).",
+    items: [
+      ...weak.map((row) => `${row.path} (${fr(row.sessions)} sessions payantes, engagement ${row.engagementRate === null ? "inconnu" : pct(row.engagementRate)}, ${fr(row.keyEvents)} événement(s) clé(s))`),
+      ...weakCampaigns.map((row) => `Campagne « ${row.name} » (${fr(row.sessions)} sessions, engagement ${pct(row.engagementRate!)})`),
+    ].slice(0, MAX_ITEMS) });
+  return findings;
+}
+
 const deviceNames: Record<string, string> = { MOBILE: "Mobile", DESKTOP: "Ordinateur", TABLET: "Tablette", CONNECTED_TV: "TV connectée", OTHER: "Autre" };
 export const deviceLabel = (device: string) => deviceNames[device] ?? device;
 
 /** Lecture des signaux experts disponibles / indisponibles (affichée dans les limites de l'analyse). */
 export function expertCoverage(signals: AdsExpertSignals | null | undefined) {
-  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil", organicQueries: "requêtes Search Console", keywordIdeas: "Planificateur de mots-clés", recommendedKeywords: "recommandations Google" };
+  const labels: Record<keyof AdsExpertSignals, string> = { searchTerms: "termes de recherche", impressionShare: "part d’impressions", keywords: "Quality Score des mots-clés", devices: "répartition par appareil", organicQueries: "requêtes Search Console", keywordIdeas: "Planificateur de mots-clés", recommendedKeywords: "recommandations Google", analytics: "Google Analytics 4" };
   const keys = Object.keys(labels) as (keyof AdsExpertSignals)[];
   const present = (key: keyof AdsExpertSignals) => Boolean(signals) && signals![key] !== null && signals![key] !== undefined;
   return { read: keys.filter(present).map((key) => labels[key]), missing: keys.filter((key) => !present(key)).map((key) => labels[key]) };

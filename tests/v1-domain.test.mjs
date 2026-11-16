@@ -167,7 +167,7 @@ test("agenda shows planned automation runs and validates input server-side", () 
 });
 
 test("client data sources: identifiers only, strict formats, no traversal or injection", () => {
-  const sources = loadTs("lib/connections/sources.ts", { "@/lib/integrations/search-console/model": loadTs("lib/integrations/search-console/model.ts") });
+  const sources = loadTs("lib/connections/sources.ts", { "@/lib/integrations/search-console/model": loadTs("lib/integrations/search-console/model.ts"), "@/lib/integrations/google-analytics/model": loadTs("lib/integrations/google-analytics/model.ts") });
   const ok = (provider, value) => sources.normalizeSourceValue(provider, value).ok;
   assert.equal(sources.normalizeSourceValue("search-console", "SC-DOMAIN:Exemple.fr").value, "sc-domain:exemple.fr");
   assert.equal(sources.normalizeSourceValue("search-console", "sc-domain:Exemple.FR").value, "sc-domain:exemple.fr");

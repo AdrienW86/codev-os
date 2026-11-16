@@ -75,7 +75,7 @@ test("unavailable signals stay unavailable and produce no finding", () => {
   assert.equal(expert.buildExpertDiagnosis(rows, null, null, { days: 30 }, "EUR").length, 0);
   const coverage = expert.expertCoverage({ searchTerms: [], impressionShare: null, keywords: [], devices: null });
   assert.deepEqual(plain(coverage.read), ["termes de recherche", "Quality Score des mots-clés"]);
-  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil", "requêtes Search Console", "Planificateur de mots-clés", "recommandations Google"]);
+  assert.deepEqual(plain(coverage.missing), ["part d’impressions", "répartition par appareil", "requêtes Search Console", "Planificateur de mots-clés", "recommandations Google", "Google Analytics 4"]);
 });
 
 test("expert actions survive validation only with the matching expert evidence", () => {
@@ -103,7 +103,7 @@ test("the AI call carries the expert playbook, expert evidence details and a lar
   assert.match(request.system, /consultant Google Ads senior/); assert.match(request.system, /mots-clés négatifs/);
   const payload = JSON.parse(request.messages[0].content);
   assert.ok(payload.evidence.some((item) => item.kind === "excluded_terms" && /offre d'emploi/.test(item.detail)));
-  assert.deepEqual(plain(payload.expertSignalsMissing), ["requêtes Search Console", "Planificateur de mots-clés", "recommandations Google"]);
+  assert.deepEqual(plain(payload.expertSignalsMissing), ["requêtes Search Console", "Planificateur de mots-clés", "recommandations Google", "Google Analytics 4"]);
   assert.equal(result.output.recommendations.length, 1);
   assert.ok(result.expert.length >= 5);
 });

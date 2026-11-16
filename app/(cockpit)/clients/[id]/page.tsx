@@ -19,6 +19,7 @@ import { ClientHealthPanel } from "@/components/clients/client-health-panel";
 import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
 import { readSearchConsoleConnection } from "@/lib/integrations/search-console/connection";
+import { readGoogleAnalyticsConnection } from "@/lib/integrations/google-analytics/connection";
 import { safeRead } from "@/lib/core/safe-read";
 import { VisualAgentPanel } from "@/components/clients/visual-agent-panel";
 import { getVisualAgent } from "@/lib/visual-agent/service";
@@ -105,6 +106,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
   const searchConsoleProperties = tab === "agents" ? (await safeRead("search-console-properties", async () => {
     const connection = await readSearchConsoleConnection();
+    return connection?.status === "active" ? connection.properties : null;
+  }, null)).data : null;
+  const analyticsProperties = tab === "agents" ? (await safeRead("google-analytics-properties", async () => {
+    const connection = await readGoogleAnalyticsConnection();
     return connection?.status === "active" ? connection.properties : null;
   }, null)).data : null;
   const health = tab === "health"
@@ -224,7 +229,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
             <ClientAiBudgetPanel clientId={client.id} budget={aiBudget} claude={claudeRouting} anthropicConfigured={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />
-            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} /></div>
+            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} analyticsProperties={analyticsProperties} /></div>
           </>
         );
       })()}

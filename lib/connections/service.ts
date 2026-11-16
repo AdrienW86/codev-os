@@ -28,8 +28,8 @@ export async function saveClientSource(actor: Actor & { kind: "admin" }, clientI
   const { data: client, error: clientError } = await db().from("clients").select("id").eq("id", clientId).maybeSingle();
   if (clientError) throw new Error("client read");
   if (!client) return { ok: false, message: "Client introuvable." };
-  if (provider === "search-console" && normalized.value) {
-    // Une propriété Search Console n'appartient qu'à un client : jamais de données partagées entre deux fiches.
+  if ((provider === "search-console" || provider === "google-analytics") && normalized.value) {
+    // Une propriété Search Console ou GA4 n'appartient qu'à un client : jamais de données partagées entre deux fiches.
     const { data: others, error: othersError } = await db().from("client_connections").select("client_id,metadata").eq("provider", provider).neq("client_id", clientId);
     if (othersError) throw new Error("source read");
     const owner = (others ?? []).find((row) => (row.metadata as Record<string, unknown> | null)?.property === normalized.value);

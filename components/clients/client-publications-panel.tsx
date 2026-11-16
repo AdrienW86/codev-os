@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import {useActionState} from 'react';
 import {Badge,Panel} from '@/components/ui/primitives';
-import {ensureClientPublicationsAction,saveClientPublicationSettingsAction,type ClientPublicationsState} from '@/app/(cockpit)/clients/[id]/publications-actions';
+import {ensureClientPublicationsAction,publishNowAction,saveClientPublicationSettingsAction,type ClientPublicationsState,type PublishNowState} from '@/app/(cockpit)/clients/[id]/publications-actions';
 import {automationSummary,timezoneLabel,timezoneOptions,type ClientPublicationSettings} from '@/lib/publications/client-setup-model';
 
 // Onglet « Publications » de la fiche client (socle lot 1) : réglages propres au client. Les connexions, canaux,
@@ -48,4 +48,18 @@ export function ClientPublicationSettingsForm({clientId,settings,globalStop}:{cl
     <textarea name="editorial_brief" maxLength={10000} rows={5} defaultValue={settings.editorialBrief} className={input}/></label>
    <div className="md:col-span-2"><button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60">{pending?'Enregistrement…':'Enregistrer les réglages'}</button>
     {state.message&&<p role={state.ok?'status':'alert'} className={`mt-2 text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}</div></form></Panel>;
+}
+
+// « Rédiger et publier maintenant » : un post Facebook, Instagram et Google rédigé par l'agent avec une photo de la
+// photothèque, validé par ce clic et envoyé par le planificateur dans les minutes qui suivent.
+export function ClientPublishNowForm({clientId,projectId}:{clientId:string;projectId:string}){
+ const [state,publish,pending]=useActionState(publishNowAction,{} as PublishNowState);
+ return <Panel className="p-6" data-publish-now="true"><h2 className="font-semibold">Publier maintenant</h2>
+  <p className="mt-2 text-sm text-muted">L’Agent Publications rédige un post pour les réseaux actifs (Facebook, Instagram, Google), choisit une photo de la photothèque, et la publication part dans les 20 minutes environ. Les contrôles qualité habituels s’appliquent.</p>
+  <form action={publish} className="mt-4 space-y-3"><input type="hidden" name="client_id" value={clientId}/><input type="hidden" name="project_id" value={projectId}/>
+   <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirm" className="mt-1"/> <span>J’autorise l’appel IA et la publication sans relecture préalable.</span></label>
+   <button disabled={pending} className="rounded-lg bg-accent-strong px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60">{pending?'Rédaction en cours… (jusqu’à 3 minutes)':'Rédiger et publier maintenant'}</button>
+   {state.message&&<p role={state.ok?'status':'alert'} className={`text-sm ${state.ok?'':'text-danger'}`}>{state.message}</p>}
+   {state.publications?.length?<ul className="text-sm">{state.publications.map(p=><li key={p.id}><Link className="text-accent" href={`/publications/${p.id}`}>{p.label}</Link>{p.approval==='approved'?' · validée':' · à valider'}</li>)}</ul>:null}
+  </form></Panel>;
 }

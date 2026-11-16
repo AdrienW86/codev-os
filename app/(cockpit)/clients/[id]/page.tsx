@@ -65,7 +65,7 @@ import { getClientPublicationsSetup } from "@/lib/publications/client-setup";
 import { oauthBanner } from "@/lib/publications/oauth/model";
 import { ChannelConfiguration } from "@/components/publications/channel-configuration";
 import { AgentConfigurationForm } from "@/components/publications/agent-forms";
-import { ClientPublicationSettingsForm, ClientPublicationsProjectPicker, ClientPublicationsSetupStart } from "@/components/clients/client-publications-panel";
+import { ClientPublicationSettingsForm, ClientPublicationsProjectPicker, ClientPublicationsSetupStart, ClientPublishNowForm } from "@/components/clients/client-publications-panel";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
 // Étapes de l'import d'export WhatsApp (lots de photos vers Drive) : durée bornée par appel, au-delà du défaut.
@@ -269,6 +269,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
   return (
     <div className="space-y-6">
       <ClientPublicationsProjectPicker clientId={clientId} projects={data.projects} current={data.project.id} />
+      <ClientPublishNowForm clientId={clientId} projectId={data.project.id} />
       <ClientPublicationSettingsForm clientId={clientId} settings={data.settings} globalStop={data.globalStop} />
       <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} deliveryFlags={{ clientPublishing: data.settings.publishingEnabled, globalStop: data.globalStop }} />
       <Panel className="p-6">

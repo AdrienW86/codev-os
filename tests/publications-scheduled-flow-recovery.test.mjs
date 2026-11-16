@@ -84,7 +84,7 @@ test("#3 a failed Agent v2 run pauses the project for hours (no AI call); an occ
   await old.mod.runScheduledPreparation(now, old.deps);
   assert.equal(old.prepared.length, 1, "after the backoff the project is tried again");
   assert.equal(old.prepared[0][2].excludeOccurrenceIds, undefined);
-  const runs = [1, 2, 3, 5].map(n => ({ id: RUN(n), project_id: P(1), status: "failed", occurrence_ids: [OCC(9), OCC(n)], created_at: hours(30 - n), agent_id: AGENT }))
+  const runs = [1, 2, 3, 5].map(n => ({ id: RUN(n), project_id: P(1), status: "failed", occurrence_ids: [OCC(9), OCC(n)], created_at: hours(20 - n), agent_id: AGENT }))
     .concat([{ id: RUN(4), project_id: P(1), status: "completed", occurrence_ids: [OCC(4)], created_at: hours(1), agent_id: AGENT }]);
   const stuck = setup(prepTables(runs, { publication_channel_occurrences: [{ id: OCC(9), publication_id: null, skipped_at: null, scheduled_for: "2026-10-13T10:00:00Z" }] }));
   const s = await stuck.mod.runScheduledPreparation(now, stuck.deps);
@@ -94,6 +94,11 @@ test("#3 a failed Agent v2 run pauses the project for hours (no AI call); an occ
   const again = await stuck.mod.runScheduledPreparation(now, stuck.deps);
   assert.equal(stuck.fake.tables.admin_notifications.length, 1, "notified once (idempotent event key)");
   assert.equal(again.notified, 0, "an alert already sent is not counted again");
+  // Dernier échec il y a plus de 24 h : le créneau est retenté au lieu de rester exclu toute la fenêtre de 14 jours.
+  const cooled = setup(prepTables(runs.map(r => r.status === "failed" ? { ...r, created_at: hours(Number(r.id === RUN(5)) + 30) } : r)));
+  await cooled.mod.runScheduledPreparation(now, cooled.deps);
+  assert.equal(cooled.prepared.length, 1);
+  assert.equal(cooled.prepared[0][2].excludeOccurrenceIds, undefined, "an exhausted occurrence is retried 24 h after its last failure");
   // Historique illisible : échec fermé, aucun appel IA.
   const unreadable = setup(prepTables([]), { failOn: table => table === "publication_agent_v2_runs" });
   assert.equal((await unreadable.mod.runScheduledPreparation(now, unreadable.deps)).skipped.failures_unavailable, 1);

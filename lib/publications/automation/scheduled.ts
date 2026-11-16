@@ -31,11 +31,14 @@ export const MAX_DELIVERY_CANDIDATES=50;
 export const LATE_DELIVERY_TOLERANCE_MS=SCHEDULED_LATE_TOLERANCE_SECONDS*1000;
 // Échecs de l'Agent v2 (refus de contenu, sortie invalide, génération indisponible) : plus aucun appel IA pour ce
 // projet pendant PROJECT_FAILURE_BACKOFF_MS ; une occurrence en échec MAX_OCCURRENCE_FAILURES fois sur la fenêtre
-// n'est plus tentée et un humain est notifié une fois (budget de l'agent partagé entre tous les clients).
+// est mise de côté et un humain est notifié une fois (budget de l'agent partagé entre tous les clients). Elle est
+// retentée EXHAUSTED_RETRY_AFTER_MS après son dernier échec (au plus une série par jour) : sans cela, un créneau refusé
+// en série restait exclu toute la fenêtre de 14 jours et passait sans publication (JRenov, 13, 16 et 18/11).
 // Un contenu refusé par les gardes est régénéré une fois dans le même passage avec le motif du refus (comme
 // « Préparer les prochaines publications ») : un créneau compte donc jusqu'à 2 échecs par passage.
 export const PROJECT_FAILURE_BACKOFF_MS=6*3600000;
 export const MAX_OCCURRENCE_FAILURES=4;
+export const EXHAUSTED_RETRY_AFTER_MS=24*3600000;
 const FAILURE_WINDOW_MS=14*86400000;
 // Étape média d'une préparation planifiée : au plus MAX_MEDIA_ATTEMPTS essais (le premier compris) pendant
 // MEDIA_FOLLOW_UP_MS ; au-delà, abandon : réservation de la photo libérée, « Photo manquante » notifiée.
@@ -121,9 +124,15 @@ async function recentFailures(projectId:string,now:Date):Promise<{backoff:boolea
  if(r.error||!r.data)return null;
  const rows=r.data as RecentRun[],latest=rows[0];
  const backoff=latest?.status==='failed'&&Date.parse(latest.created_at)>now.getTime()-PROJECT_FAILURE_BACKOFF_MS;
- const failures=new Map<string,number>();
- for(const row of rows)if(row.status==='failed')for(const id of row.occurrence_ids??[])failures.set(id,(failures.get(id)??0)+1);
- return {backoff,exhausted:[...failures].filter(([,n])=>n>=MAX_OCCURRENCE_FAILURES).map(([id])=>id),agentId:rows.find(x=>x.agent_id)?.agent_id??null};
+ // Par occurrence : nombre d'échecs sur la fenêtre et date du plus récent (lignes triées du plus récent au plus ancien).
+ const failures=new Map<string,{n:number;last:number}>();
+ for(const row of rows)if(row.status==='failed')for(const id of row.occurrence_ids??[]){
+  const f=failures.get(id);if(f)f.n++;else failures.set(id,{n:1,last:Date.parse(row.created_at)});
+ }
+ const retryFrom=now.getTime()-EXHAUSTED_RETRY_AFTER_MS;
+ // Une date illisible compte comme récente (échec fermé : pas d'appel IA supplémentaire).
+ const exhausted=[...failures].filter(([,f])=>f.n>=MAX_OCCURRENCE_FAILURES&&!(f.last<=retryFrom)).map(([id])=>id);
+ return {backoff,exhausted,agentId:rows.find(x=>x.agent_id)?.agent_id??null};
 }
 // Occurrences abandonnées encore ouvertes : un humain est prévenu une fois par occurrence (page de l'agent).
 async function notifyExhausted(exhausted:string[],agentId:string|null,now:Date):Promise<number>{

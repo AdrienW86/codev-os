@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection" | "newsletter" | "copywriter"
+  | "prospection" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
   | "veille";
 
 export type HarnessCharter = {
@@ -148,6 +148,20 @@ export const harnessCharters: readonly HarnessCharter[] = [
     never: ["N’ajoute aucun fait, chiffre, promesse, adresse ou coordonnée", "Ne publie ni n’envoie aucun texte", "Ne promet jamais qu’un texte échappera aux détecteurs d’IA"],
     // Relecture intégrée aux agents rédacteurs : passage de l'Agent Blog, rédaction manuelle d'une newsletter.
     triggers: [{ kind: "step", step: "blog_agent" }, { kind: "manual" }], clientSettings: "Fiche client → Consignes de communication",
+  },
+  {
+    id: "fact-check", name: "Agent Vérification des faits", team: "contenu", expertise: "Vérificateur de presse senior (fact-checking)",
+    mission: "Vérifier, indépendamment du rédacteur, que chaque affirmation sur l’entreprise s’appuie sur un fait confirmé du client.",
+    does: ["Relevé des affirmations sur l’entreprise d’un article ou d’une newsletter", "Preuve exigée mot pour mot dans les faits du client", "Refus du texte si une affirmation n’est pas étayée, est contredite ou reprend un interdit du client"],
+    never: ["Ne réécrit pas le texte", "Ne valide jamais sans preuve citée", "N’accepte pas un texte quand la vérification n’a pas pu tourner"],
+    triggers: [{ kind: "step", step: "blog_agent" }, { kind: "manual" }], clientSettings: "Fiche client → Agents → Mémoire client",
+  },
+  {
+    id: "editorial-review", name: "Agent Anti-doublon", team: "contenu", expertise: "Rédacteur en chef senior",
+    mission: "Vérifier, indépendamment du rédacteur, qu’un nouveau contenu ne reprend pas un sujet déjà traité sur le même canal, même reformulé.",
+    does: ["Comparaison du sujet et de l’angle avec le registre éditorial du client", "Refus d’un doublon, avec le sujet repris"],
+    never: ["Ne réécrit pas le texte", "Ne choisit pas les sujets", "N’accepte pas un texte quand le contrôle n’a pas pu tourner"],
+    triggers: [{ kind: "step", step: "blog_agent" }, { kind: "manual" }], clientSettings: "Fiche client → Agents → Registre éditorial",
   },
   {
     id: "veille", name: "Agent Veille", team: "veille", expertise: "Analyste veille tech et marketing", registryType: "veille",

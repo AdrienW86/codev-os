@@ -17,6 +17,7 @@ import {loadOrganicQueries} from '@/lib/integrations/google-ads/organic';
 import {closeReservation,readRegister,reserveTopic} from '@/lib/editorial-register/service';
 import {duplicateMessage,findDuplicate,firstFreeTopic,registerBrief,type RegisterEntry} from '@/lib/editorial-register/model';
 import {SEO_GOOD_SCORE,auditBlogArticle,pickTargetQuery,seoFeedback,type SeoAudit,type TargetQuery} from './seo';
+import {reviewContent} from '@/lib/editorial-review/service';
 import {COPY_STYLE_RULES,STYLE_GOOD_SCORE,addressFromGuidelines,auditStyle,styleFeedback,type StyleAudit} from '@/lib/copywriter/style';
 import {ALT_MAX,BLOG_IMAGE,EXCERPT_MAX,META_MAX,META_MIN,RELAY_LABELS,RELAY_PLATFORMS,SUMMARY_MAX,TITLE_MAX,WORDS_MAX,WORDS_MIN,
  ARTICLE_ANGLES,articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
@@ -187,6 +188,9 @@ async function writeReservedArticle(clientId:string,settings:BlogAgentSettings,a
  // Titre final : même contrôle que le sujet réservé (le modèle a pu revenir vers un sujet déjà traité).
  const repeated=findDuplicate({channel:'blog',topic:draft.title,service},register,now);
  if(repeated&&repeated.reason==='same_topic'){log('register','duplicate_title');return {ok:false,message:`Article non enregistré : ${duplicateMessage(repeated)}`};}
+ // Contrôles indépendants (lot 4) : vérification des faits et anti-doublon par deux agents distincts du rédacteur.
+ const review=await reviewContent({clientId,channel:'blog',title:draft.title,text:articleProse(draft),facts:ctx.facts,exclusions:ctx.exclusions,register});
+ if(!review.ok){log('review',review.reason);return {ok:false,message:`Article non enregistré. ${review.message}`};}
  const id=randomUUID(),path=`${clientId}/${id}.jpg`;
  const up=await db().storage.from(BLOG_BUCKET).upload(path,photo.bytes,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
  if(up.error){log('image','upload_failed');return {ok:false,message:'Image de l’article non enregistrée. Réessayez.'};}

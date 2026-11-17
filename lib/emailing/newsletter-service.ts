@@ -10,12 +10,13 @@ import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-ag
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import { writeAudit } from "@/lib/core/audit";
 import { readRegister } from "@/lib/editorial-register/service";
+import { reviewContent } from "@/lib/editorial-review/service";
 import { STYLE_GOOD_SCORE, addressFromGuidelines, auditStyle, styleFeedback, type StyleAudit } from "@/lib/copywriter/style";
 import { duplicateMessage, findDuplicate, registerBrief, type RegisterEntry } from "@/lib/editorial-register/model";
 import type { Actor } from "@/lib/core/actor";
 import { UNSUBSCRIBE_PATH, isBlockedBy, normalizeEmail, unsubscribeHeaders, unsubscribeToken } from "./policy";
 import {
-  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, newsletterProse, renderNewsletter, sourceFacts,
+  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, contentText, newsletterProse, renderNewsletter, sourceFacts,
   type NewsletterContent, type NewsletterSource,
 } from "./newsletter";
 import { parseContactLines, type ConsentBasis } from "./contacts";
@@ -111,6 +112,9 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
   }
   if (!best) return { ok: false, message: `Brouillon refusé par les contrôles (${feedback}). Aucun texte n'a été enregistré.` };
   const { content, audit, style } = best;
+  // Contrôles indépendants (lot 4) : vérification des faits et anti-doublon, par deux agents distincts du rédacteur.
+  const review = await reviewContent({ clientId, channel: "newsletter", title: content.subject, text: [content.preheader, contentText(content)].join("\n\n"), facts: allFacts, exclusions, register });
+  if (!review.ok) return { ok: false, message: `Brouillon non enregistré. ${review.message}` };
   const { data, error } = await db().from("email_newsletters").insert({
     client_id: clientId, subject: content.subject, preheader: content.preheader, content, sources, audit: { ...audit, style: { score: style.score, issues: style.issues } }, created_by: actor.userId,
   }).select("id").single();

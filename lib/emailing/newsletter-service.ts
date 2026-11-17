@@ -20,6 +20,7 @@ import {
   type NewsletterContent, type NewsletterSource,
 } from "./newsletter";
 import { parseContactLines, type ConsentBasis } from "./contacts";
+import { clientSender, senderFromRow } from "./sender";
 
 // Agent Newsletter : rédaction à partir des seuls faits vérifiés du client, approbation humaine obligatoire, envoi aux
 // contacts consentants hors liste d'exclusion, par lots reprenables (journal écrit avant chaque appel au fournisseur).
@@ -163,6 +164,9 @@ export async function sendNewsletterBatch(actor: Actor & { kind: "admin" }, id: 
   const target = { scope: "client" as const, clientId: row.client_id };
   const brand = (await db().from("clients").select("name,company_name").eq("id", row.client_id).maybeSingle()).data as { name?: string; company_name?: string | null } | null;
   const brandName = brand?.company_name || brand?.name || "Votre entreprise";
+  // Domaine du client vérifié : envoi à son nom ; sinon adresse commune EMAIL_FROM (comportement d'origine).
+  const senderRow = await db().from("client_email_settings").select("sending_domain,from_name,from_local_part,reply_to,domain_status").eq("client_id", row.client_id).maybeSingle();
+  const sender = clientSender(senderRow.error ? null : senderFromRow(senderRow.data as Record<string, unknown> | null));
 
   if (row.status === "approved") {
     const { data: contacts, error } = await db().from("email_contacts").select("email_normalized").eq("client_id", row.client_id).eq("status", "subscribed").limit(20000);
@@ -202,7 +206,7 @@ export async function sendNewsletterBatch(actor: Actor & { kind: "admin" }, id: 
     if (!token || !headers) return { ok: false, message: "Clé de désabonnement absente (PUBLICATION_CREDENTIALS_KEY) : envoi refusé." };
     const rendered = renderNewsletter(row.content, { brand: brandName, unsubscribeUrl: `${base}${UNSUBSCRIBE_PATH}?t=${token}` });
     try {
-      const result = await sendEmail({ to: p.email_normalized, subject: row.subject, text: rendered.text, html: rendered.html, headers, idempotencyKey: `newsletter:${id}:${p.id}` });
+      const result = await sendEmail({ to: p.email_normalized, subject: row.subject, text: rendered.text, html: rendered.html, headers, idempotencyKey: `newsletter:${id}:${p.id}`, ...(sender ? { from: sender.from, replyTo: sender.replyTo } : {}) });
       await db().from("email_newsletter_sends").update({ status: "sent", provider_message_id: result.id, sent_at: new Date().toISOString() }).eq("id", p.id);
       sent++;
     } catch {
@@ -224,14 +228,18 @@ export async function sendNewsletterBatch(actor: Actor & { kind: "admin" }, id: 
 }
 
 /** Ajoute des contacts (une adresse par ligne) avec leur base légale ; une adresse déjà connue n'est pas modifiée. */
-export async function importContacts(actor: Actor & { kind: "admin" }, clientId: string, text: string, basis: ConsentBasis, source: string): Promise<Outcome> {
+export async function importContacts(actor: Actor & { kind: "admin" }, clientId: string, text: string, basis: ConsentBasis, source: string, consentDate?: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
   const parsed = parseContactLines(text);
   const consentSource = source.replace(/\s+/g, " ").trim().slice(0, 300);
   if (consentSource.length < 2) return { ok: false, message: "Indiquez l'origine du consentement (ex. formulaire du site, clients 2025)." };
   if (!parsed.emails.length) return { ok: false, message: "Aucune adresse valide." };
+  // Date réelle du consentement (preuve RGPD) si elle est connue ; sinon la date de l'import.
   const now = new Date().toISOString();
-  const rows = parsed.emails.map((email) => ({ client_id: clientId, email_normalized: email, status: "subscribed", consent_basis: basis, consent_source: consentSource, consent_at: now }));
+  if (consentDate && (!/^\d{4}-\d{2}-\d{2}$/.test(consentDate) || Number.isNaN(Date.parse(consentDate)) || consentDate > now.slice(0, 10)))
+    return { ok: false, message: "Date du consentement invalide (elle ne peut pas être dans le futur)." };
+  const consentAt = consentDate ? `${consentDate}T12:00:00.000Z` : now;
+  const rows = parsed.emails.map((email) => ({ client_id: clientId, email_normalized: email, status: "subscribed", consent_basis: basis, consent_source: consentSource, consent_at: consentAt }));
   let added = 0;
   for (let i = 0; i < rows.length; i += 500) {
     const { data, error } = await db().from("email_contacts").upsert(rows.slice(i, i + 500), { onConflict: "client_id,email_normalized", ignoreDuplicates: true }).select("id");

@@ -50,7 +50,8 @@ test("santé d'un agent : jamais opérationnel sans preuve d'exécution", () => 
   assert.equal(health.agentHealth(blog, { ...base, steps: { blog_agent: { status: "ok" } } }).state, "ok");
   assert.equal(health.agentHealth(blog, { ...base, steps: { blog_agent: { status: "failed" } } }).state, "failed");
   assert.equal(health.agentHealth(monitoring, { ...base, gapRunTypes: new Set(["monitoring.check_sites"]) }).state, "attention");
-  assert.equal(health.agentHealth(monitoring, { ...base, lastJobs: { "monitoring.check_sites": { status: "succeeded", finishedAt: "2026-11-11T08:00:00Z" } } }).state, "ok");
+  assert.equal(health.agentHealth(monitoring, { ...base, lastJobs: { "monitoring.check_sites": { status: "succeeded", finishedAt: "2026-11-11T08:00:00Z" } } }).state, "attention", "audit Lighthouse jamais passé");
+  assert.equal(health.agentHealth(monitoring, { ...base, steps: { lighthouse: { status: "ok" } }, lastJobs: { "monitoring.check_sites": { status: "succeeded", finishedAt: "2026-11-11T08:00:00Z" } } }).state, "ok");
   assert.equal(health.agentHealth(monitoring, { ...base, agentEnabled: false }).state, "off");
   // Chef de projet : contrôle quotidien (étape) + à la demande ; « opérationnel » seulement si le passage est enregistré.
   assert.equal(health.agentHealth(director, base).state, "attention");

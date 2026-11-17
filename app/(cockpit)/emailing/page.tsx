@@ -6,6 +6,9 @@ import { listClients } from "@/lib/clients/data";
 import { getNewsletterView } from "@/lib/emailing/newsletter-service";
 import { CONSENT_BASES } from "@/lib/emailing/contacts";
 import { auditNewsletter, renderNewsletter } from "@/lib/emailing/newsletter";
+import { SenderPanel } from "@/components/emailing/sender-panel";
+import { ContactsList } from "@/components/emailing/contacts-list";
+import { getSenderView, listClientContacts } from "@/lib/emailing/client-email-service";
 import { approveNewsletterAction, cancelNewsletterAction, generateNewsletterAction, importContactsAction, sendNewsletterAction } from "./actions";
 
 export const metadata: Metadata = { title: "Newsletters" };
@@ -13,12 +16,17 @@ export const metadata: Metadata = { title: "Newsletters" };
 const STATUS: Record<string, string> = { draft: "Brouillon", approved: "Approuvée", sending: "Envoi en cours", sent: "Envoyée", cancelled: "Annulée" };
 const button = "rounded-lg px-3 py-2 text-sm font-semibold";
 
-export default async function EmailingPage({ searchParams }: { searchParams: Promise<{ client?: string; msg?: string; ok?: string }> }) {
+export default async function EmailingPage({ searchParams }: { searchParams: Promise<{ client?: string; msg?: string; ok?: string; q?: string; status?: string; page?: string }> }) {
   await requireAdmin();
   const clients = await listClients();
-  const { client, msg, ok } = await searchParams;
+  const { client, msg, ok, q, status, page } = await searchParams;
+  const contactFilter = { q: typeof q === "string" ? q.slice(0, 100) : undefined, status: typeof status === "string" ? status : undefined, page: Number(page) || 1 };
   const selected = clients.find((c) => c.id === client) ?? null;
-  const view = selected ? await getNewsletterView(selected.id).catch(() => null) : null;
+  const [view, senderView, contactList] = selected ? await Promise.all([
+    getNewsletterView(selected.id).catch(() => null),
+    getSenderView(selected.id).catch(() => ({ ready: false, settings: null, suggestedDomain: null })),
+    listClientContacts(selected.id, contactFilter).catch(() => null),
+  ]) : [null, null, null];
 
   return <>
     <PageHeading eyebrow="Emailing" title="Newsletters" description="L'Agent Newsletter rédige à partir des articles publiés et des prestations du client. Rien ne part sans votre approbation." />
@@ -78,6 +86,7 @@ export default async function EmailingPage({ searchParams }: { searchParams: Pro
           {view.sources.length === 0 ? <p className="mt-1 text-sm text-muted">Aucune : publiez un article (<Link href="/blog" className="text-accent">Agent Blog</Link>) ou confirmez les prestations du client.</p> :
             <ul className="mt-2 space-y-1 text-sm">{view.sources.map((s, i) => <li key={i}>{s.kind === "article" ? "Article" : "Prestation"} : {s.title}</li>)}</ul>}
         </Panel>
+        {senderView && <SenderPanel clientId={selected.id} clientName={selected.name} view={senderView} />}
         <Panel className="p-4">
           <h2 className="font-semibold">Contacts</h2>
           <p className="text-sm text-muted">{view.contacts.subscribed} abonné(s), {view.contacts.other} désabonné(s) ou exclu(s).</p>
@@ -85,11 +94,13 @@ export default async function EmailingPage({ searchParams }: { searchParams: Pro
             <textarea name="emails" rows={5} required placeholder="Une adresse par ligne" className="w-full rounded-lg border border-border bg-surface p-2" />
             <select name="basis" required defaultValue="" className="w-full rounded-lg border border-border bg-surface p-2"><option value="" disabled>Base légale du consentement</option>{CONSENT_BASES.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
             <input name="source" required minLength={2} maxLength={300} placeholder="Origine (ex. formulaire du site)" className="w-full rounded-lg border border-border bg-surface p-2" />
+            <label className="block text-xs text-muted">Date du consentement (si connue, sinon date du jour)<input name="consent_date" type="date" className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm" /></label>
             <button className={`${button} border border-border`}>Ajouter les contacts</button>
             <p className="text-xs text-muted">Seules les adresses dont le consentement est prouvable doivent être ajoutées. Les désabonnements et rebonds sont exclus automatiquement.</p>
           </form>
         </Panel>
       </div>
+      <div className="lg:col-span-2"><ContactsList clientId={selected.id} list={contactList} filter={contactFilter} /></div>
     </div>}
   </>;
 }

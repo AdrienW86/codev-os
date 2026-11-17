@@ -25,7 +25,8 @@ const log=(step:string,code?:string)=>console.error('[visual-agent]',{step,...(c
 export type VisualAgentView={settings:VisualAgentSettings;items:(VisualItem&{subline:string|null;drive_file_id:string|null;trigger:string})[];services:string[];folderReady:boolean;logoPreview:string|null};
 
 export type ClientBrandContext={client:{name:string;activity:string|null;zone:string|null};services:string[];facts:string;folder:string|null;
- /** Ce que le client ne veut jamais voir écrit (mémoire client, faits « À ne jamais dire »). */exclusions:string[]};
+ /** Ce que le client ne veut jamais voir écrit (mémoire client, faits « À ne jamais dire »). */exclusions:string[];
+ /** Consignes de communication et ligne éditoriale du client (ton, tutoiement…) : relecture du Copywriter ; déjà incluses dans facts. */guidelines:string};
 type Context=ClientBrandContext;
 /** Faits vérifiés du client (nom, activité, zone, prestations, consignes) : partagés avec l'Agent Vidéo. */
 export async function clientBrandContext(clientId:string,agent='visual'):Promise<ClientBrandContext>{return context(clientId,agent);}
@@ -48,7 +49,7 @@ async function context(clientId:string,agent='visual'):Promise<Context>{
  const str=(v:unknown)=>typeof v==='string'?v:'';
  const facts=[c.name,c.activity??'',zone??'',...services,str(p.activity_summary),str(p.communication_guidelines),str(st.editorial_brief),...rows.map(r=>r.editorial_rules??''),memory?.text??''].join('\n');
  // Dossier de dépôt : celui des envois WhatsApp (déjà accessible à l'application), sinon celui de la photothèque de l'agent.
- return {client:{name:c.name,activity:c.activity??null,zone},services,facts,exclusions:memory?.exclusions??[],folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
+ return {client:{name:c.name,activity:c.activity??null,zone},services,facts,exclusions:memory?.exclusions??[],guidelines:[str(p.communication_guidelines),str(st.editorial_brief)].join('\n').trim().slice(0,2000),folder:senderFolder??rows.find(r=>r.rights_confirmed&&r.drive_folder_id)?.drive_folder_id??null};
 }
 async function readSettings(clientId:string){
  const [row,items]=await Promise.all([db().from('client_visual_agents').select('*').eq('client_id',clientId).maybeSingle(),

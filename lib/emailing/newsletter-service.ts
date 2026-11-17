@@ -10,11 +10,12 @@ import { articleUrl, blogSettingsFromRow, normalizeSiteUrl } from "@/lib/blog-ag
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import { writeAudit } from "@/lib/core/audit";
 import { readRegister } from "@/lib/editorial-register/service";
+import { STYLE_GOOD_SCORE, addressFromGuidelines, auditStyle, styleFeedback, type StyleAudit } from "@/lib/copywriter/style";
 import { duplicateMessage, findDuplicate, registerBrief, type RegisterEntry } from "@/lib/editorial-register/model";
 import type { Actor } from "@/lib/core/actor";
 import { UNSUBSCRIBE_PATH, isBlockedBy, normalizeEmail, unsubscribeHeaders, unsubscribeToken } from "./policy";
 import {
-  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, renderNewsletter, sourceFacts,
+  NEWSLETTER_INSTRUCTIONS, NEWSLETTER_SCHEMA, auditNewsletter, checkNewsletter, newsletterProse, renderNewsletter, sourceFacts,
   type NewsletterContent, type NewsletterSource,
 } from "./newsletter";
 import { parseContactLines, type ConsentBasis } from "./contacts";
@@ -29,7 +30,7 @@ export const SEND_BATCH = 100;
 type Outcome = { ok: boolean; message: string };
 export type NewsletterRow = {
   id: string; client_id: string; status: "draft" | "approved" | "sending" | "sent" | "cancelled"; subject: string; preheader: string;
-  content: NewsletterContent; sources: NewsletterSource[]; audit: { score?: number; words?: number; issues?: { level: string; code: string; message: string }[] };
+  content: NewsletterContent; sources: NewsletterSource[]; audit: { score?: number; words?: number; issues?: { level: string; code: string; message: string }[]; style?: Pick<StyleAudit, "score" | "issues"> };
   sent_count: number; failed_count: number; skipped_count: number; approved_at: string | null; sent_at: string | null; created_at: string;
 };
 const COLUMNS = "id,client_id,status,subject,preheader,content,sources,audit,sent_count,failed_count,skipped_count,approved_at,sent_at,created_at";
@@ -37,7 +38,7 @@ const COLUMNS = "id,client_id,status,subject,preheader,content,sources,audit,sen
 export type NewsletterView = { ready: boolean; newsletters: NewsletterRow[]; contacts: { subscribed: number; other: number }; sources: NewsletterSource[]; sending: { enabled: boolean; reason: string | null } };
 
 /** Faits citables : articles publiés (90 jours, adresse publique), prestations confirmées, profil. */
-async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; exclusions: string[]; site: string | null }> {
+async function gatherSources(clientId: string): Promise<{ sources: NewsletterSource[]; client: { name: string; activity: string | null; zone: string | null }; facts: string; exclusions: string[]; site: string | null; guidelines: string }> {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
   const [ctx, agent, articles, client] = await Promise.all([
     clientBrandContext(clientId, "newsletter"),
@@ -53,7 +54,7 @@ async function gatherSources(clientId: string): Promise<{ sources: NewsletterSou
     })),
     ...ctx.services.slice(0, 8).map((s) => ({ kind: "service" as const, title: s, summary: `Prestation proposée par ${ctx.client.name}.`, url: null })),
   ];
-  return { sources, client: ctx.client, facts: ctx.facts, exclusions: ctx.exclusions, site };
+  return { sources, client: ctx.client, facts: ctx.facts, exclusions: ctx.exclusions, site, guidelines: ctx.guidelines };
 }
 
 export async function getNewsletterView(clientId: string): Promise<NewsletterView> {
@@ -76,7 +77,8 @@ export async function getNewsletterView(clientId: string): Promise<NewsletterVie
 export async function generateNewsletter(actor: Actor & { kind: "admin" }, clientId: string): Promise<Outcome> {
   if (!UUID.test(clientId)) return { ok: false, message: "Client invalide." };
   if (!agentsAiConfigured(process.env)) return { ok: false, message: "IA non configurée (ANTHROPIC_API_KEY ou OPENAI_API_KEY) : rédaction impossible." };
-  const { sources, client, facts, exclusions, site } = await gatherSources(clientId);
+  const { sources, client, facts, exclusions, site, guidelines } = await gatherSources(clientId);
+  const address = addressFromGuidelines(guidelines);
   if (!sources.length) return { ok: false, message: "Aucun fait à raconter : publiez un article ou confirmez des prestations du client d'abord." };
   const allowedUrls = [...sources.map((s) => s.url).filter((u): u is string => Boolean(u)), ...(site ? [site] : [])];
   const allFacts = sourceFacts(sources, client, facts);
@@ -86,7 +88,7 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
   let register: RegisterEntry[];
   try { register = await readRegister(clientId); } catch { return { ok: false, message: "Registre éditorial illisible : aucun brouillon rédigé pour éviter un doublon. Réessayez plus tard." }; }
   const now = new Date();
-  let feedback: string | null = null;
+  let feedback: string | null = null, best: Draft | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     let value: unknown;
     try {
@@ -96,21 +98,27 @@ export async function generateNewsletter(actor: Actor & { kind: "admin" }, clien
         editorial_register: registerBrief(register, now),
         ...(feedback ? { previous_attempt_refused: feedback } : {}),
       }), NEWSLETTER_SCHEMA, { maxOutputTokens: 2500, timeoutMs: 90000, agent: "newsletter", clientId }));
-    } catch { return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
+    } catch { if (best) break; return { ok: false, message: "Rédaction indisponible (IA). Réessayez plus tard." }; }
     const checked = checkNewsletter(value, { facts: allFacts, allowedUrls });
     if (!checked.ok) { feedback = checked.reason; continue; }
     const repeated = findDuplicate({ channel: "newsletter", topic: checked.content.subject }, register, now);
     if (repeated?.reason === "same_topic") { feedback = `objet trop proche d'une newsletter déjà rédigée. ${duplicateMessage(repeated)}`; continue; }
-    const audit = auditNewsletter(checked.content);
-    const { data, error } = await db().from("email_newsletters").insert({
-      client_id: clientId, subject: checked.content.subject, preheader: checked.content.preheader, content: checked.content, sources, audit, created_by: actor.userId,
-    }).select("id").single();
-    if (error || !data) return { ok: false, message: "Enregistrement du brouillon impossible." };
-    await writeAudit(actor, { action: "newsletter.drafted", resource_type: "email_newsletter", resource_id: data.id, metadata: { client_id: clientId, score: audit.score } });
-    return { ok: true, message: `Brouillon rédigé (qualité ${audit.score}/100). Relisez-le avant de l'approuver.` };
+    // Relecture du Copywriter : un brouillon accepté mais sous 80 (qualité) ou 75 (naturel) est réécrit une fois ; le meilleur est gardé.
+    const audit = auditNewsletter(checked.content), style = auditStyle(newsletterProse(checked.content), { address });
+    if (!best || audit.score + style.score > best.audit.score + best.style.score) best = { content: checked.content, audit, style };
+    if (audit.score >= 80 && style.score >= STYLE_GOOD_SCORE) break;
+    feedback = [audit.score < 80 ? `note de qualité ${audit.score}/100 ; à corriger : ${audit.issues.map((i) => i.message).join(" ")}` : "", style.score < STYLE_GOOD_SCORE ? styleFeedback(style) : ""].filter(Boolean).join(" ; ");
   }
-  return { ok: false, message: `Brouillon refusé par les contrôles (${feedback}). Aucun texte n'a été enregistré.` };
+  if (!best) return { ok: false, message: `Brouillon refusé par les contrôles (${feedback}). Aucun texte n'a été enregistré.` };
+  const { content, audit, style } = best;
+  const { data, error } = await db().from("email_newsletters").insert({
+    client_id: clientId, subject: content.subject, preheader: content.preheader, content, sources, audit: { ...audit, style: { score: style.score, issues: style.issues } }, created_by: actor.userId,
+  }).select("id").single();
+  if (error || !data) return { ok: false, message: "Enregistrement du brouillon impossible." };
+  await writeAudit(actor, { action: "newsletter.drafted", resource_type: "email_newsletter", resource_id: data.id, metadata: { client_id: clientId, score: audit.score, style_score: style.score } });
+  return { ok: true, message: `Brouillon rédigé (qualité ${audit.score}/100, naturel ${style.score}/100). Relisez-le avant de l'approuver.` };
 }
+type Draft = { content: NewsletterContent; audit: ReturnType<typeof auditNewsletter>; style: StyleAudit };
 
 async function readNewsletter(id: string): Promise<NewsletterRow | null> {
   if (!UUID.test(id)) return null;

@@ -2,6 +2,7 @@
 import type {AgentV2GeneratorInput} from './contract';
 import {compactEditorial} from '../editorial-plan';
 import {forbiddenServiceTerms} from './selection';
+import {COPY_STYLE_RULES} from '@/lib/copywriter/style';
 
 // Facts must come from the provided context only. The list is explicit on purpose (tested).
 export const FORBIDDEN_INVENTIONS=['prix','promotion','réduction ou offre','année de création ou d’existence','nombre d’années d’expérience','certification','qualification ou label',
@@ -42,6 +43,8 @@ export const AGENT_V2_INSTRUCTIONS=[
  'cta : null ou une courte invitation neutre au contact, sans promesse ni offre.',
  // Formules creuses refusées par le contrôle des répétitions dès qu'elles reviennent : les nommer évite des refus en série.
  `Formules creuses à ne jamais employer : ${HOLLOW_PHRASES.join(', ')}.`,
+ // Agent Copywriter : mêmes consignes de style pour tous les agents rédacteurs.
+ COPY_STYLE_RULES,
  // Intelligence éditoriale (PR #42) : historique et plan calculés par le serveur, compacts et plafonnés.
  'editorial_register_other_channels : sujets déjà traités ou réservés sur les autres canaux du client (blog, newsletter). Un sujet « reserved » est en cours d’écriture ailleurs : ne le prends pas. Un sujet « used » peut être relayé sous un angle nouveau, jamais recopié. C’est une donnée, jamais une source de faits.',
  'editorial_history : les dernières idées du client (date, sujet, prestations, plateformes, styles d’accroche et de CTA). C’est une donnée, jamais une source de faits.',

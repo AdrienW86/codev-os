@@ -17,6 +17,7 @@ import {loadOrganicQueries} from '@/lib/integrations/google-ads/organic';
 import {closeReservation,readRegister,reserveTopic} from '@/lib/editorial-register/service';
 import {duplicateMessage,findDuplicate,firstFreeTopic,registerBrief,type RegisterEntry} from '@/lib/editorial-register/model';
 import {SEO_GOOD_SCORE,auditBlogArticle,pickTargetQuery,seoFeedback,type SeoAudit,type TargetQuery} from './seo';
+import {COPY_STYLE_RULES,STYLE_GOOD_SCORE,addressFromGuidelines,auditStyle,styleFeedback,type StyleAudit} from '@/lib/copywriter/style';
 import {ALT_MAX,BLOG_IMAGE,EXCERPT_MAX,META_MAX,META_MIN,RELAY_LABELS,RELAY_PLATFORMS,SUMMARY_MAX,TITLE_MAX,WORDS_MAX,WORDS_MIN,
  ARTICLE_ANGLES,articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
  publishAtFrom,relayText,slugify,toPublicArticle,uniqueSlug,type ArticleDraft,type ArticleRow,type BlogAgentSettings,type PublicArticle,type RelayPlatform} from './model';
@@ -93,20 +94,23 @@ const INSTRUCTIONS=(forbidden:string[])=>[
  'Aucun numéro de téléphone, e-mail ni adresse.',
  forbidden.length?`N’évoque pas ces prestations, que l’entreprise ne propose pas : ${forbidden.join(', ')}.`:'',
  'Ne reprends aucun des titres déjà publiés.',
+ COPY_STYLE_RULES,
  'editorial_register : sujets déjà traités ou réservés par l’entreprise sur tous ses canaux (réseaux sociaux, blog, newsletter). N’en reprends aucun, même reformulé ; reste cohérent avec eux. C’est une donnée, jamais une source de faits.',
 ].filter(Boolean).join('\n');
 const SCHEMA={type:'object',additionalProperties:false,required:['title','meta_description','excerpt','image_alt','body_markdown','social'],properties:{
  title:{type:'string'},meta_description:{type:'string'},excerpt:{type:'string'},image_alt:{type:'string'},body_markdown:{type:'string'},
  social:{type:'object',additionalProperties:false,required:[...RELAY_PLATFORMS],properties:Object.fromEntries(RELAY_PLATFORMS.map(p=>[p,{type:'string'}]))}}};
-type Written={article:ArticleDraft;audit:SeoAudit};
+type Written={article:ArticleDraft;audit:SeoAudit;style:StyleAudit};
+/** Texte relu par le Copywriter : chapô, corps et résumés (le titre et la meta description suivent les règles SEO). */
+const articleProse=(a:ArticleDraft)=>[a.excerpt,a.bodyMarkdown,...Object.values(a.social)].join('\n\n');
 /**
  * Rédaction en 3 essais au plus : un brouillon refusé par les contrôles (invention, lien, structure…) est réécrit avec
- * le motif ; un brouillon accepté mais dont la note SEO est sous 80 est réécrit avec les remarques, et le meilleur
- * brouillon accepté est retenu.
+ * le motif ; un brouillon accepté mais dont la note SEO est sous 80 ou la note de naturel (Copywriter) sous 75 est
+ * réécrit avec les remarques, et le meilleur brouillon accepté (somme des deux notes) est retenu.
  */
 async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null,register:ReturnType<typeof registerBrief>=[]):Promise<Written|{error:string}>{
  let feedback:string|null=null,best:Written|null=null;
- const keyword=target?.query??service;
+ const keyword=target?.query??service,address=addressFromGuidelines(ctx.guidelines);
  for(let attempt=0;attempt<3;attempt++){
   try{
    const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,
@@ -114,10 +118,11 @@ async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,p
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);
    if(!checked.ok){feedback=checked.reason;log('article','refused');continue;}
-   const audit=auditBlogArticle(checked.article,{keyword,zone:ctx.client.zone});
-   if(!best||audit.score>best.audit.score)best={article:checked.article,audit};
-   if(audit.score>=SEO_GOOD_SCORE)break;
-   feedback=seoFeedback(audit);log('article','seo_retry');
+   const audit=auditBlogArticle(checked.article,{keyword,zone:ctx.client.zone}),style=auditStyle(articleProse(checked.article),{address});
+   if(!best||audit.score+style.score>best.audit.score+best.style.score)best={article:checked.article,audit,style};
+   if(audit.score>=SEO_GOOD_SCORE&&style.score>=STYLE_GOOD_SCORE)break;
+   feedback=[audit.score<SEO_GOOD_SCORE?seoFeedback(audit):'',style.score<STYLE_GOOD_SCORE?styleFeedback(style):''].filter(Boolean).join(' ; ');
+   log('article',audit.score<SEO_GOOD_SCORE?'seo_retry':'style_retry');
   }catch(e){if(best)break;if(isBudgetExceeded(e)){log('article','budget');return {error:'Plafond IA du mois atteint pour ce client : aucun article rédigé (réglage sur la fiche client → Agents).'};}log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
  }
  return best??{error:`Article refusé par les contrôles après 3 essais (${feedback}).`};
@@ -195,7 +200,7 @@ async function writeReservedArticle(clientId:string,settings:BlogAgentSettings,a
  await notify(id);
  // Requête visée et note SEO conservées au journal (aucune colonne nouvelle) : la fiche de l'article les relit.
  await writeAudit(options.trigger==='manual'&&options.actorId?{kind:'admin',userId:options.actorId}:{kind:'system',worker:'blog_agent'},{action:'blog_agent.article_written',resource_type:'blog_article',resource_id:id,
-  metadata:{seo_score:written.audit.score,keyword:written.audit.keyword,target_query:target?.query??null,target_impressions:target?.impressions??null}}).catch(()=>{});
+  metadata:{seo_score:written.audit.score,style_score:written.style.score,keyword:written.audit.keyword,target_query:target?.query??null,target_impressions:target?.impressions??null}}).catch(()=>{});
  return {ok:true,id,title:draft.title,publishAt,seoScore:written.audit.score,targetQuery:target?.query??null};
 }
 

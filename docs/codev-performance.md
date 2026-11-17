@@ -15,8 +15,15 @@
 ## Schéma SQL
 Appliquer **après fusion** la migration supabase/migrations/20261205010000_performance_audits.sql dans l'environnement ciblé. La table active RLS, retire les droits anon/authenticated et donne l'accès exclusivement au service_role server-only. Sans migration, les audits restent affichables mais ne peuvent pas être archivés, et la page indique que l'historique est indisponible.
 
-## Non inclus dans cette première version
-- Exécutions planifiées par client, alertes de baisse de score, baseline/compensation, rapport PDF serveur, suggestions IA et création de missions automatiquement.
+## Audit hebdomadaire (Agent Monitoring)
+- Étape « lighthouse » du planificateur (lib/performance/weekly.ts, règles pures dans lib/performance/weekly-model.ts) : chaque client dont la fiche a un site est audité une fois par semaine, la nuit (1 h – 6 h, heure de Paris), un site par passage, en mobile et ordinateur, via le même moteur que /performance (lib/performance/engine.ts).
+- Résultats archivés dans performance_audits (visibles dans /performance comme les audits manuels ; un audit manuel récent repousse l'audit planifié).
+- Alertes : incident dédoublonné par site, support et catégorie si une note (performance, accessibilité, bonnes pratiques, SEO) est sous 50, ou en baisse d'au moins 10 points par rapport à la médiane des 4 audits précédents (35 jours). Résolu automatiquement au retour à la normale. Recommandation créée seulement pour les clients rattachés à l'Agent Monitoring (services Maintenance / Site web).
+- Échec du moteur : nouvel essai après 6 h (journal performance.weekly_audit_failed). Sans CODEV_PERFORMANCE_SERVICE_KEY, l'étape est désactivée.
+- Le moteur, hébergé par code-v.fr, pourra aussi servir un testeur public sur ce site : la clé de service ne quitte jamais le serveur.
+
+## Non inclus
+- Rapport PDF serveur, suggestions IA, création de missions et tout correctif automatique sur les sites audités.
 - L'interface ne déclenche aucun correctif sur les sites audités. Validation humaine obligatoire.
 - Score Lighthouse ponctuel non équivalent à la performance réelle des visiteurs.
 

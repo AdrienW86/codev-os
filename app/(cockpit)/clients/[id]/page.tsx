@@ -19,6 +19,7 @@ import { ClientHealthPanel } from "@/components/clients/client-health-panel";
 import { getClientHealthOverview } from "@/lib/client-health/data";
 import { listClientSources } from "@/lib/connections/service";
 import { readSearchConsoleConnection } from "@/lib/integrations/search-console/connection";
+import { readGoogleAnalyticsConnection } from "@/lib/integrations/google-analytics/connection";
 import { safeRead } from "@/lib/core/safe-read";
 import { VisualAgentPanel } from "@/components/clients/visual-agent-panel";
 import { getVisualAgent } from "@/lib/visual-agent/service";
@@ -65,7 +66,7 @@ import { getClientPublicationsSetup } from "@/lib/publications/client-setup";
 import { oauthBanner } from "@/lib/publications/oauth/model";
 import { ChannelConfiguration } from "@/components/publications/channel-configuration";
 import { AgentConfigurationForm } from "@/components/publications/agent-forms";
-import { ClientPublicationSettingsForm, ClientPublicationsProjectPicker, ClientPublicationsSetupStart } from "@/components/clients/client-publications-panel";
+import { ClientPublicationSettingsForm, ClientPublicationsProjectPicker, ClientPublicationsSetupStart, ClientPublishNowForm } from "@/components/clients/client-publications-panel";
 
 const isSimulatedId = (id: string) => id.startsWith("sim-");
 // Étapes de l'import d'export WhatsApp (lots de photos vers Drive) : durée bornée par appel, au-delà du défaut.
@@ -105,6 +106,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   // Propriétés du compte Google connecté : choix proposés pour associer la propriété Search Console du client.
   const searchConsoleProperties = tab === "agents" ? (await safeRead("search-console-properties", async () => {
     const connection = await readSearchConsoleConnection();
+    return connection?.status === "active" ? connection.properties : null;
+  }, null)).data : null;
+  const analyticsProperties = tab === "agents" ? (await safeRead("google-analytics-properties", async () => {
+    const connection = await readGoogleAnalyticsConnection();
     return connection?.status === "active" ? connection.properties : null;
   }, null)).data : null;
   const health = tab === "health"
@@ -224,7 +229,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
             <ClientAiBudgetPanel clientId={client.id} budget={aiBudget} claude={claudeRouting} anthropicConfigured={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
             <ClientAgentAssignments clientId={client.id} agents={assignmentAgents} assignments={assignmentSummaries} />
             <GoogleAdsPanel clientId={client.id} />
-            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} /></div>
+            <div className="mt-8"><ClientSourcesPanel clientId={client.id} sources={sources.data} unavailable={sources.unavailable} searchConsoleProperties={searchConsoleProperties} analyticsProperties={analyticsProperties} /></div>
           </>
         );
       })()}
@@ -269,6 +274,7 @@ async function PublicationsTab({ clientId, project, oauth }: { clientId: string;
   return (
     <div className="space-y-6">
       <ClientPublicationsProjectPicker clientId={clientId} projects={data.projects} current={data.project.id} />
+      <ClientPublishNowForm clientId={clientId} projectId={data.project.id} />
       <ClientPublicationSettingsForm clientId={clientId} settings={data.settings} globalStop={data.globalStop} />
       <ChannelConfiguration projectId={data.project.id} view={data.channels} connections={data.connections} oauthBanner={oauthBanner(oauth)} returnView="client" accounts={data.accounts} deliveryFlags={{ clientPublishing: data.settings.publishingEnabled, globalStop: data.globalStop }} />
       <Panel className="p-6">

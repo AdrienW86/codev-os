@@ -84,7 +84,7 @@ test("#3 a failed Agent v2 run pauses the project for hours (no AI call); an occ
   await old.mod.runScheduledPreparation(now, old.deps);
   assert.equal(old.prepared.length, 1, "after the backoff the project is tried again");
   assert.equal(old.prepared[0][2].excludeOccurrenceIds, undefined);
-  const runs = [1, 2, 3, 5].map(n => ({ id: RUN(n), project_id: P(1), status: "failed", occurrence_ids: [OCC(9), OCC(n)], created_at: hours(30 - n), agent_id: AGENT }))
+  const runs = [1, 2, 3, 5].map(n => ({ id: RUN(n), project_id: P(1), status: "failed", occurrence_ids: [OCC(9), OCC(n)], created_at: hours(20 - n), agent_id: AGENT }))
     .concat([{ id: RUN(4), project_id: P(1), status: "completed", occurrence_ids: [OCC(4)], created_at: hours(1), agent_id: AGENT }]);
   const stuck = setup(prepTables(runs, { publication_channel_occurrences: [{ id: OCC(9), publication_id: null, skipped_at: null, scheduled_for: "2026-10-13T10:00:00Z" }] }));
   const s = await stuck.mod.runScheduledPreparation(now, stuck.deps);
@@ -94,6 +94,11 @@ test("#3 a failed Agent v2 run pauses the project for hours (no AI call); an occ
   const again = await stuck.mod.runScheduledPreparation(now, stuck.deps);
   assert.equal(stuck.fake.tables.admin_notifications.length, 1, "notified once (idempotent event key)");
   assert.equal(again.notified, 0, "an alert already sent is not counted again");
+  // Dernier échec il y a plus de 24 h : le créneau est retenté au lieu de rester exclu toute la fenêtre de 14 jours.
+  const cooled = setup(prepTables(runs.map(r => r.status === "failed" ? { ...r, created_at: hours(Number(r.id === RUN(5)) + 30) } : r)));
+  await cooled.mod.runScheduledPreparation(now, cooled.deps);
+  assert.equal(cooled.prepared.length, 1);
+  assert.equal(cooled.prepared[0][2].excludeOccurrenceIds, undefined, "an exhausted occurrence is retried 24 h after its last failure");
   // Historique illisible : échec fermé, aucun appel IA.
   const unreadable = setup(prepTables([]), { failOn: table => table === "publication_agent_v2_runs" });
   assert.equal((await unreadable.mod.runScheduledPreparation(now, unreadable.deps)).skipped.failures_unavailable, 1);
@@ -452,7 +457,7 @@ test("#10 heartbeat: one row per name, closed step statuses and integer counters
   assert.equal(row.ok, false); assert.equal(row.last_failure_at, later.toISOString()); assert.equal(row.last_success_at, end.toISOString(), "last success kept");
   const read = await hb.getSchedulerHeartbeat();
   assert.deepEqual(json(read), { name: "scheduler_tick", startedAt: later.toISOString(), finishedAt: later.toISOString(), ok: false, steps: { automations: { status: "failed", ms: 3 } }, lastSuccessAt: end.toISOString(), lastFailureAt: later.toISOString() });
-  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "blog_agent", "acquisition_discovery", "video_agent"]);
+  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "blog_agent", "acquisition_discovery", "video_agent"]);
   const down = createFakeSupabase({}, { failOn: () => true });
   assert.equal(await heartbeatModule(down).recordSchedulerHeartbeat({ startedAt: start, finishedAt: end, steps: {} }), false, "a failed write never breaks the tick");
 });
@@ -468,6 +473,7 @@ function routeWith(fake, overrides = {}) {
     "@/lib/services/domain": { ensureGlobalAgents: async () => {} },
     "@/lib/notifications/push": { flushPushNotifications: mark("push", { sent: 1 }) },
     "@/lib/integrations/search-console/sync": { syncDueSearchConsole: mark("search_console", { synced: 0 }) },
+    "@/lib/integrations/google-analytics/sync": { syncDueGoogleAnalytics: mark("google_analytics", { synced: 0 }) },
     "@/lib/whatsapp/service": { ingestionEnabled: () => false, processMediaBatch: mark("whatsapp", {}), purgeExpiredPersonalData: async () => ({}) },
     "@/lib/visual-agent/service": { runVisualAgentTick: mark("visual_agent", { clients: 0, generated: 0, failed: 0 }) },
     "@/lib/video-agent/service": { runVideoAgentTick: mark("video_agent", { clients: 0, generated: 0, failed: 0 }) },
@@ -489,11 +495,11 @@ test("#10 tick: a failing runTick no longer skips the other steps; heartbeat rec
   const { route, ran } = routeWith(fake, { runTick: () => { throw Error("Texte sensible du job"); } });
   const res = await route.POST(request("Bearer secret"));
   assert.equal(res.init.status, 500);
-  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "visual_agent", "media_intelligence", "publication_preparation", "blog_agent", "acquisition_discovery", "video_agent"]);
+  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "visual_agent", "media_intelligence", "publication_preparation", "blog_agent", "acquisition_discovery", "video_agent"]);
   const row = fake.tables.scheduler_heartbeats[0];
   assert.equal(row.ok, false);
   assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), { whatsapp_exports: "ok", automations: "failed", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "ok", harness_control: "ok",
-    search_console: "ok", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "ok", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok" });
+    search_console: "ok", google_analytics: "ok", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "ok", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok" });
   assert.deepEqual(json(row.steps.publication_preparation.counts), { clients: 1, skipped_no_delegated_admin: 1 });
   assert.doesNotMatch(JSON.stringify(fake.tables.scheduler_heartbeats), /Texte|sensible/);
   const denied = await route.GET(request("Bearer wrong"));
@@ -506,6 +512,6 @@ test("#10 tick: shared deadline (maxDuration) skips the heavy later steps when t
   try { await route.GET(request("Bearer secret")); } finally { Date.now = realNow; }
   assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "push", "harness_control"], "35 s left: only the light steps run");
   const statuses = Object.fromEntries(Object.entries(fake.tables.scheduler_heartbeats[0].steps).map(([k, v]) => [k, v.status]));
-  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", harness_control: "ok", search_console: "skipped", whatsapp: "skipped", visual_agent: "skipped", media_intelligence: "skipped", publication_preparation: "skipped", blog_agent: "skipped", acquisition_discovery: "skipped", video_agent: "skipped" });
+  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", harness_control: "ok", search_console: "skipped", google_analytics: "skipped", whatsapp: "skipped", visual_agent: "skipped", media_intelligence: "skipped", publication_preparation: "skipped", blog_agent: "skipped", acquisition_discovery: "skipped", video_agent: "skipped" });
   assert.equal(fake.tables.scheduler_heartbeats[0].ok, true, "skipped is not a failure");
 });

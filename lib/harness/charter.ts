@@ -108,10 +108,10 @@ export const harnessCharters: readonly HarnessCharter[] = [
   },
   {
     id: "seo", name: "Agent SEO", team: "site", expertise: "Consultant SEO senior", registryType: "seo",
-    mission: "Analyser Search Console, le contenu et la performance du site pour proposer des opportunités chiffrées.",
-    does: ["Opportunités de mots-clés", "Pages à fort potentiel", "PageSpeed"],
+    mission: "Analyser Search Console, Google Analytics, le contenu et la performance du site pour proposer des opportunités chiffrées.",
+    does: ["Opportunités de mots-clés", "Pages à fort potentiel", "Pages qui attirent du trafic sans demande (Google Analytics)", "PageSpeed"],
     never: ["Ne modifie jamais le site", "Ne promet aucune position"],
-    triggers: [{ kind: "run", runType: "seo.analyze" }, { kind: "step", step: "search_console" }], clientSettings: "Données et performances → Référencement",
+    triggers: [{ kind: "run", runType: "seo.analyze" }, { kind: "step", step: "search_console" }, { kind: "step", step: "google_analytics" }], clientSettings: "Données et performances → Référencement",
   },
   {
     id: "monitoring", name: "Agent Monitoring", team: "site", expertise: "Ingénieur fiabilité (SRE)", registryType: "monitoring",
@@ -123,7 +123,7 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "google-ads", name: "Agent Google Ads", team: "publicite", expertise: "Consultant SEA certifié Google Ads", registryType: "google-ads",
     mission: "Lire les campagnes, couper le gaspillage et proposer des optimisations chiffrées à valider.",
-    does: ["Analyse coûts / conversions", "Termes de recherche et mots-clés négatifs", "Budget et part d’impressions"],
+    does: ["Analyse coûts / conversions", "Termes de recherche et mots-clés négatifs", "Budget et part d’impressions", "Comportement des visiteurs payants (Google Analytics)"],
     never: ["Ne modifie aucune campagne sans validation explicite", "Ne propose aucune hausse de budget sans coût par lead mesuré"],
     triggers: [{ kind: "run", runType: "ads.monitor" }, { kind: "manual" }], clientSettings: "Campagnes publicitaires → contexte du client",
   },

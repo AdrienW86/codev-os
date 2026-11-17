@@ -314,6 +314,8 @@ function settingsMocks(context) {
     "@/lib/system/health": { getSystemHealth: async () => null }, "@/lib/system/providers": { isProviderConfigured: () => false },
     "@/components/settings/search-console-panel": { SearchConsolePanel: () => null },
     "@/lib/integrations/search-console/connection": { isOAuthOutcome: () => false, oauthOutcomeMessages: {}, searchConsoleStatus: async () => null },
+    "@/components/settings/google-analytics-panel": { GoogleAnalyticsPanel: () => null },
+    "@/lib/integrations/google-analytics/connection": { isAnalyticsOAuthOutcome: () => false, analyticsOAuthMessages: {}, googleAnalyticsStatus: async () => null },
     "@/lib/core/safe-read": { safeRead: async (_scope, read, fallback) => { try { return { data: await read(), unavailable: false }; } catch { return { data: fallback, unavailable: true }; } } },
   };
 }

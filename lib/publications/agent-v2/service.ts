@@ -86,7 +86,8 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
 }
 export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';
 // excludeOccurrenceIds (planificateur) : occurrences dont la préparation a trop échoué, laissées à un humain.
-export type PrepareOptions={allowRealAI:boolean;retryFeedback?:string;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number;excludeOccurrenceIds?:readonly string[]}&AgentV2MediaOptions;
+// onlyOccurrenceIds (« Rédiger et publier maintenant ») : seules ces occurrences sont candidates.
+export type PrepareOptions={allowRealAI:boolean;retryFeedback?:string;generator?:PublicationsAgentV2Generator;now?:Date;leadDays?:number;excludeOccurrenceIds?:readonly string[];onlyOccurrenceIds?:readonly string[]}&AgentV2MediaOptions;
 export async function prepareNextPublications(projectId:unknown,options:PrepareOptions):Promise<AgentV2Result>{
  const {userId}=await requireAdmin();return prepareNextPublicationsAs(userId,projectId,options);
 }
@@ -109,8 +110,8 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
  if(!projectSupportsPublications(capabilities))return result(false,'Publications suspendues : aucun canal actif.');
  // The state is re-read here: occurrences linked by a previous run are no longer candidates (idempotence).
  const horizon=options.leadDays?Math.min(Math.max(Math.trunc(options.leadDays),1),PREPARATION_HORIZON_DAYS):PREPARATION_HORIZON_DAYS;
- const excluded=new Set(options.excludeOccurrenceIds??[]);
- const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform)&&!excluded.has(o.occurrenceId));
+ const excluded=new Set(options.excludeOccurrenceIds??[]),only=options.onlyOccurrenceIds?new Set(options.onlyOccurrenceIds):null;
+ const open=(await loadOpenOccurrences(projectId,horizon,now)).filter(o=>capabilities.platforms.includes(o.platform)&&!excluded.has(o.occurrenceId)&&(!only||only.has(o.occurrenceId)));
  const batch=selectIdeaBatch(open,now);
  if(!batch.length)return result(false,NO_OPEN_OCCURRENCE);
  let context;

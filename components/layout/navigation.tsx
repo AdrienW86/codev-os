@@ -20,6 +20,7 @@ const navigation: { href: string; label: string; icon: IconName; group: NavGroup
   { href: "/studio", label: "Studio vidéo", icon: "monitor", group: "Contenus" },
   { href: "/emailing", label: "Newsletters", icon: "publications", group: "Contenus" },
   { href: "/analytics", label: "Données et performances", icon: "analytics", group: "Performance" },
+  { href: "/performance", label: "Audits de sites", icon: "monitor", group: "Performance" },
   { href: "/advertising", label: "Campagnes publicitaires", icon: "ads", group: "Performance" },
   { href: "/reports", label: "Rapports", icon: "reports", group: "Performance" },
   { href: "/agents", label: "Agents", icon: "agents", group: "Système" },

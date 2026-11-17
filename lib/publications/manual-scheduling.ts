@@ -15,7 +15,8 @@ export type ManualScheduleResult={ok:boolean;message:string;publications?:Manual
  sourceArchived?:boolean;clientId?:string;projectId?:string};
 type Scheduled={mode:'in_place'|'split';publications:{publication_id:string;platform:PublicationPlatform;revision_id:string}[];archived_source_id:string|null;scheduled_for:string};
 
-async function approve(db:ReturnType<typeof getSupabaseServerClient>,userId:string,p:Scheduled['publications'][number]):Promise<ManualApproval>{
+// Soumission + approbation par l'administrateur qui programme (aussi « Rédiger et publier maintenant »), sauf TikTok.
+export async function approveForDelivery(db:ReturnType<typeof getSupabaseServerClient>,userId:string,p:{publication_id:string;platform:PublicationPlatform;revision_id:string}):Promise<ManualApproval>{
  if(p.platform==='tiktok')return 'tiktok';
  try{
   const missing=await revisionChannelsWithoutMedia(db as unknown as MediaRuleDb,p.revision_id);
@@ -38,7 +39,7 @@ export async function scheduleManually(form:FormData,now=new Date()):Promise<Man
  if(result.error)return {ok:false,message:manualScheduleErrorMessage(result.error.code,result.error.message)};
  const body=result.data as Scheduled;
  const publications:ManualScheduledPublication[]=[];
- for(const p of body.publications)publications.push({publicationId:p.publication_id,platform:p.platform,approval:await approve(db,userId,p)});
+ for(const p of body.publications)publications.push({publicationId:p.publication_id,platform:p.platform,approval:await approveForDelivery(db,userId,p)});
  const pending=publications.filter(p=>p.approval!=='approved').length;
  const message=pending===0?(input.now?'Programmée pour maintenant : envoi dans les 15 prochaines minutes.':'Programmée et validée.')
   :pending===publications.length?'Programmée. Validez-la sur sa fiche pour qu’elle parte.':'Programmée. Certaines publications restent à valider sur leur fiche.';

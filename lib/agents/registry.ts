@@ -10,7 +10,7 @@ import type { ServiceId } from "@/lib/services/catalog";
 export type AgentType = "report" | "seo" | "google-ads" | "publications" | "monitoring" | "automation" | "veille";
 export type AgentScope = "global" | "client" | "project";
 export type ProviderId =
-  | "internal" | "openai" | "anthropic" | "search-console" | "pagespeed" | "http" | "vercel" | "github"
+  | "internal" | "openai" | "anthropic" | "search-console" | "google-analytics" | "pagespeed" | "http" | "vercel" | "github"
   | "google-ads" | "meta" | "google-business-profile" | "tiktok" | "snapchat" | "google-drive" | "email" | "rss";
 
 /** read : lire / analyser. prepare : créer une recommandation, un brouillon ou une action à valider. execute : effet réel. */

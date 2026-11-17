@@ -64,7 +64,7 @@ test("wiring: target query passed as untrusted data, SEO retry keeps the best ac
   assert.match(service, /pickTargetQuery\(await loadOrganicQueries\(clientId\)/);
   assert.match(service, /target_query_untrusted:target\.query/);
   assert.match(service, /const checked=checkArticle\(value,ctx\.facts,used\);\n   if\(!checked\.ok\)/, "anti-invention check still runs before any SEO scoring");
-  assert.match(service, /if\(audit\.score>=SEO_GOOD_SCORE\)break;/);
+  assert.match(service, /if\(audit\.score>=SEO_GOOD_SCORE&&style\.score>=STYLE_GOOD_SCORE\)break;/, "SEO and Copywriter style must both pass before stopping");
   assert.match(service, /action:'blog_agent\.article_written'/);
   assert.match(src("app/(cockpit)/blog/[id]/page.tsx"), /data-blog-seo/);
   assert.match(src("app/api/blog-agent/route.ts"), /note SEO \$\{result\.seoScore\}\/100/);

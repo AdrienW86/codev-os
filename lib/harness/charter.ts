@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection" | "newsletter"
+  | "prospection" | "newsletter" | "copywriter"
   | "veille";
 
 export type HarnessCharter = {
@@ -140,6 +140,14 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Brouillon de newsletter (objet, pré-en-tête, rubriques, appel à l’action)", "Contrôle anti-invention et note de qualité", "Envoi par lots après approbation"],
     never: ["N’envoie rien sans approbation explicite", "N’écrit qu’aux contacts consentants hors liste d’exclusion", "N’invente aucun prix, délai, garantie ou chantier"],
     triggers: [{ kind: "manual" }], clientSettings: "Newsletters → client",
+  },
+  {
+    id: "copywriter", name: "Agent Copywriter", team: "contenu", expertise: "Copywriter senior (rédaction commerciale et éditoriale)",
+    mission: "Rendre les textes du client clairs, naturels et fidèles à sa voix : consignes de style communes et relecture des agents rédacteurs.",
+    does: ["Consignes de style communes aux agents rédacteurs (Blog, Newsletter, Publications)", "Note de naturel des articles et newsletters (formules toutes faites, rythme, ton, tutoiement ou vouvoiement)", "Nouvel essai de rédaction demandé quand la note est insuffisante"],
+    never: ["N’ajoute aucun fait, chiffre, promesse, adresse ou coordonnée", "Ne publie ni n’envoie aucun texte", "Ne promet jamais qu’un texte échappera aux détecteurs d’IA"],
+    // Relecture intégrée aux agents rédacteurs : passage de l'Agent Blog, rédaction manuelle d'une newsletter.
+    triggers: [{ kind: "step", step: "blog_agent" }, { kind: "manual" }], clientSettings: "Fiche client → Consignes de communication",
   },
   {
     id: "veille", name: "Agent Veille", team: "veille", expertise: "Analyste veille tech et marketing", registryType: "veille",

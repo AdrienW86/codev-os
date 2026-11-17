@@ -34,3 +34,25 @@ On ajoute les contacts sur la même page, une adresse par ligne, avec :
 - l'origine du consentement.
 
 Une adresse déjà connue n'est pas modifiée. Les désabonnements, rebonds définitifs et plaintes sont exclus automatiquement par le socle emailing.
+
+## Expéditeur et domaine du client
+Panneau **Expéditeur** de la page Newsletters. Migration à appliquer : `20261213000000_client_email_settings.sql`.
+
+1. Renseigner le nom affiché, le domaine d'envoi et l'adresse.
+   - Le domaine proposé est un sous-domaine dédié, `news.<site du client>`.
+   - On peut aussi indiquer une adresse de réponse.
+2. Cliquer sur **Vérifier le domaine**. CODE-V OS crée alors le domaine chez Resend (région UE) et affiche les enregistrements DNS (SPF, DKIM) à créer chez l'hébergeur du client. Ajouter aussi un enregistrement DMARC.
+3. Une fois les DNS en place, cliquer sur **Relancer la vérification**. Quand le domaine est vérifié, les newsletters partent au nom du client. Avant, elles partent depuis l'adresse commune `EMAIL_FROM`.
+
+La gestion des domaines exige une clé Resend **Full access** :
+- `RESEND_ADMIN_API_KEY` si elle est définie, ce qui permet de garder `RESEND_API_KEY` limitée à l'envoi ;
+- sinon `RESEND_API_KEY`.
+
+CODE-V OS ne modifie jamais les DNS lui-même.
+
+## Liste des contacts
+La liste se trouve sous les newsletters et propose une recherche, un filtre de statut et des pages de 50 contacts. Chaque contact affiche sa preuve de consentement : base légale, origine et date. Lors d'un import, on peut indiquer la date réelle du consentement.
+
+Deux actions sont possibles :
+- **Désabonner** (demande reçue par téléphone ou par e-mail) : ajoute une exclusion pour ce client.
+- **Supprimer** (droit à l'effacement) : efface la fiche. Une exclusion existante est conservée, pour qu'une adresse qui s'est opposée aux envois ne soit pas réimportée.

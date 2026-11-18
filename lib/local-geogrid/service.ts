@@ -65,13 +65,15 @@ export async function runLocalGeogridTick(now=new Date(),deps:LocalGeogridDeps=p
  if(!next)return summary;
  const points=geogridPoints(next.center);
  const ranks:(number|null|undefined)[]=new Array(points.length).fill(undefined);
- let codes:ReturnType<typeof dataForSeoCodes>|null=null;
+ let codes:(ReturnType<typeof dataForSeoCodes>&{empty:number})|null=null;
  const probe=async(index:number)=>{
   const response=await deps.transport.dataforseo!({keyword:next.keyword,coordinate:points[index]}).catch(()=>null);
   const results=response?.status===200?readDataForSeoResults(response.body):null;
-  if(results)ranks[index]=findClient(results,next.target)?.rank??null;
-  else codes??=dataForSeoCodes(response?.status??null,response?.body);
-  return Boolean(results);
+  // Aucune fiche du tout depuis ce point (pas même un concurrent) : on ne sait rien, le point est « non relevé »,
+  // jamais « fiche absente ».
+  if(results?.length){ranks[index]=findClient(results,next.target)?.rank??null;return true;}
+  codes??={...dataForSeoCodes(response?.status??null,response?.body),empty:results?1:0};
+  return false;
  };
  // Point central d'abord : s'il échoue, la grille n'est pas lancée (48 requêtes épargnées) et les codes sont journalisés.
  const centerIndex=Math.floor(points.length/2);

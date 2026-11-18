@@ -3,15 +3,18 @@ import {getSupabaseServerClient} from '@/lib/supabase/server';
 import {isAuthorizedAdmin} from '@/lib/admin-policy';
 import {revisionChannelsWithoutMedia,type MediaRuleDb} from '../media-rule';
 import {delegatedActor} from './scheduled';
+import {checkRevisionCoherence,type CoherenceVerdict} from '../photo-agent/coherence';
 
 // Validation automatique (« sans réponse, ça part ») : pour les clients qui l'ont activée, une publication préparée par
 // l'agent et restée « À valider » est approuvée N heures avant son créneau (réglage du client), au nom de
 // l'administrateur qui a délégué la préparation automatique. L'humain a été notifié à la préparation et garde la main
 // jusque-là : modifier (révision humaine), rejeter ou approuver lui-même. La base revérifie tout sous verrou
 // (publication_auto_approve) : jamais TikTok, jamais une révision modifiée par un humain, jamais sans photo.
+// Agent Contrôle (lot 4) : juste avant, la cohérence texte / image de la révision est vérifiée ; une incohérence ou un
+// contrôle impossible laisse la publication « À valider » et l'administrateur est notifié (une fois par révision).
 export const MAX_AUTO_APPROVALS_PER_TICK=20;
-export type AutoApprovalSummary={disabled?:'global';approved:number;blocked:number;noActor:number};
-export type AutoApprovalDeps={isAdmin:(userId:string)=>boolean};
+export type AutoApprovalSummary={disabled?:'global';approved:number;blocked:number;noActor:number;incoherent?:number};
+export type AutoApprovalDeps={isAdmin:(userId:string)=>boolean;coherence?:(input:{publicationId:string;revisionId:string;clientId:string})=>Promise<CoherenceVerdict>};
 type Candidate={publication_id:string;revision_id:string;client_id:string};
 const db=()=>getSupabaseServerClient();
 
@@ -30,6 +33,12 @@ export async function runAutoApproval(now=new Date(),deps:AutoApprovalDeps={isAd
   if(!actor){summary.noActor++;continue;}
   const missing=await revisionChannelsWithoutMedia(db() as unknown as MediaRuleDb,c.revision_id).catch(()=>null);
   if(missing===null||missing.length){summary.blocked++;continue;}
+  const verdict=await (deps.coherence??checkRevisionCoherence)({publicationId:c.publication_id,revisionId:c.revision_id,clientId:c.client_id}).catch(():CoherenceVerdict=>({state:'error'}));
+  if(verdict.state==='incoherent'||verdict.state==='error'){
+   summary.blocked++;summary.incoherent=(summary.incoherent??0)+1;
+   if(verdict.state==='incoherent')await db().from('admin_notifications').upsert({event_key:`coherence:${c.revision_id}`,category:'publication_review',href:`/publications/${c.publication_id}`},{onConflict:'event_key',ignoreDuplicates:true}).then(()=>undefined,()=>undefined);
+   continue;
+  }
   const r=await db().rpc('publication_auto_approve',{p_publication_id:c.publication_id,p_revision_id:c.revision_id,p_actor_id:actor});
   if(r.error)summary.blocked++;else summary.approved++;
  }

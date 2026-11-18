@@ -8,10 +8,11 @@ import { loadTs } from "./helpers/load-ts.mjs";
 const C1 = "11111111-1111-4111-8111-111111111111", C2 = "22222222-2222-4222-8222-222222222222";
 const P = (n) => `3333333${n}-3333-4333-8333-333333333333`, R = (n) => `4444444${n}-4444-4444-8444-444444444444`;
 
-function harness({ switches = { emergency_stop: false, publishing_enabled: true }, candidates = [], missing = {}, actors = {}, approveError = {} } = {}) {
+function harness({ switches = { emergency_stop: false, publishing_enabled: true }, candidates = [], missing = {}, actors = {}, approveError = {}, verdicts = {} } = {}) {
   const calls = [];
   const db = {
-    from: (table) => ({ select: () => ({ limit: () => ({ maybeSingle: async () => (table === "publication_settings" ? { data: switches, error: null } : { data: null, error: null }) }) }) }),
+    from: (table) => ({ select: () => ({ limit: () => ({ maybeSingle: async () => (table === "publication_settings" ? { data: switches, error: null } : { data: null, error: null }) }) }),
+      upsert: async (row) => { calls.push(["notify", row]); return { error: null }; } }),
     rpc: async (name, args) => { calls.push([name, args]);
       if (name === "publication_auto_approval_candidates") return { data: candidates, error: null };
       if (name === "publication_auto_approve") return { data: null, error: approveError[args.p_publication_id] ?? null };
@@ -22,6 +23,7 @@ function harness({ switches = { emergency_stop: false, publishing_enabled: true 
     "@/lib/admin-policy": { isAuthorizedAdmin: () => true },
     "../media-rule": { revisionChannelsWithoutMedia: async (_db, revision) => (revision in missing ? missing[revision] : []) },
     "./scheduled": { delegatedActor: async (client) => actors[client] ?? null },
+    "../photo-agent/coherence": { checkRevisionCoherence: async ({ revisionId }) => verdicts[revisionId] ?? { state: "coherent" } },
   });
   return { mod, calls };
 }
@@ -64,4 +66,19 @@ test("auto approval SQL: opt-in per client, agent revisions only, never TikTok, 
   assert.match(sql, /o\.scheduled_for>p_now and o\.scheduled_for<=p_now\+make_interval\(hours=>s\.auto_approve_hours_before\)/);
   assert.match(sql, /for update;[\s\S]*auto_approval_eligible\(p_publication_id,now\(\)\)[\s\S]*publication_review_manual/);
   assert.doesNotMatch(sql, /grant execute[^;]*to (anon|authenticated)/);
+});
+
+test("auto approval: the Agent Contrôle blocks an incoherent or unchecked revision and notifies once per revision", async () => {
+  const h = harness({
+    candidates: [{ publication_id: P(1), revision_id: R(1), client_id: C1 }, { publication_id: P(2), revision_id: R(2), client_id: C1 }, { publication_id: P(3), revision_id: R(3), client_id: C1 }, { publication_id: P(4), revision_id: R(4), client_id: C1 }],
+    actors: { [C1]: "user_admin" },
+    verdicts: { [R(1)]: { state: "incoherent", issues: ["La photo montre une gouttière, le texte parle de carrelage."] }, [R(2)]: { state: "error" }, [R(3)]: { state: "not_installed" } },
+  });
+  const s = await h.mod.runAutoApproval(new Date(), { isAdmin: () => true });
+  assert.deepEqual({ ...s }, { approved: 2, blocked: 2, noActor: 0, incoherent: 2 });
+  assert.deepEqual(h.calls.filter(([n]) => n === "publication_auto_approve").map(([, a]) => a.p_publication_id), [P(3), P(4)]);
+  const notes = h.calls.filter(([n]) => n === "notify").map(([, row]) => row);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].event_key, `coherence:${R(1)}`);
+  assert.equal(notes[0].href, `/publications/${P(1)}`);
 });

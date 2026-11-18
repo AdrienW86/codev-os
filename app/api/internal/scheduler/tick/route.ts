@@ -19,6 +19,7 @@ import { processScheduledDuePublications } from "@/lib/publications/delivery/reg
 import { purgeExportImports } from "@/lib/whatsapp/export-import";
 import { runHarnessControl } from "@/lib/harness/control-service";
 import { runLighthouseTick } from "@/lib/performance/weekly";
+import { runPhotoAgentTick } from "@/lib/publications/photo-agent/service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export const maxDuration = 300;
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000,
-  search_console: 60_000, google_analytics: 60_000, lighthouse: 70_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
+  search_console: 60_000, google_analytics: 60_000, lighthouse: 70_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -94,6 +95,9 @@ async function handle(request: Request) {
   // Préparation IA bornée des clients en préparation automatique : brouillons soumis « À valider », jamais approuvés.
   // Aucune préparation IA ne démarre sans le temps de son pire cas avant l'échéance du passage (#47).
   const publicationPreparation = await step("publication_preparation", () => runScheduledPreparation(new Date(), undefined, { deadline }), "Préparation des publications différée.");
+  // Agent Photo : préparations restées sans photo réelle → au plus 2 images d'illustration générées, chacune soumise à la
+  // validation de l'administrateur (Publications → Images à valider). Jamais attachée ni publiée sans son accord.
+  const publicationPhoto = await step("publication_photo", () => runPhotoAgentTick(new Date()), "Agent Photo différé.");
   // Agent Blog : publie les articles arrivés à échéance (et lance leur relais), puis rédige au plus un article.
   const blogAgent = await step("blog_agent", () => runBlogAgentTick(new Date()), "Agent Blog différé.");
   // Agent Prospection : avance d'environ 50 s la plus ancienne recherche en tâche de fond (Sirene, OSM, BODACC, sites web).
@@ -102,7 +106,7 @@ async function handle(request: Request) {
   const videoAgent = await step("video_agent", () => runVideoAgentTick(new Date()), "Agent Vidéo différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, lighthouse, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, whatsappExports, harnessControl, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, lighthouse, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, publicationPhoto, whatsappExports, harnessControl, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

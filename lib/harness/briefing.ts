@@ -91,6 +91,35 @@ export function publicationsSignals(rows: readonly DeliveryRow[], now: Date): Br
   return { facts, gaps };
 }
 
+export type GeneratedImageRow = { status: string; created_at: string; decided_at: string | null };
+/** Agent Photo : propositions d'images générées (toutes soumises à la validation de l'administrateur). */
+export function photoSignals(rows: readonly GeneratedImageRow[] | null, now: Date): BriefingSignals {
+  if (!rows) return { facts: [], gaps: ["Agent Photo non installé (migration 20261214000000 non appliquée)."] };
+  const recent = rows.filter((row) => withinDays(row.created_at, now, 30));
+  const pending = rows.filter((row) => row.status === "pending_review");
+  const approved = recent.filter((row) => row.status === "approved");
+  const rejected = recent.filter((row) => row.status === "rejected");
+  const failed = recent.filter((row) => row.status === "attach_failed");
+  const skipped = recent.filter((row) => row.status === "skipped");
+  const facts: BriefingFact[] = [];
+  if (pending.length) facts.push({ statement: `${plural(pending.length, "image générée attend", "images générées attendent")} ta validation.`, at: latest(pending.map((row) => row.created_at)), href: "/publications/images" });
+  if (approved.length || rejected.length) facts.push({ statement: `Sur 30 jours : ${plural(approved.length, "image validée", "images validées")}, ${plural(rejected.length, "refusée", "refusées")}.`, at: latest([...approved, ...rejected].map((row) => row.decided_at ?? row.created_at)), href: "/publications/images" });
+  if (skipped.length) facts.push({ statement: `${plural(skipped.length, "préparation jugée impossible à illustrer", "préparations jugées impossibles à illustrer")} sans inventer (30 jours).`, at: latest(skipped.map((row) => row.created_at)) });
+  if (failed.length) facts.push({ statement: `${plural(failed.length, "image validée n’a pas pu être attachée", "images validées n’ont pas pu être attachées")} (30 jours).`, at: latest(failed.map((row) => row.decided_at ?? row.created_at)), href: "/publications/images" });
+  return { facts, gaps: facts.length ? [] : ["Aucune préparation sans photo sur 30 jours : aucune image proposée."] };
+}
+
+export type CoherenceRow = { coherent: boolean; checked_at: string };
+/** Agent Contrôle et diffusion : verdicts de cohérence texte / image (la diffusion est lue par l'agent Rédacteur). */
+export function coherenceSignals(rows: readonly CoherenceRow[] | null, now: Date): BriefingSignals {
+  if (!rows) return { facts: [], gaps: ["Contrôle de cohérence non installé (migration 20261214000000 non appliquée) : la validation automatique se fait sans lui."] };
+  const recent = rows.filter((row) => withinDays(row.checked_at, now, 30));
+  const incoherent = recent.filter((row) => !row.coherent);
+  if (!recent.length) return { facts: [], gaps: ["Aucun contrôle de cohérence sur 30 jours."] };
+  const facts: BriefingFact[] = [{ statement: `${plural(recent.length, "publication contrôlée", "publications contrôlées")} sur 30 jours, ${plural(incoherent.length, "jugée incohérente", "jugées incohérentes")} (laissées à ta validation).`, at: latest(recent.map((row) => row.checked_at)), href: "/publications/review" }];
+  return { facts, gaps: [] };
+}
+
 export type BlogRow = { status: string; publish_at: string | null; published_at: string | null; title: string };
 export function blogSignals(rows: readonly BlogRow[], now: Date): BriefingSignals {
   const published = rows.filter((row) => row.status === "published" && withinDays(row.published_at, now, 30));

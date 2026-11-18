@@ -7,9 +7,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
+  blogSignals, buildAgentBriefing, coherenceSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
-  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type DeliveryRow, type DiscoveryRow, type IncidentRow,
+  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
@@ -37,6 +37,17 @@ const reviewLogs = (check: "fact" | "duplicate"): Reader => async ({ db, clientI
   return reviewSignals(await rows<ReviewLogRow>(scoped(query, clientId, "resource_id").order("created_at", { ascending: false }).limit(500).abortSignal(AbortSignal.timeout(TIMEOUT))), check, now);
 };
 
+const missingTable = (error: unknown) => {
+  const e = error as { code?: string; message?: string } | null;
+  return e?.code === "42P01" || e?.code === "PGRST205" || /could not find the table|does not exist/i.test(e?.message ?? "");
+};
+/** Table d'une migration facultative : absente → null (agent « non installé »), autre erreur → échec de lecture. */
+async function optionalRows<T>(query: PromiseLike<Result<T>>): Promise<T[] | null> {
+  const { data, error } = await query;
+  if (error) { if (missingTable(error)) return null; throw new Error("briefing read"); }
+  return data ?? [];
+}
+
 export const briefingReaders: Record<HarnessAgentId, Reader> = {
   director: async ({ db, clientId, since }) => directorSignals(await rows<IncidentRow>(
     scoped(db.from("incidents").select("status,detected_at").eq("source", "system").like("fingerprint", "harness:%").gte("detected_at", since(30)), clientId)
@@ -46,6 +57,12 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
   publications: async ({ db, clientId, now, since }) => publicationsSignals(await rows<DeliveryRow>(
     scoped(db.from("publication_deliveries").select("platform,status,scheduled_for,published_at").gte("scheduled_for", since(30)), clientId)
       .order("scheduled_for", { ascending: false }).limit(1000).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
+  "publication-photo": async ({ db, clientId, now, since }) => photoSignals(await optionalRows<GeneratedImageRow>(
+    scoped(db.from("publication_generated_images").select("status,created_at,decided_at").or(`status.eq.pending_review,created_at.gte.${since(30)}`), clientId)
+      .order("created_at", { ascending: false }).limit(500).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
+  "publication-check": async ({ db, clientId, now, since }) => coherenceSignals(await optionalRows<CoherenceRow>(
+    scoped(db.from("publication_coherence_checks").select("coherent,checked_at").gte("checked_at", since(30)), clientId)
+      .order("checked_at", { ascending: false }).limit(1000).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
   blog: async ({ db, clientId, now, since }) => blogSignals(await rows<BlogRow>(
     scoped(db.from("blog_articles").select("status,publish_at,published_at,title").gte("updated_at", since(60)), clientId).limit(300).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
   visual: async ({ db, clientId }) => visualSignals(await rows<VisualRow>(

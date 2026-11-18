@@ -27,6 +27,10 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
     rows(db.from("whatsapp_assets").select("client_id").in("library_status", ["quarantined", "received"]).is("purged_at", null).limit(LIMIT)),
     rows(db.from("incidents").select("id,client_id,title,detected_at").eq("source", "system").neq("status", "resolved").like("fingerprint", "harness:%").limit(LIMIT)),
   ]);
+  // Agent Photo : table de la migration 20261214000000 ; absente → pas de section (agent non installé).
+  const generated = await db.from("publication_generated_images").select("id,client_id,created_at").eq("status", "pending_review").limit(LIMIT).then(
+    (r) => r.error ? (/42P01|PGRST205/.test(String((r.error as { code?: string }).code)) || /could not find the table|does not exist/i.test(r.error.message ?? "") ? undefined : null) : r.data ?? [],
+    () => null);
   type Ads = { id: string; client_id: string | null; created_at: string; operation_kind: string | null };
   const flagged = (settings as { client_id: string; auto_approve_enabled: boolean }[] | null);
   return buildInbox({
@@ -34,6 +38,7 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
     reports: reports as never, recommendations: recommendations as never, actions: actions as never,
     ads: ads ? (ads as Ads[]).map((a) => ({ id: a.id, client_id: a.client_id, created_at: a.created_at, summary: a.operation_kind ? `Modification à approuver (${a.operation_kind})` : null })) : null,
     publications: publications as never,
+    generatedImages: generated as { id: string; client_id: string; created_at: string }[] | null | undefined,
     autoApproveClients: flagged ? new Set(flagged.filter((s) => s.auto_approve_enabled).map((s) => s.client_id)) : null,
     prospection: prospection as never, seo: seo as never,
     seoAgentId: (seoAgent as { id: string }[] | null)?.[0]?.id ?? null,

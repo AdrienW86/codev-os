@@ -18,9 +18,9 @@ export const ANTHROPIC_AGENT_MODEL = "claude-opus-5-5";
 
 /** Famille de chaque agent. Un agent absent de la liste (ancien parcours, appel non rattaché) reste sur OpenAI. */
 export const agentFamilies: Readonly<Record<string, AiFamily>> = {
-  publications: "writing", blog: "writing", visual: "writing", video: "writing", newsletter: "writing", copywriter: "writing",
+  publications: "writing", "publication-photo": "writing", blog: "writing", visual: "writing", video: "writing", newsletter: "writing", copywriter: "writing",
   "media-library": "vision", "photo-observation": "vision",
-  "fact-check": "review", "editorial-review": "review",
+  "fact-check": "review", "editorial-review": "review", "publication-check": "review",
   director: "strategy", report: "strategy", seo: "strategy", "google-ads": "strategy", monitoring: "strategy",
   prospection: "strategy", veille: "strategy", "editorial-planning": "strategy",
 };

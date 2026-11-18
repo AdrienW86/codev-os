@@ -53,3 +53,12 @@ test("trois priorités exigent un client explicite", () => {
   assert.equal(resolveTopPrioritiesCommand("trois priorités pour Jrenov"), "jrenov");
   assert.equal(resolveTopPrioritiesCommand("analyse les campagnes de Jrenov"), null);
 });
+
+test("navigation explicite : nouveaux écrans (décisions, lancement, images, incidents)", () => {
+  assert.equal(resolveExplicitNavigation("Montre-moi les décisions à prendre")?.href, "/validation");
+  assert.equal(resolveExplicitNavigation("Ouvre le lancement des actions")?.href, "/lancer");
+  assert.equal(resolveExplicitNavigation("Affiche les publications à valider")?.href, "/publications/review");
+  assert.equal(resolveExplicitNavigation("Montre les images générées")?.href, "/publications/images");
+  assert.equal(resolveExplicitNavigation("Ouvre les incidents ouverts")?.href, "/work?kind=incident");
+  assert.equal(resolveExplicitNavigation("Ouvre les publications")?.href, "/publications", "inchangé");
+});

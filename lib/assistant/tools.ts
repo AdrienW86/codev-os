@@ -9,6 +9,8 @@ import type { CapabilityId, RunType } from "@/lib/agents/registry";
 import { PERIOD_PRESETS, describeDates } from "@/lib/integrations/google-ads/periods";
 import { harnessCharters, type HarnessAgentId } from "@/lib/harness/charter";
 import { describePrepare, describeReschedule, MAX_ASSISTANT_PREPARATIONS, PUBLICATION_PLATFORMS } from "@/lib/assistant/publications-model";
+import { screenIds, screens } from "@/lib/assistant/screens";
+import { launchTasks } from "@/lib/launch/catalog";
 
 const clientName = z.string().trim().min(1).max(120);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -23,6 +25,7 @@ const adsScopeInput = z.object({
 }).strict();
 
 const agentIds = harnessCharters.map((charter) => charter.id) as [HarnessAgentId, ...HarnessAgentId[]];
+const launchIds = launchTasks.filter((task) => !task.href).map((task) => task.id) as [string, ...string[]];
 
 export const toolDefinitions = {
   ads_campaigns: {
@@ -52,6 +55,10 @@ export const toolDefinitions = {
   agent_briefing: {
     kind: "read", description: `Point de situation d’un agent ou de toute l’équipe (constats datés, état d’exécution, manques), à partir des seules données enregistrées. agent facultatif parmi : ${harnessCharters.map((charter) => `${charter.id} (${charter.name})`).join(", ")}. client facultatif. Aucun agent relancé, aucune API externe ni écriture.`,
     input: z.object({ agent: z.enum(agentIds).optional(), client: clientName.optional() }).strict(), capability: null,
+  },
+  show_screen: {
+    kind: "read", description: `Affiche au premier plan l’écran de l’application qui répond à la demande (« montre-moi… », « ouvre… », « où sont… »), déjà filtré sur le client si besoin. screen parmi : ${screenIds.map((id) => `${id} (${screens[id].label})`).join(", ")}. client : nom du client (requis pour les écrans client_*). Ne modifie rien.`,
+    input: z.object({ screen: z.enum(screenIds), client: clientName.optional() }).strict(), capability: null,
   },
   client_overview: {
     kind: "read", description: "Vue d’ensemble d’un client (services, tâches ouvertes, incidents, dernier rapport) à partir de son nom.",
@@ -133,6 +140,10 @@ export const toolDefinitions = {
       client_name: clientName.optional(), from: z.string().max(40).optional(),
     }).strict().refine((value) => Boolean(value.publication_id || value.client), { message: "publication_id ou client" }), capability: null,
   },
+  launch_task: {
+    kind: "write", description: `Lance MAINTENANT une tâche d’agent, comme le bouton « Lancer maintenant » (confirmation obligatoire). task parmi : ${launchTasks.filter((task) => !task.href).map((task) => `${task.id} (${task.label}${task.scope === "global" ? ", tous les clients" : ", client requis"})`).join(", ")}. client : nom du client. Les actions cruciales qui en découlent (envoi, dépense, image générée) restent à confirmer.`,
+    input: z.object({ task: z.enum(launchIds), client: clientName.optional() }).strict(), capability: null,
+  },
   create_task: {
     kind: "write", description: "Crée une tâche pour un client.",
     input: z.object({ client: clientName, title: z.string().trim().min(2).max(200), due_date: date.optional(), due_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne") }).strict(), capability: null,
@@ -176,6 +187,10 @@ export function describeProposal(name: ToolName, input: Record<string, unknown>)
   if (name === "generate_report") return `Générer le rapport ${input.kind === "monthly" ? "mensuel" : "hebdomadaire"} de ${input.client} (à relire avant envoi).`;
   if (name === "run_check") return `Lancer ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""}.`;
   if (name === "schedule_check") return `Planifier ${checkLabels[String(input.check)] ?? "l’analyse"}${input.client ? ` pour ${input.client}` : ""} le ${input.date} à ${input.time} (heure de Paris).`;
+  if (name === "launch_task") {
+    const task = launchTasks.find((item) => item.id === input.task);
+    return `Lancer maintenant « ${task?.label ?? input.task} »${task?.scope === "global" ? " (tous les clients)" : input.client ? ` pour ${input.client}` : ""}.${task?.paid ? " Appel facturé par le fournisseur." : ""}`;
+  }
   if (name === "create_task") return `Créer la tâche « ${input.title} » pour ${input.client}${input.due_date ? `, échéance ${input.due_date}${input.due_time ? ` à ${input.due_time}` : ""}` : ""}, priorité ${String(input.priority ?? "Moyenne").toLowerCase()}.`;
   return toolDefinitions[name].description;
 }

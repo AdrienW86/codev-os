@@ -26,6 +26,9 @@ import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
 import { publicationsTools } from "@/lib/assistant/publications-deps";
 import { directorBriefingTool } from "@/lib/assistant/director";
 import { agentBriefingTool } from "@/lib/assistant/agents-briefing-tool";
+import { screenHref, screens, type ScreenId } from "@/lib/assistant/screens";
+import { launch } from "@/lib/launch/service";
+import { launchTask } from "@/lib/launch/catalog";
 
 export { resolveClient };
 
@@ -77,6 +80,35 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
           metric("Tâches du jour", dueToday, "/work?view=todo"), metric("Rapports à relire", reports, "/reports?status=ready_for_review"),
         ], link: { label: "Ouvrir Travail", href: "/work?view=review" } },
       };
+    }
+    case "show_screen": {
+      const id = input.screen as ScreenId;
+      const screen = screens[id];
+      let clientId: string | null = null, clientName: string | null = null;
+      if (screen.client !== "none" && typeof input.client === "string") {
+        const client = await resolveClient(input.client);
+        if (!client.ok) return { ok: false, text: client.message, links: [{ label: "Clients", href: "/clients" }] };
+        clientId = client.id; clientName = client.name;
+      }
+      const href = screenHref(id, clientId);
+      if (!href) return { ok: false, text: `Pour afficher ${screen.label}, précisez le client.` };
+      return {
+        ok: true, text: `J’affiche ${screen.label}${clientName ? ` de ${clientName}` : ""}.`, links: [{ label: clientName ? `${clientName} : ${screen.label}` : screen.label, href }],
+        navigation: { destination: id, href }, ...(clientId && clientName ? { context: { ...context, clientId, clientName } } : {}),
+      };
+    }
+    case "launch_task": {
+      if (actor.kind === "system") return { ok: false, text: "Lancement réservé à l’administrateur." };
+      const task = launchTask(input.task);
+      if (!task) return { ok: false, text: "Tâche inconnue." };
+      let clientId: string | null = null;
+      if (task.scope !== "global" && typeof input.client === "string") {
+        const client = await resolveClient(input.client);
+        if (!client.ok) return { ok: false, text: client.message };
+        clientId = client.id;
+      }
+      const result = await launch(actor, task.id, clientId);
+      return { ok: result.ok, text: result.message, links: result.href ? [{ label: "Voir le résultat", href: result.href }] : [{ label: "Lancer une action", href: clientId ? `/lancer?client=${clientId}` : "/lancer" }] };
     }
     case "client_overview": {
       const client = await resolveClient(String(input.client));
@@ -235,6 +267,10 @@ export async function prepareProposal(name: ToolName, input: Record<string, unkn
   const today = todayInParis();
   for (const key of ["due_date", "date"] as const) {
     if (typeof input[key] === "string" && (input[key] as string) < today) return { ok: false, question: `La date ${input[key]} est passée. Quelle date souhaitez-vous ?` };
+  }
+  if (name === "launch_task") {
+    const task = launchTask(input.task);
+    if (task && task.scope === "client" && typeof input.client !== "string") return { ok: false, question: `Pour quel client lancer « ${task.label} » ?` };
   }
   if (name === "create_task" && typeof input.due_time === "string" && typeof input.due_date !== "string") return { ok: false, question: `Pour quel jour à ${input.due_time} ?` };
   return { ok: true, input: next };

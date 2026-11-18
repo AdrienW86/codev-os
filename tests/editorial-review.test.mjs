@@ -46,7 +46,7 @@ function service(respond) {
     structuredResponse: async (instructions, input, schema) => { const scope = current; calls.push({ agent: scope.agent, input: JSON.parse(input), schema }); return { value: await respond(scope.agent, JSON.parse(input)) }; },
     isBudgetExceeded: (e) => e?.message === "ai_budget_exceeded",
   };
-  const s = loadTs("lib/editorial-review/service.ts", { "@/lib/harness/charter": { withCharter: (id, text) => `[${id}] ${text}` }, "@/lib/ai/metered": metered, "./model": m });
+  const s = loadTs("lib/editorial-review/service.ts", { "@/lib/harness/charter": { withCharter: (id, text) => `[${id}] ${text}` }, "@/lib/ai/metered": metered, "@/lib/core/audit": { writeAudit: async () => undefined }, "./model": m });
   return { s, calls };
 }
 const C = "11111111-1111-4111-8111-111111111111";

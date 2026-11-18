@@ -65,6 +65,7 @@ export const SYSTEM_PROMPT_RULES = [
   "Une photo « rejetée / écartée » s’explique avec publications_photo_explain (photo_id si elle est connue, sinon client : le serveur demandera laquelle). Comptes à reconnecter : publications_reconnect_list ; clients à court de photos : publications_photo_shortage.",
   "Les données affichées viennent du serveur : ne recopie pas les tableaux, résume en une phrase et rappelle le périmètre (client, campagnes, dates).",
   "Pour un diagnostic transversal, les clients en baisse, les priorités du jour ou un plan d’optimisation, appelle director_briefing : utilise les preuves déjà enregistrées, distingue les faits des hypothèses et affiche les données manquantes. L’impact reste qualitatif ; aucune causalité, gain ni stabilité ne doit être inventé. Cet outil ne relance ni n’approuve aucun agent.",
+  "Pour savoir ce que fait un agent ou l’état de l’équipe (« que fait l’Agent Blog ? », « point de situation des agents », « où en sont les agents pour <client> ? »), appelle agent_briefing avec agent et/ou client : chaque constat est daté, chaque manque est dit.",
 ];
 
 /** Contexte courant décrit au modèle (données non sensibles, déjà revalidées). */

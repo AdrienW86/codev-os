@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { CapabilityId, RunType } from "@/lib/agents/registry";
 import { PERIOD_PRESETS, describeDates } from "@/lib/integrations/google-ads/periods";
+import { harnessCharters, type HarnessAgentId } from "@/lib/harness/charter";
 import { describePrepare, describeReschedule, MAX_ASSISTANT_PREPARATIONS, PUBLICATION_PLATFORMS } from "@/lib/assistant/publications-model";
 
 const clientName = z.string().trim().min(1).max(120);
@@ -20,6 +21,8 @@ const adsScopeInput = z.object({
   client_id: z.string().uuid(), client_name: clientName.optional(), start: date, end: date, status: adsStatus,
   types: z.array(adsType).max(20), campaignIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(50),
 }).strict();
+
+const agentIds = harnessCharters.map((charter) => charter.id) as [HarnessAgentId, ...HarnessAgentId[]];
 
 export const toolDefinitions = {
   ads_campaigns: {
@@ -45,6 +48,10 @@ export const toolDefinitions = {
   director_briefing: {
     kind: "read", description: "Diagnostic transversal des clients à partir des incidents, échéances, validations, recommandations d’agents et comparaisons Search Console déjà enregistrés. Classe les propositions avec preuves datées, impact qualitatif, confiance et validation requise. client facultatif, focus all/seo/ads. Aucun agent relancé, aucune API externe ni écriture ; les données absentes et anciennes restent explicites.",
     input: z.object({ client: clientName.optional(), focus: z.enum(["all", "seo", "ads"]).optional() }).strict(), capability: null,
+  },
+  agent_briefing: {
+    kind: "read", description: `Point de situation d’un agent ou de toute l’équipe (constats datés, état d’exécution, manques), à partir des seules données enregistrées. agent facultatif parmi : ${harnessCharters.map((charter) => `${charter.id} (${charter.name})`).join(", ")}. client facultatif. Aucun agent relancé, aucune API externe ni écriture.`,
+    input: z.object({ agent: z.enum(agentIds).optional(), client: clientName.optional() }).strict(), capability: null,
   },
   client_overview: {
     kind: "read", description: "Vue d’ensemble d’un client (services, tâches ouvertes, incidents, dernier rapport) à partir de son nom.",

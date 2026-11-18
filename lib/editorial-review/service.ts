@@ -4,6 +4,7 @@ import "server-only";
 // (IA indisponible, plafond atteint, réponse illisible) fait refuser le texte, jamais l'accepter sans vérification.
 import { withCharter } from "@/lib/harness/charter";
 import { structuredResponse, withAiScope, isBudgetExceeded } from "@/lib/ai/metered";
+import { writeAudit } from "@/lib/core/audit";
 import type { RegisterChannel, RegisterEntry } from "@/lib/editorial-register/model";
 import {
   DUPLICATE_INSTRUCTIONS, DUPLICATE_SCHEMA, FACT_CHECK_INSTRUCTIONS, FACT_CHECK_SCHEMA, readDuplicateCheck, readFactCheck, reviewMessage,
@@ -22,6 +23,10 @@ export type ReviewOutcome =
   | { ok: false; reason: "unavailable"; message: string };
 
 const log = (step: string, code: string) => console.error("[editorial-review]", { step, code });
+/** Verdict journalisé (sans le texte) : le point de situation des agents de contrôle le relit. Jamais bloquant. */
+const trace = (input: ReviewInput, outcome: "passed" | "rejected" | "unavailable", factPassed: boolean | null, duplicatePassed: boolean | null) =>
+  writeAudit({ kind: "system", worker: "editorial-review" }, { action: "editorial_review.checked", resource_type: "client", resource_id: input.clientId,
+    metadata: { channel: input.channel, outcome, fact_passed: factPassed, duplicate_passed: duplicatePassed } }).catch(() => undefined);
 
 export async function reviewContent(input: ReviewInput): Promise<ReviewOutcome> {
   const sameChannel = input.register.filter((e) => e.channel === input.channel).slice(0, 60);
@@ -44,10 +49,13 @@ export async function reviewContent(input: ReviewInput): Promise<ReviewOutcome> 
   if (fact.status === "rejected" || duplicate.status === "rejected") {
     const error = fact.status === "rejected" ? fact.reason : (duplicate as PromiseRejectedResult).reason;
     log(fact.status === "rejected" ? "fact-check" : "duplicate", isBudgetExceeded(error) ? "budget" : "failed");
+    await trace(input, "unavailable", null, null);
     return { ok: false, reason: "unavailable", message: isBudgetExceeded(error)
       ? "Contrôle indépendant impossible : plafond IA du mois atteint pour ce client. Rien n’a été enregistré."
       : "Contrôle indépendant indisponible (IA). Rien n’a été enregistré ; réessayez plus tard." };
   }
-  if (fact.value.passed && (!duplicate.value || duplicate.value.passed)) return { ok: true, fact: fact.value, duplicate: duplicate.value };
+  const passed = fact.value.passed && (!duplicate.value || duplicate.value.passed);
+  await trace(input, passed ? "passed" : "rejected", fact.value.passed, duplicate.value ? duplicate.value.passed : null);
+  if (passed) return { ok: true, fact: fact.value, duplicate: duplicate.value };
   return { ok: false, reason: "rejected", message: reviewMessage(fact.value, duplicate.value), fact: fact.value, duplicate: duplicate.value };
 }

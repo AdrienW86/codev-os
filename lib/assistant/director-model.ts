@@ -16,6 +16,8 @@ export type DirectorDecision = {
 export type DirectorBriefing = {
   generatedAt: string; today: string; scope: string; clientCount: number; clientTotal: number | null;
   coverage: DirectorCoverage[]; decisions: DirectorDecision[]; omitted: number; limitations: string[];
+  /** Point de situation de chaque agent de la charte (lib/harness/briefing-service.ts), quand il a pu être lu. */
+  agents?: import("@/lib/harness/briefing").AgentBriefing[];
 };
 export type DirectorClient = { id: string; name: string };
 export type DirectorIncident = { id: string; client_id: string; title: string; severity: string; source: string; status: string; updated_at: string; recommendation_id: string | null };

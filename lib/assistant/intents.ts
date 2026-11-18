@@ -152,6 +152,9 @@ export function parseIntent(text: string, today: string, context: AssistantConte
   if (/^(?:fais|prepare|donne|affiche|montre)(?: moi)? (?:un |le |mon )?(?:bilan global|briefing operationnel|point sur les priorites)$/.test(directorValue)
     || /^(?:analyse|examine|diagnostique) (?:tous (?:mes|les) |l ensemble (?:de mes|des) )clients\b/.test(directorValue)
     || /^quelles? actions (?:dois je |faut il )?prioriser\b/.test(directorValue)) return { tool: "director_briefing", input: {} };
+  // Point de situation des agents (lecture seule) : toute l'équipe en une vue.
+  if (/^(?:(?:fais|donne|affiche|montre)(?: moi)? )?(?:le |un )?point (?:de situation )?(?:des|de tous les) agents$/.test(directorValue)
+    || /^(?:etat|sante) (?:de l equipe|des agents)$/.test(directorValue) || /^ou en sont les agents$/.test(directorValue)) return { tool: "agent_briefing", input: {} };
   if (/^quels? clients?\b.*\b(?:perdu|perdent|baisse|visibilite)\b/.test(directorValue)) return { tool: "director_briefing", input: { focus: "seo" } };
   if (/^quelles? campagnes?\b.*\b(?:necessitent|optimisation|optimiser)\b/.test(directorValue)) return { tool: "director_briefing", input: { focus: "ads" } };
   if (/^(?:prepare|propose|fais)(?: moi)? (?:un |le )?plan d optimisation\b/.test(directorValue)

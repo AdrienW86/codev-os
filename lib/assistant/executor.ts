@@ -25,6 +25,7 @@ import { adsCampaignsTool, adsRecommendationsTool, prepareAdsWrite, runAdsWrite 
 import type { AssistantContext, MetricItem } from "@/lib/assistant/views";
 import { publicationsTools } from "@/lib/assistant/publications-deps";
 import { directorBriefingTool } from "@/lib/assistant/director";
+import { agentBriefingTool } from "@/lib/assistant/agents-briefing-tool";
 
 export { resolveClient };
 
@@ -48,6 +49,7 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
   const today = todayInParis();
   switch (name) {
     case "director_briefing": return directorBriefingTool(input);
+    case "agent_briefing": return agentBriefingTool(input);
     case "ads_campaigns": return adsCampaignsTool(input, context);
     case "ads_recommendations": return adsRecommendationsTool(input, context);
     case "ads_prepare_report": case "ads_run_analysis": return runAdsWrite(actor, name, input);

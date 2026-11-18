@@ -42,3 +42,14 @@ Une phrase (hors accroche) portant une formulation récurrente ou un terme non c
 - **Plafond** (`client_ai_budgets`, fiche client → Agents) : 5 € par mois par défaut, de 0 à 200 €. 0 coupe l'IA de ces agents pour le client.
 - Migration `20261206000000_ai_usage_budget` à appliquer. Sans elle, rien n'est mesuré ni bloqué (comportement d'avant). Si la dépense est illisible, l'appel est refusé.
 - **Assistants mesurés** (`meteredProvider`) : l'analyse Google Ads (interactive et rapports), la conversation SEO et la suggestion de légende de la Photothèque passent aussi par le plafond. Les jetons renvoyés par OpenAI ou Anthropic sont journalisés dans `ai_usage`. Le coût est estimé au tarif public du modèle (× 1,25) ; un modèle inconnu est compté au tarif prudent (3 $ / 15 $ par million). Au plafond, Google Ads repasse en analyse déterministe (`ai_budget_exceeded`), SEO répond à partir des règles et la Photothèque ne propose pas de légende. L'assistant du cockpit, sans client, n'est pas compté.
+
+## Point de situation des agents (le Directeur consulte toute l'équipe)
+
+- **Format commun** (`lib/harness/briefing.ts`, pur) : pour chaque agent, son état d'exécution (santé), ses constats datés tirés des données enregistrées, ses manques, la date de sa dernière activité et un drapeau « sans activité récente » (plus de 14 jours sans constat pour un agent planifié). Une lecture qui échoue rend l'agent « illisible », jamais « opérationnel ».
+- **Lecteurs** (`lib/harness/briefing-service.ts`) : `briefingReaders` est un `Record<HarnessAgentId, …>` : un agent ajouté à la charte sans lecteur ne compile pas. Lecture seule, aucun agent relancé, aucune API externe.
+- **Directeur** : `director_briefing` joint le point de situation de tous les agents (pour un client nommé ou pour l'ensemble) et cite ceux à examiner dans sa réponse.
+- **Assistant** : outil `agent_briefing` (agent et client facultatifs) pour consulter un agent ou toute l'équipe.
+- **Contrôles indépendants** : chaque verdict de vérification des faits et d'anti-doublon est journalisé (`audit_logs`, action `editorial_review.checked`, sans le texte) pour que leur activité soit visible.
+- **Registres** : la charte reste la référence ; `tests/agent-briefing.test.mjs` vérifie que le registre d'exécution (`lib/agents/registry.ts`) et le catalogue de l'écran Agents (`lib/agents/catalog.ts`) n'ont aucun agent sans charte (hors ancien « Automatisation »).
+
+Pour ajouter un agent : en plus des étapes ci-dessus, lui donner un lecteur dans `briefingReaders`.

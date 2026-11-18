@@ -7,6 +7,8 @@ import { describeAction } from "@/lib/actions/registry";
 import { todayInParis } from "@/lib/dashboard/home";
 import { buildDirectorBriefing, directorSummary, DIRECTOR_LIMIT, type DirectorCoverage, type DirectorSource } from "@/lib/assistant/director-model";
 import type { ToolOutcome } from "@/lib/assistant/orchestrator";
+import { loadAgentBriefings } from "@/lib/harness/briefing-service";
+import { briefingsSummary } from "@/lib/harness/briefing";
 
 const CLIENT_LIMIT = 100;
 type ReadResult<T> = { data: T[] | null; error: unknown; count?: number | null };
@@ -47,6 +49,8 @@ export async function directorBriefingTool(input: Record<string, unknown>): Prom
   const noRows = <T,>(source: DirectorSource) => Promise.resolve({ rows: [] as T[], coverage: { source, status: "available" as const, loaded: 0, total: 0, truncated: false } });
   // Select only this page's client identifiers. Even a provider/fixture returning extra clients is
   // checked again by the pure model. Stable ordering and exact counts expose bounded coverage.
+  // Le Directeur consulte aussi le point de situation de TOUS les agents de la charte (lecture seule).
+  const agentsPromise = loadAgentBriefings({ clientId: selectedId }).catch(() => null);
   const [incidents, tasks, actions, recommendations, seo] = ids.length ? await Promise.all([
     readSource("incidents", db.from("incidents").select("id,client_id,title,severity,source,status,updated_at,recommendation_id", { count: "exact" })
       .in("client_id", ids).neq("status", "resolved").order("updated_at", { ascending: false }).order("id").limit(DIRECTOR_LIMIT + 1).abortSignal(AbortSignal.timeout(12_000))),
@@ -74,7 +78,10 @@ export async function directorBriefingTool(input: Record<string, unknown>): Prom
     recommendations: recommendations.rows.map((recommendation) => ({ ...recommendation,
       source: recommendation.agent?.agent_type === "google-ads" ? "ads" : recommendation.agent?.agent_type ?? "unknown" })),
   });
-  return { ok: true, text: directorSummary(briefing), view: { type: "director_briefing", title: "Diagnostic du Directeur IA", briefing },
+  const agents = await agentsPromise;
+  if (agents) briefing.agents = agents;
+  else briefing.limitations.push("Point de situation des agents illisible : l’état des agents n’est pas établi.");
+  return { ok: true, text: `${directorSummary(briefing)}${agents ? ` ${briefingsSummary(agents)}` : ""}`, view: { type: "director_briefing", title: "Diagnostic du Directeur IA", briefing },
     links: [{ label: "Clients", href: "/clients" }, { label: "Actions à valider", href: "/work?view=review" }],
     // A named client is resolved again on subsequent tools; global diagnosis clears a stale client.
     context: selectedId && selectedName ? { clientId: selectedId, clientName: selectedName } : {},

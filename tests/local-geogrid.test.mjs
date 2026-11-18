@@ -87,3 +87,38 @@ test("report document: grids attached to the search document (or alone), validat
   assert.ok(buffer.length > 1000);
   assert.match(buffer.toString("latin1"), /re f/);
 });
+
+test("service: the centre point is probed first; a failure stops the grid after one request and logs status codes only", async () => {
+  const { createFakeSupabase } = await import("./helpers/fake-supabase.mjs");
+  const audits = [];
+  const model = loadTs("lib/local-competition/model.ts");
+  const load = () => loadTs("lib/local-geogrid/service.ts", {
+    "@/lib/supabase/server": { getSupabaseServerClient: () => null },
+    "@/lib/core/audit": { writeAudit: async (_actor, entry) => { audits.push(entry); } },
+    "@/lib/agents/outputs": { getAgentByType: async () => ({ id: "a1", enabled: true, status: "Actif" }) },
+    "@/lib/integrations/local-competition": { localCompetitionTransport: () => ({ dataforseo: null }) },
+    "@/lib/local-competition/model": model,
+    "./model": g,
+  });
+  const seed = () => createFakeSupabase({
+    clients: [{ id: "c1", name: "PN", company_name: "Protection Nuisibles", activity: "Lutte anti-nuisibles", geographic_area: "Perpignan", website: "https://protection-nuisibles.fr" }],
+    metric_snapshots: [{ client_id: "c1", provider: "local-competition", metric_key: "dataforseo-maps", period_end: "2026-11-18", fetched_at: "2026-11-18T09:00:00Z", data: { client: { lat: 42.78, lng: 2.89 }, competitors: [] } }],
+    audit_logs: [],
+  });
+  let calls = 0;
+  const failing = { dataforseo: async () => { calls++; return { status: 200, body: { status_code: 20000, tasks: [{ status_code: 40501 }] } }; } };
+  const s1 = await load().runLocalGeogridTick(now, { db: seed().client, transport: failing });
+  assert.equal(calls, 1, "one request only when the centre fails");
+  assert.equal(s1.failed, 1);
+  assert.deepEqual(plain({ ...audits[0].metadata }), { key: "k:lutte-anti-nuisibles", failed: 49, probe: true, http: 200, api: 20000, task: 40501 });
+  calls = 0;
+  const db = seed();
+  const ok = { dataforseo: async ({ coordinate }) => { calls++; return { status: 200, body: { status_code: 20000, tasks: [{ status_code: 20000, result: [{ items: [
+    { type: "maps_search", rank_group: 1, title: "Autre", domain: "autre.fr" },
+    ...(coordinate.lat > 42.78 ? [] : [{ type: "maps_search", rank_group: 2, title: "Protection Nuisibles", domain: "protection-nuisibles.fr" }]) ] }] }] } }; } };
+  const s2 = await load().runLocalGeogridTick(now, { db: db.client, transport: ok });
+  assert.equal(calls, 49); assert.equal(s2.collected, 1);
+  const row = db.tables.metric_snapshots.find((r) => r.provider === "local-geogrid");
+  assert.equal(row.metric_key, "k:lutte-anti-nuisibles");
+  assert.equal(row.data.found, 28, "present on the 4 southern rows (centre row included)"); assert.equal(row.data.top3, 28);
+});

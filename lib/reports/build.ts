@@ -4,6 +4,7 @@
 // Fonctions pures : testables sans base ni réseau.
 
 import type { ReportKind } from "@/lib/supabase/core.types";
+import { analyticsLines, articleLines, crossReadings, deliveryLines, emptyExtras, extrasPriorities, lighthouseLines, newsletterLines, type ReportExtras } from "@/lib/reports/insights";
 
 /** Rapports récurrents (période close). Les rapports Google Ads ont leur propre construction (google-ads.ts). */
 export type RecurringReportKind = "weekly" | "monthly";
@@ -40,6 +41,8 @@ export type ReportInput = {
   metrics: { provider: string; metric_key: string; period_start?: string; period_end?: string; data: Record<string, unknown> }[];
   /** Historique quotidien Google Search Console de la propriété du client (période + période précédente de même durée). */
   searchConsole?: { property: string; days: { date: string; clicks: number; impressions: number; position: number | null }[] } | null;
+  /** Audience GA4, Lighthouse, diffusions par réseau, articles et newsletters (lib/reports/insights.ts). */
+  extras?: ReportExtras;
 };
 
 export type ReportSection = { title: string; lines: string[] };
@@ -178,14 +181,29 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     return [];
   })];
 
-  const priorities = reportPriorities(input, p, { uptime, avgResponse, overdue: overdue.length, pendingRecommendations: pendingRecommendations.length, pendingActions: pendingActions.length, openIncidents: openIncidents.length, toValidate: toValidate.length });
-  const empty = !completed.length && !published.length && !newRecommendations.length && !doneActions.length && !incidents.length && !runs.length && !checks.length && !metricLines.length;
+  const extras = input.extras ?? emptyExtras();
+  const audienceLines = analyticsLines(extras.analytics);
+  const qualityLines = lighthouseLines(extras.lighthouse);
+  const diffusedLines = deliveryLines(extras.deliveries, p, true);
+  const diffusedCount = extras.deliveries.filter((row) => inPeriod(row.published_at, p)).length;
+  const editorialLines = [...articleLines(extras.articles, p), ...newsletterLines(extras.newsletters, p)];
+  const ads = input.metrics.find((metric) => metric.provider === "google-ads" && typeof metric.data.cost === "number");
+  const searchClicks = input.searchConsole ? input.searchConsole.days.filter((row) => row.date >= p.start && row.date <= p.end).reduce((sum, row) => sum + row.clicks, 0) : null;
+  const crossLines = crossReadings({ period: p, extras, searchClicks: input.searchConsole?.days.some((row) => row.date >= p.start && row.date <= p.end) ? searchClicks : null,
+    ads: ads ? { cost: ads.data.cost as number, conversions: typeof ads.data.conversions === "number" ? ads.data.conversions : null, clicks: typeof ads.data.clicks === "number" ? ads.data.clicks : null } : null });
+  // Une même priorité côté client (ex. vitesse mobile vue par PageSpeed et par Lighthouse) n'apparaît qu'une fois.
+  const seenClient = new Set<string>();
+  const priorities = [...reportPriorities(input, p, { uptime, avgResponse, overdue: overdue.length, pendingRecommendations: pendingRecommendations.length, pendingActions: pendingActions.length, openIncidents: openIncidents.length, toValidate: toValidate.length }), ...extrasPriorities(extras)]
+    .sort((a, b) => a.rank - b.rank).filter((item) => !item.client || (!seenClient.has(item.client) && Boolean(seenClient.add(item.client)))).slice(0, 6);
+  const empty = !completed.length && !published.length && !newRecommendations.length && !doneActions.length && !incidents.length && !runs.length && !checks.length && !metricLines.length
+    && !audienceLines.length && !qualityLines.length && !diffusedLines.length && !editorialLines.length;
   const name = input.client?.name ?? "Tous les clients";
   const title = `${kind === "weekly" ? "Rapport hebdomadaire" : "Rapport mensuel"} — ${name} — ${periodLabel(kind, p)}`;
 
   const highlights = [
     completed.length ? `${plural(completed.length, "tâche terminée", "tâches terminées")}` : null,
-    published.length ? `${plural(published.length, "publication diffusée ou validée", "publications diffusées ou validées")}` : null,
+    diffusedCount ? `${plural(diffusedCount, "publication diffusée sur les réseaux", "publications diffusées sur les réseaux")}`
+      : published.length ? `${plural(published.length, "publication diffusée ou validée", "publications diffusées ou validées")}` : null,
     doneActions.length ? `${plural(doneActions.length, "action réalisée", "actions réalisées")}` : null,
     uptime !== null ? `disponibilité du site ${uptime.toString().replace(".", ",")} %` : null,
   ].filter((line): line is string => Boolean(line));
@@ -203,7 +221,12 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
     { title: "Recommandations", lines: [...newRecommendations.map((item) => `Nouvelle : ${item.title} (${item.severity})`), ...pendingRecommendations.filter((item) => !inPeriod(item.created_at, p)).map((item) => `En attente : ${item.title}`)] },
     { title: "Actions", lines: [...doneActions.map((item) => `Réalisée : ${item.label}`), ...pendingActions.map((item) => `À valider : ${item.label}`)] },
     { title: "Incidents", lines: incidents.map((item) => `${item.status === "resolved" ? "Résolu" : "Ouvert"} : ${item.title} (${item.severity})`) },
+    { title: "Contenus diffusés par réseau", lines: diffusedLines },
+    { title: "Blog et newsletters", lines: editorialLines },
     { title: "Disponibilité et performances", lines: [uptime !== null ? `Disponibilité ${uptime} % sur ${checks.length} contrôles${avgResponse !== null ? `, temps de réponse moyen ${avgResponse} ms` : ""}.` : null, ...metricLines].filter((line): line is string => Boolean(line)) },
+    { title: "Audience et conversions (Google Analytics 4)", lines: audienceLines },
+    { title: "Qualité du site (Lighthouse)", lines: qualityLines },
+    { title: "Lectures croisées", lines: crossLines },
     { title: "Priorités recommandées", lines: priorities.map((item, index) => `${index + 1}. ${item.internal}`) },
     { title: "Analyses des agents", lines: Object.entries(runs.reduce<Record<string, { total: number; failed: number }>>((acc, run) => { const entry = acc[run.agent] ??= { total: 0, failed: 0 }; entry.total++; if (run.status === "failed") entry.failed++; return acc; }, {})).map(([agent, stat]) => `${agent} : ${plural(stat.total, "analyse", "analyses")}${stat.failed ? `, ${stat.failed} en échec` : ""}`) },
   ].filter((section) => section.lines.length);
@@ -211,8 +234,9 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
   // Version client : réalisations et résultats, sans éléments internes (échecs, retards, analyses).
   const clientSections: ReportSection[] = [
     { title: "Réalisé", lines: [...completed.map((task) => task.title), ...doneActions.map((item) => item.label)] },
-    { title: "Contenus publiés", lines: published.map((item) => item.subject) },
-    { title: "Résultats", lines: [uptime !== null ? `Disponibilité du site : ${uptime.toString().replace(".", ",")} %` : null, ...metricLines].filter((line): line is string => Boolean(line)) },
+    { title: "Contenus publiés", lines: diffusedLines.length || editorialLines.length ? [...deliveryLines(extras.deliveries, p, false), ...editorialLines] : published.map((item) => item.subject) },
+    { title: "Résultats", lines: [uptime !== null ? `Disponibilité du site : ${uptime.toString().replace(".", ",")} %` : null, ...metricLines, ...audienceLines, ...qualityLines].filter((line): line is string => Boolean(line)) },
+    { title: "Lectures croisées", lines: crossLines },
     { title: "À venir", lines: upcoming.slice(0, 5).map((task) => task.title) },
     { title: "Nos priorités pour la suite", lines: [...new Set(priorities.flatMap((item) => item.client ? [item.client] : []))].slice(0, 3) },
   ].filter((section) => section.lines.length);

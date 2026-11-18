@@ -19,6 +19,7 @@ function setup({ denied = false, failure = null } = {}) {
     "@/lib/supabase/server": { getSupabaseServerClient: () => db }, "@/lib/core/audit": { writeAudit: async () => {} }, "@/lib/actions/registry": {}, "@/lib/reports/build": { periodLabel: () => "septembre 2026" }, "@/lib/reports/documents/gather": {}, "@/lib/reports/documents/build": {}, "@/lib/reports/documents/model": documentModel, "@/lib/reports/documents/pdf": documentPdf,
     "@/lib/require-admin": { requireAdmin: async () => { if (denied) throw Error("denied"); } }, "@/lib/reports/email-preview": previewModule, "@/lib/reports/pdf": pdfModule, "@/lib/providers/errors": errors,
     "@/lib/vercel-analytics/sync": { syncVercelAnalytics: async () => ({ ok: true }) },
+    "@/lib/reports/extras-service": { gatherReportExtras: async () => ({ analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] }) },
     "@/lib/integrations/search-console/model": { addDays: () => "", dayCount: () => 0, normalizeProperty: () => null },
     "@/lib/reports/email-logo": loadTs("lib/reports/email-logo.ts"), "@/lib/providers/email": { emailSendingStatus: () => ({ enabled: true }), sendEmail: async (email) => { sent.push(email); if (failure) throw failure; return { id: "fake-accepted" }; } },
   });

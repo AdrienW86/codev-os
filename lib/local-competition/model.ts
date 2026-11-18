@@ -79,6 +79,8 @@ const coordinate = (value: unknown, max: number) => (typeof value === "number" &
 /** Réponse DataForSEO SERP Google Maps (live/advanced) → résultats ordonnés par position. */
 export function readDataForSeoResults(body: unknown): LocalResult[] | null {
   const task = rec(Array.isArray(rec(body).tasks) ? (rec(body).tasks as unknown[])[0] : null);
+  // 40102 « No Search Results » : la recherche a abouti sans aucune fiche (fiche absente), pas un échec.
+  if (rec(body).status_code === 20000 && task.status_code === 40102) return [];
   if (rec(body).status_code !== 20000 || task.status_code !== 20000) return null;
   const result = rec(Array.isArray(task.result) ? (task.result as unknown[])[0] : null);
   const items = Array.isArray(result.items) ? (result.items as unknown[]).map(rec).filter((item) => item.type === "maps_search") : [];
@@ -91,6 +93,13 @@ export function readDataForSeoResults(body: unknown): LocalResult[] | null {
     out.push({ rank, name, placeId: typeof item.place_id === "string" ? item.place_id.slice(0, 200) : null, rating: numOrNull(rating.value, 5), reviews: numOrNull(rating.votes_count, 10_000_000), domain: hostOf(item.domain ?? item.url), lat: coordinate(item.latitude, 90), lng: coordinate(item.longitude, 180) });
   }
   return out;
+}
+
+/** Codes d'état DataForSEO (nombres seulement, jamais le texte du fournisseur) pour le journal d'échec. */
+export function dataForSeoCodes(httpStatus: number | null, body: unknown): { http: number | null; api: number | null; task: number | null } {
+  const task = rec(Array.isArray(rec(body).tasks) ? (rec(body).tasks as unknown[])[0] : null);
+  const code = (v: unknown) => (typeof v === "number" && Number.isInteger(v) ? v : null);
+  return { http: httpStatus, api: code(rec(body).status_code), task: code(task.status_code) };
 }
 
 /** Position du client : même site (domaine), sinon nom proche (60 % des mots significatifs). */

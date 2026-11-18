@@ -10,7 +10,7 @@ import {writeAudit} from '@/lib/core/audit';
 import type {Actor} from '@/lib/core/actor';
 import {getAgentByType} from '@/lib/agents/outputs';
 import {localCompetitionTransport,type LocalCompetitionTransport} from '@/lib/integrations/local-competition';
-import {COMPETITION_PROVIDER,competitionTarget,findClient,readDataForSeoResults,type LocalTarget} from '@/lib/local-competition/model';
+import {COMPETITION_PROVIDER,competitionTarget,dataForSeoCodes,findClient,readDataForSeoResults,type LocalTarget} from '@/lib/local-competition/model';
 import {GEOGRID_PROVIDER,buildGeogrid,geogridCenter,geogridDue,geogridKey,geogridKeywords,geogridPoints} from './model';
 
 const ACTOR:Actor={kind:'system',worker:'local-geogrid-weekly'};
@@ -65,16 +65,26 @@ export async function runLocalGeogridTick(now=new Date(),deps:LocalGeogridDeps=p
  if(!next)return summary;
  const points=geogridPoints(next.center);
  const ranks:(number|null|undefined)[]=new Array(points.length).fill(undefined);
- for(let i=0;i<points.length;i+=CONCURRENCY){
-  await Promise.all(points.slice(i,i+CONCURRENCY).map(async(point,j)=>{
-   const response=await deps.transport.dataforseo!({keyword:next.keyword,coordinate:point}).catch(()=>null);
-   const results=response?.status===200?readDataForSeoResults(response.body):null;
-   if(results)ranks[i+j]=findClient(results,next.target)?.rank??null;
-  }));
+ let codes:ReturnType<typeof dataForSeoCodes>|null=null;
+ const probe=async(index:number)=>{
+  const response=await deps.transport.dataforseo!({keyword:next.keyword,coordinate:points[index]}).catch(()=>null);
+  const results=response?.status===200?readDataForSeoResults(response.body):null;
+  if(results)ranks[index]=findClient(results,next.target)?.rank??null;
+  else codes??=dataForSeoCodes(response?.status??null,response?.body);
+  return Boolean(results);
+ };
+ // Point central d'abord : s'il échoue, la grille n'est pas lancée (48 requêtes épargnées) et les codes sont journalisés.
+ const centerIndex=Math.floor(points.length/2);
+ if(!(await probe(centerIndex))){
+  summary.failed++;
+  await writeAudit(ACTOR,{action:FAILURE_ACTION,resource_type:'client',resource_id:next.target.clientId,metadata:{key:next.key,failed:points.length,probe:true,...(codes??{})}}).catch(()=>undefined);
+  return summary;
  }
+ const rest=points.map((_,i)=>i).filter(i=>i!==centerIndex);
+ for(let i=0;i<rest.length;i+=CONCURRENCY)await Promise.all(rest.slice(i,i+CONCURRENCY).map(probe));
  const grid=buildGeogrid({keyword:next.keyword,center:next.center,ranks,now});
  summary.points=points.length-grid.failed.length;
- if(grid.failed.length>points.length/2){summary.failed++;await writeAudit(ACTOR,{action:FAILURE_ACTION,resource_type:'client',resource_id:next.target.clientId,metadata:{key:next.key,failed:grid.failed.length}}).catch(()=>undefined);return summary;}
+ if(grid.failed.length>points.length/2){summary.failed++;await writeAudit(ACTOR,{action:FAILURE_ACTION,resource_type:'client',resource_id:next.target.clientId,metadata:{key:next.key,failed:grid.failed.length,...(codes??{})}}).catch(()=>undefined);return summary;}
  const today=now.toISOString().slice(0,10);
  const saved=await deps.db.from('metric_snapshots').upsert({client_id:next.target.clientId,provider:GEOGRID_PROVIDER,metric_key:next.key,period_start:today,period_end:today,data:grid,fetched_at:now.toISOString()},{onConflict:'client_id,provider,metric_key,period_start,period_end'});
  if(saved.error)throw Error('local geogrid write');

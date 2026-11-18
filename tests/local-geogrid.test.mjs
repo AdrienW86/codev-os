@@ -110,7 +110,7 @@ test("service: the centre point is probed first; a failure stops the grid after 
   const s1 = await load().runLocalGeogridTick(now, { db: seed().client, transport: failing });
   assert.equal(calls, 1, "one request only when the centre fails");
   assert.equal(s1.failed, 1);
-  assert.deepEqual(plain({ ...audits[0].metadata }), { key: "k:lutte-anti-nuisibles", failed: 49, probe: true, http: 200, api: 20000, task: 40501 });
+  assert.deepEqual(plain({ ...audits[0].metadata }), { key: "k:lutte-anti-nuisibles", failed: 49, probe: true, http: 200, api: 20000, task: 40501, empty: 0 });
   calls = 0;
   const db = seed();
   const ok = { dataforseo: async ({ coordinate }) => { calls++; return { status: 200, body: { status_code: 20000, tasks: [{ status_code: 20000, result: [{ items: [
@@ -121,4 +121,28 @@ test("service: the centre point is probed first; a failure stops the grid after 
   const row = db.tables.metric_snapshots.find((r) => r.provider === "local-geogrid");
   assert.equal(row.metric_key, "k:lutte-anti-nuisibles");
   assert.equal(row.data.found, 28, "present on the 4 southern rows (centre row included)"); assert.equal(row.data.top3, 28);
+});
+
+test("service: a point that returns no listing at all is 'not measured', never 'absent'", async () => {
+  const { createFakeSupabase } = await import("./helpers/fake-supabase.mjs");
+  const audits = [];
+  const svc = loadTs("lib/local-geogrid/service.ts", {
+    "@/lib/supabase/server": { getSupabaseServerClient: () => null },
+    "@/lib/core/audit": { writeAudit: async (_a, entry) => { audits.push(entry); } },
+    "@/lib/agents/outputs": { getAgentByType: async () => ({ id: "a1", enabled: true, status: "Actif" }) },
+    "@/lib/integrations/local-competition": { localCompetitionTransport: () => ({ dataforseo: null }) },
+    "@/lib/local-competition/model": loadTs("lib/local-competition/model.ts"),
+    "./model": g,
+  });
+  const fake = createFakeSupabase({
+    clients: [{ id: "c1", name: "PN", company_name: "Protection Nuisibles", activity: "Lutte anti-nuisibles", geographic_area: "Perpignan", website: null }],
+    metric_snapshots: [{ client_id: "c1", provider: "local-competition", metric_key: "dataforseo-maps", period_end: "2026-11-18", fetched_at: "2026-11-18T09:00:00Z", data: { client: { lat: 42.78, lng: 2.89 }, competitors: [] } }],
+    audit_logs: [],
+  });
+  let calls = 0;
+  const empty = { dataforseo: async () => { calls++; return { status: 200, body: { status_code: 20000, tasks: [{ status_code: 40102 }] } }; } };
+  const s = await svc.runLocalGeogridTick(now, { db: fake.client, transport: empty });
+  assert.equal(calls, 1); assert.equal(s.collected, 0); assert.equal(s.failed, 1);
+  assert.equal(audits[0].metadata.task, 40102); assert.equal(audits[0].metadata.empty, 1);
+  assert.equal(fake.tables.metric_snapshots.filter((r) => r.provider === "local-geogrid").length, 0, "no grid of fake absences");
 });

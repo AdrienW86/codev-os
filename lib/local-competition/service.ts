@@ -90,8 +90,11 @@ export async function runLocalCompetitionTick(now=new Date(),deps:LocalCompetiti
 async function search(transport:LocalCompetitionTransport,source:LocalSource,keyword:string){
  if(source==='dataforseo-maps'){
   const response=await transport.dataforseo!({keyword});
-  return response.status===200?readDataForSeoResults(response.body):null;
+  const results=response.status===200?readDataForSeoResults(response.body):null;
+  // Aucune fiche du tout (pas même un concurrent) : relevé inexploitable, jamais « fiche absente ».
+  return results?.length?results:null;
  }
  const response=await transport.places!({keyword});
- return response.status===200?readPlacesResults(response.body):null;
+ const results=response.status===200?readPlacesResults(response.body):null;
+ return results?.length?results:null;
 }

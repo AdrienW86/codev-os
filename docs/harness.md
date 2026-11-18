@@ -71,3 +71,14 @@ Le pipeline qui fonctionne est conservé (préparation par lot un mois à l'avan
 - **Agent Contrôle et diffusion** (`publication-check`, étapes `publication_auto_approval`, `publication_delivery_prepare`, `publication_delivery_send`) : avant toute validation automatique, contrôle de cohérence texte / image (vision, `lib/publications/photo-agent/coherence.ts`), mis en cache par révision. Incohérent, ou contrôle impossible : la publication reste « À valider » et une notification l'explique (fermé par défaut). Vidéo et révision sans image : pas de contrôle d'image.
 
 Migration `20261214000000_publication_photo_and_check_agents.sql` : sans elle, les deux nouveaux agents restent inactifs et tout se comporte comme avant.
+
+## Statistiques des publications par réseau (lot 3)
+
+Étape `publication_stats` (Agent Contrôle et diffusion, `lib/publications/stats/service.ts`) : pour chaque diffusion publiée depuis moins de 30 jours, un relevé en lecture seule chez le réseau, chaque jour pendant 14 jours puis chaque semaine, 15 posts au plus par passage. Rien n'est publié ni modifié, aucune autorisation nouvelle n'est demandée.
+
+- Facebook : réactions, commentaires, partages (autorisation `pages_read_engagement` déjà accordée).
+- Instagram : « j'aime » et commentaires (`instagram_basic`).
+- Google Business Profile, TikTok, Snapchat : « non disponible » (pas de statistiques par post avec les accès actuels), jamais compté zéro.
+- Portée et impressions demanderaient les autorisations Meta `read_insights` et `instagram_manage_insights` (revue Meta) : non demandées.
+
+Les relevés (`publication_delivery_stats`, migration `20261215000000`) sont lus par le point de situation de l'agent Publications et par le Rapport (interactions par réseau, post le plus suivi).

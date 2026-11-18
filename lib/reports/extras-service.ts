@@ -4,7 +4,7 @@ import "server-only";
 // le rapport se génère sans elle, jamais avec un chiffre inventé.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { emptyExtras, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter } from "@/lib/reports/insights";
+import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter } from "@/lib/reports/insights";
 
 type Result<T> = { data: T[] | null; error: unknown };
 const TIMEOUT = 12_000;
@@ -23,8 +23,8 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
       .lte("period_end", period.end).gte("period_end", period.start).order("period_end", { ascending: false }).limit(1).abortSignal(AbortSignal.timeout(TIMEOUT))),
     read<ReportLighthouse>(db.from("performance_audits").select("strategy,url,analyzed_at,scores,field").eq("client_id", clientId)
       .gte("analyzed_at", `${shift(period.start, -7)}T00:00:00Z`).lt("analyzed_at", to).order("analyzed_at", { ascending: false }).limit(20).abortSignal(AbortSignal.timeout(TIMEOUT))),
-    read<{ platform: string; published_at: string | null; publication: { subject: string | null } | { subject: string | null }[] | null }>(db.from("publication_deliveries")
-      .select("platform,published_at,publication:publications(subject)").eq("client_id", clientId).eq("status", "published")
+    read<{ id: string; platform: string; published_at: string | null; publication: { subject: string | null } | { subject: string | null }[] | null }>(db.from("publication_deliveries")
+      .select("id,platform,published_at,publication:publications(subject)").eq("client_id", clientId).eq("status", "published")
       .gte("published_at", from).lt("published_at", to).order("published_at").limit(500).abortSignal(AbortSignal.timeout(TIMEOUT))),
     // Articles de la période et des 90 jours précédents (leur audience GA4 est mise en regard).
     read<{ id: string; title: string; slug: string; published_at: string | null }>(db.from("blog_articles").select("id,title,slug,published_at").eq("client_id", clientId)
@@ -35,7 +35,16 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
   const extras = emptyExtras();
   extras.analytics = analytics?.[0] ? readReportAnalytics(analytics[0].data) : null;
   extras.lighthouse = audits ?? [];
-  extras.deliveries = (deliveries ?? []).flatMap((row): ReportDelivery[] => row.published_at ? [{ platform: row.platform, published_at: row.published_at, subject: (Array.isArray(row.publication) ? row.publication[0]?.subject : row.publication?.subject) ?? null }] : []);
+  // Statistiques des posts (lot 3) : table facultative, illisible → posts sans chiffres (jamais zéro).
+  const ids = (deliveries ?? []).map((row) => row.id).filter(Boolean);
+  const stats = ids.length ? await read<{ delivery_id: string; status: string; metrics: unknown }>(db.from("publication_delivery_stats").select("delivery_id,status,metrics").in("delivery_id", ids.slice(0, 500)).abortSignal(AbortSignal.timeout(TIMEOUT))) : null;
+  const statsBy = new Map((stats ?? []).map((row) => [row.delivery_id, row]));
+  extras.deliveries = (deliveries ?? []).flatMap((row): ReportDelivery[] => {
+    if (!row.published_at) return [];
+    const s = statsBy.get(row.id);
+    return [{ platform: row.platform, published_at: row.published_at, subject: (Array.isArray(row.publication) ? row.publication[0]?.subject : row.publication?.subject) ?? null,
+      stats: s?.status === "ok" ? readPostStats(s.metrics) : null, statsStatus: s?.status ?? null }];
+  });
   extras.newsletters = (newsletters ?? []).flatMap((row): ReportNewsletter[] => row.sent_at ? [{ subject: row.subject, sent_at: row.sent_at, sent_count: row.sent_count ?? 0 }] : []);
   const published = (articles ?? []).filter((row) => row.published_at);
   // Requête visée : conservée au journal par l'Agent Blog (blog_agent.article_written), sans colonne dédiée.

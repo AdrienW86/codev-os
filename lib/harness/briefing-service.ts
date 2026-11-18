@@ -9,7 +9,7 @@ import { loadTeam } from "./team-service";
 import {
   blogSignals, buildAgentBriefing, coherenceSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
-  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
+  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
@@ -54,9 +54,15 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
       .limit(500).abortSignal(AbortSignal.timeout(TIMEOUT)))),
   report: async ({ db, clientId, now, since }) => reportSignals(await rows<ReportRow>(
     scoped(db.from("reports").select("status,kind,created_at").gte("created_at", since(60)), clientId).order("created_at", { ascending: false }).limit(300).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
-  publications: async ({ db, clientId, now, since }) => publicationsSignals(await rows<DeliveryRow>(
-    scoped(db.from("publication_deliveries").select("platform,status,scheduled_for,published_at").gte("scheduled_for", since(30)), clientId)
-      .order("scheduled_for", { ascending: false }).limit(1000).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
+  publications: async ({ db, clientId, now, since }) => {
+    const [deliveries, stats] = await Promise.all([
+      rows<DeliveryRow>(scoped(db.from("publication_deliveries").select("platform,status,scheduled_for,published_at").gte("scheduled_for", since(30)), clientId)
+        .order("scheduled_for", { ascending: false }).limit(1000).abortSignal(AbortSignal.timeout(TIMEOUT))),
+      optionalRows<PostStatsRow>(scoped(db.from("publication_delivery_stats").select("platform,status,metrics,fetched_at").gte("fetched_at", since(30)), clientId)
+        .limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null),
+    ]);
+    return publicationsSignals(deliveries, now, stats);
+  },
   "publication-photo": async ({ db, clientId, now, since }) => photoSignals(await optionalRows<GeneratedImageRow>(
     scoped(db.from("publication_generated_images").select("status,created_at,decided_at").or(`status.eq.pending_review,created_at.gte.${since(30)}`), clientId)
       .order("created_at", { ascending: false }).limit(500).abortSignal(AbortSignal.timeout(TIMEOUT))), now),

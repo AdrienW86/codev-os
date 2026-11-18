@@ -22,17 +22,18 @@ const AUDIT_TIMEOUT_MS = 55_000;
 
 export type LighthouseTickSummary = { disabled?: true; outside_window?: 1; audited: number; failed: number; pending: number; alerts: number; resolved: number };
 
-export async function runLighthouseTick(now = new Date()): Promise<LighthouseTickSummary> {
+/** options.clientId : lancement manuel par l'administrateur pour ce client seulement, hors fenêtre de nuit et sans attendre l'échéance. */
+export async function runLighthouseTick(now = new Date(), options: { clientId?: string } = {}): Promise<LighthouseTickSummary> {
   const summary: LighthouseTickSummary = { audited: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 };
   if (!engineConfig().ok) return { ...summary, disabled: true };
-  if (!inAuditWindow(now)) return { ...summary, outside_window: 1 };
+  if (!options.clientId && !inAuditWindow(now)) return { ...summary, outside_window: 1 };
   const agent = await getAgentByType("monitoring");
   if (!agent || !agent.enabled || agent.status !== "Actif") return { ...summary, disabled: true };
 
   const db = getSupabaseServerClient();
   const { data: clients, error } = await db.from("clients").select("id,name,website").limit(500);
   if (error) throw new Error("clients read");
-  const sites = (clients ?? []).flatMap((client) => { const url = siteUrl(client.website); return url ? [{ id: client.id, name: client.name, url }] : []; });
+  const sites = (clients ?? []).filter((client) => !options.clientId || client.id === options.clientId).flatMap((client) => { const url = siteUrl(client.website); return url ? [{ id: client.id, name: client.name, url }] : []; });
   if (!sites.length) return summary;
   const ids = sites.map((site) => site.id);
   const since = new Date(now.getTime() - 8 * 86_400_000).toISOString();
@@ -46,7 +47,7 @@ export async function runLighthouseTick(now = new Date()): Promise<LighthouseTic
   for (const row of audits.data ?? []) if (row.client_id && !lastAudit.has(row.client_id)) lastAudit.set(row.client_id, row.analyzed_at);
   for (const row of failures.data ?? []) if (row.resource_id && !lastFailure.has(row.resource_id)) lastFailure.set(row.resource_id, row.created_at);
   const due = auditOrder(sites.map((site) => ({ ...site, lastAuditAt: lastAudit.get(site.id) ?? null, lastFailureAt: lastFailure.get(site.id) ?? null }))
-    .filter((site) => auditDue(site, now)));
+    .filter((site) => Boolean(options.clientId) || auditDue(site, now)));
   if (!due.length) return summary;
   // Un site par passage : le passage reste borné (pire cas ≈ 55 s) et les autres étapes ne sont pas retardées.
   const [site] = due;

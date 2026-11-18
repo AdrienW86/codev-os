@@ -223,6 +223,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         }));
         return (
           <>
+            <p className="mb-4 text-sm"><Link href={`/lancer?client=${client.id}`} className="font-medium text-accent hover:underline" data-launch-client="true">Lancer une action pour ce client →</Link></p>
             {teamPlan && <ClientTeamPanel plan={teamPlan} />}
             <ClientMemoryPanel clientId={client.id} facts={memoryFacts} />
             {register && <EditorialRegisterPanel entries={register} />}

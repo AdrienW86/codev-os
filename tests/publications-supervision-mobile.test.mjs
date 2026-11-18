@@ -167,10 +167,10 @@ test("page: one hub with sticky tabs and client filter; each view renders its se
   assert.match(agent.html, /data-agent-run="failed"/); assert.match(agent.html, /Génération en échec/); assert.match(agent.html, /data-suspend-client="true"/); assert.match(agent.html, /Prochaines tâches de l’agent/);
 });
 
-test("shortcuts: dashboard card, sidebar and mobile menu link to the supervision", () => {
+test("shortcuts: sidebar and mobile menu link to the supervision (the simplified home lists only crucial decisions)", () => {
   const nav = src("components/layout/navigation.tsx"), home = src("app/(cockpit)/dashboard/page.tsx");
-  assert.match(nav, /data-supervision-shortcut="sidebar"/); assert.match(nav, /data-supervision-shortcut=\{tab\.prefix === "\/publications\/supervision" \? "mobile" : undefined\}/, "téléphone : onglet « À traiter » de la barre du bas");
-  assert.match(home, /data-supervision-shortcut="dashboard"/); assert.match(home, /"\/publications\/supervision\?view=review"/);
+  assert.match(nav, /data-supervision-shortcut="sidebar"/); assert.match(nav, /\{ label: "Lancer", href: "\/lancer"/, "téléphone : la barre du bas mène au lancement manuel ; la supervision reste dans le menu");
+  assert.doesNotMatch(home, /AttentionCard/, "accueil simplifié : plus de cartes « À traiter »");
   for (const file of ["components/layout/navigation.tsx", "app/(cockpit)/dashboard/page.tsx", "components/publications/supervision-tabs.tsx", "components/publications/supervision-preview.tsx", "components/publications/supervision-review-card.tsx", "app/(cockpit)/publications/supervision/page.tsx"])
     assert.doesNotMatch(src(file), /#[0-9a-fA-F]{3,6}\b|rgb\(|(?:text|bg|border)-(?:red|amber|emerald|green|sky|blue|gray|slate)-\d/, file);
 });

@@ -104,13 +104,13 @@ test("buildWorkItems maps every source to a business section and an existing rou
 test("V2 navigation lists the daily-use entries and keeps legacy routes reachable", () => {
   const navigation = read("components/layout/navigation.tsx");
   const hrefs = [...navigation.matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
-  // 16 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
-  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/validation", "À valider"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/emailing", "Newsletters"], ["/analytics", "Données et performances"], ["/performance", "Audits de sites"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
+  // 17 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
+  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/validation", "À valider"], ["/lancer", "Lancer une action"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/emailing", "Newsletters"], ["/analytics", "Données et performances"], ["/performance", "Audits de sites"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
   assert.deepEqual([...navigation.matchAll(/group: "([^"]+)"/g)].map((m) => m[1]).filter((g, i, all) => all.indexOf(g) === i), ["Pilotage", "Clients", "Contenus", "Performance", "Système"]);
-  // Téléphone : barre d'onglets fixe (Accueil, Clients, Calendrier, À traiter, Menu) au-dessus de laquelle restent le
+  // Téléphone : barre d'onglets fixe (Accueil, Clients, Calendrier, Lancer, Menu) au-dessus de laquelle restent le
   // Directeur IA et les messages ; le contenu garde une marge basse pour ne jamais passer dessous.
   assert.match(navigation, /export function MobileTabBar/);
-  assert.deepEqual([...navigation.matchAll(/\{ label: "([^"]+)", href: "([^"]+)", icon: "[a-z]+", prefix:/g)].map((m) => m[1]), ["Accueil", "Clients", "Calendrier", "À traiter"]);
+  assert.deepEqual([...navigation.matchAll(/\{ label: "([^"]+)", href: "([^"]+)", icon: "[a-z]+", prefix:/g)].map((m) => m[1]), ["Accueil", "Clients", "Calendrier", "Lancer"]);
   const layout = read("app/(cockpit)/layout.tsx");
   assert.match(layout, /<MobileTabBar \/>/); assert.match(layout, /pb-28 sm:px-8 sm:pt-10 lg:pb-10/);
   assert.match(read("components/assistant/persistent-voice-director.tsx"), /bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\]/);

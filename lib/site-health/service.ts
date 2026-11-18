@@ -27,10 +27,11 @@ const missingTable = (error: unknown) => { const e = error as { code?: string; m
 
 export type SiteHealthSummary = { disabled?: "agent" | "migration"; outside_window?: 1; checked: number; failed: number; pending: number; alerts: number; resolved: number };
 
-export async function runSiteHealthTick(now = new Date()): Promise<SiteHealthSummary> {
+/** options.clientId : lancement manuel pour ce client seulement, hors fenêtre de nuit et sans attendre l'échéance. */
+export async function runSiteHealthTick(now = new Date(), options: { clientId?: string } = {}): Promise<SiteHealthSummary> {
   const summary: SiteHealthSummary = { checked: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 };
   // La nuit (1 h – 6 h, heure de Paris), comme l'audit Lighthouse : aucune charge sur les sites en journée.
-  if (!inAuditWindow(now)) return { ...summary, outside_window: 1 };
+  if (!options.clientId && !inAuditWindow(now)) return { ...summary, outside_window: 1 };
   const agent = await getAgentByType("monitoring");
   if (!agent || !agent.enabled || agent.status !== "Actif") return { ...summary, disabled: "agent" };
   const db = getSupabaseServerClient() as unknown as SupabaseClient;
@@ -39,13 +40,13 @@ export async function runSiteHealthTick(now = new Date()): Promise<SiteHealthSum
   if (last.error) { if (missingTable(last.error)) return { ...summary, disabled: "migration" }; throw new Error("site health read"); }
   const { data: clients, error } = await db.from("clients").select("id,name,website").limit(500);
   if (error) throw new Error("clients read");
-  const sites = ((clients ?? []) as { id: string; name: string; website: string | null }[]).flatMap((client) => { const url = siteUrl(client.website); return url ? [{ id: client.id, name: client.name, url }] : []; });
+  const sites = ((clients ?? []) as { id: string; name: string; website: string | null }[]).filter((client) => !options.clientId || client.id === options.clientId).flatMap((client) => { const url = siteUrl(client.website); return url ? [{ id: client.id, name: client.name, url }] : []; });
   if (!sites.length) return summary;
   const failures = await db.from("audit_logs").select("resource_id,created_at").eq("action", FAILURE_ACTION).eq("resource_type", "client").gte("created_at", since).order("created_at", { ascending: false }).limit(500);
   const lastCheck = new Map<string, string>(), lastFailure = new Map<string, string>();
   for (const row of (last.data ?? []) as { client_id: string; checked_at: string }[]) if (!lastCheck.has(row.client_id)) lastCheck.set(row.client_id, row.checked_at);
   for (const row of (failures.data ?? []) as { resource_id: string | null; created_at: string }[]) if (row.resource_id && !lastFailure.has(row.resource_id)) lastFailure.set(row.resource_id, row.created_at);
-  const due = sites.filter((site) => healthDue({ lastCheckAt: lastCheck.get(site.id) ?? null, lastFailureAt: lastFailure.get(site.id) ?? null }, now))
+  const due = sites.filter((site) => Boolean(options.clientId) || healthDue({ lastCheckAt: lastCheck.get(site.id) ?? null, lastFailureAt: lastFailure.get(site.id) ?? null }, now))
     .sort((a, b) => (lastCheck.get(a.id) ?? "").localeCompare(lastCheck.get(b.id) ?? ""));
   if (!due.length) return summary;
   const [site] = due;

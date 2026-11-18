@@ -12,6 +12,7 @@ const navigation: { href: string; label: string; icon: IconName; group: NavGroup
   { href: "/dashboard", label: "Accueil", icon: "home", group: "Pilotage" },
   { href: "/agenda", label: "Agenda", icon: "calendar", group: "Pilotage" },
   { href: "/validation", label: "À valider", icon: "check", group: "Pilotage" },
+  { href: "/lancer", label: "Lancer une action", icon: "send", group: "Pilotage" },
   { href: "/work", label: "Travail", icon: "work", group: "Pilotage", matches: ["/tasks", "/recommendations", "/actions"] },
   { href: "/clients", label: "Clients", icon: "clients", group: "Clients", matches: ["/projects"] },
   { href: "/acquisition", label: "Acquisition", icon: "clients", group: "Clients" },
@@ -129,7 +130,7 @@ const tabs: { href: string; label: string; icon: IconName; prefix: string }[] = 
   { label: "Accueil", href: "/dashboard", icon: "home", prefix: "/dashboard" },
   { label: "Clients", href: "/clients", icon: "clients", prefix: "/clients" },
   { label: "Calendrier", href: "/publications/published", icon: "calendar", prefix: "/publications/published" },
-  { label: "À traiter", href: "/publications/supervision", icon: "check", prefix: "/publications/supervision" },
+  { label: "Lancer", href: "/lancer", icon: "send", prefix: "/lancer" },
 ];
 export function MobileTabBar() {
   const pathname = usePathname();
@@ -143,7 +144,7 @@ export function MobileTabBar() {
     <nav aria-label="Navigation rapide" data-mobile-tabbar className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
       {tabs.map((tab) => {
         const active = within(pathname, tab.prefix);
-        return <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} data-supervision-shortcut={tab.prefix === "/publications/supervision" ? "mobile" : undefined} className={`${item} ${active ? "font-semibold text-accent-hover" : "text-muted"}`}>
+        return <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} className={`${item} ${active ? "font-semibold text-accent-hover" : "text-muted"}`}>
           <Icon name={tab.icon} width={20} height={20} />{tab.label}</Link>;
       })}
       <button type="button" onClick={openMenu} className={`${item} text-muted`} aria-controls="mobile-menu"><Icon name="menu" width={20} height={20} />Menu</button>

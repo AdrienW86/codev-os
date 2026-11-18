@@ -92,7 +92,8 @@ test("UX-only pieces perform no writes and no network calls", () => {
     assert.doesNotMatch(source, /fetch\(|@\/app\/|createClientService|supabase|useActionState/i, path);
   }
   const home = read("app/(cockpit)/dashboard/page.tsx");
-  assert.match(home, /\.filter\(\(card\) => card\.count > 0\)/);
-  assert.match(home, /Rien à traiter pour le moment\./);
+  // Accueil simplifié : 3 blocs, décisions cruciales seulement, jamais de carte vide.
+  assert.match(home, /<DecisionsBlock[\s\S]*<ActivityBlock[\s\S]*<TeamBlock/);
+  assert.match(read("components/dashboard/overview-blocks.tsx"), /Rien ne vous attend\./);
   assert.match(read("app/(cockpit)/agents/page.tsx"), /await requireAdmin\(\);/);
 });

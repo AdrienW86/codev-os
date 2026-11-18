@@ -68,10 +68,12 @@ export async function runJourneys({ base, shots, resetData, cronSecret, apiKey }
       }
     }
 
-    await journey("accueil réel : points d’attention et veille de repli", async () => {
+    await journey("accueil réel : décisions cruciales, activité de l’agence, état des agents", async () => {
       await go("/dashboard");
       await page.getByRole("heading", { name: /Bonjour/ }).waitFor();
-      await page.getByText(/tâche[s]? prioritaire|en retard/i).first().waitFor();
+      await page.getByRole("heading", { name: "Vos décisions" }).waitFor();
+      await page.getByRole("heading", { name: /Ce que l’agence a fait/ }).waitFor();
+      await page.getByRole("heading", { name: "État des agents" }).waitFor();
       await shot("dashboard");
     });
 

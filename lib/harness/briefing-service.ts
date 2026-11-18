@@ -7,9 +7,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, coherenceSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
+  blogSignals, buildAgentBriefing, coherenceSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
-  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type HealthRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
+  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
@@ -79,7 +79,15 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
   "media-library": async ({ db, clientId, now, since }) => countSignals((await rows<{ created_at: string }>(
     scoped(db.from("whatsapp_assets").select("created_at").gte("created_at", since(30)), clientId).limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT)))).map((row) => ({ at: row.created_at })),
   now, { one: "photo reçue", many: "photos reçues", empty: "Aucune photo reçue sur 30 jours." }),
-  seo: snapshots(["search-console", "google-analytics", "pagespeed"]),
+  seo: async (ctx) => {
+    const [base, local] = await Promise.all([
+      snapshots(["search-console", "google-analytics", "pagespeed"])(ctx),
+      optionalRows<LocalRow>(scoped(ctx.db.from("local_seo_snapshots").select("location_title,metrics,reviews,fetched_at").gte("fetched_at", ctx.since(30)), ctx.clientId)
+        .order("fetched_at", { ascending: false }).limit(20).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null),
+    ]);
+    const extra = localSignals(local);
+    return { facts: [...base.facts, ...extra.facts], gaps: [...base.gaps, ...extra.gaps] };
+  },
   monitoring: async ({ db, clientId, now, since }) => {
     const [checks, audits, health] = await Promise.all([
       rows<SiteCheckRow>(scoped(db.from("site_checks").select("ok,checked_at").gte("checked_at", since(7)), clientId).limit(5000).abortSignal(AbortSignal.timeout(TIMEOUT))),

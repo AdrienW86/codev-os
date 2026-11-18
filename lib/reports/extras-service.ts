@@ -4,7 +4,7 @@ import "server-only";
 // le rapport se génère sans elle, jamais avec un chiffre inventé.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportSiteHealth } from "@/lib/reports/insights";
+import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportLocal, type ReportSiteHealth } from "@/lib/reports/insights";
 
 type Result<T> = { data: T[] | null; error: unknown };
 const TIMEOUT = 12_000;
@@ -37,6 +37,10 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
   const health = await read<ReportSiteHealth>(db.from("site_health_checks").select("checked_at,score,checks,findings").eq("client_id", clientId)
     .gte("checked_at", `${shift(period.start, -7)}T00:00:00Z`).lt("checked_at", to).order("checked_at", { ascending: false }).limit(1).abortSignal(AbortSignal.timeout(TIMEOUT)));
   extras.siteHealth = health?.[0] ?? null;
+  // Fiches Google Business Profile (lot 6) : dernier relevé de chaque fiche, clos avant la fin de la période.
+  const locals = await read<ReportLocal & { location_name: string }>(db.from("local_seo_snapshots").select("location_name,location_title,period_start,period_end,metrics,previous_metrics,keywords,reviews").eq("client_id", clientId)
+    .lte("period_end", period.end).gte("period_end", shift(period.start, -10)).order("period_end", { ascending: false }).limit(10).abortSignal(AbortSignal.timeout(TIMEOUT)));
+  extras.local = locals ? locals.filter((row, index, all) => all.findIndex((other) => other.location_name === row.location_name) === index) : null;
   extras.analytics = analytics?.[0] ? readReportAnalytics(analytics[0].data) : null;
   extras.lighthouse = audits ?? [];
   // Statistiques des posts (lot 3) : table facultative, illisible → posts sans chiffres (jamais zéro).

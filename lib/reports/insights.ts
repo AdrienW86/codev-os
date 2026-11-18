@@ -25,8 +25,11 @@ export type ReportAds = { cost: number; conversions: number | null; clicks: numb
 
 /** Contrôle de santé technique (lot 5) : état des contrôles et constats, tels qu'archivés. */
 export type ReportSiteHealth = { checked_at: string; score: number; checks: unknown; findings: unknown };
+/** Fiche Google Business Profile (lot 6) : dernier relevé, tel qu'archivé. */
+export type ReportLocal = { location_title: string | null; period_start: string; period_end: string; metrics: unknown; previous_metrics: unknown; keywords: unknown; reviews: unknown };
 export type ReportExtras = {
   siteHealth?: ReportSiteHealth | null;
+  local?: ReportLocal[] | null;
   analytics: ReportAnalytics | null;
   lighthouse: ReportLighthouse[];
   deliveries: ReportDelivery[];
@@ -34,7 +37,7 @@ export type ReportExtras = {
   newsletters: ReportNewsletter[];
 };
 
-export const emptyExtras = (): ReportExtras => ({ siteHealth: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
+export const emptyExtras = (): ReportExtras => ({ siteHealth: null, local: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
 
 const num = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const rec = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -215,7 +218,10 @@ export function crossReadings(input: { period: Period; extras: ReportExtras; ads
   }
   const gbp = posted.filter((row) => row.platform === "google_business_profile");
   const maps = ga ? ga.channels.find((row) => row.key === "Organic Maps") : null;
-  if (gbp.length && maps) lines.push(`Google Business Profile : ${plural(gbp.length, "post", "posts")} sur la période, ${plural(maps.sessions, "visite", "visites")} venues de Google Maps sur les 30 jours au ${frDay(ga!.period.end)}. Rapprochement sans lien de cause établi ; les appels et itinéraires de la fiche ne sont pas encore récupérés.`);
+  const local = (extras.local ?? [])[0];
+  const actions = local ? ["calls", "websiteClicks", "directions"].map((key) => metric(local.metrics, key)) : [];
+  if (gbp.length && local && actions.some((v) => v !== null)) lines.push(`Google Business Profile : ${plural(gbp.length, "post", "posts")} sur la période, à mettre en regard de ${nf(actions[0] ?? 0)} appels, ${nf(actions[1] ?? 0)} clics vers le site et ${nf(actions[2] ?? 0)} demandes d’itinéraire depuis la fiche du ${frDay(local.period_start)} au ${frDay(local.period_end)}. Rapprochement sans lien de cause établi.`);
+  else if (gbp.length && maps) lines.push(`Google Business Profile : ${plural(gbp.length, "post", "posts")} sur la période, ${plural(maps.sessions, "visite", "visites")} venues de Google Maps sur les 30 jours au ${frDay(ga!.period.end)}. Rapprochement sans lien de cause établi ; les appels et itinéraires de la fiche ne sont pas encore récupérés.`);
   const articles = extras.articles.filter((row) => inPeriod(row.published_at, period) || row.published_at.slice(0, 10) <= period.end);
   if (ga && ga.landingPages.length && articles.length) {
     const sessions = (slug: string) => ga.landingPages.filter((row) => pathOf(row.key).endsWith(`/${slug}`)).reduce((acc, row) => ({ sessions: acc.sessions + row.sessions, organic: acc.organic + (row.channel === "Organic Search" ? row.sessions : 0), keyEvents: acc.keyEvents + row.keyEvents }), { sessions: 0, organic: 0, keyEvents: 0 });
@@ -242,6 +248,27 @@ export function crossReadings(input: { period: Period; extras: ReportExtras; ads
 }
 
 /** Priorités tirées des nouvelles sources (même format que reportPriorities). */
+const metric = (value: unknown, key: string) => { const v = rec(value)[key]; return num(v) ? v : null; };
+/** Fiche Google : vues, appels, clics vers le site, itinéraires (28 jours, évolution), avis et recherches principales. */
+export function localLines(locals: readonly ReportLocal[] | null | undefined): string[] {
+  const lines: string[] = [];
+  for (const local of (locals ?? []).slice(0, 3)) {
+    const name = local.location_title ? ` « ${clean(local.location_title, 60)} »` : "";
+    const span = `du ${frDay(local.period_start)} au ${frDay(local.period_end)}`;
+    const m = local.metrics, p = local.previous_metrics;
+    const parts = ([["vues sur Google Maps", "impressionsMaps"], ["vues dans la recherche Google", "impressionsSearch"], ["appels", "calls"], ["clics vers le site", "websiteClicks"], ["demandes d’itinéraire", "directions"]] as const)
+      .flatMap(([label, key]) => { const now = metric(m, key); if (now === null) return []; const before = metric(p, key); return [`${nf(now)} ${label}${before !== null ? change(now, before) : ""}`]; });
+    if (parts.length) lines.push(`Fiche Google${name} ${span} : ${parts.join(", ")}.`);
+    const reviews = rec(local.reviews);
+    const recent = Array.isArray(reviews.recent) ? reviews.recent.map(rec) : [];
+    const unanswered = recent.filter((r) => r.replied === false && typeof r.at === "string" && r.at.slice(0, 10) >= local.period_start).length;
+    if (num(reviews.total) || num(reviews.average)) lines.push(`Avis Google${name} : ${num(reviews.average) ? `note moyenne ${nf(reviews.average, 1)}/5` : "note moyenne non communiquée"}${num(reviews.total) ? ` sur ${plural(reviews.total, "avis", "avis")}` : ""}${recent.length ? `, ${plural(recent.filter((r) => typeof r.at === "string" && r.at.slice(0, 10) >= local.period_start).length, "nouvel avis", "nouveaux avis")} sur la période` : ""}${unanswered ? `, ${plural(unanswered, "sans réponse", "sans réponse")}` : ""}.`);
+    const keywords = Array.isArray(local.keywords) ? local.keywords.map(rec).filter((k) => typeof k.keyword === "string").slice(0, 5) : [];
+    if (keywords.length) lines.push(`Recherches qui ont affiché la fiche (mois précédent) : ${keywords.map((k) => `« ${clean(String(k.keyword), 40)} » (${num(k.impressions) ? nf(k.impressions) : num(k.threshold) ? `moins de ${nf(k.threshold)}` : "volume masqué"})`).join(", ")}.`);
+  }
+  return lines;
+}
+
 type HealthCheckLine = { key: string; label: string; state: string; detail: string };
 type HealthFindingLine = { code: string; severity: string; title: string; detail: string };
 const healthChecks = (value: unknown): HealthCheckLine[] => Array.isArray(value) ? value.filter((row): row is HealthCheckLine => rec(row).label !== undefined && typeof rec(row).state === "string" && typeof rec(row).detail === "string").slice(0, 12) : [];
@@ -267,6 +294,10 @@ export function extrasPriorities(extras: ReportExtras): { rank: number; internal
   const mobile = latestAudits(extras.lighthouse).find((audit) => audit.strategy === "mobile");
   const scores = mobile ? readLighthouseScores(mobile.scores) : null;
   if (scores?.performance !== null && scores?.performance !== undefined && scores.performance < 50) out.push({ rank: 2, internal: `Lighthouse mobile : performance ${scores.performance}/100 : images, scripts tiers et rendu bloquant à traiter.`, client: "Améliorer la vitesse du site sur mobile." });
+  for (const local of extras.local ?? []) {
+    const recent = Array.isArray(rec(local.reviews).recent) ? (rec(local.reviews).recent as unknown[]).map(rec) : [];
+    if (recent.some((r) => r.replied === false && num(r.rating) && r.rating <= 3)) { out.push({ rank: 1, internal: "Avis Google négatif sans réponse : préparer une réponse factuelle à valider.", client: "Répondre aux avis Google récents." }); break; }
+  }
   for (const finding of healthFindings(extras.siteHealth?.findings).filter((row) => row.severity === "critical" || row.severity === "high").slice(0, 2))
     out.push({ rank: finding.severity === "critical" ? 0 : 2, internal: `Santé technique : ${clean(finding.title, 90)}. ${clean(finding.detail, 160)}`, client: `Corriger : ${clean(finding.title, 90).toLowerCase()}.` });
   if (scores?.seo !== null && scores?.seo !== undefined && scores.seo < 80) out.push({ rank: 2, internal: `Lighthouse mobile : SEO ${scores.seo}/100 : balises, liens et indexabilité à corriger.`, client: "Corriger les points techniques de référencement du site." });

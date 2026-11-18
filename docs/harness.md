@@ -93,3 +93,13 @@ Les relevés (`publication_delivery_stats`, migration `20261215000000`) sont lus
 - indexation Google (inspection d'URL Search Console de la page d'accueil et de 4 pages du sitemap, si Search Console est reliée au client).
 
 Chaque contrôle donne « conforme », « à corriger » ou « non vérifié » ; un contrôle non vérifié n'est jamais conforme et ne ferme aucun incident. Les constats critiques, élevés et moyens ouvrent un incident dédoublonné (`site-health:<client>:<code>`) avec une recommandation ; ils se ferment seuls quand le contrôle repasse. Archivé dans `site_health_checks` (migration `20261216000000`), lu par le Rapport (section qualité et priorités) et le point de situation de l'Agent Monitoring.
+
+## Référencement local (lot 6)
+
+Étape `local_seo` (Agent SEO, `lib/local-seo/`), chaque semaine, deux fiches au plus par passage, pour chaque fiche Google Business Profile connectée (connexion Publications, autorisation `business.manage` déjà accordée) :
+
+- statistiques des 28 derniers jours et des 28 précédents (Business Profile Performance API) : vues Google Maps et recherche, appels, clics vers le site, demandes d'itinéraire ;
+- recherches qui ont affiché la fiche le mois précédent (volumes faibles masqués par Google : « moins de N ») ;
+- avis (note moyenne, total, 20 derniers avec leur état de réponse ; prénom seul et extrait court conservés).
+
+L'agent ne répond jamais à un avis : un avis de 3 étoiles ou moins sans réponse, plusieurs avis sans réponse ou une baisse de 30 % des actions sur la fiche ouvrent un incident avec une recommandation. Les leads Local Services restent lus par l'Agent Google Ads (tableau de bord Ads). Archivé dans `local_seo_snapshots` (migration `20261217000000`), lu par le Rapport (audience, lectures croisées avec les posts Google, priorités) et le point de situation de l'Agent SEO. À activer côté Google Cloud : l'API « Business Profile Performance API » du projet OAuth Google Business Profile.

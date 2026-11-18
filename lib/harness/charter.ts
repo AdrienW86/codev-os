@@ -132,9 +132,9 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "monitoring", name: "Agent Monitoring", team: "site", expertise: "Ingénieur fiabilité (SRE)", registryType: "monitoring",
     mission: "Surveiller la disponibilité, le temps de réponse et la santé technique des sites suivis.",
-    does: ["Contrôles HTTP", "Audit technique et SEO de la page d’accueil", "Audit Lighthouse hebdomadaire (performance, accessibilité, bonnes pratiques, SEO)", "Incidents dédupliqués"],
+    does: ["Contrôles HTTP", "Audit technique et SEO de la page d’accueil", "Audit Lighthouse hebdomadaire (performance, accessibilité, bonnes pratiques, SEO)", "Santé technique hebdomadaire : certificat, nom de domaine, DNS, robots.txt, sitemap, pages en erreur, Core Web Vitals réels, indexation Google", "Incidents dédupliqués"],
     never: ["N’applique aucune correction", "N’alerte jamais sans preuve mesurée"],
-    triggers: [{ kind: "run", runType: "monitoring.check_sites" }, { kind: "step", step: "lighthouse" }], clientSettings: "Fiche client → services Maintenance / Site web (audit Lighthouse : tout client avec un site)",
+    triggers: [{ kind: "run", runType: "monitoring.check_sites" }, { kind: "step", step: "lighthouse" }, { kind: "step", step: "site_health" }], clientSettings: "Fiche client → services Maintenance / Site web (audit Lighthouse et santé technique : tout client avec un site)",
   },
   {
     id: "google-ads", name: "Agent Google Ads", team: "publicite", expertise: "Consultant SEA certifié Google Ads", registryType: "google-ads",

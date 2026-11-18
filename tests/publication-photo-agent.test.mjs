@@ -68,7 +68,7 @@ test("charters: Writer, Photo and Check agents have separate roles; generated im
   assert.deepEqual(plain(writer.triggers), [{ kind: "step", step: "publication_preparation" }]);
   assert.deepEqual(plain(photo.triggers), [{ kind: "step", step: "publication_photo" }]);
   assert.match(photo.never.join(" "), /sans la validation explicite de l’administrateur/);
-  assert.deepEqual(plain(check.triggers.map((t) => t.step)), ["publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send"]);
+  assert.deepEqual(plain(check.triggers.map((t) => t.step)), ["publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "publication_stats"]);
   const steps = readFileSync("lib/scheduler/heartbeat.ts", "utf8");
   assert.ok(steps.indexOf('"publication_photo"') > steps.indexOf('"publication_preparation"'), "photo step runs after preparation");
   const models = readFileSync("lib/ai/models.ts", "utf8");

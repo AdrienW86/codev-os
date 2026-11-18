@@ -77,7 +77,10 @@ const byPlatform = (rows: readonly { platform: string }[]) => {
 };
 
 export type DeliveryRow = { platform: string; status: string; scheduled_for: string; published_at: string | null };
-export function publicationsSignals(rows: readonly DeliveryRow[], now: Date): BriefingSignals {
+export type PostStatsRow = { platform: string; status: string; metrics: unknown; fetched_at: string };
+const statCount = (value: unknown) => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0);
+/** stats : relevés des posts (lot 3) ; undefined ou null = relevé non installé ou illisible (manque, jamais zéro). */
+export function publicationsSignals(rows: readonly DeliveryRow[], now: Date, stats?: readonly PostStatsRow[] | null): BriefingSignals {
   const published = rows.filter((row) => row.status === "published" && withinDays(row.published_at ?? row.scheduled_for, now, 30));
   const upcoming = rows.filter((row) => row.status === "scheduled" && Date.parse(row.scheduled_for) >= now.getTime() && Date.parse(row.scheduled_for) - now.getTime() <= 14 * DAY);
   const failing = rows.filter((row) => ["failed", "blocked", "uncertain", "retryable_error"].includes(row.status) && withinDays(row.scheduled_for, now, 30));
@@ -87,7 +90,20 @@ export function publicationsSignals(rows: readonly DeliveryRow[], now: Date): Br
   if (failing.length) facts.push({ statement: `${plural(failing.length, "diffusion en échec ou bloquée", "diffusions en échec ou bloquées")} sur 30 jours (${byPlatform(failing)}).`, at: latest(failing.map((row) => row.scheduled_for)), href: "/publications" });
   const gaps: string[] = [];
   if (!upcoming.length) gaps.push("Aucune diffusion programmée dans les 14 prochains jours.");
-  gaps.push("Statistiques des publications (portée, interactions, clics) non récupérées.");
+  if (!stats) gaps.push("Statistiques des publications (portée, interactions, clics) non récupérées.");
+  else {
+    const ok = stats.filter((row) => row.status === "ok" && withinDays(row.fetched_at, now, 30));
+    const networks = [...new Set(ok.map((row) => row.platform))].sort();
+    if (networks.length) facts.push({ statement: `Interactions relevées (30 jours) : ${networks.map((key) => {
+      const own = ok.filter((row) => row.platform === key);
+      const total = own.reduce((sum, row) => { const m = (row.metrics ?? {}) as Record<string, unknown>; return sum + statCount(m.reactions ?? m.likes) + statCount(m.comments) + statCount(m.shares); }, 0);
+      return `${platformName(key)} ${total} sur ${plural(own.length, "post", "posts")}`;
+    }).join(", ")}.`, at: latest(ok.map((row) => row.fetched_at)), href: "/publications" });
+    const unsupported = [...new Set(stats.filter((row) => row.status === "unsupported").map((row) => platformName(row.platform)))].sort();
+    if (unsupported.length) gaps.push(`Pas de statistiques par post fournies par ${unsupported.join(", ")} avec les accès actuels.`);
+    if (stats.some((row) => row.status === "error" && withinDays(row.fetched_at, now, 7))) gaps.push("Certains relevés de statistiques ont échoué cette semaine (connexion ou autorisation à vérifier).");
+    gaps.push("Portée et impressions non relevées (autorisations Meta de statistiques non demandées).");
+  }
   return { facts, gaps };
 }
 

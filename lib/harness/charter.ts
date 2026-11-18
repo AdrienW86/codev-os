@@ -89,9 +89,9 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "publication-check", name: "Agent Contrôle et diffusion", team: "contenu", expertise: "Responsable qualité éditoriale",
     mission: "Vérifier avant la validation automatique que le texte et l’image de chaque publication vont ensemble, puis diffuser à l’échéance les publications validées.",
-    does: ["Contrôle de cohérence texte / image (vision) avant validation automatique", "Validation automatique des publications conformes, pour les clients qui l’ont choisie", "Préparation et envoi aux réseaux à l’échéance"],
+    does: ["Contrôle de cohérence texte / image (vision) avant validation automatique", "Validation automatique des publications conformes, pour les clients qui l’ont choisie", "Préparation et envoi aux réseaux à l’échéance", "Relevé des statistiques des posts diffusés (lecture seule, 30 jours)"],
     never: ["Ne valide jamais automatiquement une publication dont le contrôle a échoué ou n’a pas pu tourner", "Ne modifie aucun texte ni aucune image", "Ne publie rien qui n’ait été validé (manuellement ou par la règle choisie pour ce client)"],
-    triggers: [{ kind: "step", step: "publication_auto_approval" }, { kind: "step", step: "publication_delivery_prepare" }, { kind: "step", step: "publication_delivery_send" }],
+    triggers: [{ kind: "step", step: "publication_auto_approval" }, { kind: "step", step: "publication_delivery_prepare" }, { kind: "step", step: "publication_delivery_send" }, { kind: "step", step: "publication_stats" }],
     clientSettings: "Publications → configuration du client (validation automatique)",
   },
   {

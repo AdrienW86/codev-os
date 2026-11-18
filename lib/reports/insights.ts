@@ -16,7 +16,9 @@ export type ReportAnalytics = {
   thresholded: boolean;
 };
 export type ReportLighthouse = { strategy: string; url: string; analyzed_at: string; scores: unknown; field: unknown };
-export type ReportDelivery = { platform: string; published_at: string; subject: string | null };
+export type ReportPostStats = { reactions?: number; likes?: number; comments?: number; shares?: number };
+/** stats : dernier relevé chez le réseau (lot 3) ; statsStatus « unsupported » = le réseau ne fournit rien, jamais zéro. */
+export type ReportDelivery = { platform: string; published_at: string; subject: string | null; stats?: ReportPostStats | null; statsStatus?: string | null };
 export type ReportArticle = { title: string; slug: string; published_at: string; target_query: string | null };
 export type ReportNewsletter = { subject: string; sent_at: string; sent_count: number };
 export type ReportAds = { cost: number; conversions: number | null; clicks: number | null };
@@ -139,13 +141,44 @@ const byPlatform = (rows: readonly ReportDelivery[]) => {
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 };
 
-/** Publications réellement diffusées dans la période, par réseau, puis le détail daté. */
+/** Relevé stocké (publication_delivery_stats.metrics) → compteurs sûrs ; illisible → null. */
+export function readPostStats(value: unknown): ReportPostStats | null {
+  const v = rec(value);
+  const ok = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0 && x < 1e9;
+  const out: ReportPostStats = {};
+  for (const key of ["reactions", "likes", "comments", "shares"] as const) if (ok(v[key])) out[key] = v[key] as number;
+  return Object.keys(out).length ? out : null;
+}
+const postInteractions = (stats: ReportPostStats) => (stats.reactions ?? stats.likes ?? 0) + (stats.comments ?? 0) + (stats.shares ?? 0);
+
+/** Publications réellement diffusées dans la période, par réseau, leurs interactions relevées, puis le détail daté. */
 export function deliveryLines(deliveries: readonly ReportDelivery[], period: Period, detailed: boolean): string[] {
   const rows = deliveries.filter((row) => inPeriod(row.published_at, period)).sort((a, b) => a.published_at.localeCompare(b.published_at));
   if (!rows.length) return [];
   const lines = [`${plural(rows.length, "publication diffusée", "publications diffusées")} : ${byPlatform(rows).map(([key, n]) => `${platform(key)} ${n}`).join(", ")}.`];
-  if (detailed) for (const row of rows.slice(0, 40)) lines.push(`${frDay(row.published_at)} · ${platform(row.platform)} · ${row.subject ? clean(row.subject, 100) : "sans sujet"}`);
+  lines.push(...engagementLines(rows));
+  if (detailed) for (const row of rows.slice(0, 40)) lines.push(`${frDay(row.published_at)} · ${platform(row.platform)} · ${row.subject ? clean(row.subject, 100) : "sans sujet"}${row.stats ? ` · ${plural(postInteractions(row.stats), "interaction", "interactions")}` : ""}`);
   if (detailed && rows.length > 40) lines.push(`… et ${rows.length - 40} autres.`);
+  return lines;
+}
+
+/** Interactions relevées par réseau (réactions ou « j'aime », commentaires, partages) et réseaux sans statistiques. */
+export function engagementLines(rows: readonly ReportDelivery[]): string[] {
+  const lines: string[] = [];
+  const measured = rows.filter((row) => row.stats);
+  const networks = [...new Set(measured.map((row) => row.platform))].sort();
+  for (const key of networks) {
+    const own = measured.filter((row) => row.platform === key);
+    const sum = (field: keyof ReportPostStats) => own.some((row) => num(row.stats?.[field])) ? own.reduce((total, row) => total + (row.stats?.[field] ?? 0), 0) : null;
+    const parts = [["réactions", sum("reactions")], ["j’aime", sum("likes")], ["commentaires", sum("comments")], ["partages", sum("shares")]].filter((part): part is [string, number] => part[1] !== null);
+    const total = own.reduce((acc, row) => acc + postInteractions(row.stats!), 0);
+    const best = [...own].sort((a, b) => postInteractions(b.stats!) - postInteractions(a.stats!))[0];
+    lines.push(`${platform(key)} : ${plural(total, "interaction relevée", "interactions relevées")} sur ${plural(own.length, "post", "posts")} (${parts.map(([label, n]) => `${label} ${nf(n)}`).join(", ")}), soit ${nf(Math.round(total / own.length * 10) / 10, Number.isInteger(Math.round(total / own.length * 10) / 10) ? 0 : 1)} par post${best && postInteractions(best.stats!) > 0 ? ` ; le plus suivi : ${best.subject ? `« ${clean(best.subject, 70)} »` : "un post sans sujet"} (${nf(postInteractions(best.stats!))})` : ""}.`);
+  }
+  const unsupported = [...new Set(rows.filter((row) => !row.stats && row.statsStatus === "unsupported").map((row) => platform(row.platform)))].sort();
+  if (unsupported.length) lines.push(`Statistiques non fournies par ${unsupported.join(", ")} avec les accès actuels : aucun chiffre n’est affiché pour ces réseaux.`);
+  const pending = rows.filter((row) => !row.stats && row.statsStatus !== "unsupported" && row.platform !== "google_business_profile" && row.platform !== "tiktok" && row.platform !== "snapchat").length;
+  if (measured.length && pending) lines.push(`${plural(pending, "post sans relevé", "posts sans relevé")} pour le moment.`);
   return lines;
 }
 

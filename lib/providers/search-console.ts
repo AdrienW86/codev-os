@@ -66,3 +66,16 @@ export async function searchAnalytics(property: string, query: { startDate: stri
     return { keys: value.keys.map(String), clicks: value.clicks, impressions: value.impressions, ctr: Number(value.ctr ?? 0), position: Number(value.position ?? 0) };
   });
 }
+
+/**
+ * Inspection d'URL (index Google) d'une page de la propriété : verdict, état de couverture, robots, indexation.
+ * Lecture seule (quota Google : 2 000 inspections par jour et par propriété).
+ */
+export async function inspectUrl(property: string, inspectionUrl: string, options: Options = {}): Promise<unknown> {
+  if (!isValidProperty(property) || !/^https?:\/\//i.test(inspectionUrl) || inspectionUrl.length > 2000) throw new ProviderError("search-console", "blocked");
+  const token = await bearer(options);
+  return providerJson<unknown>("search-console", "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+    method: "POST", fetchImpl: options.fetchImpl, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ inspectionUrl, siteUrl: property, languageCode: "fr-FR" }),
+  });
+}

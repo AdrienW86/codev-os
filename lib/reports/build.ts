@@ -4,7 +4,7 @@
 // Fonctions pures : testables sans base ni réseau.
 
 import type { ReportKind } from "@/lib/supabase/core.types";
-import { analyticsLines, articleLines, crossReadings, deliveryLines, emptyExtras, extrasPriorities, lighthouseLines, newsletterLines, type ReportExtras } from "@/lib/reports/insights";
+import { analyticsLines, articleLines, crossReadings, deliveryLines, emptyExtras, extrasPriorities, lighthouseLines, newsletterLines, siteHealthLines, type ReportExtras } from "@/lib/reports/insights";
 
 /** Rapports récurrents (période close). Les rapports Google Ads ont leur propre construction (google-ads.ts). */
 export type RecurringReportKind = "weekly" | "monthly";
@@ -183,7 +183,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
 
   const extras = input.extras ?? emptyExtras();
   const audienceLines = analyticsLines(extras.analytics);
-  const qualityLines = lighthouseLines(extras.lighthouse);
+  const qualityLines = [...lighthouseLines(extras.lighthouse), ...siteHealthLines(extras.siteHealth)];
   const diffusedLines = deliveryLines(extras.deliveries, p, true);
   const diffusedCount = extras.deliveries.filter((row) => inPeriod(row.published_at, p)).length;
   const editorialLines = [...articleLines(extras.articles, p), ...newsletterLines(extras.newsletters, p)];

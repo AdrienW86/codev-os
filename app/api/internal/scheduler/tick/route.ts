@@ -21,6 +21,7 @@ import { runHarnessControl } from "@/lib/harness/control-service";
 import { runLighthouseTick } from "@/lib/performance/weekly";
 import { runPhotoAgentTick } from "@/lib/publications/photo-agent/service";
 import { collectPublicationStats } from "@/lib/publications/stats/service";
+import { runSiteHealthTick } from "@/lib/site-health/service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export const maxDuration = 300;
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000,
-  search_console: 60_000, google_analytics: 60_000, lighthouse: 70_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, publication_stats: 45_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
+  search_console: 60_000, google_analytics: 60_000, lighthouse: 70_000, site_health: 110_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, publication_stats: 45_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -107,9 +108,12 @@ async function handle(request: Request) {
   const acquisitionDiscovery = await step("acquisition_discovery", () => runAcquisitionDiscoveryTick({ deadline }), "Agent Prospection différé.");
   // Agent Vidéo, en dernier (rendu de 10 à 60 s) : au plus une vidéo par passage, rangée dans le Studio, jamais publiée.
   const videoAgent = await step("video_agent", () => runVideoAgentTick(new Date()), "Agent Vidéo différé.");
+  // Agent Monitoring, en tout dernier et la nuit seulement : santé technique hebdomadaire (certificat, domaine, DNS, sitemap,
+  // pages, indexation), un site par passage ; ne retarde jamais la préparation ni l'envoi des publications.
+  const siteHealth = await step("site_health", () => runSiteHealthTick(new Date()), "Contrôle de santé technique différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, lighthouse, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, lighthouse, siteHealth, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

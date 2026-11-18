@@ -9,7 +9,7 @@ import { loadTeam } from "./team-service";
 import {
   blogSignals, buildAgentBriefing, coherenceSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
-  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
+  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type HealthRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
@@ -81,11 +81,12 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
   now, { one: "photo reçue", many: "photos reçues", empty: "Aucune photo reçue sur 30 jours." }),
   seo: snapshots(["search-console", "google-analytics", "pagespeed"]),
   monitoring: async ({ db, clientId, now, since }) => {
-    const [checks, audits] = await Promise.all([
+    const [checks, audits, health] = await Promise.all([
       rows<SiteCheckRow>(scoped(db.from("site_checks").select("ok,checked_at").gte("checked_at", since(7)), clientId).limit(5000).abortSignal(AbortSignal.timeout(TIMEOUT))),
       rows<AuditRow>(scoped(db.from("performance_audits").select("strategy,scores,analyzed_at").gte("analyzed_at", since(30)), clientId).order("analyzed_at", { ascending: false }).limit(50).abortSignal(AbortSignal.timeout(TIMEOUT))),
+      optionalRows<HealthRow>(scoped(db.from("site_health_checks").select("score,findings,checked_at").gte("checked_at", since(30)), clientId).order("checked_at", { ascending: false }).limit(200).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null),
     ]);
-    return monitoringSignals(checks, audits, now);
+    return monitoringSignals(checks, audits, now, health);
   },
   "google-ads": snapshots(["google-ads"]),
   prospection: async ({ db, clientId, now, since }) => {

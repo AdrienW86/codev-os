@@ -23,7 +23,10 @@ export type ReportArticle = { title: string; slug: string; published_at: string;
 export type ReportNewsletter = { subject: string; sent_at: string; sent_count: number };
 export type ReportAds = { cost: number; conversions: number | null; clicks: number | null };
 
+/** Contrôle de santé technique (lot 5) : état des contrôles et constats, tels qu'archivés. */
+export type ReportSiteHealth = { checked_at: string; score: number; checks: unknown; findings: unknown };
 export type ReportExtras = {
+  siteHealth?: ReportSiteHealth | null;
   analytics: ReportAnalytics | null;
   lighthouse: ReportLighthouse[];
   deliveries: ReportDelivery[];
@@ -31,7 +34,7 @@ export type ReportExtras = {
   newsletters: ReportNewsletter[];
 };
 
-export const emptyExtras = (): ReportExtras => ({ analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
+export const emptyExtras = (): ReportExtras => ({ siteHealth: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
 
 const num = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const rec = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -239,6 +242,20 @@ export function crossReadings(input: { period: Period; extras: ReportExtras; ads
 }
 
 /** Priorités tirées des nouvelles sources (même format que reportPriorities). */
+type HealthCheckLine = { key: string; label: string; state: string; detail: string };
+type HealthFindingLine = { code: string; severity: string; title: string; detail: string };
+const healthChecks = (value: unknown): HealthCheckLine[] => Array.isArray(value) ? value.filter((row): row is HealthCheckLine => rec(row).label !== undefined && typeof rec(row).state === "string" && typeof rec(row).detail === "string").slice(0, 12) : [];
+const healthFindings = (value: unknown): HealthFindingLine[] => Array.isArray(value) ? value.filter((row): row is HealthFindingLine => typeof rec(row).title === "string" && typeof rec(row).severity === "string").slice(0, 20) : [];
+
+/** Santé technique du site : score, contrôles et constats datés. Un contrôle non vérifié est dit comme tel. */
+export function siteHealthLines(health: ReportSiteHealth | null | undefined): string[] {
+  if (!health || !num(health.score)) return [];
+  const checks = healthChecks(health.checks), findings = healthFindings(health.findings);
+  const lines = [`Santé technique du site (contrôle du ${frDay(health.checked_at)}) : ${health.score}/100${findings.length ? `, ${plural(findings.length, "point à corriger", "points à corriger")}` : ", aucun point à corriger"}.`];
+  for (const check of checks) lines.push(`${clean(check.label, 40)} : ${check.state === "unverified" ? "non vérifié" : check.state === "issue" ? "à corriger" : "conforme"} (${clean(check.detail, 140)})`);
+  return lines;
+}
+
 export function extrasPriorities(extras: ReportExtras): { rank: number; internal: string; client: string | null }[] {
   const out: { rank: number; internal: string; client: string | null }[] = [];
   const ga = extras.analytics;
@@ -250,6 +267,8 @@ export function extrasPriorities(extras: ReportExtras): { rank: number; internal
   const mobile = latestAudits(extras.lighthouse).find((audit) => audit.strategy === "mobile");
   const scores = mobile ? readLighthouseScores(mobile.scores) : null;
   if (scores?.performance !== null && scores?.performance !== undefined && scores.performance < 50) out.push({ rank: 2, internal: `Lighthouse mobile : performance ${scores.performance}/100 : images, scripts tiers et rendu bloquant à traiter.`, client: "Améliorer la vitesse du site sur mobile." });
+  for (const finding of healthFindings(extras.siteHealth?.findings).filter((row) => row.severity === "critical" || row.severity === "high").slice(0, 2))
+    out.push({ rank: finding.severity === "critical" ? 0 : 2, internal: `Santé technique : ${clean(finding.title, 90)}. ${clean(finding.detail, 160)}`, client: `Corriger : ${clean(finding.title, 90).toLowerCase()}.` });
   if (scores?.seo !== null && scores?.seo !== undefined && scores.seo < 80) out.push({ rank: 2, internal: `Lighthouse mobile : SEO ${scores.seo}/100 : balises, liens et indexabilité à corriger.`, client: "Corriger les points techniques de référencement du site." });
   return out;
 }

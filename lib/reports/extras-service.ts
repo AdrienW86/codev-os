@@ -4,7 +4,7 @@ import "server-only";
 // le rapport se génère sans elle, jamais avec un chiffre inventé.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter } from "@/lib/reports/insights";
+import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportSiteHealth } from "@/lib/reports/insights";
 
 type Result<T> = { data: T[] | null; error: unknown };
 const TIMEOUT = 12_000;
@@ -33,6 +33,10 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
       .eq("status", "sent").gte("sent_at", from).lt("sent_at", to).limit(50).abortSignal(AbortSignal.timeout(TIMEOUT))),
   ]);
   const extras = emptyExtras();
+  // Santé technique (lot 5) : dernier contrôle clos avant la fin de la période (table facultative).
+  const health = await read<ReportSiteHealth>(db.from("site_health_checks").select("checked_at,score,checks,findings").eq("client_id", clientId)
+    .gte("checked_at", `${shift(period.start, -7)}T00:00:00Z`).lt("checked_at", to).order("checked_at", { ascending: false }).limit(1).abortSignal(AbortSignal.timeout(TIMEOUT)));
+  extras.siteHealth = health?.[0] ?? null;
   extras.analytics = analytics?.[0] ? readReportAnalytics(analytics[0].data) : null;
   extras.lighthouse = audits ?? [];
   // Statistiques des posts (lot 3) : table facultative, illisible → posts sans chiffres (jamais zéro).

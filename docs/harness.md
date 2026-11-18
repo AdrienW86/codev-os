@@ -82,3 +82,14 @@ Migration `20261214000000_publication_photo_and_check_agents.sql` : sans elle, l
 - Portée et impressions demanderaient les autorisations Meta `read_insights` et `instagram_manage_insights` (revue Meta) : non demandées.
 
 Les relevés (`publication_delivery_stats`, migration `20261215000000`) sont lus par le point de situation de l'agent Publications et par le Rapport (interactions par réseau, post le plus suivi).
+
+## Santé technique des sites (lot 5)
+
+Étape `site_health` (Agent Monitoring, `lib/site-health/`), la nuit (1 h – 6 h, heure de Paris), en dernier dans le passage, un site dû par passage, chaque semaine :
+
+- certificat HTTPS (date d'expiration, domaine couvert), nom de domaine (expiration via RDAP), DNS (domaine, www, messagerie) ;
+- robots.txt (blocage total), sitemap (présence), échantillon de 20 pages du sitemap (erreurs, redirections) ;
+- Core Web Vitals réels (mesures Chrome relevées par le dernier audit Lighthouse mobile) ;
+- indexation Google (inspection d'URL Search Console de la page d'accueil et de 4 pages du sitemap, si Search Console est reliée au client).
+
+Chaque contrôle donne « conforme », « à corriger » ou « non vérifié » ; un contrôle non vérifié n'est jamais conforme et ne ferme aucun incident. Les constats critiques, élevés et moyens ouvrent un incident dédoublonné (`site-health:<client>:<code>`) avec une recommandation ; ils se ferment seuls quand le contrôle repasse. Archivé dans `site_health_checks` (migration `20261216000000`), lu par le Rapport (section qualité et priorités) et le point de situation de l'Agent Monitoring.

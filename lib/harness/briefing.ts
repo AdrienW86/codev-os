@@ -179,7 +179,9 @@ export function snapshotSignals(rows: readonly SnapshotRow[], providers: readonl
 
 export type SiteCheckRow = { ok: boolean; checked_at: string };
 export type AuditRow = { strategy: string; scores: unknown; analyzed_at: string };
-export function monitoringSignals(checks: readonly SiteCheckRow[], audits: readonly AuditRow[], now: Date): BriefingSignals {
+export type HealthRow = { score: number; findings: unknown; checked_at: string };
+/** health : contrôles de santé technique (lot 5) ; null = non installé. */
+export function monitoringSignals(checks: readonly SiteCheckRow[], audits: readonly AuditRow[], now: Date, health?: readonly HealthRow[] | null): BriefingSignals {
   const facts: BriefingFact[] = [];
   const gaps: string[] = [];
   const week = checks.filter((row) => withinDays(row.checked_at, now, 7));
@@ -195,6 +197,13 @@ export function monitoringSignals(checks: readonly SiteCheckRow[], audits: reado
     facts.push({ statement: `Dernier audit Lighthouse (${row.strategy === "desktop" ? "ordinateur" : "mobile"})${perf ? " :" + perf : ""}.`, at: lastAudit, href: "/performance" });
     if (!withinDays(lastAudit, now, 10)) gaps.push("Audit Lighthouse de plus de 10 jours.");
   } else gaps.push("Aucun audit Lighthouse enregistré.");
+  if (health) {
+    const recent = health.filter((row) => withinDays(row.checked_at, now, 10));
+    if (recent.length) {
+      const problems = recent.reduce((sum, row) => sum + (Array.isArray(row.findings) ? row.findings.filter((f) => f && typeof f === "object" && ["critical", "high"].includes(String((f as { severity?: unknown }).severity))).length : 0), 0);
+      facts.push({ statement: `Santé technique : ${plural(recent.length, "site contrôlé", "sites contrôlés")} (certificat, domaine, DNS, sitemap, indexation), ${plural(problems, "problème important", "problèmes importants")}.`, at: latest(recent.map((row) => row.checked_at)) });
+    } else gaps.push("Aucun contrôle de santé technique depuis 10 jours.");
+  }
   return { facts, gaps };
 }
 

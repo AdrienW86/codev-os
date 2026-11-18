@@ -8,7 +8,7 @@ import type { Json } from "@/lib/supabase/database.types";
 // compteurs entiers. Un échec d'écriture n'interrompt jamais le passage.
 export const SCHEDULER_HEARTBEAT = "scheduler_tick";
 // Noms stables (ordre d'exécution du tick). Ne pas renommer : la supervision les lit.
-export const schedulerSteps = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"] as const;
+export const schedulerSteps = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"] as const;
 export type SchedulerStepName = (typeof schedulerSteps)[number];
 export type SchedulerStepStatus = "ok" | "failed" | "skipped" | "disabled";
 export type SchedulerStep = { status: SchedulerStepStatus; ms: number; counts?: Record<string, number> };
@@ -43,7 +43,7 @@ export function stepCounts(summary: unknown): Record<string, number> {
 }
 function sanitize(steps: Record<string, SchedulerStep>): Record<string, SchedulerStep> {
   const out: Record<string, SchedulerStep> = {};
-  for (const [name, step] of Object.entries(steps).slice(0, 20)) {
+  for (const [name, step] of Object.entries(steps).slice(0, 30)) {
     if (!KEY.test(name) || !statuses.has(step?.status)) continue;
     const ms = Number.isFinite(step.ms) ? Math.max(0, Math.min(Math.round(step.ms), 3_600_000)) : 0;
     out[name] = step.counts ? { status: step.status, ms, counts: stepCounts(step.counts) } : { status: step.status, ms };

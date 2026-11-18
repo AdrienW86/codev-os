@@ -207,6 +207,23 @@ export function monitoringSignals(checks: readonly SiteCheckRow[], audits: reado
   return { facts, gaps };
 }
 
+export type LocalRow = { location_title: string | null; metrics: unknown; reviews: unknown; fetched_at: string };
+/** Référencement local (lot 6) : dernier relevé de chaque fiche Google ; null = non installé. */
+export function localSignals(rows: readonly LocalRow[] | null): BriefingSignals {
+  if (!rows) return { facts: [], gaps: [] };
+  if (!rows.length) return { facts: [], gaps: ["Aucune statistique de fiche Google relevée (fiche non connectée ou relevé en attente)."] };
+  const facts: BriefingFact[] = [];
+  const latestRow = rows[0];
+  const m = (latestRow.metrics ?? {}) as Record<string, unknown>, r = (latestRow.reviews ?? {}) as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const parts = [n(m.calls) !== null ? `${n(m.calls)} appels` : null, n(m.websiteClicks) !== null ? `${n(m.websiteClicks)} clics vers le site` : null, n(m.directions) !== null ? `${n(m.directions)} itinéraires` : null].filter(Boolean);
+  if (parts.length) facts.push({ statement: `Fiche Google${latestRow.location_title ? ` « ${clean(latestRow.location_title, 50)} »` : ""} (28 jours) : ${parts.join(", ")}.`, at: latestRow.fetched_at });
+  const recent = Array.isArray(r.recent) ? r.recent as Record<string, unknown>[] : [];
+  const unanswered = recent.filter((x) => x && x.replied === false).length;
+  if (n(r.average) !== null || n(r.total) !== null) facts.push({ statement: `Avis Google : ${n(r.average) !== null ? `${String(n(r.average)).replace(".", ",")}/5` : "note non communiquée"}${n(r.total) !== null ? ` sur ${n(r.total)} avis` : ""}${unanswered ? `, ${unanswered} récent(s) sans réponse` : ""}.`, at: latestRow.fetched_at });
+  return { facts, gaps: [] };
+}
+
 export type ReportRow = { status: string; kind: string; created_at: string };
 export function reportSignals(rows: readonly ReportRow[], now: Date): BriefingSignals {
   const recent = rows.filter((row) => withinDays(row.created_at, now, 35));

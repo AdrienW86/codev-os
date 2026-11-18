@@ -125,9 +125,9 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "seo", name: "Agent SEO", team: "site", expertise: "Consultant SEO senior", registryType: "seo",
     mission: "Analyser Search Console, Google Analytics, le contenu et la performance du site pour proposer des opportunités chiffrées.",
-    does: ["Opportunités de mots-clés", "Pages à fort potentiel", "Pages qui attirent du trafic sans demande (Google Analytics)", "PageSpeed"],
-    never: ["Ne modifie jamais le site", "Ne promet aucune position"],
-    triggers: [{ kind: "run", runType: "seo.analyze" }, { kind: "step", step: "search_console" }, { kind: "step", step: "google_analytics" }], clientSettings: "Données et performances → Référencement",
+    does: ["Opportunités de mots-clés", "Pages à fort potentiel", "Pages qui attirent du trafic sans demande (Google Analytics)", "PageSpeed", "Référencement local : statistiques de la fiche Google (vues, appels, clics, itinéraires), recherches qui affichent la fiche, avis"],
+    never: ["Ne modifie jamais le site", "Ne promet aucune position", "Ne répond jamais lui-même à un avis : il prépare une recommandation"],
+    triggers: [{ kind: "run", runType: "seo.analyze" }, { kind: "step", step: "search_console" }, { kind: "step", step: "google_analytics" }, { kind: "step", step: "local_seo" }], clientSettings: "Données et performances → Référencement",
   },
   {
     id: "monitoring", name: "Agent Monitoring", team: "site", expertise: "Ingénieur fiabilité (SRE)", registryType: "monitoring",

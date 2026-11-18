@@ -4,7 +4,7 @@ export type ClientPublicationSettings={timezone:string;publishingEnabled:boolean
  mediaReuseAllowed:boolean;mediaReuseAfterDays:number;editorialBrief:string;requireHumanApproval:true;
  autoApproveEnabled:boolean;autoApproveHoursBefore:number;saved:boolean};
 export const DEFAULT_CLIENT_PUBLICATION_SETTINGS:ClientPublicationSettings={timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,
- prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false};
+ prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:true,autoApproveHoursBefore:12,saved:false};
 // Horizon de la préparation automatique : l'agent prépare tout le mois à venir (31 jours), pour que chaque client ait
 // son mois programmé à l'avance. Le réglage « jours avant le créneau » (prepare_lead_days) n'est plus utilisé.
 export const PREPARATION_HORIZON_DAYS=31;
@@ -26,7 +26,8 @@ const TIMEZONE=/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/;
 
 type Row={timezone?:unknown;publishing_enabled?:unknown;generation_enabled?:unknown;auto_prepare_enabled?:unknown;prepare_lead_days?:unknown;
  media_reuse_allowed?:unknown;media_reuse_after_days?:unknown;editorial_brief?:unknown;auto_approve_enabled?:unknown;auto_approve_hours_before?:unknown}|null;
-// Ligne absente (aucun réglage enregistré) : valeurs par défaut sûres, tout désactivé.
+// Ligne absente (aucun réglage enregistré) : valeurs par défaut sûres, tout désactivé sauf la validation automatique proposée
+// (case pré-cochée : règle « confirmations cruciales seulement », toujours derrière l’Agent Contrôle, jamais TikTok).
 export function clientSettingsFromRow(row:Row):ClientPublicationSettings{
  if(!row)return DEFAULT_CLIENT_PUBLICATION_SETTINGS;
  const d=DEFAULT_CLIENT_PUBLICATION_SETTINGS,bool=(v:unknown,f:boolean)=>typeof v==='boolean'?v:f,int=(v:unknown,f:number)=>typeof v==='number'&&Number.isInteger(v)?v:f;

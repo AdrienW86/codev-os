@@ -15,7 +15,7 @@ export default async function ValidationPage() {
   return (
     <>
       <PageHeading eyebrow="Pilotage" title="À valider"
-        description="Tout ce que les agents ont préparé et qui attend votre décision, au même endroit. Les éléments couverts par une règle que vous avez choisie (validation automatique) sont comptés à part." />
+        description="Seulement les décisions cruciales : ce qui coûte de l’argent, part chez un tiers, modifie le site d’un client ou montre une image générée. Tout le reste est traité automatiquement." />
       {simulated ? <p className="text-sm text-muted">Simulation active : la boîte « À valider » ne lit pas les données réelles.</p>
         : inbox ? <ReviewInbox inbox={inbox} />
         : <p className="text-sm text-danger">Boîte « À valider » indisponible pour le moment : rien n’est affirmé sur son contenu.</p>}

@@ -8,7 +8,7 @@ import type { Json } from "@/lib/supabase/database.types";
 // compteurs entiers. Un échec d'écriture n'interrompt jamais le passage.
 export const SCHEDULER_HEARTBEAT = "scheduler_tick";
 // Noms stables (ordre d'exécution du tick). Ne pas renommer : la supervision les lit.
-export const schedulerSteps = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "local_competition", "local_geogrid", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"] as const;
+export const schedulerSteps = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "auto_decisions", "search_console", "google_analytics", "local_seo", "local_competition", "local_geogrid", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"] as const;
 export type SchedulerStepName = (typeof schedulerSteps)[number];
 export type SchedulerStepStatus = "ok" | "failed" | "skipped" | "disabled";
 export type SchedulerStep = { status: SchedulerStepStatus; ms: number; counts?: Record<string, number> };

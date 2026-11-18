@@ -21,7 +21,7 @@ export type HarnessTrigger =
 
 export type HarnessAgentId =
   | "director" | "report"
-  | "publications" | "blog" | "visual" | "video" | "media-library"
+  | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
   | "prospection" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
@@ -71,12 +71,28 @@ export const harnessCharters: readonly HarnessCharter[] = [
     triggers: [{ kind: "run", runType: "report.generate" }, { kind: "run", runType: "ads.report.prepare" }], clientSettings: "Rapports → réglages du client",
   },
   {
-    id: "publications", name: "Agent Publications", team: "contenu", expertise: "Community manager senior", registryType: "publications",
-    mission: "Préparer les publications des réseaux sociaux du client à partir de ses faits et de ses photos, un mois à l’avance.",
-    does: ["Idée éditoriale et textes natifs par réseau", "Choix de la photo", "Respect du calendrier et des règles de chaque réseau"],
-    never: ["Ne publie rien sans validation (manuelle ou automatique choisie pour ce client)", "Ne reprend ni sujet, ni accroche, ni formule déjà employés"],
-    triggers: [{ kind: "step", step: "publication_preparation" }, { kind: "step", step: "publication_auto_approval" }, { kind: "step", step: "publication_delivery_send" }],
+    id: "publications", name: "Agent Rédacteur Publications", team: "contenu", expertise: "Community manager senior", registryType: "publications",
+    mission: "Préparer par lot, un mois à l’avance, les publications des réseaux sociaux du client à partir de ses faits et de ses photos, avec une écriture humaine et native à chaque réseau.",
+    does: ["Idée éditoriale et textes natifs par réseau (Instagram, Facebook, Google Business Profile, TikTok, Snapchat)", "Choix d’une photo réelle de la photothèque quand elle correspond", "Respect du calendrier et des règles de chaque réseau"],
+    never: ["Ne publie rien lui-même : la diffusion passe par l’Agent Contrôle et diffusion", "Ne génère aucune image (rôle de l’Agent Photo)", "Ne reprend ni sujet, ni accroche, ni formule déjà employés"],
+    triggers: [{ kind: "step", step: "publication_preparation" }],
     clientSettings: "Publications → configuration du client",
+  },
+  {
+    id: "publication-photo", name: "Agent Photo", team: "contenu", expertise: "Iconographe et directeur photo",
+    mission: "Quand une préparation n’a aucune photo réelle, proposer une image d’illustration générée à partir du texte, soumise à la validation de l’administrateur.",
+    does: ["Description d’une image d’illustration du sujet (jamais d’une réalisation du client)", "Génération de l’image dans le budget IA du client", "Proposition à valider dans Publications → Images à valider"],
+    never: ["N’attache jamais une image générée sans la validation explicite de l’administrateur", "Ne présente jamais une image générée comme une photo d’un chantier du client", "Ne met ni texte, ni logo, ni marque, ni visage reconnaissable dans une image"],
+    triggers: [{ kind: "step", step: "publication_photo" }],
+    clientSettings: "Publications → Images à valider",
+  },
+  {
+    id: "publication-check", name: "Agent Contrôle et diffusion", team: "contenu", expertise: "Responsable qualité éditoriale",
+    mission: "Vérifier avant la validation automatique que le texte et l’image de chaque publication vont ensemble, puis diffuser à l’échéance les publications validées.",
+    does: ["Contrôle de cohérence texte / image (vision) avant validation automatique", "Validation automatique des publications conformes, pour les clients qui l’ont choisie", "Préparation et envoi aux réseaux à l’échéance"],
+    never: ["Ne valide jamais automatiquement une publication dont le contrôle a échoué ou n’a pas pu tourner", "Ne modifie aucun texte ni aucune image", "Ne publie rien qui n’ait été validé (manuellement ou par la règle choisie pour ce client)"],
+    triggers: [{ kind: "step", step: "publication_auto_approval" }, { kind: "step", step: "publication_delivery_prepare" }, { kind: "step", step: "publication_delivery_send" }],
+    clientSettings: "Publications → configuration du client (validation automatique)",
   },
   {
     id: "blog", name: "Agent Blog", team: "contenu", expertise: "Rédacteur web SEO senior",

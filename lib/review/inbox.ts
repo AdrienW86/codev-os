@@ -8,7 +8,7 @@ export type InboxSection = {
   /** Total en attente, et part qui attend vraiment une main humaine (le reste est traité par une règle validée). */
   count: number; manual: number; note: string | null; href: string; items: InboxItem[];
 };
-export type InboxSourceId = "reports" | "recommendations" | "actions" | "ads" | "publications" | "prospection" | "seo" | "photos" | "alerts";
+export type InboxSourceId = "reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "seo" | "photos" | "alerts";
 export type Inbox = { sections: InboxSection[]; manualTotal: number; unavailable: number; superseded: string[] };
 
 type Named = { id: string; name: string | null };
@@ -20,6 +20,8 @@ export type InboxInput = {
   ads: readonly { id: string; client_id: string | null; created_at: string; summary?: string | null }[] | null;
   publications: readonly { id: string; client_id: string; created_at: string }[] | null;
   autoApproveClients: ReadonlySet<string> | null;
+  /** Images de l'Agent Photo en attente. Absent (undefined) : agent non installé, aucune section. */
+  generatedImages?: readonly { id: string; client_id: string; created_at: string }[] | null;
   prospection: readonly { id: string; subject: string | null; created_at: string }[] | null;
   seo: readonly { id: string; client_id: string | null; keyword: string | null; created_at: string; agent_id?: string | null }[] | null;
   seoAgentId: string | null;
@@ -74,6 +76,8 @@ export function buildInbox(input: InboxInput): Inbox {
       const covered = (input.publications ?? []).length - manualPublications.length;
       return auto && covered ? `${covered} validée(s) automatiquement 12 h avant diffusion (règle choisie pour ces clients).` : null;
     } });
+  if (input.generatedImages !== undefined) add({ id: "generated-images", label: "Images générées à valider", agent: "publication-photo", href: "/publications/images", rows: input.generatedImages,
+    items: () => perClient(input.generatedImages ?? [], client, () => "/publications/images", "image(s)") });
   add({ id: "prospection", label: "E-mails de prospection à approuver", agent: "prospection", href: "/acquisition", rows: input.prospection,
     items: () => (input.prospection ?? []).map((m) => ({ id: m.id, title: m.subject || "Premier contact", client: null, at: m.created_at, href: "/acquisition" })) });
   add({ id: "seo", label: "Opportunités SEO à examiner", agent: "seo", href: input.seoAgentId ? `/agents/${input.seoAgentId}/opportunities` : "/agents", rows: input.seo,

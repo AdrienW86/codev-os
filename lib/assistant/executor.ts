@@ -108,7 +108,7 @@ export async function executeTool(actor: Actor, name: ToolName, input: Record<st
         clientId = client.id;
       }
       const result = await launch(actor, task.id, clientId);
-      return { ok: result.ok, text: result.message, links: result.href ? [{ label: "Voir le résultat", href: result.href }] : [{ label: "Lancer une action", href: clientId ? `/lancer?client=${clientId}` : "/lancer" }] };
+      return { ok: result.ok, text: [result.message, ...(result.details ?? [])].join("\n"), links: result.href ? [{ label: "Voir le résultat", href: result.href }] : [{ label: "Lancer une action", href: clientId ? `/lancer?client=${clientId}` : "/lancer" }] };
     }
     case "client_overview": {
       const client = await resolveClient(String(input.client));

@@ -6,6 +6,8 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/core/audit";
 import type { Actor } from "@/lib/core/actor";
 import { launchTask, type LaunchTask } from "./catalog";
+import { countSummary, lighthouseDetails, resultHref, siteHealthDetails } from "./outcome";
+import { competitionSignals, geogridSignals, localSignals } from "@/lib/harness/briefing";
 import { runHarnessControl } from "@/lib/harness/control-service";
 import { runAutoDecisions } from "@/lib/review/auto-decisions";
 import { runPhotoAgentTick } from "@/lib/publications/photo-agent/service";
@@ -25,19 +27,30 @@ import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
 import { runNow } from "@/lib/automations/service";
 import type { RunType } from "@/lib/agents/registry";
 
-export type LaunchOutcome = { ok: boolean; message: string; href?: string };
+export type LaunchOutcome = { ok: boolean; message: string; href?: string; details?: string[] };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCK_MS = 2 * 60_000;
 const db = () => getSupabaseServerClient();
 
-const count = (summary: unknown, keys: string[]) => {
-  const s = (summary ?? {}) as Record<string, unknown>;
-  if (s.disabled) return `Non lancé : ${disabledLabel(String(s.disabled))}.`;
-  if (s.outside_window) return "Non lancé : hors fenêtre.";
-  const parts = keys.flatMap((k) => (typeof s[k] === "number" ? [`${k} ${s[k]}`] : []));
-  return parts.length ? `Terminé (${parts.join(", ")}).` : "Terminé.";
-};
-const disabledLabel = (reason: string) => ({ agent: "agent en pause", migration: "module non installé", provider: "fournisseur non configuré", google: "Google non connecté", vault: "coffre de jetons absent", credential: "clé API absente", global: "arrêt général actif", true: "désactivé" } as Record<string, string>)[reason] ?? reason;
+const count = countSummary;
+
+/** Vrai résultat d'un relevé pour un client : lu dans ce que la tâche vient d'enregistrer (jamais inventé). */
+async function details(taskId: string, clientId: string | null, since: string): Promise<string[]> {
+  if (!clientId) return [];
+  const recent = (table: string, column: string, select: string, extra?: (q: any) => any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    let query = db().from(table).select(select).eq("client_id", clientId).gte(column, since);
+    if (extra) query = extra(query);
+    return query.order(column, { ascending: false }).limit(20).then(({ data, error }: { data: unknown; error: unknown }) => (error ? [] : ((data ?? []) as never[])));
+  };
+  switch (taskId) {
+    case "local-seo": { const rows = await recent("local_seo_snapshots", "fetched_at", "location_title,metrics,reviews,fetched_at"); return rows.length ? localSignals(rows).facts.map((f) => f.statement) : ["Aucune statistique de fiche Google enregistrée par ce relevé (fiche non connectée ou Google sans réponse)."]; }
+    case "local-competition": return competitionSignals(await recent("metric_snapshots", "fetched_at", "metric_key,fetched_at,data", (q) => q.eq("provider", "local-competition"))).facts.map((f) => f.statement);
+    case "local-geogrid": return geogridSignals(await recent("metric_snapshots", "fetched_at", "metric_key,fetched_at,data", (q) => q.eq("provider", "local-geogrid"))).map((f) => f.statement);
+    case "lighthouse": { const rows = await recent("performance_audits", "analyzed_at", "strategy,scores,analyzed_at"); return lighthouseDetails(rows.filter((r: { strategy: string }, i, all: { strategy: string }[]) => all.findIndex((o) => o.strategy === r.strategy) === i)); }
+    case "site-health": { const [row] = await recent("site_health_checks", "checked_at", "url,score,findings,checked_at"); return siteHealthDetails(row ?? null); }
+    default: return [];
+  }
+}
 
 type LaunchActor = Extract<Actor, { userId: string }>;
 
@@ -107,7 +120,11 @@ export async function launch(actor: LaunchActor, taskId: unknown, clientIdInput:
   if (recent.data?.length) return { ok: false, message: "Déjà lancée il y a moins de 2 minutes pour ce client : patientez." };
   await writeAudit(actor, { action: "launch.started", resource_type: "launch", resource_id: scopedClient, metadata: { task: task.id, client: scopedClient ?? "all" } });
   try {
-    const outcome = await run(task, scopedClient, actor);
+    const startedAt = new Date(Date.now() - 5_000).toISOString();
+    const raw = await run(task, scopedClient, actor);
+    const lines = raw.ok ? await details(task.id, scopedClient, startedAt).catch(() => []) : [];
+    const href = raw.href ?? resultHref(task.id, scopedClient) ?? undefined;
+    const outcome: LaunchOutcome = { ...raw, ...(href ? { href } : {}), ...(lines.length ? { details: lines } : {}) };
     await writeAudit(actor, { action: outcome.ok ? "launch.succeeded" : "launch.refused", resource_type: "launch", resource_id: scopedClient, metadata: { task: task.id, client: scopedClient ?? "all" } }).catch(() => undefined);
     return outcome;
   } catch {

@@ -27,7 +27,15 @@ export type ReportAds = { cost: number; conversions: number | null; clicks: numb
 export type ReportSiteHealth = { checked_at: string; score: number; checks: unknown; findings: unknown };
 /** Fiche Google Business Profile (lot 6) : dernier relevé, tel qu'archivé. */
 export type ReportLocal = { location_title: string | null; period_start: string; period_end: string; metrics: unknown; previous_metrics: unknown; keywords: unknown; reviews: unknown };
+/** Positions Google (lot 7) : requêtes du dernier instantané Search Console, avec la période précédente. */
+export type ReportRankingQuery = { query: string; position: number; impressions: number; clicks: number; previousPosition: number | null; previousImpressions: number | null };
+export type ReportRanking = { period: Period; queries: ReportRankingQuery[] };
+/** Concurrence locale (lot 7) : dernier relevé par source, tel qu'archivé (metric_snapshots local-competition). */
+export type ReportCompetition = { source: string; keyword: string; checkedAt: string; depth: number; rank: number | null; client: { rating: number | null; reviews: number | null } | null;
+  competitors: { name: string; rating: number | null; reviews: number | null }[]; medianRating: number | null; medianReviews: number | null };
 export type ReportExtras = {
+  ranking?: ReportRanking | null;
+  competition?: ReportCompetition[] | null;
   siteHealth?: ReportSiteHealth | null;
   local?: ReportLocal[] | null;
   analytics: ReportAnalytics | null;
@@ -37,7 +45,7 @@ export type ReportExtras = {
   newsletters: ReportNewsletter[];
 };
 
-export const emptyExtras = (): ReportExtras => ({ siteHealth: null, local: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
+export const emptyExtras = (): ReportExtras => ({ ranking: null, competition: null, siteHealth: null, local: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
 
 const num = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const rec = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -269,6 +277,56 @@ export function localLines(locals: readonly ReportLocal[] | null | undefined): s
   return lines;
 }
 
+/** Instantané Search Console (forme de lib/integrations/search-console/model.ts) → requêtes et positions. */
+export function readReportRanking(data: unknown): ReportRanking | null {
+  const d = rec(data), period = rec(d.period);
+  if (!validDay(period.start) || !validDay(period.end) || !Array.isArray(d.queries)) return null;
+  const queries = d.queries.map(rec).flatMap((row): ReportRankingQuery[] => {
+    const prev = rec(row.previous);
+    if (typeof row.key !== "string" || !row.key.trim() || !num(row.position) || row.position <= 0 || !num(row.impressions)) return [];
+    return [{ query: clean(row.key, 80), position: row.position, impressions: row.impressions, clicks: num(row.clicks) ? row.clicks : 0,
+      previousPosition: num(prev.position) && prev.position > 0 ? prev.position : null, previousImpressions: num(prev.impressions) ? prev.impressions : null }];
+  }).slice(0, 500);
+  return { period: { start: period.start, end: period.end }, queries };
+}
+
+const place = (value: number) => { const rounded = value < 10 ? Math.round(value * 10) / 10 : Math.round(value); return nf(rounded, Number.isInteger(rounded) ? 0 : 1); };
+/** Positions Google : requêtes en top 3 / top 10 / deuxième page, progressions et reculs nets (≥ 3 places, ≥ 20 impressions). */
+export function rankingLines(ranking: ReportRanking | null | undefined): string[] {
+  if (!ranking || !ranking.queries.length) return [];
+  const q = ranking.queries;
+  const top3 = q.filter((r) => r.position <= 3.5).length, top10 = q.filter((r) => r.position <= 10.5).length, page2 = q.filter((r) => r.position > 10.5 && r.position <= 20.5).length;
+  const comparable = q.filter((r) => r.previousPosition !== null);
+  const top10Before = comparable.length ? q.filter((r) => r.previousPosition !== null && r.previousPosition <= 10.5).length : null;
+  const lines = [`Positions Google (Search Console, du ${frDay(ranking.period.start)} au ${frDay(ranking.period.end)}) : ${plural(top3, "requête", "requêtes")} en top 3, ${nf(top10)} en première page${top10Before !== null ? ` (période précédente : ${nf(top10Before)})` : ""}, ${nf(page2)} en deuxième page.`];
+  const moves = comparable.filter((r) => r.impressions >= 20).map((r) => ({ ...r, gain: r.previousPosition! - r.position }));
+  const up = moves.filter((r) => r.gain >= 3).sort((a, b) => b.gain - a.gain).slice(0, 3);
+  const down = moves.filter((r) => r.gain <= -3).sort((a, b) => a.gain - b.gain).slice(0, 3);
+  if (up.length) lines.push(`Progressions : ${up.map((r) => `« ${r.query} » ${place(r.previousPosition!)} → ${place(r.position)}`).join(", ")}.`);
+  if (down.length) lines.push(`Reculs : ${down.map((r) => `« ${r.query} » ${place(r.previousPosition!)} → ${place(r.position)}`).join(", ")}.`);
+  const near = q.filter((r) => r.position > 10.5 && r.position <= 20.5 && r.impressions >= 50).sort((a, b) => b.impressions - a.impressions).slice(0, 3);
+  if (near.length) lines.push(`Aux portes de la première page : ${near.map((r) => `« ${r.query} » (position ${place(r.position)}, ${plural(r.impressions, "impression", "impressions")})`).join(", ")}.`);
+  return lines;
+}
+
+const competitionSource = (source: string) => source === "dataforseo-maps" ? "position Google Maps, relevé DataForSEO" : "rang indicatif Google Places, différent du classement Maps propre à chaque internaute";
+/** Concurrence locale : place du client sur « métier ville », note et avis face aux 5 premiers concurrents. */
+export function competitionLines(rows: readonly ReportCompetition[] | null | undefined): string[] {
+  const lines: string[] = [];
+  for (const row of (rows ?? []).slice(0, 2)) {
+    const where = `« ${clean(row.keyword, 80)} » (${competitionSource(row.source)}, relevé du ${frDay(row.checkedAt)})`;
+    lines.push(row.rank !== null ? `Recherche locale ${where} : ${row.rank === 1 ? "1re" : `${row.rank}e`} place.` : `Recherche locale ${where} : fiche absente des ${row.depth} premiers résultats.`);
+    const own = row.client;
+    const ownPart = own && (own.rating !== null || own.reviews !== null) ? `la fiche : ${own.rating !== null ? `${nf(own.rating, 1)}/5` : "note non communiquée"}${own.reviews !== null ? ` sur ${plural(own.reviews, "avis", "avis")}` : ""}` : null;
+    const medPart = row.medianRating !== null || row.medianReviews !== null ? `médiane des 5 premiers concurrents : ${row.medianRating !== null ? `${nf(row.medianRating, 1)}/5` : "note non communiquée"}${row.medianReviews !== null ? ` sur ${plural(row.medianReviews, "avis", "avis")}` : ""}` : null;
+    if (ownPart || medPart) lines.push(`Avis face à la concurrence : ${[ownPart, medPart].filter(Boolean).join(" ; ")}.`);
+    // Noms des concurrents : relevé DataForSEO seulement (le contenu Google Places ne se conserve pas au-delà de 30 jours,
+    // or un rapport est archivé).
+    if (row.source === "dataforseo-maps" && row.competitors.length) lines.push(`Concurrents en tête : ${row.competitors.slice(0, 3).map((c) => `${clean(c.name, 50)}${c.rating !== null ? ` (${nf(c.rating, 1)}/5${c.reviews !== null ? `, ${nf(c.reviews)} avis` : ""})` : ""}`).join(", ")}.`);
+  }
+  return lines;
+}
+
 type HealthCheckLine = { key: string; label: string; state: string; detail: string };
 type HealthFindingLine = { code: string; severity: string; title: string; detail: string };
 const healthChecks = (value: unknown): HealthCheckLine[] => Array.isArray(value) ? value.filter((row): row is HealthCheckLine => rec(row).label !== undefined && typeof rec(row).state === "string" && typeof rec(row).detail === "string").slice(0, 12) : [];
@@ -300,6 +358,10 @@ export function extrasPriorities(extras: ReportExtras): { rank: number; internal
   }
   for (const finding of healthFindings(extras.siteHealth?.findings).filter((row) => row.severity === "critical" || row.severity === "high").slice(0, 2))
     out.push({ rank: finding.severity === "critical" ? 0 : 2, internal: `Santé technique : ${clean(finding.title, 90)}. ${clean(finding.detail, 160)}`, client: `Corriger : ${clean(finding.title, 90).toLowerCase()}.` });
+  const primary = (extras.competition ?? [])[0];
+  if (primary && primary.rank === null) out.push({ rank: 2, internal: `Fiche absente des ${primary.depth} premiers résultats locaux pour « ${clean(primary.keyword, 60)} » : catégorie, zone desservie et avis à travailler.`, client: "Faire apparaître la fiche Google dans les recherches locales du métier." });
+  else if (primary?.client?.reviews !== null && primary?.client?.reviews !== undefined && primary.medianReviews !== null && primary.medianReviews >= 10 && primary.client.reviews < primary.medianReviews * 0.5)
+    out.push({ rank: 3, internal: `${plural(primary.client.reviews, "avis", "avis")} contre ${nf(primary.medianReviews)} en médiane chez les concurrents locaux : mettre en place une demande d’avis après chaque chantier.`, client: "Obtenir plus d’avis Google que les concurrents." });
   if (scores?.seo !== null && scores?.seo !== undefined && scores.seo < 80) out.push({ rank: 2, internal: `Lighthouse mobile : SEO ${scores.seo}/100 : balises, liens et indexabilité à corriger.`, client: "Corriger les points techniques de référencement du site." });
   return out;
 }

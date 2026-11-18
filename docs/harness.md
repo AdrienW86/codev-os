@@ -103,3 +103,15 @@ Chaque contrôle donne « conforme », « à corriger » ou « non vérifié » 
 - avis (note moyenne, total, 20 derniers avec leur état de réponse ; prénom seul et extrait court conservés).
 
 L'agent ne répond jamais à un avis : un avis de 3 étoiles ou moins sans réponse, plusieurs avis sans réponse ou une baisse de 30 % des actions sur la fiche ouvrent un incident avec une recommandation. Les leads Local Services restent lus par l'Agent Google Ads (tableau de bord Ads). Archivé dans `local_seo_snapshots` (migration `20261217000000`), lu par le Rapport (audience, lectures croisées avec les posts Google, priorités) et le point de situation de l'Agent SEO. À activer côté Google Cloud : l'API « Business Profile Performance API » du projet OAuth Google Business Profile.
+
+## Positions et concurrence locale (lot 7)
+
+Version gratuite, avec DataForSEO en option :
+
+- **Positions Google** : lues dans le dernier instantané Search Console (requêtes et position moyenne, avec la période précédente). Le Rapport indique les requêtes en top 3, en première et en deuxième page, les progressions et reculs nets (3 places ou plus, 20 impressions ou plus) et les requêtes aux portes de la première page. Aucune collecte supplémentaire.
+- **Concurrence locale** : étape `local_competition` (Agent SEO, `lib/local-competition/`), chaque semaine, deux clients au plus par passage. La recherche « métier ville » vient de la fiche client (activité, première ville de la zone ; un client national est ignoré).
+  - Google Places (Text Search, clé `GOOGLE_PLACES_API_KEY`, quota gratuit mensuel) : rang indicatif de la fiche, note et nombre d'avis des 5 premiers concurrents. Conditions Google : relevés effacés après 30 jours, noms des concurrents jamais recopiés dans un rapport archivé.
+  - DataForSEO (Google Maps, `DATAFORSEO_LOGIN` et `DATAFORSEO_PASSWORD`, facultatif) : vraie position Google Maps, prioritaire sur Places pour les constats. S'active seul dès que les deux variables sont présentes.
+  - Constats (incident dédoublonné `local-competition:<client>:<code>` et recommandation) : fiche absente des 20 premiers résultats, recul de 3 places ou plus, moitié moins d'avis que la médiane des concurrents, note inférieure de plus de 0,3.
+  - Stockage : `metric_snapshots` (provider `local-competition`, une clé par source), aucune migration. Sans aucune clé, l'étape est désactivée.
+- Backlinks : non couverts dans cette version.

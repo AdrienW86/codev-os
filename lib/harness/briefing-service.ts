@@ -7,9 +7,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, coherenceSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
+  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
-  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
+  type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type CompetitionRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
@@ -80,13 +80,15 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
     scoped(db.from("whatsapp_assets").select("created_at").gte("created_at", since(30)), clientId).limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT)))).map((row) => ({ at: row.created_at })),
   now, { one: "photo reçue", many: "photos reçues", empty: "Aucune photo reçue sur 30 jours." }),
   seo: async (ctx) => {
-    const [base, local] = await Promise.all([
+    const [base, local, competition] = await Promise.all([
       snapshots(["search-console", "google-analytics", "pagespeed"])(ctx),
       optionalRows<LocalRow>(scoped(ctx.db.from("local_seo_snapshots").select("location_title,metrics,reviews,fetched_at").gte("fetched_at", ctx.since(30)), ctx.clientId)
         .order("fetched_at", { ascending: false }).limit(20).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null),
+      optionalRows<CompetitionRow>(scoped(ctx.db.from("metric_snapshots").select("metric_key,fetched_at,data").eq("provider", "local-competition").gte("fetched_at", ctx.since(30)), ctx.clientId)
+        .order("fetched_at", { ascending: false }).limit(20).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null),
     ]);
-    const extra = localSignals(local);
-    return { facts: [...base.facts, ...extra.facts], gaps: [...base.gaps, ...extra.gaps] };
+    const extra = localSignals(local), rivals = ctx.clientId ? competitionSignals(competition) : { facts: [], gaps: [] };
+    return { facts: [...base.facts, ...extra.facts, ...rivals.facts], gaps: [...base.gaps, ...extra.gaps, ...rivals.gaps] };
   },
   monitoring: async ({ db, clientId, now, since }) => {
     const [checks, audits, health] = await Promise.all([

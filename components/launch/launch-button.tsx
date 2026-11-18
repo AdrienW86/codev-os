@@ -18,9 +18,11 @@ export function LaunchButton({ task, clientId, label = "Lancer maintenant", conf
       <button type="submit" disabled={pending} className={actionClass(compact ? "secondary" : "primary")}>{pending ? "En cours…" : label}</button>
       {state.message && (
         <p role="status" className={`mt-2 text-sm ${state.ok ? "text-success" : "text-warning"}`}>
-          {state.message}{state.href && <> <Link href={state.href} className="text-accent hover:underline">Voir</Link></>}
+          {state.message}
         </p>
       )}
+      {state.details?.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground">{state.details.map((line) => <li key={line}>{line}</li>)}</ul> : null}
+      {state.href && <Link href={state.href} className={actionClass("secondary", "mt-2 inline-flex")}>Voir le résultat</Link>}
     </form>
   );
 }

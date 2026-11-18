@@ -38,17 +38,30 @@ export function LocalDashboardView({ state, clients, current }: { state: LocalDa
         {clients.map((client) => <Link key={client.id} href={client.href} aria-current={client.id === current ? "page" : undefined}
           className={`rounded-full border px-3 py-1 text-sm ${client.id === current ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-foreground"}`}>{client.name}</Link>)}
       </nav>
+      {state.profile && (
+        <section id="fiche-google" className="scroll-mt-24">
+          <h2 className="mb-3 text-lg font-semibold">Fiche Google</h2>
+          {state.profile.facts.length ? (
+            <Panel className="p-5">
+              <ul className="space-y-1 text-sm">{state.profile.facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>
+              {state.profile.at && <p className="mt-3 text-xs text-muted">Relevé du {day(state.profile.at)}.</p>}
+            </Panel>
+          ) : (
+            <EmptyState icon="analytics" compact title="Fiche Google pas encore relevée" description="Connectez la fiche Google du client dans Publications, puis lancez « Relever la fiche Google »." />
+          )}
+        </section>
+      )}
       {state.grids.length ? (
-        <section>
+        <section id="carte-positions" className="scroll-mt-24">
           <h2 className="mb-3 text-lg font-semibold">Carte de positions Google Maps</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{state.grids.map((grid) => <Grid key={grid.keyword} grid={grid} />)}</div>
           <p className="mt-3 text-xs text-muted">Chaque case est une recherche faite depuis ce point : vert = top 3, orange = 4e à 10e, rouge = 11e à 20e, gris = au-delà de la 20e place, « ? » = point non relevé. La case encadrée est la fiche.</p>
         </section>
       ) : (
-        <EmptyState icon="analytics" compact title="Aucune carte de positions"
-          description={state.dataforseo ? "La première carte arrive après le relevé de concurrence locale DataForSEO (une recherche par passage du planificateur)." : "Ajoutez DATAFORSEO_LOGIN et DATAFORSEO_PASSWORD dans Vercel pour activer la carte de positions Google Maps."} />
+        <div id="carte-positions" className="scroll-mt-24"><EmptyState icon="analytics" compact title="Aucune carte de positions"
+          description={state.dataforseo ? "La première carte arrive après le relevé de concurrence locale DataForSEO (une recherche par passage du planificateur)." : "Ajoutez DATAFORSEO_LOGIN et DATAFORSEO_PASSWORD dans Vercel pour activer la carte de positions Google Maps."} /></div>
       )}
-      <section>
+      <section id="concurrence-locale" className="scroll-mt-24">
         <h2 className="mb-3 text-lg font-semibold">Concurrence locale</h2>
         {state.competition.length ? (
           <div className="grid gap-4 md:grid-cols-2">

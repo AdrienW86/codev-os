@@ -22,7 +22,8 @@ import { runLocalGeogridTick, productionLocalGeogridDeps } from "@/lib/local-geo
 import { runLighthouseTick } from "@/lib/performance/weekly";
 import { runSiteHealthTick } from "@/lib/site-health/service";
 import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
-import { runAutomationNow } from "@/lib/automations/service";
+import { runNow } from "@/lib/automations/service";
+import type { RunType } from "@/lib/agents/registry";
 
 export type LaunchOutcome = { ok: boolean; message: string; href?: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,15 +39,17 @@ const count = (summary: unknown, keys: string[]) => {
 };
 const disabledLabel = (reason: string) => ({ agent: "agent en pause", migration: "module non installé", provider: "fournisseur non configuré", google: "Google non connecté", vault: "coffre de jetons absent", credential: "clé API absente", global: "arrêt général actif", true: "désactivé" } as Record<string, string>)[reason] ?? reason;
 
+type LaunchActor = Extract<Actor, { userId: string }>;
+
 async function automationFor(runType: string, clientId: string | null) {
-  let query = db().from("automations").select("id").eq("run_type", runType).neq("status", "archived").limit(1);
+  let query = db().from("automations").select("id,run_type,client_id,agent_id,config").eq("run_type", runType).neq("status", "archived").limit(1);
   query = clientId ? query.eq("client_id", clientId) : query.is("client_id", null);
   const { data, error } = await query;
   if (error) throw new Error("automations read");
-  return (data?.[0]?.id as string | undefined) ?? null;
+  return (data?.[0] as { id: string; run_type: string; client_id: string | null; agent_id: string | null; config: unknown } | undefined) ?? null;
 }
 
-async function run(task: LaunchTask, clientId: string | null, actor: Actor & { kind: "admin" }): Promise<LaunchOutcome> {
+async function run(task: LaunchTask, clientId: string | null, actor: LaunchActor): Promise<LaunchOutcome> {
   const now = new Date();
   const need = () => { if (!clientId) throw new Error("client required"); return clientId; };
   switch (task.id) {
@@ -79,15 +82,18 @@ async function run(task: LaunchTask, clientId: string | null, actor: Actor & { k
     case "prospection": return { ok: true, message: count(await runAcquisitionDiscoveryTick({ deadline: Date.now() + 50_000 }), ["runs"]), href: "/acquisition" };
     case "seo-analyze": case "monitoring": case "ads-monitor": case "veille": {
       const runType = task.covers.runType!;
-      const id = await automationFor(runType, task.scope === "global" ? null : need());
-      if (!id) return { ok: false, message: "Aucune tâche programmée de ce type pour ce client : activez le service sur la fiche client (Agents).", href: clientId ? `/clients/${clientId}?tab=agents` : "/agents" };
-      return runAutomationNow(actor, id).then((r) => ({ ok: r.ok, message: r.message ?? (r.ok ? "Lancé." : "Échec.") }));
+      const automation = await automationFor(runType, task.scope === "global" ? null : need());
+      if (!automation) return { ok: false, message: "Aucune tâche programmée de ce type pour ce client : activez le service sur la fiche client (Agents).", href: clientId ? `/clients/${clientId}?tab=agents` : "/agents" };
+      // Même exécution que « Lancer maintenant » d'une automatisation : file des jobs, dédoublonnée à la minute.
+      const r = await runNow(actor, { runType: automation.run_type as RunType, clientId: automation.client_id, agentId: automation.agent_id, automationId: automation.id, payload: (automation.config ?? {}) as Record<string, unknown>, dedupeKey: `auto-${automation.id}-${new Date().toISOString().slice(0, 16)}`, trigger: actor.kind === "assistant" ? "assistant" : "manual" });
+      return { ok: r.ok, message: r.message ?? (r.ok ? "Lancé." : "Échec.") };
     }
     default: return { ok: false, message: "Cette tâche se lance depuis son écran.", href: task.href?.(clientId) };
   }
 }
 
-export async function launch(actor: Actor & { kind: "admin" }, taskId: unknown, clientIdInput: unknown): Promise<LaunchOutcome> {
+/** actor : l'administrateur (bouton) ou le Directeur après confirmation explicite de l'administrateur. */
+export async function launch(actor: LaunchActor, taskId: unknown, clientIdInput: unknown): Promise<LaunchOutcome> {
   const task = launchTask(taskId);
   if (!task) return { ok: false, message: "Tâche inconnue." };
   const clientId = typeof clientIdInput === "string" && UUID.test(clientIdInput) ? clientIdInput : null;

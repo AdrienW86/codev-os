@@ -38,7 +38,7 @@ test("tool registry: strict inputs, unknown tools refused, JSON schemas closed",
     assert.equal(spec.parameters.$schema, undefined);
   }
   const writes = Object.entries(tools.toolDefinitions).filter(([, item]) => item.kind === "write").map(([name]) => name).sort();
-  assert.deepEqual(writes, ["ads_prepare_report", "create_task", "generate_report", "publications_prepare", "publications_reschedule", "run_check", "schedule_check"]);
+  assert.deepEqual(writes, ["ads_prepare_report", "create_task", "generate_report", "launch_task", "publications_prepare", "publications_reschedule", "run_check", "schedule_check"]);
   assert.equal(tools.parseToolInput("schedule_check", { check: "seo.analyze", date: "2026-10-13", time: "25:00" }).ok, false);
   assert.match(tools.describeProposal("create_task", { client: "Jrenov", title: "Relancer", priority: "Haute" }), /Créer la tâche « Relancer » pour Jrenov, priorité haute/);
 });
@@ -345,4 +345,31 @@ test("provider error codes are extracted from the body, sanitized, and never car
   assert.equal((await failing(400, "<html>oops</html>")).code, null);
   assert.equal((await failing(401, JSON.stringify({ error: { code: "invalid key with spaces & <script>" } }))).code, null, "only identifiers are kept");
   assert.equal((await failing(401, JSON.stringify({ error: { code: "invalid_api_key" } }))).kind, "unauthorized");
+});
+
+test("Directeur : show_screen met l'écran au premier plan (adresse du serveur, catalogue fermé) ; launch_task n'est qu'une proposition", async () => {
+  const screens = loadTs("lib/assistant/screens.ts");
+  const C = "11111111-1111-4111-8111-111111111111";
+  assert.equal(screens.screenHref("client_media", C), `/clients/${C}?tab=media`);
+  assert.equal(screens.screenHref("client_media", null), null, "écran client sans client : refusé");
+  assert.equal(screens.screenHref("analytics", C), `/analytics?client=${C}`);
+  assert.equal(screens.screenHref("decisions", C), "/validation", "écran global : le client est ignoré");
+  for (const id of screens.screenIds) { const href = screens.screenHref(id, C); assert.match(href, /^\/[a-z]/, id); assert.doesNotMatch(href, /\/\/|javascript:/i, id); }
+  assert.equal(tools.parseToolInput("show_screen", { screen: "https://evil.example" }).ok, false, "aucune adresse libre");
+  assert.equal(tools.parseToolInput("show_screen", { screen: "client_media", client: "Jrenov" }).ok, true);
+  assert.equal(tools.parseToolInput("launch_task", { task: "report-generate" }).ok, false, "les tâches à écran ne se lancent pas par le Directeur");
+  assert.match(tools.describeProposal("launch_task", { task: "local-geogrid", client: "Jrenov" }), /Carte de positions Google Maps.*pour Jrenov.*facturé/);
+
+  const provider = { id: "anthropic", model: "m", complete: async (input) => input.toolResults.length
+    ? { text: "Voici la photothèque.", toolCalls: [] }
+    : { text: "", toolCalls: [{ id: "s1", name: "show_screen", arguments: { screen: "client_media", client: "Jrenov" } }] } };
+  const execute = async () => ({ ok: true, text: "J’affiche la photothèque.", navigation: { destination: "client_media", href: `/clients/${C}?tab=media` } });
+  const reply = await orchestrator.respond([{ role: "user", content: "montre-moi les photos de Jrenov" }], { provider, execute, today: "2026-11-18" });
+  assert.deepEqual(JSON.parse(JSON.stringify(reply.navigation)), { destination: "client_media", href: `/clients/${C}?tab=media` });
+
+  let executed = 0;
+  const launcher = { id: "anthropic", model: "m", complete: async () => ({ text: "", toolCalls: [{ id: "l1", name: "launch_task", arguments: { task: "lighthouse", client: "Jrenov" } }] }) };
+  const proposal = await orchestrator.respond([{ role: "user", content: "lance l'audit Lighthouse de Jrenov" }], { provider: launcher, execute: async () => { executed++; return { ok: true, text: "" }; }, today: "2026-11-18" });
+  assert.equal(proposal.proposal.tool, "launch_task");
+  assert.equal(executed, 0, "jamais exécuté sans le bouton de confirmation");
 });

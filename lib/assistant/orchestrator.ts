@@ -12,13 +12,15 @@ import { supervisionReviewHref } from "@/lib/assistant/publications-model";
 
 export type ToolLink = { label: string; href: string };
 /** Résultat d'un outil : texte court (lu au modèle et, si demandé, à voix haute), vue structurée facultative, contexte mis à jour. */
-export type ToolOutcome = { ok: boolean; text: string; links?: ToolLink[]; view?: AssistantView; context?: AssistantContext };
+export type ToolOutcome = { ok: boolean; text: string; links?: ToolLink[]; view?: AssistantView; context?: AssistantContext; navigation?: ScreenNavigation };
+/** Écran à mettre au premier plan : adresse construite par le serveur depuis le catalogue fermé (lib/assistant/screens.ts). */
+export type ScreenNavigation = { destination: string; href: string };
 /** heard : transcription d'une dictée à l'origine de la proposition, affichée pour vérification. */
 export type Proposal = { tool: ToolName; input: Record<string, unknown>; summary: string; heard?: string };
 export type AssistantReply = {
   reply: string; links: ToolLink[]; proposal?: Proposal; source: "ai" | "rules"; degraded?: boolean;
   /** Vue structurée produite par le SERVEUR (jamais par le modèle) et contexte de conversation mis à jour. */
-  view?: AssistantView; context?: AssistantContext;
+  view?: AssistantView; context?: AssistantContext; navigation?: ScreenNavigation;
   /** La proposition en attente reste affichée (réponse « oui » sans bouton : rien n'est exécuté). */
   keepProposal?: boolean;
   /** Raison lisible du repli (ex. « quota OpenAI épuisé ») — jamais de secret ni de message brut du fournisseur. */
@@ -65,6 +67,8 @@ export const SYSTEM_PROMPT_RULES = [
   "Une photo « rejetée / écartée » s’explique avec publications_photo_explain (photo_id si elle est connue, sinon client : le serveur demandera laquelle). Comptes à reconnecter : publications_reconnect_list ; clients à court de photos : publications_photo_shortage.",
   "Les données affichées viennent du serveur : ne recopie pas les tableaux, résume en une phrase et rappelle le périmètre (client, campagnes, dates).",
   "Pour un diagnostic transversal, les clients en baisse, les priorités du jour ou un plan d’optimisation, appelle director_briefing : utilise les preuves déjà enregistrées, distingue les faits des hypothèses et affiche les données manquantes. L’impact reste qualitatif ; aucune causalité, gain ni stabilité ne doit être inventé. Cet outil ne relance ni n’approuve aucun agent.",
+  "Pour mettre une information au premier plan (« montre-moi », « ouvre », « affiche », « où en est… » sur un écran), appelle show_screen avec l’écran du catalogue le plus précis et le client : l’écran s’ouvre déjà filtré. Pour des données chiffrées, préfère l’outil de lecture correspondant, dont la vue s’affiche au premier plan.",
+  "Pour lancer tout de suite une tâche d’agent (« lance l’audit Lighthouse de X », « relève la fiche Google de Y »), appelle launch_task : c’est une écriture, proposée puis confirmée par l’administrateur.",
   "Pour savoir ce que fait un agent ou l’état de l’équipe (« que fait l’Agent Blog ? », « point de situation des agents », « où en sont les agents pour <client> ? »), appelle agent_briefing avec agent et/ou client : chaque constat est daté, chaque manque est dit.",
 ];
 
@@ -111,7 +115,7 @@ async function runTool(name: ToolName, input: Record<string, unknown>, deps: Orc
 }
 
 const lastUserMessage = (messages: ChatMessage[]) => [...messages].reverse().find((message) => message.role === "user")?.content.trim() ?? "";
-const withOutcome = (outcome: ToolOutcome) => ({ ...(outcome.view ? { view: outcome.view } : {}), ...(outcome.context ? { context: outcome.context } : {}) });
+const withOutcome = (outcome: ToolOutcome) => ({ ...(outcome.view ? { view: outcome.view } : {}), ...(outcome.context ? { context: outcome.context } : {}), ...(outcome.navigation ? { navigation: outcome.navigation } : {}) });
 
 async function viaRules(message: string, deps: OrchestratorDeps, flags: Degraded = {}): Promise<AssistantReply> {
   const intent = parseIntent(message, deps.today, deps.context);
@@ -216,5 +220,5 @@ export async function confirmProposal(tool: unknown, input: unknown, deps: Orche
   const prepared = deps.prepare ? await deps.prepare(parsed.name, parsed.input) : { ok: true as const, input: parsed.input };
   if (!prepared.ok) return { reply: prepared.question, links: prepared.links ?? [], source: "rules", ...questionOutcome(prepared) };
   const outcome = await deps.execute(parsed.name, prepared.input);
-  return { reply: outcome.text, links: outcome.links ?? [], source: "rules" };
+  return { reply: outcome.text, links: outcome.links ?? [], source: "rules", ...(outcome.navigation ? { navigation: outcome.navigation } : {}) };
 }

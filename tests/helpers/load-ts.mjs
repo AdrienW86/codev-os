@@ -20,6 +20,9 @@ export function loadTs(path, mocks = {}, globals = {}) {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       // Charte du harness : module pur, chargé tel quel (cadre de mission ajouté aux appels IA).
       if (name === "@/lib/harness/charter") return loadTs("lib/harness/charter.ts");
+      // Catalogues purs du Directeur (écrans affichables) et du lancement manuel.
+      if (name === "@/lib/assistant/screens") return loadTs("lib/assistant/screens.ts");
+      if (name === "@/lib/launch/catalog") return loadTs("lib/launch/catalog.ts");
       // Lectures de l'Agent Rapport (audience, Lighthouse, contenus) : module pur sans import.
       if (name === "@/lib/reports/insights") return loadTs("lib/reports/insights.ts");
       if (["zod", "react", "react/jsx-runtime", "node:crypto"].includes(name)) return require(name);

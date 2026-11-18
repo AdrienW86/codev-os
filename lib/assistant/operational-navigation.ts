@@ -15,6 +15,15 @@ export const operationalDestinations = {
   reports: { href: "/reports", label: "les rapports" },
   agents: { href: "/agents", label: "les agents" },
   settings: { href: "/settings", label: "les paramètres" },
+  decisions: { href: "/validation", label: "les décisions à prendre" },
+  launch: { href: "/lancer", label: "le lancement des actions" },
+  publications_review: { href: "/publications/review", label: "les publications à valider" },
+  generated_images: { href: "/publications/images", label: "les images générées à valider" },
+  site_audits: { href: "/performance", label: "les audits de sites" },
+  newsletters: { href: "/emailing", label: "les newsletters" },
+  studio: { href: "/studio", label: "le studio vidéo" },
+  news: { href: "/news", label: "la veille" },
+  incidents: { href: "/work?kind=incident", label: "les incidents ouverts" },
 } as const;
 
 export type OperationalDestination = keyof typeof operationalDestinations;
@@ -31,6 +40,15 @@ const targets: { destination: OperationalDestination; expressions: RegExp[] }[] 
   { destination: "reports", expressions: [/^(?:rapports?|comptes rendus)$/] },
   { destination: "agents", expressions: [/^(?:agents?|mes agents)$/] },
   { destination: "settings", expressions: [/^(?:parametres|reglages|configuration)$/] },
+  { destination: "decisions", expressions: [/^(?:decisions?(?: a prendre)?|validations?|a valider|boite a valider)$/] },
+  { destination: "launch", expressions: [/^(?:lancer(?: une action)?|lancement(?: des actions)?|actions manuelles)$/] },
+  { destination: "publications_review", expressions: [/^(?:publications? a valider)$/] },
+  { destination: "generated_images", expressions: [/^(?:images?(?: generees?)?(?: a valider)?)$/] },
+  { destination: "site_audits", expressions: [/^(?:audits?(?: de sites?| lighthouse)?)$/] },
+  { destination: "newsletters", expressions: [/^(?:newsletters?|emailing)$/] },
+  { destination: "studio", expressions: [/^(?:studio(?: video)?)$/] },
+  { destination: "news", expressions: [/^(?:veille|actualites)$/] },
+  { destination: "incidents", expressions: [/^(?:incidents?(?: ouverts?)?)$/] },
 ];
 
 export function resolveExplicitNavigation(message: string) {

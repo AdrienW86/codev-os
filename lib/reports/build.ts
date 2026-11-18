@@ -4,7 +4,7 @@
 // Fonctions pures : testables sans base ni réseau.
 
 import type { ReportKind } from "@/lib/supabase/core.types";
-import { analyticsLines, articleLines, crossReadings, deliveryLines, emptyExtras, extrasPriorities, lighthouseLines, localLines, newsletterLines, siteHealthLines, type ReportExtras } from "@/lib/reports/insights";
+import { analyticsLines, articleLines, competitionLines, crossReadings, rankingLines, deliveryLines, emptyExtras, extrasPriorities, lighthouseLines, localLines, newsletterLines, siteHealthLines, type ReportExtras } from "@/lib/reports/insights";
 
 /** Rapports récurrents (période close). Les rapports Google Ads ont leur propre construction (google-ads.ts). */
 export type RecurringReportKind = "weekly" | "monthly";
@@ -155,7 +155,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
   const avgResponse = responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
 
   const searchConsoleLines = input.searchConsole ? searchConsoleReportLines(input.searchConsole, p) : [];
-  const metricLines = [...searchConsoleLines, ...input.metrics.flatMap((metric) => {
+  const metricLines = [...searchConsoleLines, ...rankingLines(input.extras?.ranking), ...input.metrics.flatMap((metric) => {
     const data = metric.data;
     // L'historique quotidien remplace l'ancien résumé de l'Agent SEO (période différente de celle du rapport).
     if (metric.provider === "search-console" && searchConsoleLines.length) return [];
@@ -182,7 +182,7 @@ export function buildReport(kind: RecurringReportKind, input: ReportInput, today
   })];
 
   const extras = input.extras ?? emptyExtras();
-  const audienceLines = [...analyticsLines(extras.analytics), ...localLines(extras.local)];
+  const audienceLines = [...analyticsLines(extras.analytics), ...localLines(extras.local), ...competitionLines(extras.competition)];
   const qualityLines = [...lighthouseLines(extras.lighthouse), ...siteHealthLines(extras.siteHealth)];
   const diffusedLines = deliveryLines(extras.deliveries, p, true);
   const diffusedCount = extras.deliveries.filter((row) => inPeriod(row.published_at, p)).length;

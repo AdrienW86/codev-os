@@ -457,7 +457,7 @@ test("#10 heartbeat: one row per name, closed step statuses and integer counters
   assert.equal(row.ok, false); assert.equal(row.last_failure_at, later.toISOString()); assert.equal(row.last_success_at, end.toISOString(), "last success kept");
   const read = await hb.getSchedulerHeartbeat();
   assert.deepEqual(json(read), { name: "scheduler_tick", startedAt: later.toISOString(), finishedAt: later.toISOString(), ok: false, steps: { automations: { status: "failed", ms: 3 } }, lastSuccessAt: end.toISOString(), lastFailureAt: later.toISOString() });
-  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"]);
+  assert.deepEqual(json(hb.schedulerSteps), ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "local_competition", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"]);
   const down = createFakeSupabase({}, { failOn: () => true });
   assert.equal(await heartbeatModule(down).recordSchedulerHeartbeat({ startedAt: start, finishedAt: end, steps: {} }), false, "a failed write never breaks the tick");
 });
@@ -488,6 +488,7 @@ function routeWith(fake, overrides = {}) {
     "@/lib/publications/delivery/registry": { processScheduledDuePublications: mark("publication_delivery_send", { disabled: true }) },
     "@/lib/whatsapp/export-import": { purgeExportImports: mark("whatsapp_exports", { purged: 0, failed: 0, orphans: 0 }) },
     "@/lib/local-seo/service": { runLocalSeoTick: mark("local_seo", { collected: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 }) },
+    "@/lib/local-competition/service": { runLocalCompetitionTick: mark("local_competition", { sources: 1, collected: 0, failed: 0, pending: 0, alerts: 0, resolved: 0, purged: 0 }) },
     "@/lib/site-health/service": { runSiteHealthTick: mark("site_health", { checked: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 }) },
     "@/lib/publications/stats/service": { collectPublicationStats: mark("publication_stats", { due: 0, ok: 0, unsupported: 0, failed: 0 }) },
     "@/lib/publications/photo-agent/service": { runPhotoAgentTick: mark("publication_photo", { candidates: 0, generated: 0, skipped: 0, failed: 0, budget: 0 }) },
@@ -500,11 +501,11 @@ test("#10 tick: a failing runTick no longer skips the other steps; heartbeat rec
   const { route, ran } = routeWith(fake, { runTick: () => { throw Error("Texte sensible du job"); } });
   const res = await route.POST(request("Bearer secret"));
   assert.equal(res.init.status, 500);
-  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "lighthouse", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"]);
+  assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "search_console", "google_analytics", "local_seo", "local_competition", "lighthouse", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"]);
   const row = fake.tables.scheduler_heartbeats[0];
   assert.equal(row.ok, false);
   assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), { whatsapp_exports: "ok", automations: "failed", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "ok", harness_control: "ok",
-    search_console: "ok", google_analytics: "ok", local_seo: "ok", lighthouse: "ok", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "ok", publication_photo: "ok", publication_stats: "ok", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok", site_health: "ok" });
+    search_console: "ok", google_analytics: "ok", local_seo: "ok", local_competition: "ok", lighthouse: "ok", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "ok", publication_photo: "ok", publication_stats: "ok", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok", site_health: "ok" });
   assert.deepEqual(json(row.steps.publication_preparation.counts), { clients: 1, skipped_no_delegated_admin: 1 });
   assert.doesNotMatch(JSON.stringify(fake.tables.scheduler_heartbeats), /Texte|sensible/);
   const denied = await route.GET(request("Bearer wrong"));
@@ -517,6 +518,6 @@ test("#10 tick: shared deadline (maxDuration) skips the heavy later steps when t
   try { await route.GET(request("Bearer secret")); } finally { Date.now = realNow; }
   assert.deepEqual(ran, ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "push", "harness_control"], "35 s left: only the light steps run");
   const statuses = Object.fromEntries(Object.entries(fake.tables.scheduler_heartbeats[0].steps).map(([k, v]) => [k, v.status]));
-  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", harness_control: "ok", search_console: "skipped", google_analytics: "skipped", local_seo: "skipped", lighthouse: "skipped", whatsapp: "skipped", visual_agent: "skipped", media_intelligence: "skipped", publication_preparation: "skipped", publication_photo: "skipped", publication_stats: "skipped", blog_agent: "skipped", acquisition_discovery: "skipped", video_agent: "skipped", site_health: "skipped" });
+  assert.deepEqual(json(statuses), { whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "ok", publication_delivery_prepare: "disabled", publication_delivery_send: "skipped", push: "ok", harness_control: "ok", search_console: "skipped", google_analytics: "skipped", local_seo: "skipped", local_competition: "skipped", lighthouse: "skipped", whatsapp: "skipped", visual_agent: "skipped", media_intelligence: "skipped", publication_preparation: "skipped", publication_photo: "skipped", publication_stats: "skipped", blog_agent: "skipped", acquisition_discovery: "skipped", video_agent: "skipped", site_health: "skipped" });
   assert.equal(fake.tables.scheduler_heartbeats[0].ok, true, "skipped is not a failure");
 });

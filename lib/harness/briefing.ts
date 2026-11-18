@@ -224,6 +224,25 @@ export function localSignals(rows: readonly LocalRow[] | null): BriefingSignals 
   return { facts, gaps: [] };
 }
 
+export type CompetitionRow = { metric_key: string; fetched_at: string; data: unknown };
+/** Concurrence locale (lot 7) : dernier relevé par source (metric_snapshots local-competition) ; null = illisible. */
+export function competitionSignals(rows: readonly CompetitionRow[] | null): BriefingSignals {
+  if (!rows) return { facts: [], gaps: [] };
+  const facts: BriefingFact[] = [];
+  for (const key of ["dataforseo-maps", "google-places"]) {
+    const row = rows.find((item) => item.metric_key === key);
+    const d = (row?.data ?? null) as Record<string, unknown> | null;
+    if (!row || !d || typeof d.keyword !== "string") continue;
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const own = (d.client ?? {}) as Record<string, unknown>;
+    const label = key === "dataforseo-maps" ? "position Google Maps" : "rang indicatif Google Places";
+    const rank = n(d.rank);
+    const reviews = n(own.reviews) !== null && n(d.medianReviews) !== null ? `, ${n(own.reviews)} avis contre ${String(n(d.medianReviews)).replace(".", ",")} en médiane chez les 5 premiers concurrents` : "";
+    facts.push({ statement: `Recherche locale « ${clean(d.keyword, 60)} » (${label}) : ${rank !== null ? `${rank}e place` : `absente des ${n(d.depth) ?? 20} premiers résultats`}${reviews}.`, at: row.fetched_at });
+  }
+  return { facts, gaps: facts.length ? [] : ["Concurrence locale non relevée (clé Google Places ou DataForSEO absente, ou client sans métier et ville)."] };
+}
+
 export type ReportRow = { status: string; kind: string; created_at: string };
 export function reportSignals(rows: readonly ReportRow[], now: Date): BriefingSignals {
   const recent = rows.filter((row) => withinDays(row.created_at, now, 35));

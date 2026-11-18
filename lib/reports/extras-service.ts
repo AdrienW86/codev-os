@@ -4,7 +4,7 @@ import "server-only";
 // le rapport se génère sans elle, jamais avec un chiffre inventé.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { emptyExtras, readPostStats, readReportAnalytics, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportLocal, type ReportSiteHealth } from "@/lib/reports/insights";
+import { emptyExtras, readPostStats, readReportAnalytics, readReportRanking, type ReportCompetition, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportLocal, type ReportSiteHealth } from "@/lib/reports/insights";
 
 type Result<T> = { data: T[] | null; error: unknown };
 const TIMEOUT = 12_000;
@@ -41,6 +41,14 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
   const locals = await read<ReportLocal & { location_name: string }>(db.from("local_seo_snapshots").select("location_name,location_title,period_start,period_end,metrics,previous_metrics,keywords,reviews").eq("client_id", clientId)
     .lte("period_end", period.end).gte("period_end", shift(period.start, -10)).order("period_end", { ascending: false }).limit(10).abortSignal(AbortSignal.timeout(TIMEOUT)));
   extras.local = locals ? locals.filter((row, index, all) => all.findIndex((other) => other.location_name === row.location_name) === index) : null;
+  // Positions Google (lot 7) : dernier instantané Search Console clos pendant la période (requêtes et positions).
+  const ranking = await read<{ data: unknown }>(db.from("metric_snapshots").select("data").eq("client_id", clientId).eq("provider", "search-console").eq("metric_key", "performance")
+    .lte("period_end", period.end).gte("period_end", shift(period.start, -7)).order("period_end", { ascending: false }).limit(1).abortSignal(AbortSignal.timeout(TIMEOUT)));
+  extras.ranking = ranking?.[0] ? readReportRanking(ranking[0].data) : null;
+  // Concurrence locale (lot 7) : dernier relevé de chaque source avant la fin de la période (35 jours au plus).
+  const competition = await read<{ metric_key: string; data: unknown }>(db.from("metric_snapshots").select("metric_key,data").eq("client_id", clientId).eq("provider", "local-competition")
+    .lte("period_end", period.end).gte("period_end", shift(period.end, -35)).order("period_end", { ascending: false }).limit(10).abortSignal(AbortSignal.timeout(TIMEOUT)));
+  extras.competition = competition ? ["dataforseo-maps", "google-places"].flatMap((key) => { const row = competition.find((item) => item.metric_key === key); return row && row.data && typeof row.data === "object" ? [row.data as ReportCompetition] : []; }) : null;
   extras.analytics = analytics?.[0] ? readReportAnalytics(analytics[0].data) : null;
   extras.lighthouse = audits ?? [];
   // Statistiques des posts (lot 3) : table facultative, illisible → posts sans chiffres (jamais zéro).

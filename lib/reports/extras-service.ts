@@ -4,7 +4,7 @@ import "server-only";
 // le rapport se génère sans elle, jamais avec un chiffre inventé.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { emptyExtras, readPostStats, readReportAnalytics, readReportRanking, type ReportCompetition, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportLocal, type ReportSiteHealth } from "@/lib/reports/insights";
+import { emptyExtras, readPostStats, readReportAnalytics, readReportRanking, type ReportCompetition, type ReportGeogrid, type Period, type ReportArticle, type ReportDelivery, type ReportExtras, type ReportLighthouse, type ReportNewsletter, type ReportLocal, type ReportSiteHealth } from "@/lib/reports/insights";
 
 type Result<T> = { data: T[] | null; error: unknown };
 const TIMEOUT = 12_000;
@@ -49,6 +49,13 @@ export async function gatherReportExtras(clientId: string, period: Period): Prom
   const competition = await read<{ metric_key: string; data: unknown }>(db.from("metric_snapshots").select("metric_key,data").eq("client_id", clientId).eq("provider", "local-competition")
     .lte("period_end", period.end).gte("period_end", shift(period.end, -35)).order("period_end", { ascending: false }).limit(10).abortSignal(AbortSignal.timeout(TIMEOUT)));
   extras.competition = competition ? ["dataforseo-maps", "google-places"].flatMap((key) => { const row = competition.find((item) => item.metric_key === key); return row && row.data && typeof row.data === "object" ? [row.data as ReportCompetition] : []; }) : null;
+  // Carte de positions Google Maps (lot 7) : dernière grille de chaque recherche, relevée avant la fin de la période.
+  const grids = await read<{ metric_key: string; data: unknown }>(db.from("metric_snapshots").select("metric_key,data").eq("client_id", clientId).eq("provider", "local-geogrid")
+    .lte("period_end", period.end).gte("period_end", shift(period.end, -35)).order("period_end", { ascending: false }).limit(20).abortSignal(AbortSignal.timeout(TIMEOUT)));
+  extras.geogrid = grids ? grids.filter((row, index, all) => all.findIndex((other) => other.metric_key === row.metric_key) === index).flatMap((row) => {
+    const d = row.data as Partial<ReportGeogrid> | null;
+    return d && typeof d.keyword === "string" && Array.isArray(d.cells) && typeof d.size === "number" && d.cells.length === d.size * d.size ? [{ ...d, failed: Array.isArray(d.failed) ? d.failed : [] } as ReportGeogrid] : [];
+  }).slice(0, 3) : null;
   extras.analytics = analytics?.[0] ? readReportAnalytics(analytics[0].data) : null;
   extras.lighthouse = audits ?? [];
   // Statistiques des posts (lot 3) : table facultative, illisible → posts sans chiffres (jamais zéro).

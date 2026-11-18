@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { DEFAULT_FILTERS, type DashboardFilters } from "@/lib/integrations/google-ads/dashboard";
 import { loadCampaignDashboard, loadCampaignDashboardForSystem } from "@/lib/integrations/google-ads/service";
 import type { ReportInput } from "@/lib/reports/build";
-import { buildAdsDocument, buildSearchDocument, buildSiteDocument, buildSocialDocument, previousOf, shiftDay, type DocumentPeriod, type SocialPost } from "./build";
+import { buildAdsDocument, buildSearchDocument, geogridDocumentGrids, withGeogrids, buildSiteDocument, buildSocialDocument, previousOf, shiftDay, type DocumentPeriod, type SocialPost } from "./build";
 import type { ReportDocument } from "./model";
 
 export type DocumentAccess = { kind: "admin" } | { kind: "system"; lease: { jobId: string; worker: string } };
@@ -63,7 +63,7 @@ export async function gatherReportDocuments(clientId: string, period: DocumentPe
   const site = input.metrics.find((metric) => metric.provider === "vercel" && metric.metric_key === "web_analytics" && metric.period_start === period.start && metric.period_end === period.end);
   const documents = [
     await safely("Google Ads", () => adsDocument(clientId, period, access, warnings)),
-    await safely("Référencement", async () => input.searchConsole ? buildSearchDocument({ days: input.searchConsole.days }, period) : null),
+    await safely("Référencement", async () => withGeogrids(input.searchConsole ? buildSearchDocument({ days: input.searchConsole.days }, period) : null, geogridDocumentGrids(input.extras?.geogrid))),
     await safely("Site web", async () => {
       const document = buildSiteDocument(site?.data ?? null, period);
       if (!document && site) warnings.push("Site web non inclus : aucune visite mesurée par Vercel sur la période (historique peut-être expiré).");

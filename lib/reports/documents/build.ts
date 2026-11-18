@@ -3,7 +3,7 @@
 // durée seulement si elle est connue, vocabulaire lisible par un client (pas d'identifiant technique).
 import type { CampaignRow, LocalServicesLeads } from "@/lib/integrations/google-ads/dashboard";
 import type { AdsMetrics } from "@/lib/integrations/google-ads/types";
-import type { ReportChart, ReportDocument, ReportKpi, ReportTable } from "./model";
+import type { ReportChart, ReportDocument, ReportGrid, ReportKpi, ReportTable } from "./model";
 
 export type DocumentPeriod = { start: string; end: string };
 const DAY = 86_400_000;
@@ -233,3 +233,24 @@ export function buildSocialDocument(input: { posts: SocialPost[]; previousCount:
 export function documentsSummary(documents: ReportDocument[]) {
   return documents.map((document) => `${document.title} : ${document.summary}`).join("\n");
 }
+
+// --- Carte de positions Google Maps (DataForSEO) ------------------------------------------------
+type GeogridInput = { keyword: string; checkedAt: string; size: number; spacingKm: number; cells: (number | null)[]; failed: number[]; found: number; top3: number; average: number | null };
+const dec = (v: number) => { const r = Math.round(v * 10) / 10; return nf(r, Number.isInteger(r) ? 0 : 1); };
+export function geogridDocumentGrids(grids: readonly GeogridInput[] | null | undefined): ReportGrid[] {
+  return (grids ?? []).filter((grid) => grid.size >= 3 && grid.size <= 9 && grid.cells.length === grid.size * grid.size).slice(0, 3).map((grid) => {
+    const measured = grid.cells.length - grid.failed.length;
+    return {
+      title: clip(`Carte Google Maps : « ${grid.keyword} »`, 120),
+      caption: clip(`${grid.size} × ${grid.size} points sur ${dec((grid.size - 1) * grid.spacingKm)} km autour de la fiche, relevé du ${dayLabel(grid.checkedAt.slice(0, 10))} : top 3 sur ${grid.top3} point${grid.top3 > 1 ? "s" : ""} sur ${measured}, présente sur ${grid.found}${grid.average !== null ? `, position moyenne ${dec(grid.average)}` : ""}.`, 240),
+      size: grid.size, cells: grid.cells.map((cell) => (cell !== null && cell >= 1 && cell <= 100 ? Math.round(cell) : null)), failed: grid.failed.filter((i) => i >= 0 && i < grid.cells.length),
+    };
+  });
+}
+/** Référencement : le document Search Console reçoit les cartes ; sans Search Console, un document carte seule. */
+export function withGeogrids(document: ReportDocument | null, grids: ReportGrid[]): ReportDocument | null {
+  if (!grids.length) return document;
+  if (document) return { ...document, grids, notes: [...document.notes, GRID_NOTE].slice(0, 10) };
+  return { key: "search", title: "Référencement Google", summary: "Visibilité de la fiche Google dans Google Maps, mesurée depuis plusieurs points autour de l’établissement.", kpis: [], charts: [], tables: [], notes: [GRID_NOTE], grids };
+}
+const GRID_NOTE = "Carte Google Maps : chaque case est une recherche faite depuis ce point ; vert = top 3, orange = 4e à 10e place, rouge = 11e à 20e, gris = au-delà de la 20e place.";

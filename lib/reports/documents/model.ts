@@ -27,14 +27,22 @@ const tableSchema = z.object({
   rows: z.array(z.array(short(160)).min(1).max(5)).max(60),
 }).strict().refine((table) => table.rows.every((row) => row.length === table.columns.length), "Ligne et colonnes de longueurs différentes");
 
+/** Carte de positions Google Maps : grille carrée, position par case (null = au-delà de 20, failed = non relevée). */
+const gridSchema = z.object({
+  title: short(120), caption: short(240), size: z.number().int().min(3).max(9),
+  cells: z.array(z.number().int().min(1).max(100).nullable()).max(81), failed: z.array(z.number().int().min(0).max(80)).max(81),
+}).strict().refine((grid) => grid.cells.length === grid.size * grid.size, "Grille incomplète");
+
 export const reportDocumentSchema = z.object({
   key: z.enum(reportDocumentKeys), title: short(120), summary: short(1500),
   kpis: z.array(kpiSchema).max(8), charts: z.array(chartSchema).max(4), tables: z.array(tableSchema).max(6), notes: z.array(short(400)).max(10),
+  grids: z.array(gridSchema).max(3).optional(),
 }).strict();
 export type ReportDocument = z.infer<typeof reportDocumentSchema>;
 export type ReportKpi = z.infer<typeof kpiSchema>;
 export type ReportChart = z.infer<typeof chartSchema>;
 export type ReportTable = z.infer<typeof tableSchema>;
+export type ReportGrid = z.infer<typeof gridSchema>;
 export const reportDocumentsSchema = z.array(reportDocumentSchema).max(reportDocumentKeys.length)
   .refine((documents) => new Set(documents.map((document) => document.key)).size === documents.length, "Document en double");
 

@@ -115,3 +115,7 @@ Version gratuite, avec DataForSEO en option :
   - Constats (incident dédoublonné `local-competition:<client>:<code>` et recommandation) : fiche absente des 20 premiers résultats, recul de 3 places ou plus, moitié moins d'avis que la médiane des concurrents, note inférieure de plus de 0,3.
   - Stockage : `metric_snapshots` (provider `local-competition`, une clé par source), aucune migration. Sans aucune clé, l'étape est désactivée.
 - Backlinks : non couverts dans cette version.
+
+### Carte de positions Google Maps (DataForSEO)
+
+Étape `local_geogrid` (Agent SEO, `lib/local-geogrid/`) : la recherche est relevée depuis 49 points (grille 7 × 7, 1,5 km entre deux points, 9 km de côté) autour de la fiche, une grille par passage, chaque recherche une fois par semaine. Recherches suivies (3 au plus) : le métier, puis les requêtes Search Console qui contiennent le métier, hors recherches de marque. Centre : coordonnées de la fiche relevées par DataForSEO (étape `local_competition`), sinon barycentre des concurrents. Une grille dont plus de la moitié des points a échoué n'est pas enregistrée. Coût indicatif : 49 requêtes par grille, soit 147 par client et par semaine. Affichage : onglet « Local · Google Maps » de Données et performances, ligne de synthèse du Rapport et carte colorée dans le PDF « Référencement Google ». Stockage : `metric_snapshots` (provider `local-geogrid`), aucune migration. Inactive sans `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD`.

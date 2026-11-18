@@ -8,9 +8,9 @@ import {load,src,json,uid,form} from './helpers/ts-load.mjs';
 const C=uid(1,1),P=uid(3,1);
 const model=load('lib/publications/client-setup-model.ts');
 
-test('model: safe defaults without a row, typed parsing, human approval always required',()=>{
+test('model: safe defaults without a row, typed parsing, human approval always required (auto-approval proposed by default for a new client)',()=>{
  const d=model.clientSettingsFromRow(null);
- assert.deepEqual(json(d),{timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:false,autoApproveHoursBefore:12,saved:false});
+ assert.deepEqual(json(d),{timezone:'Europe/Paris',publishingEnabled:false,generationEnabled:false,autoPrepareEnabled:false,prepareLeadDays:3,mediaReuseAllowed:false,mediaReuseAfterDays:180,editorialBrief:'',requireHumanApproval:true,autoApproveEnabled:true,autoApproveHoursBefore:12,saved:false});
  const s=model.clientSettingsFromRow({timezone:'Indian/Reunion',publishing_enabled:true,auto_prepare_enabled:'yes',prepare_lead_days:5,editorial_brief:'Ton sobre',require_human_approval:false});
  assert.equal(s.timezone,'Indian/Reunion');assert.equal(s.publishingEnabled,true);assert.equal(s.autoPrepareEnabled,false,'non-boolean ignored');assert.equal(s.prepareLeadDays,5);assert.equal(s.requireHumanApproval,true);assert.equal(s.saved,true);
  const ok=model.clientSettingsPayload(form({timezone:'Europe/Paris',prepare_lead_days:'4',media_reuse_after_days:'90',editorial_brief:'Brief',auto_prepare_enabled:'on'}));

@@ -5,6 +5,7 @@ import { archiveReport } from "@/lib/reports/service";
 import type { Actor } from "@/lib/core/actor";
 import type { MutationState } from "@/lib/core/mutation";
 import { buildInbox, supersededReports, type Inbox } from "./inbox";
+import { clientAiBudget } from "@/lib/ai/metered";
 
 const LIMIT = 1000;
 
@@ -31,6 +32,14 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
   const generated = await db.from("publication_generated_images").select("id,client_id,created_at").eq("status", "pending_review").limit(LIMIT).then(
     (r) => r.error ? (/42P01|PGRST205/.test(String((r.error as { code?: string }).code)) || /could not find the table|does not exist/i.test(r.error.message ?? "") ? undefined : null) : r.data ?? [],
     () => null);
+  // Newsletters (migration e-mailing) : table absente → pas de section.
+  const missing = (error: { code?: string; message?: string }) => /42P01|PGRST205/.test(String(error.code)) || /could not find the table|does not exist/i.test(error.message ?? "");
+  const newsletters = await db.from("email_newsletters").select("id,client_id,subject,created_at").eq("status", "draft").limit(LIMIT).then(
+    (r) => r.error ? (missing(r.error) ? undefined : null) : r.data ?? [], () => null);
+  // Plafonds IA atteints : un relevé par client ; suivi non installé (null partout) → pas de section.
+  const budgets = await Promise.all(((clients ?? []) as { id: string }[]).map((c) => clientAiBudget(c.id, now).then((b) => b ? { client_id: c.id, b } : undefined, () => null)));
+  const aiBudget = budgets.some((b) => b === null) ? null : budgets.every((b) => b === undefined) && budgets.length ? undefined
+    : (budgets.filter(Boolean) as { client_id: string; b: { allowed: boolean; spent: number; cap: number } }[]).filter((x) => !x.b.allowed).map((x) => ({ client_id: x.client_id, spentEur: x.b.spent, capEur: x.b.cap }));
   type Ads = { id: string; client_id: string | null; created_at: string; operation_kind: string | null };
   const flagged = (settings as { client_id: string; auto_approve_enabled: boolean }[] | null);
   return buildInbox({
@@ -41,6 +50,7 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
     generatedImages: generated as { id: string; client_id: string; created_at: string }[] | null | undefined,
     autoApproveClients: flagged ? new Set(flagged.filter((s) => s.auto_approve_enabled).map((s) => s.client_id)) : null,
     prospection: prospection as never, seo: seo as never,
+    newsletters: newsletters as { id: string; client_id: string; subject: string | null; created_at: string }[] | null | undefined, aiBudget,
     seoAgentId: (seoAgent as { id: string }[] | null)?.[0]?.id ?? null,
     photos: photos as never, alerts: alerts as never,
   });

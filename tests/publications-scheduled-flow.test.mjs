@@ -179,7 +179,7 @@ test("scheduled due run: disabled without the flag, one send per tick, cockpit b
 test("tick route wires the steps in isolated steps (own try each); notifications accept the review category and link", () => {
   const route = src("app/api/internal/scheduler/tick/route.ts");
   assert.match(route, /prepareApprovedDeliveries\(process\.env\)[\s\S]*processScheduledDuePublications\(process\.env[,)][\s\S]*runScheduledPreparation\(/);
-  assert.equal((route.match(/await step\("/g) ?? []).length, 23, "every step (Agent Photo, post statistics, site health, local SEO, local competition, Maps geogrid, harness control, Google Analytics, Lighthouse audit, visual, blog, prospection and video agents, export purge and runTick included) goes through step(): own try/catch, deadline, heartbeat");
+  assert.equal((route.match(/await step\("/g) ?? []).length, 24, "every step (automatic decisions, Agent Photo, post statistics, site health, local SEO, local competition, Maps geogrid, harness control, Google Analytics, Lighthouse audit, visual, blog, prospection and video agents, export purge and runTick included) goes through step(): own try/catch, deadline, heartbeat");
   const schema = load("lib/notifications/schema.ts", { zod: { z: { object: () => ({ strict: () => ({}) }), array: () => ({ max: () => ({}) }), enum: () => ({}), boolean: () => ({}), uuid: () => ({}), url: () => ({ max: () => ({ refine: () => ({}) }) }), string: () => ({ regex: () => ({}) }) } } });
   assert.ok(schema.categories.includes("publication_review"));
   assert.equal(schema.notificationLabels.publication_review, "Publication à valider");

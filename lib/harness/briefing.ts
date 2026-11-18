@@ -243,6 +243,23 @@ export function competitionSignals(rows: readonly CompetitionRow[] | null): Brie
   return { facts, gaps: facts.length ? [] : ["Concurrence locale non relevée (clé Google Places ou DataForSEO absente, ou client sans métier et ville)."] };
 }
 
+/** Carte de positions Google Maps (lot 7) : dernière grille de chaque recherche suivie. */
+export function geogridSignals(rows: readonly CompetitionRow[] | null): BriefingFact[] {
+  if (!rows) return [];
+  const seen = new Set<string>();
+  const facts: BriefingFact[] = [];
+  for (const row of rows) {
+    if (seen.has(row.metric_key) || facts.length >= 3) continue;
+    seen.add(row.metric_key);
+    const d = (row.data ?? null) as Record<string, unknown> | null;
+    if (!d || typeof d.keyword !== "string" || !Array.isArray(d.cells)) continue;
+    const failed = Array.isArray(d.failed) ? d.failed.length : 0, measured = d.cells.length - failed;
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    facts.push({ statement: `Carte Google Maps « ${clean(d.keyword, 60)} » : top 3 sur ${n(d.top3) ?? 0} point(s) sur ${measured}, présente sur ${n(d.found) ?? 0}${n(d.average) !== null ? `, position moyenne ${String(n(d.average)).replace(".", ",")}` : ""}.`, at: row.fetched_at });
+  }
+  return facts;
+}
+
 export type ReportRow = { status: string; kind: string; created_at: string };
 export function reportSignals(rows: readonly ReportRow[], now: Date): BriefingSignals {
   const recent = rows.filter((row) => withinDays(row.created_at, now, 35));

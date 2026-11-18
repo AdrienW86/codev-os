@@ -2,7 +2,7 @@
 // graphiques vectoriels (courbes, barres), tableaux et notes. Mêmes garanties que le PDF client existant :
 // texte en chaînes hexadécimales (jamais d'opérateur injecté), aucune ressource externe, contenu client uniquement.
 import { assemblePdf, BOTTOM, clean, escapeFile, fold, hexText, LEFT, LINE_W, MAX_PAGES, PAGE_H, PAGE_W, RIGHT, textWidth, type Font } from "../pdf";
-import { reportDocumentSchema, type ReportChart, type ReportDocument, type ReportKpi, type ReportTable } from "./model";
+import { reportDocumentSchema, type ReportChart, type ReportDocument, type ReportGrid, type ReportKpi, type ReportTable } from "./model";
 
 export type DocumentPdfContext = { clientName: string; kindLabel: string; periodLabel: string; version: number; finalized: boolean };
 
@@ -193,6 +193,29 @@ export function renderReportDocumentPdf(context: DocumentPdfContext, input: Repo
     y -= 14;
   };
 
+  // Carte de positions : cases colorées (vert top 3, orange 4-10, rouge 11-20, gris au-delà, hachure claire non relevée).
+  const GRID_TONES = { top: "0.13 0.62 0.38", mid: "0.95 0.62 0.15", low: "0.85 0.27 0.22", none: "0.70 0.73 0.77", unknown: "0.93 0.94 0.95" } as const;
+  const grid = (spec: ReportGrid) => {
+    const cell = Math.min(34, (LINE_W - 40) / spec.size), side = cell * spec.size;
+    const captionRows = fold(spec.caption, LINE_W, 8.5);
+    heading(spec.title, side + captionRows.length * 12.5 + 20);
+    for (const row of captionRows) { text(row, LEFT, y, 8.5, "F1", MUTED); y -= 12.5; }
+    y -= 6;
+    const x0 = LEFT + (LINE_W - side) / 2, top = y;
+    const failed = new Set(spec.failed);
+    spec.cells.forEach((value, i) => {
+      const r = Math.floor(i / spec.size), c = i % spec.size, x = x0 + c * cell, yy = top - (r + 1) * cell;
+      const tone = failed.has(i) ? "unknown" : value === null ? "none" : value <= 3 ? "top" : value <= 10 ? "mid" : "low";
+      rect(x + 1, yy + 1, cell - 2, cell - 2, GRID_TONES[tone]);
+      const label = failed.has(i) ? "?" : value === null ? "20+" : String(value);
+      centered(label, x + cell / 2, yy + cell / 2 - 3.2, cell >= 30 ? 9 : 7.5, "F2", tone === "unknown" ? MUTED : "1 1 1");
+    });
+    // Repère du centre (la fiche).
+    const mid = Math.floor(spec.size / 2);
+    commands.push(`${NAVY} RG 1.4 w ${f2(x0 + mid * cell + 1)} ${f2(top - (mid + 1) * cell + 1)} ${f2(cell - 2)} ${f2(cell - 2)} re S`);
+    y = top - side - 18;
+  };
+
   nextPage();
   paragraph(document.title, 21, 26, 0, "F2");
   paragraph(`${clean(context.kindLabel)}  |  ${clean(context.periodLabel)}`, 9.5, 14, 0, "F1", MUTED);
@@ -210,6 +233,7 @@ export function renderReportDocumentPdf(context: DocumentPdfContext, input: Repo
   if (document.kpis.length) { heading("Chiffres clés", 80); kpiTiles(document.kpis); }
   for (const spec of document.charts) chart(spec);
   for (const spec of document.tables) if (spec.rows.length) table(spec);
+  for (const spec of document.grids ?? []) grid(spec);
   if (document.notes.length) {
     heading("À savoir", 30);
     for (const note of document.notes) {

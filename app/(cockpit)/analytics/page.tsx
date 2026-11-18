@@ -9,6 +9,8 @@ import { resolveChannel, resolveCompare, resolvePeriod } from "@/lib/analytics/v
 import { getSeoDashboard, listSeoClients, type SeoDashboardState } from "@/lib/integrations/search-console/dashboard";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
 import { SeoDashboard } from "@/components/analytics/seo-dashboard";
+import { LocalDashboardView } from "@/components/analytics/local-dashboard";
+import { getLocalDashboard } from "@/lib/local-geogrid/dashboard";
 import { PageHeading } from "@/components/ui/primitives";
 import { EmptyState, InlineNotice } from "@/components/ui/states";
 import { ModuleUnavailable } from "@/components/ui/module-unavailable";
@@ -17,7 +19,7 @@ import { Tabs } from "@/components/ui/tabs";
 export const metadata: Metadata = { title: "Données et performances" };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Source = "audience" | "seo";
+type Source = "audience" | "seo" | "local";
 
 // Deux sources distinctes, jamais additionnées : Vercel Web Analytics (visiteurs du site) et Google Search Console
 // (clics organiques depuis Google). Client, période et comparaison restent dans l'URL quand on change d'onglet.
@@ -25,12 +27,13 @@ function sourceTabs(params: Record<string, string | string[] | undefined>, curre
   const href = (source: Source) => {
     const next = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) if (typeof value === "string" && key !== "source" && key !== "channel") next.set(key, value);
-    if (source === "seo") next.set("source", "seo");
+    if (source !== "audience") next.set("source", source);
     return `/analytics?${next.toString()}`;
   };
   return <Tabs label="Source des données" current={current} items={[
     { id: "audience", label: "Audience · Vercel Web Analytics", href: href("audience") },
     { id: "seo", label: "Référencement · Google Search Console", href: href("seo") },
+    { id: "local", label: "Local · Google Maps", href: href("local") },
   ]} />;
 }
 
@@ -41,7 +44,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
   if (await getActiveScenario()) return <>{heading}<InlineNotice tone="info" title="Mode simulation actif">Les données Analytics réelles ne sont pas affichées en simulation. Quittez la simulation depuis les paramètres pour consulter ce tableau de bord.</InlineNotice></>;
 
   const params = await searchParams;
-  const source: Source = params.source === "seo" ? "seo" : "audience";
+  const source: Source = params.source === "seo" || params.source === "local" ? params.source : "audience";
   const tabs = sourceTabs(params, source);
   const clients = await safeRead("analytics-clients", () => listAnalyticsClients(), []);
   if (clients.unavailable) return <>{heading}<ModuleUnavailable module="Données et performances" /></>;
@@ -58,6 +61,12 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
 
   const period = resolvePeriod(params);
   const today = new Date().toISOString().slice(0, 10);
+
+  if (source === "local") {
+    const local = await safeRead("local-dashboard", () => getLocalDashboard(requested.id), null);
+    if (local.unavailable || !local.data) return <>{tabs}<ModuleUnavailable module="Référencement local" /></>;
+    return <>{tabs}<LocalDashboardView state={local.data} clients={clients.data.map(({ id, name }) => ({ id, name, href: `/analytics?source=local&client=${id}` }))} current={requested.id} /></>;
+  }
 
   if (source === "seo") {
     // Le sélecteur client choisit aussi la propriété Search Console associée à CE client (jamais celle d'un autre).

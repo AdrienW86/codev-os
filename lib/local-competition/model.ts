@@ -16,11 +16,12 @@ export const COMPETITION_INTERVAL_DAYS = 7;
 export const COMPETITION_RETRY_HOURS = 24;
 export const COMPETITION_DEPTH = 20;
 
-export type LocalResult = { rank: number; name: string; placeId: string | null; rating: number | null; reviews: number | null; domain: string | null };
+/** lat / lng : coordonnées de la fiche, relevées seulement chez DataForSEO (centre de la carte de positions). */
+export type LocalResult = { rank: number; name: string; placeId: string | null; rating: number | null; reviews: number | null; domain: string | null; lat?: number | null; lng?: number | null };
 export type LocalTarget = { clientId: string; company: string; activity: string; city: string; domain: string | null };
 export type CompetitionSnapshot = {
   version: 1; source: LocalSource; keyword: string; checkedAt: string; depth: number;
-  rank: number | null; client: { name: string; rating: number | null; reviews: number | null } | null;
+  rank: number | null; client: { name: string; rating: number | null; reviews: number | null; lat?: number | null; lng?: number | null } | null;
   competitors: LocalResult[]; medianRating: number | null; medianReviews: number | null;
 };
 export type CompetitionFinding = { code: CompetitionCode; severity: "medium" | "low"; title: string; detail: string; fix: string };
@@ -73,6 +74,8 @@ export function readPlacesResults(body: unknown): LocalResult[] {
   return out;
 }
 
+const coordinate = (value: unknown, max: number) => (typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= max ? Math.round(value * 1e6) / 1e6 : null);
+
 /** Réponse DataForSEO SERP Google Maps (live/advanced) → résultats ordonnés par position. */
 export function readDataForSeoResults(body: unknown): LocalResult[] | null {
   const task = rec(Array.isArray(rec(body).tasks) ? (rec(body).tasks as unknown[])[0] : null);
@@ -85,7 +88,7 @@ export function readDataForSeoResults(body: unknown): LocalResult[] | null {
     if (!name) continue;
     const rating = rec(item.rating);
     const rank = typeof item.rank_group === "number" && Number.isInteger(item.rank_group) && item.rank_group > 0 ? item.rank_group : out.length + 1;
-    out.push({ rank, name, placeId: typeof item.place_id === "string" ? item.place_id.slice(0, 200) : null, rating: numOrNull(rating.value, 5), reviews: numOrNull(rating.votes_count, 10_000_000), domain: hostOf(item.domain ?? item.url) });
+    out.push({ rank, name, placeId: typeof item.place_id === "string" ? item.place_id.slice(0, 200) : null, rating: numOrNull(rating.value, 5), reviews: numOrNull(rating.votes_count, 10_000_000), domain: hostOf(item.domain ?? item.url), lat: coordinate(item.latitude, 90), lng: coordinate(item.longitude, 180) });
   }
   return out;
 }
@@ -112,7 +115,7 @@ export function buildCompetition(source: LocalSource, keyword: string, results: 
   const competitors = results.filter((row) => row !== own).slice(0, 5);
   return {
     version: 1, source, keyword: clean(keyword, 120), checkedAt: now.toISOString(), depth: COMPETITION_DEPTH,
-    rank: own?.rank ?? null, client: own ? { name: own.name, rating: own.rating, reviews: own.reviews } : null, competitors,
+    rank: own?.rank ?? null, client: own ? { name: own.name, rating: own.rating, reviews: own.reviews, ...(source === "dataforseo-maps" ? { lat: own.lat ?? null, lng: own.lng ?? null } : {}) } : null, competitors,
     medianRating: median(competitors.flatMap((row) => (row.rating === null ? [] : [row.rating]))),
     medianReviews: median(competitors.flatMap((row) => (row.reviews === null ? [] : [row.reviews]))),
   };
@@ -124,12 +127,13 @@ export function readCompetition(value: unknown): CompetitionSnapshot | null {
   if (data.version !== 1 || !LOCAL_SOURCES.includes(data.source as LocalSource) || typeof data.keyword !== "string" || typeof data.checkedAt !== "string") return null;
   const competitors = Array.isArray(data.competitors) ? (data.competitors as unknown[]).map(rec).filter((row) => typeof row.name === "string").slice(0, 5).map((row) => ({
     rank: typeof row.rank === "number" ? row.rank : 0, name: clean(String(row.name), 80), placeId: null, rating: numOrNull(row.rating, 5), reviews: numOrNull(row.reviews, 10_000_000), domain: typeof row.domain === "string" ? row.domain : null,
+    lat: coordinate(row.lat, 90), lng: coordinate(row.lng, 180),
   })) : [];
   const client = rec(data.client);
   return {
     version: 1, source: data.source as LocalSource, keyword: clean(data.keyword, 120), checkedAt: data.checkedAt, depth: typeof data.depth === "number" ? data.depth : COMPETITION_DEPTH,
     rank: typeof data.rank === "number" && Number.isInteger(data.rank) && data.rank > 0 ? data.rank : null,
-    client: typeof client.name === "string" ? { name: clean(client.name, 80), rating: numOrNull(client.rating, 5), reviews: numOrNull(client.reviews, 10_000_000) } : null,
+    client: typeof client.name === "string" ? { name: clean(client.name, 80), rating: numOrNull(client.rating, 5), reviews: numOrNull(client.reviews, 10_000_000), lat: coordinate(client.lat, 90), lng: coordinate(client.lng, 180) } : null,
     competitors, medianRating: numOrNull(data.medianRating, 5), medianReviews: numOrNull(data.medianReviews, 10_000_000),
   };
 }

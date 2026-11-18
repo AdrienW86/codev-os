@@ -33,8 +33,11 @@ export type ReportRanking = { period: Period; queries: ReportRankingQuery[] };
 /** Concurrence locale (lot 7) : dernier relevé par source, tel qu'archivé (metric_snapshots local-competition). */
 export type ReportCompetition = { source: string; keyword: string; checkedAt: string; depth: number; rank: number | null; client: { rating: number | null; reviews: number | null } | null;
   competitors: { name: string; rating: number | null; reviews: number | null }[]; medianRating: number | null; medianReviews: number | null };
+/** Carte de positions Google Maps (lot 7, DataForSEO) : dernière grille de chaque recherche suivie. */
+export type ReportGeogrid = { keyword: string; checkedAt: string; size: number; spacingKm: number; cells: (number | null)[]; failed: number[]; found: number; top3: number; average: number | null };
 export type ReportExtras = {
   ranking?: ReportRanking | null;
+  geogrid?: ReportGeogrid[] | null;
   competition?: ReportCompetition[] | null;
   siteHealth?: ReportSiteHealth | null;
   local?: ReportLocal[] | null;
@@ -45,7 +48,7 @@ export type ReportExtras = {
   newsletters: ReportNewsletter[];
 };
 
-export const emptyExtras = (): ReportExtras => ({ ranking: null, competition: null, siteHealth: null, local: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
+export const emptyExtras = (): ReportExtras => ({ ranking: null, geogrid: null, competition: null, siteHealth: null, local: null, analytics: null, lighthouse: [], deliveries: [], articles: [], newsletters: [] });
 
 const num = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const rec = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -325,6 +328,17 @@ export function competitionLines(rows: readonly ReportCompetition[] | null | und
     if (row.source === "dataforseo-maps" && row.competitors.length) lines.push(`Concurrents en tête : ${row.competitors.slice(0, 3).map((c) => `${clean(c.name, 50)}${c.rating !== null ? ` (${nf(c.rating, 1)}/5${c.reviews !== null ? `, ${nf(c.reviews)} avis` : ""})` : ""}`).join(", ")}.`);
   }
   return lines;
+}
+
+/** Carte de positions : part des points en top 3 et où la fiche apparaît, position moyenne là où elle apparaît. */
+export function geogridLines(grids: readonly ReportGeogrid[] | null | undefined): string[] {
+  return (grids ?? []).slice(0, 3).flatMap((grid) => {
+    const measured = grid.cells.length - grid.failed.length;
+    if (!measured) return [];
+    const dec = (v: number) => { const r = Math.round(v * 10) / 10; return nf(r, Number.isInteger(r) ? 0 : 1); };
+    const span = dec((grid.size - 1) * grid.spacingKm);
+    return [`Carte Google Maps « ${clean(grid.keyword, 60)} » (${grid.size} × ${grid.size} points sur ${span} km autour de la fiche, relevé du ${frDay(grid.checkedAt)}) : top 3 sur ${nf(grid.top3)} point${grid.top3 > 1 ? "s" : ""} sur ${nf(measured)}, présente sur ${nf(grid.found)}${grid.average !== null ? `, position moyenne ${dec(grid.average)} là où elle apparaît` : ""}.`];
+  });
 }
 
 type HealthCheckLine = { key: string; label: string; state: string; detail: string };

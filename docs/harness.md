@@ -53,3 +53,11 @@ Une phrase (hors accroche) portant une formulation récurrente ou un terme non c
 - **Registres** : la charte reste la référence ; `tests/agent-briefing.test.mjs` vérifie que le registre d'exécution (`lib/agents/registry.ts`) et le catalogue de l'écran Agents (`lib/agents/catalog.ts`) n'ont aucun agent sans charte (hors ancien « Automatisation »).
 
 Pour ajouter un agent : en plus des étapes ci-dessus, lui donner un lecteur dans `briefingReaders`.
+
+## Agent Rapport : croisement référencement × contenus
+
+- **Sources ajoutées** (`lib/reports/extras-service.ts`, lecture seule, source illisible = omise) : fenêtre GA4 de 30 jours la plus récente close dans la période, audits Lighthouse (mobile et ordinateur, avec Core Web Vitals réels quand Chrome les fournit), diffusions publiées par réseau avec leur sujet, articles publiés (et leur requête visée), newsletters envoyées.
+- **Sections** (`lib/reports/insights.ts`, pur) : « Contenus diffusés par réseau », « Blog et newsletters », « Audience et conversions (Google Analytics 4) », « Qualité du site (Lighthouse) », « Lectures croisées » ; la version client reprend contenus, résultats et lectures croisées.
+- **Lectures croisées** : deux mesures enregistrées mises en regard, chacune avec sa période (posts sociaux × visites venues des réseaux, posts Google Business × visites Google Maps, article × visites en page d'entrée et requête visée, Google Ads × trafic payant/naturel GA4, clics Search Console × conversions naturelles, vitesse mobile × engagement). Jamais présentées comme une cause.
+- **Priorités** : baisse de visites ≥ 20 % (GA4), trafic sans conversion suivie, Lighthouse mobile performance < 50 ou SEO < 80 ; une même priorité client n'est affichée qu'une fois.
+- Manque connu : statistiques des posts (portée, interactions) et de la fiche Google Business, non récupérées à ce jour.

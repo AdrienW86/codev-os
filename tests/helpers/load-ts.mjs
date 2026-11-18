@@ -20,6 +20,8 @@ export function loadTs(path, mocks = {}, globals = {}) {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       // Charte du harness : module pur, chargé tel quel (cadre de mission ajouté aux appels IA).
       if (name === "@/lib/harness/charter") return loadTs("lib/harness/charter.ts");
+      // Lectures de l'Agent Rapport (audience, Lighthouse, contenus) : module pur sans import.
+      if (name === "@/lib/reports/insights") return loadTs("lib/reports/insights.ts");
       if (["zod", "react", "react/jsx-runtime", "node:crypto"].includes(name)) return require(name);
       throw new Error(`Unexpected import: ${name}`);
     },

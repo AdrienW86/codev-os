@@ -66,8 +66,8 @@ export const harnessCharters: readonly HarnessCharter[] = [
   {
     id: "report", name: "Agent Rapport", team: "pilotage", expertise: "Account manager senior", registryType: "report",
     mission: "Rassembler l’activité réelle du client en rapports hebdomadaires et mensuels à relire.",
-    does: ["Rapports hebdomadaires et mensuels", "Rapports Google Ads récurrents", "Priorités du client"],
-    never: ["N’envoie aucun rapport sans approbation", "Ne présente aucune donnée absente comme un résultat"],
+    does: ["Rapports hebdomadaires et mensuels", "Rapports Google Ads récurrents", "Priorités du client", "Croisement des données de référencement (Search Console, Google Analytics 4, Lighthouse, Google Ads) avec les contenus diffusés par réseau, les articles et les newsletters"],
+    never: ["N’envoie aucun rapport sans approbation", "Ne présente aucune donnée absente comme un résultat", "Ne présente jamais un rapprochement de chiffres comme une cause"],
     triggers: [{ kind: "run", runType: "report.generate" }, { kind: "run", runType: "ads.report.prepare" }], clientSettings: "Rapports → réglages du client",
   },
   {

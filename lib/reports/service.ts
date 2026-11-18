@@ -20,6 +20,7 @@ import { gatherReportDocuments, type DocumentAccess } from "@/lib/reports/docume
 import { clientDocuments, reportDocumentLabels } from "@/lib/reports/documents/model";
 import { documentPdfFilename, renderReportDocumentPdf } from "@/lib/reports/documents/pdf";
 import { documentsSummary } from "@/lib/reports/documents/build";
+import { gatherReportExtras } from "@/lib/reports/extras-service";
 
 const db = () => getSupabaseServerClient();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,13 +44,13 @@ export async function gatherReportInput(clientId: string, period: Period): Promi
     supabase.from("incidents").select("title,status,severity,detected_at,resolved_at").eq("client_id", clientId).order("detected_at", { ascending: false }).limit(200),
     supabase.from("agent_runs").select("status,started_at,agent:agents(name)").eq("client_id", clientId).gte("started_at", since).lt("started_at", end).limit(500),
     supabase.from("site_checks").select("ok,response_ms,checked_at").eq("client_id", clientId).gte("checked_at", since).lt("checked_at", end).limit(5000),
-    supabase.from("metric_snapshots").select("provider,metric_key,period_start,period_end,data").eq("client_id", clientId).lte("period_start", period.end).gte("period_end", period.start).limit(100),
+    supabase.from("metric_snapshots").select("provider,metric_key,period_start,period_end,data").eq("client_id", clientId).neq("provider", "google-analytics").lte("period_start", period.end).gte("period_end", period.start).limit(100),
   ]);
   for (const result of [client, projects, tasks, publications, recommendations, actions, incidents, runs, checks, metrics]) if (result.error) fail("read");
   if (!client.data) fail("client");
-  const searchConsole = await gatherSearchConsoleHistory(clientId, period);
+  const [searchConsole, extras] = await Promise.all([gatherSearchConsoleHistory(clientId, period), gatherReportExtras(clientId, period)]);
   return {
-    client: client.data, period, searchConsole,
+    client: client.data, period, searchConsole, extras,
     projects: projects.data ?? [], tasks: tasks.data ?? [], publications: publications.data ?? [],
     recommendations: recommendations.data ?? [],
     actions: (actions.data ?? []).map((item) => ({ label: describeAction(item.action_type, item.parameters), status: item.status, created_at: item.created_at, executed_at: item.executed_at })),

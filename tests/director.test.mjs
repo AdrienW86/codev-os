@@ -160,6 +160,8 @@ function service({ rows = {}, fail = [], totals = {}, deny = false, simulation =
     "@/lib/actions/registry": { describeAction: () => "Action existante à examiner" },
     "@/lib/dashboard/home": { todayInParis: () => today },
     "@/lib/assistant/director-model": model,
+    "@/lib/harness/briefing-service": { loadAgentBriefings: async () => [] },
+    "@/lib/harness/briefing": loadTs("lib/harness/briefing.ts"),
   });
   return { run: director.directorBriefingTool, calls };
 }
@@ -253,14 +255,22 @@ test("director cards render facts, confidence and required review as escaped res
   const component = loadTs("components/assistant/director-briefing.tsx", {
     "next/link": { default: ({ children, ...props }) => React.createElement("a", props, children) },
     "@/lib/assistant/views": views,
+    "@/lib/harness/briefing": loadTs("lib/harness/briefing.ts"),
   });
   const briefing = model.buildDirectorBriefing(input({ recommendations: [recommendation({ title: "<script>alert(1)</script>" })], seo: [snapshot()] }));
+  briefing.agents = [
+    { agent: "blog", name: "Agent Blog", team: "contenu", mission: "", state: "failed", health: [], facts: [{ statement: "2 articles publiés sur 30 jours.", at: now }], gaps: ["Aucun article programmé."], lastActivityAt: now, stale: false },
+    { agent: "veille", name: "Agent Veille", team: "veille", mission: "", state: "ok", health: [], facts: [], gaps: [], lastActivityAt: now, stale: false },
+  ];
   const markup = renderToStaticMarkup(React.createElement(component.DirectorBriefing, { briefing, propose: async () => { throw new Error("render must not propose"); } }));
   assert.match(markup, /Fait enregistré/);
   assert.match(markup, /Hypothèse ou justification à confirmer/);
   assert.match(markup, /Confiance/);
   assert.match(markup, /Sources consultées/);
   assert.match(markup, /Preuves datées/);
+  assert.match(markup, /Agents consultés \(2\) · 1 à examiner/);
+  assert.match(markup, /Agent Blog/);
+  assert.match(markup, /Autres agents \(1\)/);
   assert.match(markup, /Proposer une tâche/);
   assert.match(markup, /&lt;script&gt;/);
   assert.doesNotMatch(markup, /<script|<table|Approuver|Exécuter maintenant/);

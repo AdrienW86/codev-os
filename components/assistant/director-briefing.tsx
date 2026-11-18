@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { isSafeHref } from "@/lib/assistant/views";
 import type { DirectorBriefing as Briefing, DirectorDecision, DirectorSource } from "@/lib/assistant/director-model";
+import { briefingAlerts, briefingStateLabels, type AgentBriefing } from "@/lib/harness/briefing";
 
 const sources: Record<DirectorSource, string> = { incidents: "Incidents", tasks: "Tâches à échéance", actions: "Actions à valider", recommendations: "Recommandations", seo: "Search Console" };
 const priorities = { critical: "Critique", high: "Haute", medium: "Moyenne", low: "Basse", unrated: "Non évaluée" };
@@ -63,6 +64,25 @@ function Decision({ decision, propose }: { decision: DirectorDecision; propose: 
   );
 }
 
+/** Point de situation de chaque agent : les agents à examiner d'abord, les autres repliés. */
+function Agents({ agents }: { agents: AgentBriefing[] }) {
+  const alerts = briefingAlerts(agents);
+  const others = agents.filter((agent) => !alerts.includes(agent));
+  const row = (agent: AgentBriefing) => <li key={agent.agent} className="min-w-0 break-words">
+    <p><span className="font-medium text-foreground">{agent.name}</span> · <span className={agent.state === "failed" || agent.state === "unavailable" || agent.state === "attention" || agent.stale ? "text-warning" : ""}>{briefingStateLabels[agent.state]}{agent.stale && agent.state === "ok" ? " · sans activité récente" : ""}</span></p>
+    {agent.facts.slice(0, 2).map((fact, index) => <p key={index}>{fact.statement}{fact.at ? ` (${date(fact.at)})` : ""}</p>)}
+    {agent.gaps.slice(0, 2).map((gap) => <p key={gap} className="text-warning">{gap}</p>)}
+  </li>;
+  return (
+    <section aria-label="Point de situation des agents" className="rounded-xl border border-border bg-surface p-3">
+      <h3 className="text-sm font-semibold">Agents consultés ({agents.length}){alerts.length ? ` · ${alerts.length} à examiner` : ""}</h3>
+      {alerts.length > 0 && <ul className="mt-2 space-y-2 text-xs text-muted">{alerts.map(row)}</ul>}
+      {others.length > 0 && <details className="mt-2 text-xs text-muted"><summary className="min-h-8 cursor-pointer font-medium text-foreground">Autres agents ({others.length})</summary>
+        <ul className="mt-2 space-y-2">{others.map(row)}</ul></details>}
+    </section>
+  );
+}
+
 /** Same single result panel as other tools; cards wrap on mobile and never auto-execute. */
 export function DirectorBriefing({ briefing, propose }: { briefing: Briefing; propose: Propose }) {
   return (
@@ -76,6 +96,7 @@ export function DirectorBriefing({ briefing, propose }: { briefing: Briefing; pr
           </li>)}
         </ul>
       </section>
+      {briefing.agents && briefing.agents.length > 0 && <Agents agents={briefing.agents} />}
       <details open className="rounded-xl border border-warning/25 p-3 text-xs text-muted">
         <summary className="min-h-8 cursor-pointer font-medium text-foreground">Périmètre et limites du diagnostic</summary>
         <ul className="mt-2 list-disc space-y-2 pl-4">{briefing.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>

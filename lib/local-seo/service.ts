@@ -32,7 +32,8 @@ export function productionLocalSeoDeps():LocalSeoDeps{
 
 type Location={client_id:string;external_account_id:string;connection_id:string|null;display_name:string|null};
 
-export async function runLocalSeoTick(now=new Date(),deps:LocalSeoDeps=productionLocalSeoDeps()):Promise<LocalSeoSummary>{
+// options.clientId : lancement manuel pour ce client seulement, sans attendre l'échéance hebdomadaire.
+export async function runLocalSeoTick(now=new Date(),deps:LocalSeoDeps=productionLocalSeoDeps(),options:{clientId?:string}={}):Promise<LocalSeoSummary>{
  const summary:LocalSeoSummary={collected:0,failed:0,pending:0,alerts:0,resolved:0};
  const agent=await getAgentByType('seo');
  if(!agent||!agent.enabled||agent.status!=='Actif')return {...summary,disabled:'agent'};
@@ -47,8 +48,8 @@ export async function runLocalSeoTick(now=new Date(),deps:LocalSeoDeps=productio
  const lastAt=new Map<string,string>(),lastFailure=new Map<string,string>();
  for(const row of (last.data??[]) as {client_id:string;location_name:string;fetched_at:string}[]){const key=`${row.client_id}|${row.location_name}`;if(!lastAt.has(key)||lastAt.get(key)!<row.fetched_at)lastAt.set(key,row.fetched_at);}
  for(const row of (failures.data??[]) as {resource_id:string|null;metadata:unknown;created_at:string}[]){const loc=(row.metadata as {location?:unknown}|null)?.location;if(row.resource_id&&typeof loc==='string')lastFailure.set(`${row.resource_id}|${loc}`,row.created_at);}
- const due=((accounts.data??[]) as Location[]).filter(row=>LOCATION_RE.test(row.external_account_id)&&row.connection_id)
-  .filter(row=>localDue({lastAt:lastAt.get(`${row.client_id}|${row.external_account_id}`)??null,lastFailureAt:lastFailure.get(`${row.client_id}|${row.external_account_id}`)??null},now));
+ const due=((accounts.data??[]) as Location[]).filter(row=>LOCATION_RE.test(row.external_account_id)&&row.connection_id&&(!options.clientId||row.client_id===options.clientId))
+  .filter(row=>Boolean(options.clientId)||localDue({lastAt:lastAt.get(`${row.client_id}|${row.external_account_id}`)??null,lastFailureAt:lastFailure.get(`${row.client_id}|${row.external_account_id}`)??null},now));
  summary.pending=Math.max(0,due.length-MAX_PER_TICK);
  for(const location of due.slice(0,MAX_PER_TICK)){
   const snapshot=await collect(location,deps,now).catch(()=>null);

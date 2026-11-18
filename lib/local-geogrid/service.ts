@@ -26,7 +26,8 @@ export function productionLocalGeogridDeps():LocalGeogridDeps{
 type ClientRow={id:string;name:string|null;company_name:string|null;activity:string|null;geographic_area:string|null;website:string|null};
 type Candidate={target:LocalTarget;keyword:string;key:string;center:NonNullable<ReturnType<typeof geogridCenter>>};
 
-export async function runLocalGeogridTick(now=new Date(),deps:LocalGeogridDeps=productionLocalGeogridDeps()):Promise<LocalGeogridSummary>{
+// options.clientId : lancement manuel pour ce client seulement, sans attendre l'échéance (coût DataForSEO : confirmé par l'administrateur).
+export async function runLocalGeogridTick(now=new Date(),deps:LocalGeogridDeps=productionLocalGeogridDeps(),options:{clientId?:string}={}):Promise<LocalGeogridSummary>{
  const summary:LocalGeogridSummary={collected:0,failed:0,pending:0,points:0};
  if(!deps.transport.dataforseo)return {...summary,disabled:'provider'};
  const agent=await getAgentByType('seo');
@@ -53,10 +54,10 @@ export async function runLocalGeogridTick(now=new Date(),deps:LocalGeogridDeps=p
  const due:Candidate[]=[];
  for(const target of ((clients.data??[]) as ClientRow[]).map(competitionTarget)){
   const center=target?centerBy.get(target.clientId):null;
-  if(!target||!center)continue;
+  if(!target||!center||(options.clientId&&target.clientId!==options.clientId))continue;
   for(const keyword of geogridKeywords({activity:target.activity,company:target.company,queries:queriesBy.get(target.clientId)??[]})){
    const key=geogridKey(keyword),k=`${target.clientId}|${key}`;
-   if(geogridDue({lastAt:lastAt.get(k)??null,lastFailureAt:lastFailure.get(k)??null},now))due.push({target,keyword,key,center});
+   if(Boolean(options.clientId)||geogridDue({lastAt:lastAt.get(k)??null,lastFailureAt:lastFailure.get(k)??null},now))due.push({target,keyword,key,center});
   }
  }
  summary.pending=Math.max(0,due.length-1);

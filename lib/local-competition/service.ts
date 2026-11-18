@@ -29,7 +29,8 @@ export function activeSources(transport:LocalCompetitionTransport):LocalSource[]
 type ClientRow={id:string;name:string|null;company_name:string|null;activity:string|null;geographic_area:string|null;website:string|null};
 type SnapshotRow={client_id:string;metric_key:string;period_end:string;fetched_at:string;data:unknown};
 
-export async function runLocalCompetitionTick(now=new Date(),deps:LocalCompetitionDeps=productionLocalCompetitionDeps()):Promise<LocalCompetitionSummary>{
+// options.clientId : lancement manuel pour ce client seulement, sans attendre l'échéance.
+export async function runLocalCompetitionTick(now=new Date(),deps:LocalCompetitionDeps=productionLocalCompetitionDeps(),options:{clientId?:string}={}):Promise<LocalCompetitionSummary>{
  const sources=activeSources(deps.transport);
  const summary:LocalCompetitionSummary={sources:sources.length,collected:0,failed:0,pending:0,alerts:0,resolved:0,purged:0};
  const agent=await getAgentByType('seo');
@@ -49,8 +50,8 @@ export async function runLocalCompetitionTick(now=new Date(),deps:LocalCompetiti
  const lastAt=new Map<string,string>(),lastFailure=new Map<string,string>();
  for(const row of rows)if(!lastAt.has(row.client_id))lastAt.set(row.client_id,row.fetched_at);
  for(const row of (failures.data??[]) as {resource_id:string|null;created_at:string}[])if(row.resource_id&&(!lastFailure.has(row.resource_id)||lastFailure.get(row.resource_id)!<row.created_at))lastFailure.set(row.resource_id,row.created_at);
- const due=((clients.data??[]) as ClientRow[]).map(competitionTarget).filter((t):t is LocalTarget=>t!==null)
-  .filter(t=>competitionDue({lastAt:lastAt.get(t.clientId)??null,lastFailureAt:lastFailure.get(t.clientId)??null},now));
+ const due=((clients.data??[]) as ClientRow[]).map(competitionTarget).filter((t):t is LocalTarget=>t!==null&&(!options.clientId||t.clientId===options.clientId))
+  .filter(t=>Boolean(options.clientId)||competitionDue({lastAt:lastAt.get(t.clientId)??null,lastFailureAt:lastFailure.get(t.clientId)??null},now));
  summary.pending=Math.max(0,due.length-MAX_PER_TICK);
  for(const target of due.slice(0,MAX_PER_TICK)){
   const keyword=competitionKeyword(target);

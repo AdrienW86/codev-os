@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MutationForm } from "@/components/ui/mutation-form";
 import { runHarnessControlAction } from "@/app/(cockpit)/agents/coverage-actions";
@@ -43,6 +44,7 @@ export function TeamPanel({ team }: { team: TeamView }) {
                       <p className="mt-1"><span className="font-semibold">Ne fait jamais :</span> {charter.never.join(" · ")}</p>
                       <p className="mt-1 text-muted">Réglages par client : {charter.clientSettings}</p>
                     </details>
+                    <Link href={`/lancer?agent=${charter.id}`} className="mt-3 inline-block text-xs font-medium text-accent hover:underline" data-launch-agent={charter.id}>Lancer une tâche de cet agent →</Link>
                   </li>
                 );
               })}

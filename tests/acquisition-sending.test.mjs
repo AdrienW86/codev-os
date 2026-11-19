@@ -274,3 +274,47 @@ test("Rédacteur : cadre de mission, contrôle avant remplacement, brouillon en 
   assert.match(service, /\.eq\("state", "draft"\)\.eq\("draft_source", "ai_pending"\)/);
   assert.match(src("lib/acquisition/send-service.ts"), /neq\("draft_source", "ai_pending"\)/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// PR 6 : relance unique et résultats.
+const stats = load("lib/acquisition/stats.ts");
+
+test("relance : courte, honnête, une seule, mention d'opposition présente", () => {
+  const outreach = load("lib/acquisition/outreach.ts");
+  const follow = mail.followUpMessage("Re: Atelier Archi et Toitures Martin", "Toitures\nMartin");
+  assert.equal(follow.subject, "Re: Atelier Archi et Toitures Martin");
+  assert.match(follow.body, /recommandation mutuelle avec Toitures Martin/);
+  assert.match(follow.body, /je ne vous relancerai pas/);
+  assert.ok(follow.body.endsWith(outreach.OPT_OUT_FOOTER));
+  const audit = outreach.auditOutreachDraft(follow, null);
+  assert.ok(audit.score >= 80, JSON.stringify(audit));
+  assert.equal(mail.FOLLOW_UP_BUSINESS_DAYS, 5);
+});
+
+test("relance : programmée après l'envoi du premier message, annulée avec lui", () => {
+  const service = src("lib/acquisition/send-service.ts");
+  assert.match(service, /step: 2, parent_message_id: m\.id, scheduled_for: null/);
+  assert.match(service, /addBusinessDays\(now, FOLLOW_UP_BUSINESS_DAYS\)[\s\S]*\.eq\("parent_message_id", m\.id\)\.eq\("state", "approved"\)\.is\("scheduled_for", null\)/);
+  assert.match(service, /await cancelFollowUps\(id, "admin"\)/);
+  assert.match(service, /await cancelFollowUps\(m\.id, reason\)/);
+  assert.match(service, /if \(!retry\) await cancelFollowUps\(m\.id, "parent_failed"\)/);
+  assert.match(src("app/(cockpit)/acquisition/actions.ts"), /followUp: data\.get\("follow_up"\) === "on"/);
+});
+
+test("résultats : premiers contacts, relances, réponses, rebonds et plaintes sans double compte", () => {
+  const messages = [
+    { state: "sent", step: 1, sent_at: "x", provider_message_id: "a", replied_at: "y", reply_kind: "reply" },
+    { state: "sent", step: 1, sent_at: "x", provider_message_id: "b", replied_at: "y", reply_kind: "stop" },
+    { state: "sent", step: 1, sent_at: "x", provider_message_id: "c" },
+    { state: "sent", step: 1, sent_at: "x", provider_message_id: "d" },
+    { state: "sent", step: 2, sent_at: "x", provider_message_id: "e" },
+    { state: "approved", step: 2, sent_at: null }, { state: "draft", step: 1, sent_at: null },
+  ];
+  const events = [
+    { provider_message_id: "c", event_type: "email.bounced", detail: "Permanent / General" }, { provider_message_id: "c", event_type: "email.bounced", detail: "Permanent / General" },
+    { provider_message_id: "d", event_type: "email.bounced", detail: "Transient / MailboxFull" }, { provider_message_id: "a", event_type: "email.delivered", detail: null },
+    { provider_message_id: "z", event_type: "email.complained", detail: null },
+  ];
+  assert.deepEqual(json(stats.prospectingStats(messages, events)), { sent: 5, firstContacts: 4, followUps: 1, queued: 1, delivered: 1, replies: 1, stops: 1, hardBounces: 1, complaints: 0, replyRate: 25, bounceRate: 20 });
+  assert.deepEqual(json(stats.prospectingStats([], [])).replyRate, null);
+});

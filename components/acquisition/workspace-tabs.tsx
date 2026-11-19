@@ -8,14 +8,15 @@ import { enrichProspectsAction, handoffToEmailAction } from "@/app/(cockpit)/acq
 import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS } from "@/lib/acquisition/outreach";
 import { EmailsPanel } from "./emails-panel";
 import type { ProspectingSender } from "@/lib/acquisition/prospecting-sender";
+import type { ProspectingStats } from "@/lib/acquisition/stats";
 import { ProspectingSenderPanel } from "./prospecting-sender-panel";
 import { ADDRESS_CHECK_LABELS, type AddressCheckStatus } from "@/lib/emailing/address-check";
 
 type Tab = "prospects"|"emails"|"senders"|"templates";
-export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab, sendingReady = false }: {
+export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab, sendingReady = false, stats = null }: {
   placesReady?: boolean; prescribersReady?: boolean;
   /** Expéditeurs de prospection (null : migration 20261218000000 non appliquée). */
-  prospectingSenders?: ProspectingSender[] | null; initialWorkspace?: string; initialTab?: Tab; sendingReady?: boolean;
+  prospectingSenders?: ProspectingSender[] | null; initialWorkspace?: string; initialTab?: Tab; sendingReady?: boolean; stats?: Record<string, ProspectingStats> | null;
   workspaces: AcquisitionWorkspace[]; prospects: AcquisitionProspect[];
   messages: AcquisitionMessage[]; senders: AcquisitionSender[]; templates: AcquisitionTemplate[];
 }) {
@@ -102,7 +103,7 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
         </div>
         <p className="mt-2 text-xs text-muted">Variables des modèles : {TEMPLATE_PLACEHOLDERS.map(v=>`{{${v}}}`).join(", ")}.</p>
       </form>}
-      {tab==="emails" && active && <EmailsPanel workspace={active} messages={scopedMessages} companyOf={companyOf} sendingReady={sendingReady}
+      {tab==="emails" && active && <EmailsPanel workspace={active} messages={scopedMessages} companyOf={companyOf} sendingReady={sendingReady} stats={stats?.[active.id] ?? null}
         senderReady={Boolean(prospectingSenders?.some(s=>s.workspace_id===active.id&&s.status==="ready"&&s.domain_status==="verified"))} />}
       {tab==="senders" && active && <>
         <ProspectingSenderPanel workspaceId={active.id} label={active.label} ready={prospectingSenders!==null} sender={prospectingSenders?.find(s=>s.workspace_id===active.id) ?? null} />

@@ -35,3 +35,23 @@ export function composeProspectingText(bodyText: string, sender: MailSender, uns
   const main = bodyText.replace(OPT_OUT_FOOTER, "").trimEnd();
   return `${main}\n\n${legalFooter(sender, unsubscribeUrl, sourceUrl)}`.slice(0, 10_000);
 }
+
+/** Relance unique, courte et honnête (aucune nouvelle affirmation), envoyée seulement sans réponse ni opposition. */
+export function followUpMessage(parentSubject: string, senderName: string): { subject: string; body: string } {
+  const name = senderName.replace(/[\r\n\t]+/g, " ").trim().slice(0, 120) || "Notre équipe";
+  const subject = `Re: ${parentSubject.replace(/^\s*re\s*:\s*/i, "")}`.replace(/[\r\n\t]+/g, " ").slice(0, 200);
+  const body = `Bonjour,
+
+Je reviens brièvement vers vous au sujet de mon précédent message. Si une recommandation mutuelle avec ${name} peut vous être utile, je serais ravi d'en parler 10 minutes, au moment qui vous convient.
+
+Sinon, aucun souci : je ne vous relancerai pas.
+
+Bien cordialement,
+${name}
+
+${OPT_OUT_FOOTER}`;
+  return { subject, body };
+}
+
+/** Relance : 5 jours ouvrés après le premier message. */
+export const FOLLOW_UP_BUSINESS_DAYS = 5;

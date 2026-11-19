@@ -12,9 +12,9 @@ import { checkAddressesWithDns } from "@/lib/emailing/address-check-dns";
 import { evaluateAcquisitionDispatch } from "./connector-gates";
 import { resolveProspectingSender } from "./prospecting-sender";
 import { readProspectingSender, workspaceProtectedDomains } from "./sender-service";
-import { composeProspectingText, unsubscribeLink } from "./outreach-mail";
+import { FOLLOW_UP_BUSINESS_DAYS, composeProspectingText, followUpMessage, unsubscribeLink } from "./outreach-mail";
 import { auditOutreachDraft } from "./outreach";
-import { NO_CONTACT_STAGES, dailyCap, inSendWindow, localDayStartIso, reputationVerdict, tickBudget, ticksLeftToday } from "./send-plan";
+import { NO_CONTACT_STAGES, addBusinessDays, dailyCap, inSendWindow, localDayStartIso, reputationVerdict, tickBudget, ticksLeftToday } from "./send-plan";
 
 // Prospection e-mail, PR 3 : approbation, planification et envoi progressif (migration 20261220000000).
 // Chaîne : brouillon relu → approbation humaine (confirmation cruciale) → envoi par le planificateur dans les créneaux
@@ -72,14 +72,14 @@ export async function updateDraft(actor: Admin, workspaceId: string, id: string,
  * Approuve des brouillons (confirmation cruciale côté écran). Refusés : adresse exclue, non vérifiée (revérifiée ici
  * si besoin), brouillon incomplet (variable non remplacée, mention d'opposition absente) ou fiche déjà en réponse.
  */
-export async function approveMessages(actor: Admin, workspaceId: string, ids: string[]): Promise<Outcome> {
+export async function approveMessages(actor: Admin, workspaceId: string, ids: string[], options: { followUp?: boolean } = {}): Promise<Outcome> {
   const workspace = await readWorkspace(workspaceId);
   const unique = [...new Set(ids.filter((id) => UUID.test(id)))].slice(0, APPROVE_MAX);
   if (!workspace || !unique.length) return { ok: false, message: "Aucun brouillon sélectionné." };
-  const { data, error } = await db().from("acquisition_messages").select("id,prospect_id,recipient_email,subject,body_text,state,draft_source").eq("workspace_id", workspace.id).in("id", unique);
+  const { data, error } = await db().from("acquisition_messages").select("id,prospect_id,recipient_email,subject,body_text,state,draft_source,step").eq("workspace_id", workspace.id).in("id", unique);
   if (error) return { ok: false, message: "Migration 20261220000000_acquisition_sending à appliquer." };
   // Un brouillon en cours de rédaction personnalisée n'est pas approuvable (il va changer).
-  const drafts = ((data ?? []) as { id: string; prospect_id: string; recipient_email: string; subject: string; body_text: string; state: string; draft_source: string }[]).filter((m) => m.state === "draft" && m.draft_source !== "ai_pending");
+  const drafts = ((data ?? []) as { id: string; prospect_id: string; recipient_email: string; subject: string; body_text: string; state: string; draft_source: string; step: number }[]).filter((m) => m.state === "draft" && m.draft_source !== "ai_pending");
   if (!drafts.length) return { ok: false, message: "Aucun brouillon à approuver." };
   const prospects = await db().from("acquisition_prospects").select("id,stage,company_name,email_check_status,email_checked_at").eq("workspace_id", workspace.id).in("id", drafts.map((m) => m.prospect_id));
   if (prospects.error) return { ok: false, message: "Migration 20261219000000_acquisition_email_checks à appliquer (vérification des adresses)." };
@@ -112,10 +112,33 @@ export async function approveMessages(actor: Admin, workspaceId: string, ids: st
     if (updateError) return { ok: false, message: "Migration 20261220000000_acquisition_sending à appliquer." };
     for (const id of approved) await db().from("acquisition_messages").update({ idempotency_key: `acq:${id}` }).eq("id", id).is("idempotency_key", null);
     await db().from("acquisition_prospects").update({ stage: "approved", updated_at: now }).eq("workspace_id", workspace.id).in("id", drafts.filter((m) => approved.includes(m.id)).map((m) => m.prospect_id));
+    // Relance unique approuvée en même temps (case cochée) : programmée seulement une fois le premier message parti,
+    // 5 jours ouvrés plus tard ; annulée dès une réponse, une opposition, un rebond ou une annulation du premier.
+    if (options.followUp) {
+      const senderName = await workspaceSenderName(workspace);
+      const rows = drafts.filter((m) => approved.includes(m.id) && (m.step ?? 1) === 1).map((m) => {
+        const follow = followUpMessage(m.subject, senderName);
+        return { workspace_id: workspace.id, prospect_id: m.prospect_id, recipient_email: m.recipient_email, subject: follow.subject, body_text: follow.body,
+          state: "approved", approved_at: now, approved_by: actor.userId.slice(0, 120), step: 2, parent_message_id: m.id, scheduled_for: null, idempotency_key: `acq:fu:${m.id}` };
+      });
+      if (rows.length) await db().from("acquisition_messages").insert(rows); // un brouillon n'est approuvé qu'une fois : jamais de doublon
+    }
   }
   await writeAudit(actor, { action: "acquisition_message.approved", resource_type: "acquisition_workspace", resource_id: workspace.id, metadata: { approved: approved.length, refused } });
   const refusedTotal = Object.values(refused).reduce((a, b) => a + b, 0);
   return { ok: approved.length > 0, message: `${approved.length} e-mail(s) approuvé(s), envoyés progressivement dans les créneaux de bureau.${refusedTotal ? ` ${refusedTotal} refusé(s) : ${refused.excluded} exclu(s), ${refused.address} adresse(s) non vérifiée(s), ${refused.quality} brouillon(s) incomplet(s), ${refused.stage} fiche(s) déjà en réponse ou exclue(s).` : ""}` };
+}
+
+async function workspaceSenderName(workspace: Workspace): Promise<string> {
+  if (!workspace.client_id) return workspace.label;
+  const { data } = await db().from("clients").select("name,company_name").eq("id", workspace.client_id).maybeSingle();
+  const client = data as { name?: string | null; company_name?: string | null } | null;
+  return client?.company_name || client?.name || workspace.label;
+}
+
+/** Annule les relances encore en attente d'un message (premier message annulé, écarté ou sans suite). */
+async function cancelFollowUps(parentId: string, reason: string) {
+  await db().from("acquisition_messages").update({ state: "cancelled", cancelled_reason: reason }).eq("parent_message_id", parentId).in("state", ["draft", "approved"]);
 }
 
 /** Annule un brouillon ou un message approuvé pas encore parti. */
@@ -123,6 +146,7 @@ export async function cancelMessage(actor: Admin, workspaceId: string, id: strin
   if (!UUID.test(workspaceId) || !UUID.test(id)) return { ok: false, message: "Message invalide." };
   const { data, error } = await db().from("acquisition_messages").update({ state: "cancelled", cancelled_reason: "admin" }).eq("id", id).eq("workspace_id", workspaceId).in("state", ["draft", "approved"]).select("id");
   if (error || !data?.length) return { ok: false, message: "Ce message ne peut plus être annulé." };
+  await cancelFollowUps(id, "admin");
   await writeAudit(actor, { action: "acquisition_message.cancelled", resource_type: "acquisition_workspace", resource_id: workspaceId, metadata: { message_id: id } });
   return { ok: true, message: "Message annulé." };
 }
@@ -229,7 +253,11 @@ async function sendOne(
 ): Promise<"sent" | "failed" | "skipped"> {
   const email = normalizeEmail(m.recipient_email);
   const target = scopeOf(workspace);
-  const cancel = async (reason: string) => { await db().from("acquisition_messages").update({ state: reason === "suppressed" ? "suppressed" : "cancelled", cancelled_reason: reason }).eq("id", m.id).eq("state", "approved"); return "skipped" as const; };
+  const cancel = async (reason: string) => {
+    await db().from("acquisition_messages").update({ state: reason === "suppressed" ? "suppressed" : "cancelled", cancelled_reason: reason }).eq("id", m.id).eq("state", "approved");
+    await cancelFollowUps(m.id, reason);
+    return "skipped" as const;
+  };
   if (!email) return cancel("invalid_address");
   if (blocked.has(email)) return cancel("suppressed");
   if (!prospect || NO_CONTACT_STAGES.has(prospect.stage)) return cancel("prospect_stage");
@@ -253,6 +281,8 @@ async function sendOne(
   try {
     const sent = await sendEmail({ to: email, subject: m.subject, text: composeProspectingText(m.body_text, sender, link, prospect.contact_email_source), headers, idempotencyKey: m.idempotency_key ?? `acq:${m.id}`, from: sender.from, replyTo: sender.replyTo });
     await db().from("acquisition_messages").update({ state: "sent", sent_at: now.toISOString(), provider_message_id: sent.id, sender_id: senderId, last_error: null }).eq("id", m.id);
+    // Relance éventuelle : programmée à J+5 ouvrés (envoyée dans les créneaux suivants, mêmes verrous).
+    await db().from("acquisition_messages").update({ scheduled_for: addBusinessDays(now, FOLLOW_UP_BUSINESS_DAYS).toISOString() }).eq("parent_message_id", m.id).eq("state", "approved").is("scheduled_for", null);
     await db().from("acquisition_prospects").update({ stage: "contacted", updated_at: now.toISOString() }).eq("id", m.prospect_id).in("stage", ["approved", "draft_ready", "discovered", "verified", "qualified"]);
     return "sent";
   } catch (error) {
@@ -261,6 +291,7 @@ async function sendOne(
     await db().from("acquisition_messages").update(retry
       ? { state: "approved", scheduled_for: new Date(now.getTime() + 30 * 60_000).toISOString(), last_error: kind }
       : { state: "failed", last_error: kind }).eq("id", m.id);
+    if (!retry) await cancelFollowUps(m.id, "parent_failed");
     return "failed";
   }
 }

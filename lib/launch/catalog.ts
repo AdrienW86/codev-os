@@ -42,6 +42,7 @@ export const launchTasks: readonly LaunchTask[] = [
   { id: "site-health", agent: "monitoring", label: "Santé technique du site", effect: "Vérifie maintenant certificat, domaine, DNS, sitemap et indexation du site du client.", scope: "client", covers: { step: "site_health" } },
   { id: "ads-monitor", agent: "google-ads", label: "Analyse Google Ads", effect: "Lance maintenant l’analyse programmée des campagnes du client. Aucune modification sans votre accord.", scope: "client", covers: { runType: "ads.monitor" } },
   { id: "prospection", agent: "prospection", label: "Recherche de prescripteurs", effect: "Fait avancer les recherches de prescripteurs en cours ; une nouvelle zone se lance depuis Acquisition.", scope: "global", covers: { step: "acquisition_discovery" } },
+  { id: "prospection-email", agent: "prospection-email", label: "Envoyer la prospection approuvée", effect: "Envoie maintenant les e-mails approuvés dus, dans les créneaux de bureau et au rythme du préchauffage ; rien hors créneau ni au-delà du quota.", scope: "global", covers: { step: "acquisition_send" } },
   { id: "newsletter", agent: "newsletter", label: "Préparer une newsletter", effect: "Ouvre les newsletters pour en générer une. L’envoi reste à votre validation.", scope: "client-or-global", covers: {}, href: () => "/emailing" },
   { id: "veille", agent: "veille", label: "Actualiser la veille", effect: "Récupère maintenant les dernières actualités tech, IA, SEO et Ads.", scope: "global", covers: { runType: "news.fetch" } },
 ];

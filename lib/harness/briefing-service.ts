@@ -7,7 +7,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals,
+  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, type ProspectingMessageRow,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
   type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type CompetitionRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
@@ -109,6 +109,15 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
       query = query.in("workspace_id", workspaces.map((row) => row.id));
     }
     return prospectionSignals(await rows<DiscoveryRow>(query.limit(200).abortSignal(AbortSignal.timeout(TIMEOUT))), now);
+  },
+  "prospection-email": async ({ db, clientId, now, since }) => {
+    let query = db.from("acquisition_messages").select("state,sent_at,replied_at,created_at").gte("created_at", since(60));
+    if (clientId) {
+      const workspaces = await rows<{ id: string }>(db.from("acquisition_workspaces").select("id").eq("client_id", clientId).limit(5).abortSignal(AbortSignal.timeout(TIMEOUT)));
+      if (!workspaces.length) return { facts: [], gaps: ["Aucun espace de prospection pour ce client."] };
+      query = query.in("workspace_id", workspaces.map((row) => row.id));
+    }
+    return prospectingEmailSignals(await optionalRows<ProspectingMessageRow>(query.limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null), now);
   },
   newsletter: async ({ db, clientId, now, since }) => newsletterSignals(await rows<NewsletterRow>(
     scoped(db.from("email_newsletters").select("status,created_at,sent_at,sent_count").gte("created_at", since(90)), clientId).limit(200).abortSignal(AbortSignal.timeout(TIMEOUT))), now),

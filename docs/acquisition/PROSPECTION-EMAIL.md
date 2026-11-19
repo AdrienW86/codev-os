@@ -40,3 +40,26 @@ toutes les actions avec un identifiant (espace client, recherche, transmission�
 - L'envoi (PR 3) exige une vérification `valid` de moins de 30 jours, sinon il la refait.
 
 Migration : `20261219000000_acquisition_email_checks.sql` (additive, à appliquer manuellement).
+
+## 3. Approbation, planification et envoi progressif
+
+`lib/acquisition/send-plan.ts` (pur), `send-service.ts`, `outreach-mail.ts`, onglet **E-mails** ; étape du
+planificateur `acquisition_send` (Agent Envoi prospection, toutes les 15 min).
+
+- **Approbation** : sélection des brouillons, case « J'ai relu… » et nombre d'e-mails retapé (confirmation cruciale).
+  Refusés : adresse exclue, non vérifiée (revérifiée si > 30 jours), brouillon incomplet, entreprise déjà en réponse.
+  Un brouillon se corrige avant approbation ; un message approuvé s'annule tant qu'il n'est pas parti.
+- **Activation par espace** (confirmation cruciale) : exige un expéditeur prêt (domaine dédié vérifié), l'envoi serveur
+  actif (`EMAIL_SENDING_ENABLED=true`) et l'URL publique (`PUBLICATIONS_OAUTH_BASE_URL`, lien de désinscription).
+  « Arrêter tous les envois » est immédiat.
+- **Rythme** : lundi-vendredi 9 h – 11 h 30 et 14 h – 16 h 30 (heure de l'espace, fériés exclus), 3 messages au plus
+  par passage, préchauffage 10/20/35 puis 50 par jour, plafond absolu 50/jour.
+- **Juste avant chaque message** : arrêt d'urgence, expéditeur toujours valide et hors domaine protégé, exclusions
+  (globales, de l'expéditeur, de l'espace), étape de l'entreprise, adresse vérifiée, quota du jour, réservation
+  atomique (`approved → sending`), clé d'idempotence Resend (pas de doublon).
+- **Message envoyé** : texte relu + mention complète (raison sociale, adresse, origine de l'adresse, intérêt légitime,
+  lien de désinscription en un clic, « STOP », confidentialité) et en-têtes RFC 8058.
+- **Réputation** (7 jours, webhook Resend) : une plainte, plus de 3 % de rebonds définitifs (dès 20 envois) ou 3 rebonds
+  avant 20 envois → arrêt d'urgence automatique de l'espace, motif affiché, reprise manuelle seulement.
+
+Migration : `20261220000000_acquisition_sending.sql` (additive ; prévoit aussi les colonnes des PR 4 à 6).

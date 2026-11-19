@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
+  | "prospection" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
   | "veille";
 
 export type HarnessCharter = {
@@ -149,6 +149,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Balayage de zone multi-sources légales", "Score et preuve par entreprise", "Brouillons de premier contact"],
     never: ["N’envoie aucun e-mail sans validation", "Ne collecte aucune donnée personnelle (nom de dirigeant, e-mail nominatif)"],
     triggers: [{ kind: "step", step: "acquisition_discovery" }, { kind: "manual" }], clientSettings: "Acquisition → client",
+  },
+  {
+    id: "prospection-email", name: "Agent Envoi prospection", team: "prospection", expertise: "Spécialiste délivrabilité et conformité de la prospection B2B",
+    mission: "Envoyer les premiers contacts approuvés depuis le domaine dédié, au rythme du préchauffage, sans jamais exposer le domaine principal.",
+    does: ["Envoi en heures de bureau, quelques messages par passage", "Préchauffage du domaine (10, 20, 35 puis 50 par jour)", "Mention légale et lien de désinscription dans chaque message", "Arrêt automatique sur plainte ou rebonds"],
+    never: ["N’envoie aucun message non approuvé par un humain", "N’écrit jamais à une adresse exclue, non vérifiée ou déjà en réponse", "N’utilise jamais le domaine principal, le site ou le domaine de newsletters"],
+    triggers: [{ kind: "step", step: "acquisition_send" }], clientSettings: "Acquisition → espace du client → Expéditeur",
   },
   {
     id: "newsletter", name: "Agent Newsletter", team: "contenu", expertise: "Rédacteur e-mail marketing senior",

@@ -66,14 +66,14 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
       ].map((k)=><div key={k.name} className="rounded-xl border border-border bg-surface p-5"><p className="text-sm text-muted">{k.name}</p><p className="mt-2 text-3xl font-semibold">{k.value}</p></div>)}
     </div>
     <div role="status" className="rounded-xl border border-border-strong bg-surface-raised p-4 text-sm">
-      <strong>Envois verrouillés par défaut.</strong> La prospection réelle et la découverte automatique restent désactivées jusqu&apos;à la validation du fournisseur, des données et des mécanismes de sécurité.
+      <strong>Envois verrouillés par défaut.</strong> Un espace n&apos;envoie qu&apos;après vérification de son domaine dédié (onglet Expéditeur), approbation de chaque e-mail et activation explicite (onglet E-mails).
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
     {notice && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm">{notice}</p>}
     {actionMessage && <p role="status" className={`rounded-xl border border-border bg-surface p-4 text-sm ${params.ok === "1" ? "" : "text-warning"}`}>{actionMessage}</p>}
     {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} multisourceReady={snapshot.multisourceReady} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
-    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates} prospectingSenders={prospectingSenders} initialWorkspace={workspaceParam} initialTab={tabParam}/>
+    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates} prospectingSenders={prospectingSenders} initialWorkspace={workspaceParam} initialTab={tabParam} sendingReady={Boolean(snapshot.sendingReady)}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>
         <div className="p-5"><h2 className="text-lg font-semibold">Connecteurs — branchements à réaliser</h2>

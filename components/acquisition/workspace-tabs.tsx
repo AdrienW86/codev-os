@@ -5,16 +5,17 @@ import type { AcquisitionMessage, AcquisitionProspect, AcquisitionSender, Acquis
 import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/model";
 import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
 import { enrichProspectsAction, handoffToEmailAction } from "@/app/(cockpit)/acquisition/actions";
-import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS, auditOutreachDraft } from "@/lib/acquisition/outreach";
+import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS } from "@/lib/acquisition/outreach";
+import { EmailsPanel } from "./emails-panel";
 import type { ProspectingSender } from "@/lib/acquisition/prospecting-sender";
 import { ProspectingSenderPanel } from "./prospecting-sender-panel";
 import { ADDRESS_CHECK_LABELS, type AddressCheckStatus } from "@/lib/emailing/address-check";
 
 type Tab = "prospects"|"emails"|"senders"|"templates";
-export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab }: {
+export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab, sendingReady = false }: {
   placesReady?: boolean; prescribersReady?: boolean;
   /** Expéditeurs de prospection (null : migration 20261218000000 non appliquée). */
-  prospectingSenders?: ProspectingSender[] | null; initialWorkspace?: string; initialTab?: Tab;
+  prospectingSenders?: ProspectingSender[] | null; initialWorkspace?: string; initialTab?: Tab; sendingReady?: boolean;
   workspaces: AcquisitionWorkspace[]; prospects: AcquisitionProspect[];
   messages: AcquisitionMessage[]; senders: AcquisitionSender[]; templates: AcquisitionTemplate[];
 }) {
@@ -100,12 +101,8 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
         </div>
         <p className="mt-2 text-xs text-muted">Variables des modèles : {TEMPLATE_PLACEHOLDERS.map(v=>`{{${v}}}`).join(", ")}.</p>
       </form>}
-      {tab==="emails" && (scopedMessages.length===0?<p className="py-8 text-sm text-muted">Aucun brouillon. Les futurs envois nécessiteront une approbation explicite et un connecteur autorisé.</p>:
-        <div className="divide-y divide-border">{scopedMessages.map(m=><article key={m.id} className="py-3">
-          <div className="flex flex-wrap justify-between gap-2"><h3 className="font-medium">{m.subject}</h3><span className="text-xs text-muted">{m.state}</span></div>
-          <p className="text-xs text-muted">{m.recipient_email}</p><p className="mt-2 whitespace-pre-wrap text-sm">{m.body_text}</p>
-          {m.state==="draft" && <DraftQuality subject={m.subject} body={m.body_text} company={companyOf.get(m.prospect_id)} />}
-        </article>)}</div>)}
+      {tab==="emails" && active && <EmailsPanel workspace={active} messages={scopedMessages} companyOf={companyOf} sendingReady={sendingReady}
+        senderReady={Boolean(prospectingSenders?.some(s=>s.workspace_id===active.id&&s.status==="ready"&&s.domain_status==="verified"))} />}
       {tab==="senders" && active && <>
         <ProspectingSenderPanel workspaceId={active.id} label={active.label} ready={prospectingSenders!==null} sender={prospectingSenders?.find(s=>s.workspace_id===active.id) ?? null} />
         {senders.filter(s=>s.workspace_id===workspace&&s.provider!=="resend").map(s=><p key={s.id} className="mt-2 rounded-lg border border-border p-3 text-sm text-muted">Ancien connecteur : {s.address} · {s.provider} · {s.status} (non utilisé pour la prospection)</p>)}
@@ -116,14 +113,4 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
         </article>)}</div>)}
     </div>
   </section>;
-}
-
-/** Contrôle qualité d'un brouillon (délivrabilité et efficacité) affiché avant approbation. */
-function DraftQuality({ subject, body, company }: { subject: string; body: string; company?: string }) {
-  const audit = auditOutreachDraft({ subject, body }, company);
-  const tone = audit.score >= 80 ? "text-success" : audit.score >= 60 ? "text-warning" : "text-danger";
-  return <div className="mt-2 rounded-lg border border-border p-2 text-xs">
-    <p><span className={`font-semibold ${tone}`}>Qualité {audit.score}/100</span> <span className="text-muted">· {audit.words} mots</span></p>
-    {audit.issues.length>0 && <ul className="mt-1 space-y-0.5">{audit.issues.map(i=><li key={i.code} className={i.level==="warning"?"text-warning":"text-muted"}>{i.message}</li>)}</ul>}
-  </div>;
 }

@@ -110,3 +110,90 @@ test("transmission : seules les adresses vérifiées deviennent des brouillons",
   assert.match(handoff, /deliverable\.map\(\(p\) => \{/);
   assert.match(src("supabase/migrations/20261219000000_acquisition_email_checks.sql"), /email_check_status[\s\S]*'valid','invalid_syntax','disposable','typo','no_mx','unknown'/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// PR 3 : approbation, planification et envoi progressif.
+const plan = load("lib/acquisition/send-plan.ts");
+const mail = load("lib/acquisition/outreach-mail.ts");
+
+test("préchauffage et plafond du jour : 10, 20, 35 puis 50 au plus, jamais au-delà du réglage", () => {
+  const now = new Date("2026-11-19T10:00:00Z");
+  const ago = (days) => new Date(now.getTime() - days * 86_400_000).toISOString();
+  assert.equal(plan.warmupCap(null, now), 10);
+  assert.deepEqual([0, 6, 7, 13, 14, 20, 21, 90].map((d) => plan.warmupCap(ago(d), now)), [10, 10, 20, 20, 35, 35, 50, 50]);
+  assert.equal(plan.dailyCap(200, ago(90), now), 50);
+  assert.equal(plan.dailyCap(15, ago(90), now), 15);
+  assert.equal(plan.dailyCap(40, null, now), 10);
+  assert.equal(plan.dailyCap(0, ago(90), now), 0);
+  assert.equal(plan.dailyCap(Number.NaN, ago(90), now), 0);
+});
+
+test("créneaux : jours ouvrés 9 h – 11 h 30 et 14 h – 16 h 30 heure de Paris, hors fériés", () => {
+  // Jeudi 19/11/2026 : 10 h Paris = 9 h UTC (heure d'hiver).
+  assert.equal(plan.inSendWindow(new Date("2026-11-19T09:00:00Z")), true);
+  assert.equal(plan.inSendWindow(new Date("2026-11-19T07:59:00Z")), false, "8 h 59 Paris");
+  assert.equal(plan.inSendWindow(new Date("2026-11-19T10:30:00Z")), false, "11 h 30 Paris");
+  assert.equal(plan.inSendWindow(new Date("2026-11-19T13:15:00Z")), true, "14 h 15 Paris");
+  assert.equal(plan.inSendWindow(new Date("2026-11-21T09:00:00Z")), false, "samedi");
+  assert.equal(plan.inSendWindow(new Date("2026-11-11T09:00:00Z")), false, "11 novembre");
+  assert.equal(plan.isFrenchHoliday(2026, 4, 6), true, "lundi de Pâques 2026");
+  assert.equal(plan.isFrenchHoliday(2026, 5, 14), true, "Ascension 2026");
+  assert.equal(plan.isFrenchHoliday(2026, 5, 25), true, "lundi de Pentecôte 2026");
+  assert.equal(plan.isFrenchHoliday(2026, 5, 26), false);
+  // Heure d'été : 9 h 30 Paris = 7 h 30 UTC.
+  assert.equal(plan.inSendWindow(new Date("2026-06-17T07:30:00Z")), true);
+});
+
+test("répartition : quelques messages par passage, jamais en rafale", () => {
+  assert.equal(plan.ticksLeftToday(new Date("2026-11-19T08:00:00Z")), 20, "9 h : 10 + 10 passages");
+  assert.equal(plan.ticksLeftToday(new Date("2026-11-19T15:00:00Z")), 2, "16 h : 2 passages");
+  assert.equal(plan.ticksLeftToday(new Date("2026-11-19T12:00:00Z")), 0, "hors créneau");
+  assert.equal(plan.tickBudget(10, 20), 1);
+  assert.equal(plan.tickBudget(50, 20), 3);
+  assert.equal(plan.tickBudget(50, 2), 3, "plafond de 3 par passage");
+  assert.equal(plan.tickBudget(0, 10), 0);
+  assert.equal(plan.tickBudget(5, 0), 0);
+  assert.equal(plan.localDayStartIso(new Date("2026-11-19T09:00:00Z")), "2026-11-18T23:00:00.000Z");
+  assert.equal(plan.localDayStartIso(new Date("2026-06-17T07:30:00Z")), "2026-06-16T22:00:00.000Z");
+});
+
+test("réputation : arrêt automatique sur plainte ou rebonds", () => {
+  assert.deepEqual(json(plan.reputationVerdict({ sent: 100, hardBounces: 3, complaints: 0 })), { stop: false });
+  assert.equal(plan.reputationVerdict({ sent: 100, hardBounces: 4, complaints: 0 }).reason, "bounce_rate");
+  assert.equal(plan.reputationVerdict({ sent: 5, hardBounces: 0, complaints: 1 }).reason, "complaint");
+  assert.equal(plan.reputationVerdict({ sent: 10, hardBounces: 3, complaints: 0 }).reason, "bounce_rate");
+  assert.equal(plan.reputationVerdict({ sent: 10, hardBounces: 2, complaints: 0 }).stop, false);
+});
+
+test("jours ouvrés : relance à J+5 ouvrés, week-end et fériés sautés", () => {
+  assert.equal(plan.addBusinessDays(new Date("2026-11-19T09:00:00Z"), 5).toISOString(), "2026-11-26T09:00:00.000Z");
+  assert.equal(plan.addBusinessDays(new Date("2026-11-09T09:00:00Z"), 2).toISOString(), "2026-11-12T09:00:00.000Z", "11 novembre sauté");
+});
+
+test("message envoyé : mention complète (identité, origine, finalité, désinscription, confidentialité)", () => {
+  const outreach = load("lib/acquisition/outreach.ts");
+  const env = { PUBLICATION_CREDENTIALS_KEY: Buffer.alloc(32, 7).toString("base64") };
+  const link = mail.unsubscribeLink("contact@archi.fr", { scope: "codev" }, "https://os.code-v.fr", env);
+  assert.match(link, /^https:\/\/os\.code-v\.fr\/api\/email\/unsubscribe\?t=/);
+  assert.equal(mail.unsubscribeLink("contact@archi.fr", { scope: "codev" }, "http://x.fr", env), null);
+  assert.equal(mail.unsubscribeLink("contact@archi.fr", { scope: "codev" }, "https://os.code-v.fr", {}), null);
+  const sender = { legalName: "CODE-V SAS", legalAddress: "1 rue X, 67000 Strasbourg", privacyUrl: "https://code-v.fr/confidentialite" };
+  const text = mail.composeProspectingText(`Bonjour,\n\nMessage.\n\n${outreach.OPT_OUT_FOOTER}`, sender, link, "https://www.archi.fr/mentions-legales");
+  assert.ok(!text.includes(outreach.OPT_OUT_FOOTER), "courte mention du brouillon remplacée");
+  for (const part of ["CODE-V SAS · 1 rue X, 67000 Strasbourg", "provient de archi.fr", "intérêt légitime", link, "« STOP »", "https://code-v.fr/confidentialite"]) assert.ok(text.includes(part), part);
+  assert.equal(mail.sourceLabel("https://www.openstreetmap.org/node/1"), "OpenStreetMap (données publiques)");
+  assert.equal(mail.sourceLabel(null), "le site de votre entreprise");
+});
+
+test("envoi : verrous rejoués avant chaque message, confirmation cruciale pour approuver et activer", () => {
+  const service = src("lib/acquisition/send-service.ts");
+  for (const needle of ["emailSendingStatus().enabled", "inSendWindow(now", "resolveProspectingSender(", "reputationVerdict(", "dailyCap(", "evaluateAcquisitionDispatch(", "blocked.has(email)", "addressCheckFresh(", "unsubscribeHeaders(", ".eq(\"state\", \"approved\").select(\"id\")", "idempotencyKey"])
+    assert.ok(service.includes(needle), needle);
+  const actions = src("app/(cockpit)/acquisition/actions.ts");
+  assert.match(actions, /data\.get\("confirm"\) !== "on" \|\| text\(data, "confirm_count", 4\) !== String\(ids\.length\)/);
+  assert.match(actions, /enabled && data\.get\("confirm"\) !== "on"/);
+  assert.match(src("lib/scheduler/heartbeat.ts"), /"acquisition_send"/);
+  const sql = src("supabase/migrations/20261220000000_acquisition_sending.sql");
+  assert.match(sql, /acquisition_messages_idempotency/); assert.match(sql, /acquisition_messages_one_followup/);
+  assert.doesNotMatch(sql, /\b(drop table|delete from|truncate)\b/i);
+});

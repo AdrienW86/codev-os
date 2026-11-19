@@ -8,6 +8,7 @@ import { enrichProspectsAction, handoffToEmailAction } from "@/app/(cockpit)/acq
 import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS, auditOutreachDraft } from "@/lib/acquisition/outreach";
 import type { ProspectingSender } from "@/lib/acquisition/prospecting-sender";
 import { ProspectingSenderPanel } from "./prospecting-sender-panel";
+import { ADDRESS_CHECK_LABELS, type AddressCheckStatus } from "@/lib/emailing/address-check";
 
 type Tab = "prospects"|"emails"|"senders"|"templates";
 export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab }: {
@@ -76,7 +77,7 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
             <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">{p.company_name}</h3>
               <span className="text-xs text-muted">{ACQUISITION_STAGES[p.stage]} · {p.score??"—"}/100</span></div>
             <p className="text-sm text-muted">{p.segment?PRESCRIBER_SEGMENTS[p.segment as PrescriberSegmentId]?.label ?? p.segment:ACQUISITION_CATEGORIES.find(c=>c.id===p.category)?.label} {p.website?"· "+p.website:""}</p>
-            {p.data_source==="sirene"&&<p className="text-xs text-muted">{[p.address, p.distance_km!=null?`${p.distance_km} km`:null, p.siren?`SIREN ${p.siren}`:null, p.places_phone ?? p.osm_phone, p.contact_email, p.bodacc_created_on?`créée (BODACC) le ${new Date(p.bodacc_created_on).toLocaleDateString("fr-FR")}`:null, p.is_sole_proprietor?"entrepreneur individuel":null].filter(Boolean).join(" · ")}
+            {p.data_source==="sirene"&&<p className="text-xs text-muted">{[p.address, p.distance_km!=null?`${p.distance_km} km`:null, p.siren?`SIREN ${p.siren}`:null, p.places_phone ?? p.osm_phone, p.contact_email ? `${p.contact_email}${p.email_check_status ? ` (${ADDRESS_CHECK_LABELS[p.email_check_status as AddressCheckStatus] ?? p.email_check_status})` : ""}` : null, p.bodacc_created_on?`créée (BODACC) le ${new Date(p.bodacc_created_on).toLocaleDateString("fr-FR")}`:null, p.is_sole_proprietor?"entrepreneur individuel":null].filter(Boolean).join(" · ")}
               {(p.places_website ?? p.osm_website)&&<> · <a className="text-accent hover:underline" href={p.places_website ?? p.osm_website ?? undefined} target="_blank" rel="noopener noreferrer">site</a></>}
               {p.osm_website&&!p.places_website&&<> · © contributeurs OpenStreetMap</>}</p>}
             {p.explanation&&<p className="mt-1 text-sm">{p.explanation}</p>}

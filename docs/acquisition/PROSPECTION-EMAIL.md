@@ -26,3 +26,17 @@ Migration : `20261218000000_acquisition_prospecting_sender.sql` (additive, à ap
 Correctif inclus : la validation des identifiants des actions `/acquisition` attendait un format 8-4-4-4-4-12 ;
 toutes les actions avec un identifiant (espace client, recherche, transmission…) étaient refusées. Format standard
 8-4-4-4-12 rétabli.
+
+## 2. Vérification des adresses avant envoi
+
+`lib/emailing/address-check.ts` (pur) et `address-check-dns.ts` (résolution MX, 4 s max par domaine).
+
+- Contrôles : syntaxe, messagerie jetable, faute de frappe connue (gmial.com…), serveur de messagerie (MX) publié et
+  non nul (RFC 7505). Aucune connexion SMTP au serveur du destinataire (pas de sonde intrusive, pas de service payant).
+- À la transmission vers l'emailing : seules les adresses `valid` deviennent des brouillons. Le résultat est gardé sur
+  la fiche (`email_check_status`, `email_check_detail`, `email_checked_at`) et affiché dans la liste.
+- Une adresse jugée non distribuable n'est pas revérifiée pendant 30 jours ; une panne DNS (`unknown`) n'est jamais
+  considérée comme valide et sera retentée.
+- L'envoi (PR 3) exige une vérification `valid` de moins de 30 jours, sinon il la refait.
+
+Migration : `20261219000000_acquisition_email_checks.sql` (additive, à appliquer manuellement).

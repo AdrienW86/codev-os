@@ -17,6 +17,8 @@ export type AcquisitionSnapshot = {
   /** Migration 20261204000000 (multi-sources) appliquée. */
   multisourceReady: boolean;
   unavailableReason?: string;
+  /** Migration 20261220000000 (envoi de prospection) appliquée. */
+  sendingReady?: boolean;
 };
 
 const BASE_PROSPECT_COLUMNS = "id,workspace_id,company_name,website,category,stage,score,source_url,source_checked_at,explanation,created_at";
@@ -27,6 +29,10 @@ export const MULTISOURCE_PROSPECT_COLUMNS = PRESCRIBER_PROSPECT_COLUMNS +
   ",osm_website,osm_phone,bodacc_created_on,bodacc_url,contact_email,contact_email_source,website_status,legal_id_confirmed";
 /** Vérification des adresses (migration 20261219000000). */
 export const EMAIL_CHECK_PROSPECT_COLUMNS = MULTISOURCE_PROSPECT_COLUMNS + ",email_check_status,email_check_detail,email_checked_at";
+const WORKSPACE_COLUMNS = "id,client_id,label,is_internal,discovery_enabled,sending_enabled,emergency_stop,daily_send_limit,timezone";
+const SENDING_WORKSPACE_COLUMNS = ",send_paused_reason,send_paused_at";
+const MESSAGE_COLUMNS = "id,workspace_id,prospect_id,recipient_email,subject,body_text,state,created_at,scheduled_for,sent_at";
+const SENDING_MESSAGE_COLUMNS = ",approved_at,last_error,cancelled_reason,step,parent_message_id,replied_at,reply_kind,facts";
 const RUN_COLUMNS = "id,workspace_id,trade_profile,place,radius_km,status,found_count,inserted_count,error,created_at";
 
 /** Masque les données Google Places au-delà de la durée de conservation autorisée. */
@@ -61,10 +67,14 @@ export async function getAcquisitionSnapshot(): Promise<AcquisitionSnapshot> {
   try {
     // Database types will be generated after the isolated migration is validated and deployed.
     const db = getSupabaseServerClient() as unknown as SupabaseClient;
+    // Colonnes d'envoi (migration 20261220000000) si présentes, sinon colonnes de base.
+    const workspaces = (columns: string) => db.from("acquisition_workspaces").select(columns).order("created_at", {ascending:false}).limit(100);
+    const messages = (columns: string) => db.from("acquisition_messages").select(columns).order("created_at", {ascending:false}).limit(300);
+    const [wFull, mFull] = await Promise.all([workspaces(WORKSPACE_COLUMNS + SENDING_WORKSPACE_COLUMNS), messages(MESSAGE_COLUMNS + SENDING_MESSAGE_COLUMNS)]);
     const [w,p,m,s,t] = await Promise.all([
-      db.from("acquisition_workspaces").select("id,client_id,label,is_internal,discovery_enabled,sending_enabled,emergency_stop,daily_send_limit,timezone").order("created_at", {ascending:false}).limit(100),
+      wFull.error ? workspaces(WORKSPACE_COLUMNS) : wFull,
       db.from("acquisition_prospects").select(BASE_PROSPECT_COLUMNS).order("created_at", {ascending:false}).limit(150),
-      db.from("acquisition_messages").select("id,workspace_id,prospect_id,recipient_email,subject,body_text,state,created_at").order("created_at", {ascending:false}).limit(100),
+      mFull.error ? messages(MESSAGE_COLUMNS) : mFull,
       db.from("acquisition_senders").select("id,workspace_id,address,provider,status,daily_limit").limit(100),
       db.from("acquisition_templates").select("id,workspace_id,category,name,subject_template,body_template,enabled").limit(100),
     ]);
@@ -72,9 +82,9 @@ export async function getAcquisitionSnapshot(): Promise<AcquisitionSnapshot> {
     if (bad?.error) return {...empty, unavailableReason: "Schéma Acquisition non prêt ou accès aux données indisponible."};
     const prescribers = await loadPrescriberData(db);
     return { schemaReady: true, prescribersReady: prescribers.ready, multisourceReady: prescribers.multisource, discoveryRuns: prescribers.runs,
-      workspaces: (w.data ?? []) as AcquisitionWorkspace[],
+      workspaces: (w.data ?? []) as unknown as AcquisitionWorkspace[], sendingReady: !wFull.error && !mFull.error,
       prospects: prescribers.ready ? prescribers.prospects : (p.data ?? []) as AcquisitionProspect[],
-      messages: (m.data ?? []) as AcquisitionMessage[],
+      messages: (m.data ?? []) as unknown as AcquisitionMessage[],
       senders: (s.data ?? []) as AcquisitionSender[],
       templates: (t.data ?? []) as AcquisitionTemplate[],
     };

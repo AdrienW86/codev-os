@@ -94,7 +94,7 @@ export function classifyScheduler(configured: boolean, heartbeat: HeartbeatInput
 export const STEP_LABELS: Record<string, string> = {
   whatsapp_exports: "Purge des exports WhatsApp", automations: "Automatisations (jobs)", publication_delivery_prepare: "Préparation des diffusions",
   publication_delivery_send: "Envoi des publications dues", push: "Notifications push", search_console: "Synchro Search Console", google_analytics: "Synchro Google Analytics", local_seo: "Fiches Google (référencement local)", local_competition: "Concurrence locale (positions)", local_geogrid: "Carte de positions Google Maps", site_health: "Santé technique des sites",
-  whatsapp: "Import WhatsApp → Drive", visual_agent: "Agent Visuels", media_intelligence: "Classement de la photothèque", publication_preparation: "Préparation automatique des publications", publication_photo: "Agent Photo (images à valider)", publication_stats: "Statistiques des publications", blog_agent: "Agent Blog", acquisition_discovery: "Agent Prospection (tâche de fond)", video_agent: "Agent Vidéo",
+  whatsapp: "Import WhatsApp → Drive", visual_agent: "Agent Visuels", media_intelligence: "Classement de la photothèque", publication_preparation: "Préparation automatique des publications", publication_photo: "Agent Photo (images à valider)", publication_stats: "Statistiques des publications", blog_agent: "Agent Blog", acquisition_discovery: "Agent Prospection (tâche de fond)", acquisition_send: "Agent Envoi prospection", video_agent: "Agent Vidéo",
 };
 export const stepLabel = (name: string) => STEP_LABELS[name] ?? name;
 /** Une étape du dernier passage. « skipped » (faute de temps) n'est pas une preuve : « configuré ». */

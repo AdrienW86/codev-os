@@ -313,6 +313,17 @@ export function prospectionSignals(rows: readonly DiscoveryRow[], now: Date): Br
   return { facts: [{ statement: `${plural(recent.length, "balayage", "balayages")} sur 30 jours, ${plural(found, "entreprise trouvée", "entreprises trouvées")}${failed ? `, ${failed} en échec` : ""}.`, at: latest(recent.map((row) => row.finished_at ?? row.created_at)), href: "/acquisition" }], gaps: [] };
 }
 
+export type ProspectingMessageRow = { state: string; sent_at: string | null; replied_at?: string | null; created_at: string };
+/** Agent Envoi prospection : envois, réponses et file d'attente sur 30 jours. */
+export function prospectingEmailSignals(rows: readonly ProspectingMessageRow[] | null, now: Date): BriefingSignals {
+  if (rows === null) return { facts: [], gaps: ["Envoi de prospection non installé (migration 20261220000000)."] };
+  const sent = rows.filter((row) => row.state === "sent" && withinDays(row.sent_at, now, 30));
+  const queued = rows.filter((row) => row.state === "approved").length;
+  if (!sent.length && !queued) return { facts: [], gaps: ["Aucun e-mail de prospection envoyé ni approuvé sur 30 jours."] };
+  const replies = sent.filter((row) => row.replied_at).length;
+  return { facts: [{ statement: `${plural(sent.length, "e-mail envoyé", "e-mails envoyés")} sur 30 jours, ${plural(replies, "réponse", "réponses")}${queued ? `, ${queued} en file` : ""}.`, at: latest(sent.map((row) => row.sent_at)), href: "/acquisition" }], gaps: [] };
+}
+
 export type IncidentRow = { status: string; detected_at: string };
 export function directorSignals(rows: readonly IncidentRow[]): BriefingSignals {
   const open = rows.filter((row) => row.status !== "resolved");

@@ -20,6 +20,8 @@ const phrases: Record<string, Phrase> = {
   due: ["publication à relever", "publications à relever"],
   ok: ["statistique relevée", "statistiques relevées"],
   runs: ["recherche avancée", "recherches avancées"],
+  sent: ["e-mail de prospection envoyé", "e-mails de prospection envoyés"],
+  stopped: ["espace arrêté (réputation)", "espaces arrêtés (réputation)"],
   failed: ["échec", "échecs"],
 };
 
@@ -60,7 +62,7 @@ export function resultHref(taskId: string, clientId: string | null): string | nu
     case "seo-analyze": return clientId ? `/recommendations?clientId=${clientId}` : "/recommendations";
     case "ads-monitor": return q("/advertising");
     case "veille": return "/news";
-    case "prospection": return "/acquisition";
+    case "prospection": case "prospection-email": return "/acquisition";
     default: return null;
   }
 }

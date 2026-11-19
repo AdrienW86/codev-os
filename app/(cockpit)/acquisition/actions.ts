@@ -15,6 +15,7 @@ import { handoffToEmailProspecting } from "@/lib/acquisition/handoff";
 import { HANDOFF_MAX } from "@/lib/acquisition/outreach";
 import { requireAdminWriter } from "@/lib/core/guards";
 import { checkProspectingSenderDomain, saveProspectingSender } from "@/lib/acquisition/sender-service";
+import { APPROVE_MAX, approveMessages, cancelMessage, saveSendingSettings, updateDraft } from "@/lib/acquisition/send-service";
 
 const sourcesFrom = (data: FormData) => data.getAll("sources").filter((v): v is EnrichmentSource => typeof v === "string" && (ENRICHMENT_SOURCES as string[]).includes(v));
 
@@ -210,4 +211,43 @@ export async function saveProspectingSenderAction(data: FormData) {
 export async function checkProspectingSenderAction(data: FormData) {
   const workspaceId = text(data, "workspace_id", 36);
   await senderOutcome(workspaceId, (actor) => checkProspectingSenderDomain(actor, workspaceId));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// E-mails de prospection : correction, approbation (confirmation cruciale), annulation, réglages d'envoi.
+async function emailsOutcome(workspaceId: string, run: (actor: Awaited<ReturnType<typeof requireAdminWriter>>) => Promise<{ ok: boolean; message: string }>): Promise<never> {
+  if (!uuid.test(workspaceId)) deny("validation");
+  let result: { ok: boolean; message: string };
+  try { result = await run(await requireAdminWriter()); }
+  catch { result = { ok: false, message: "Action impossible (droits, mode simulation ou service indisponible)." }; }
+  revalidatePath("/acquisition");
+  redirect(`/acquisition?${new URLSearchParams({ workspace: workspaceId, tab: "emails", msg: result.message.slice(0, 300), ok: result.ok ? "1" : "0" })}`);
+}
+
+export async function updateDraftAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36), id = text(data, "id", 36);
+  await emailsOutcome(workspaceId, (actor) => updateDraft(actor, workspaceId, id, { subject: text(data, "subject", 240), body: text(data, "body", 8000) }));
+}
+
+/** Confirmation cruciale : case cochée et nombre d'e-mails retapé. */
+export async function approveMessagesAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36);
+  const ids = data.getAll("ids").filter((v): v is string => typeof v === "string" && uuid.test(v)).slice(0, APPROVE_MAX);
+  if (data.get("confirm") !== "on" || text(data, "confirm_count", 4) !== String(ids.length))
+    await emailsOutcome(workspaceId, async () => ({ ok: false, message: "Confirmation requise : cochez la case et indiquez le nombre exact d'e-mails sélectionnés." }));
+  await emailsOutcome(workspaceId, (actor) => approveMessages(actor, workspaceId, ids));
+}
+
+export async function cancelMessageAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36), id = text(data, "id", 36);
+  await emailsOutcome(workspaceId, (actor) => cancelMessage(actor, workspaceId, id));
+}
+
+/** Activer les envois (confirmation cruciale) ou les arrêter (immédiat). */
+export async function saveSendingSettingsAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36);
+  const enabled = text(data, "mode", 10) === "enable";
+  if (enabled && data.get("confirm") !== "on")
+    await emailsOutcome(workspaceId, async () => ({ ok: false, message: "Cochez la confirmation pour activer les envois." }));
+  await emailsOutcome(workspaceId, (actor) => saveSendingSettings(actor, workspaceId, { enabled, dailyLimit: Number(text(data, "daily_limit", 3) || "0") }));
 }

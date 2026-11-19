@@ -19,6 +19,7 @@ export type AcquisitionWorkspace = {
   id: string; client_id: string | null; label: string; is_internal: boolean;
   discovery_enabled: boolean; sending_enabled: boolean; emergency_stop: boolean;
   daily_send_limit: number; timezone: string;
+  send_paused_reason?: string | null; send_paused_at?: string | null;
 };
 export type AcquisitionProspect = {
   id: string; workspace_id: string; company_name: string; website: string | null;
@@ -42,6 +43,9 @@ export type AcquisitionDiscoveryRun = {
 export type AcquisitionMessage = {
   id: string; workspace_id: string; prospect_id: string; recipient_email: string;
   subject: string; body_text: string; state: string; created_at: string;
+  scheduled_for?: string | null; sent_at?: string | null; approved_at?: string | null; last_error?: string | null; cancelled_reason?: string | null;
+  step?: number; parent_message_id?: string | null; replied_at?: string | null; reply_kind?: string | null;
+  facts?: { label: string; statement: string; sourceUrl: string }[];
 };
 export type AcquisitionSender = {
   id: string; workspace_id: string; address: string; provider: string;

@@ -22,10 +22,11 @@ export function ProspectingSenderPanel({ workspaceId, label, sender, ready }: { 
       <label className="block">Nom affiché<input name="from_name" required maxLength={80} defaultValue={sender?.from_name ?? label} className={input} /></label>
       <label className="block">Domaine d&apos;envoi dédié<input name="sending_domain" required defaultValue={sender?.sending_domain ?? ""} placeholder="code-v-pro.fr" className={input} /></label>
       <label className="block">Adresse (avant @)<input name="from_local_part" required defaultValue={local || "contact"} className={input} /></label>
-      <label className="block">Réponses envoyées à (facultatif)<input name="reply_to" type="email" defaultValue={sender?.reply_to ?? ""} placeholder="vide = adresse d'envoi" className={input} /></label>
+      <label className="block">Réponses envoyées à (facultatif)<input name="reply_to" type="email" defaultValue={sender?.reply_to ?? ""} placeholder="vide = adresse d'envoi (conseillé)" className={input} /></label>
       <label className="block">Raison sociale (mention légale)<input name="legal_name" required maxLength={160} defaultValue={sender?.legal_name ?? ""} className={input} /></label>
       <label className="block">Adresse postale (mention légale)<input name="legal_address" required maxLength={240} defaultValue={sender?.legal_address ?? ""} className={input} /></label>
       <label className="block sm:col-span-2">Politique de confidentialité (facultatif)<input name="privacy_url" type="url" defaultValue={sender?.privacy_url ?? ""} placeholder="https://…/confidentialite" className={input} /></label>
+      <p className="text-xs text-muted sm:col-span-2">Laissez « Réponses envoyées à » vide et activez la réception sur ce domaine dans Resend (enregistrement MX de réception) : les réponses arrivent alors dans l&apos;onglet E-mails, un « STOP » exclut l&apos;adresse et toute réponse annule la relance. Une autre adresse de réponse empêche ce traitement automatique.</p>
       <div className="sm:col-span-2"><button className={`${button} border border-border`}>Enregistrer l&apos;expéditeur</button></div>
     </form>
     {sender?.sending_domain && <div className="border-t border-border pt-3">

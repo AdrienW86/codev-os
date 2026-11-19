@@ -80,6 +80,7 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
             <div className="flex gap-2"><button className={`${button} border border-border`}>Enregistrer</button><button type="button" onClick={() => setEditing(null)} className="text-xs text-muted">Annuler</button></div>
           </form>
           : <p className="mt-2 whitespace-pre-wrap">{m.body_text}</p>}
+        {m.reply_excerpt && <blockquote className="mt-2 whitespace-pre-wrap rounded-lg border-l-4 border-accent bg-surface-raised p-2 text-xs"><span className="font-semibold">{m.reply_kind === "stop" ? "Demande d'arrêt (adresse exclue)" : "Réponse reçue"} :</span>{"\n"}{m.reply_excerpt}</blockquote>}
         {(m.facts?.length ?? 0) > 0 && <ul className="mt-2 text-xs text-muted">{m.facts!.map((f, i) => <li key={i}>Fait utilisé : {f.statement} (<a className="text-accent hover:underline" href={f.sourceUrl} target="_blank" rel="noopener noreferrer">source</a>)</li>)}</ul>}
         {m.state === "draft" && <DraftQuality subject={m.subject} body={m.body_text} company={companyOf.get(m.prospect_id)} />}
         {(m.state === "draft" || m.state === "approved") && <div className="mt-2 flex gap-3 text-xs">

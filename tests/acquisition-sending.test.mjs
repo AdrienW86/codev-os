@@ -197,3 +197,38 @@ test("envoi : verrous rejoués avant chaque message, confirmation cruciale pour 
   assert.match(sql, /acquisition_messages_idempotency/); assert.match(sql, /acquisition_messages_one_followup/);
   assert.doesNotMatch(sql, /\b(drop table|delete from|truncate)\b/i);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// PR 4 : réponses reçues (STOP, réponse, absence).
+const replies = load("lib/acquisition/replies.ts");
+
+test("réception : événement email.received lu, autres types ignorés", () => {
+  const inbound = replies.readInboundEmail({ type: "email.received", data: { email_id: "abc_123", from: "Cabinet Archi <Contact@Archi.fr>", to: ["contact@code-v-pro.fr"], subject: "RE:\nCODE-V" } });
+  assert.deepEqual(json(inbound), { emailId: "abc_123", from: "contact@archi.fr", to: ["contact@code-v-pro.fr"], subject: "RE: CODE-V" });
+  assert.equal(replies.readInboundEmail({ type: "email.delivered", data: {} }), null);
+  assert.equal(replies.readInboundEmail({ type: "email.received", data: { email_id: "../x", from: "x" } }).emailId, null);
+});
+
+test("réponse : texte nouveau sans citation, STOP prioritaire, absence consignée", () => {
+  assert.equal(replies.newReplyText("Merci, appelez-moi.\n\nLe jeu. 19 nov. 2026, CODE-V a écrit :\n> Bonjour"), "Merci, appelez-moi.");
+  const c = (subject, text, autoSubmitted = null) => replies.classifyReply({ subject, text, autoSubmitted });
+  assert.equal(c("Re: Atelier et CODE-V", "STOP"), "stop");
+  assert.equal(c("Re: Atelier et CODE-V", "Merci de ne plus nous contacter."), "stop");
+  assert.equal(c("Re: Atelier et CODE-V", "Nous ne sommes pas intéressés."), "stop");
+  assert.equal(c("Re: Atelier et CODE-V", "Désinscrivez-moi svp"), "stop");
+  assert.equal(c("STOP", null), "stop", "objet seul (corps illisible)");
+  assert.equal(c("Re: Atelier et CODE-V", "Volontiers, mardi 10 h ?\n> Si vous ne souhaitez plus être contacté, répondez STOP"), "reply", "STOP cité ignoré");
+  assert.equal(c("Réponse automatique : absent", "Je suis absent jusqu'au 25."), "auto_reply");
+  assert.equal(c("Re: Atelier", "Bonjour", "auto-replied"), "auto_reply");
+  assert.equal(c("Re: Atelier", "Stoppez tout"), "reply", "mot proche, pas une demande d'arrêt explicite");
+  assert.equal(replies.replyExcerpt("Merci\n\n\n\nÀ bientôt\n> cité"), "Merci\n\nÀ bientôt");
+});
+
+test("webhook : réponse traitée avant l'enregistrement (rejouable), STOP exclut définitivement", () => {
+  const route = src("app/api/webhooks/resend/route.ts");
+  assert.ok(route.indexOf("handleProspectingReply(inbound)") < route.indexOf("recordResendEvent(id!, effect)"));
+  const service = src("lib/acquisition/reply-service.ts");
+  assert.match(service, /in\("state", \["draft", "approved"\]\)/);
+  assert.match(service, /email_suppressions"\)\.insert\(\{ scope: clientId \? "client" : "codev"/);
+  assert.match(service, /acquisition_suppressions"\)\.insert/);
+});

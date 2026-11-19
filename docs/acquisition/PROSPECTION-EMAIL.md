@@ -63,3 +63,22 @@ planificateur `acquisition_send` (Agent Envoi prospection, toutes les 15 min).
   avant 20 envois → arrêt d'urgence automatique de l'espace, motif affiché, reprise manuelle seulement.
 
 Migration : `20261220000000_acquisition_sending.sql` (additive ; prévoit aussi les colonnes des PR 4 à 6).
+
+## 4. Réponses, « STOP » et désinscription
+
+`lib/acquisition/replies.ts` (pur), `reply-service.ts`, webhook `/api/webhooks/resend` (événement `email.received`).
+
+- Réception entrante Resend sur le domaine dédié (enregistrement MX de réception à activer dans Resend) ; laisser
+  « Réponses envoyées à » vide pour que les réponses passent par CODE-V OS.
+- Réponse rattachée au dernier message envoyé à cette adresse (120 jours). Texte lu par l'API Resend
+  (`/emails/receiving/{id}`, clé `RESEND_ADMIN_API_KEY` ou `RESEND_API_KEY`) ; à défaut, l'objet seul est analysé.
+- **STOP** (stop, désinscription, « ne plus nous contacter », « pas intéressé »…) : exclusion définitive de l'espace et de
+  l'expéditeur, fiche « Exclu », brouillons et messages en file annulés.
+- **Vraie réponse** : fiche « Réponse reçue », extrait affiché dans l'onglet E-mails, relance annulée.
+- **Absence / réponse automatique** : consignée seulement (la séquence continue).
+- Lien de désinscription en un clic (PR 3) : exclusion immédiate ; le message en file est écarté au passage suivant.
+- Le traitement a lieu avant l'enregistrement de l'événement : en cas d'échec, Resend renvoie l'événement.
+
+Hypothèse à confirmer au premier essai réel : format de l'événement `email.received` (`data.email_id`, `data.from`,
+`data.to`, `data.subject`) et route de lecture du contenu, la documentation Resend n'étant pas joignable depuis
+l'environnement de développement.

@@ -61,3 +61,52 @@ test("actions Acquisition : un identifiant UUID standard est accepté (8-4-4-4-1
   assert.ok(pattern);
   assert.equal(new RegExp(pattern, "i").test("123e4567-e89b-42d3-a456-426614174000"), true);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// PR 2 : vérification des adresses avant envoi.
+const check = load("lib/emailing/address-check.ts");
+
+test("adresse : syntaxe, domaine jetable et faute de frappe détectés sans réseau", () => {
+  assert.deepEqual(json(check.precheckAddress("pas une adresse")), { status: "invalid_syntax", detail: null });
+  assert.equal(check.precheckAddress("contact..x@exemple.fr").status, "invalid_syntax");
+  assert.equal(check.precheckAddress("contact@-exemple.fr").status, "invalid_syntax");
+  assert.deepEqual(json(check.precheckAddress("contact@yopmail.com")), { status: "disposable", detail: "yopmail.com" });
+  assert.deepEqual(json(check.precheckAddress("Contact@Gmial.com")), { status: "typo", detail: "contact@gmail.com ?" });
+  assert.equal(check.precheckAddress("contact@exemple.fr"), null);
+});
+
+test("adresse : MX réel exigé, MX nul refusé, panne DNS jamais considérée valide", async () => {
+  const dns = { "exemple.fr": [{ exchange: "mx.exemple.fr", priority: 10 }], "nul.fr": [{ exchange: ".", priority: 0 }], "vide.fr": [] };
+  const lookup = async (domain) => {
+    if (domain === "absent.fr") throw Object.assign(new Error("x"), { code: "ENOTFOUND" });
+    if (domain === "panne.fr") throw Object.assign(new Error("x"), { code: "ETIMEOUT" });
+    return dns[domain];
+  };
+  assert.equal((await check.checkAddress("contact@exemple.fr", lookup)).status, "valid");
+  for (const domain of ["nul.fr", "vide.fr", "absent.fr"]) assert.equal((await check.checkAddress(`contact@${domain}`, lookup)).status, "no_mx", domain);
+  assert.equal((await check.checkAddress("contact@panne.fr", lookup)).status, "unknown");
+  let calls = 0;
+  const counted = async (domain) => { calls++; return lookup(domain); };
+  const results = await check.checkAddresses(["contact@exemple.fr", "info@exemple.fr", "contact@exemple.fr", "contact@yopmail.com"], counted);
+  assert.equal(results.size, 3); assert.equal(calls, 1, "une seule résolution par domaine");
+  assert.equal(results.get("contact@yopmail.com").status, "disposable");
+});
+
+test("adresse : fraîcheur de 30 jours, non distribuable mémorisé hors panne", () => {
+  const now = new Date("2026-11-19T10:00:00Z");
+  assert.equal(check.addressCheckFresh("valid", "2026-11-01T10:00:00Z", now), true);
+  assert.equal(check.addressCheckFresh("valid", "2026-10-01T10:00:00Z", now), false);
+  assert.equal(check.addressCheckFresh("no_mx", "2026-11-18T10:00:00Z", now), false);
+  assert.equal(check.addressCheckFresh("valid", null, now), false);
+  assert.equal(check.recentlyUndeliverable("no_mx", "2026-11-18T10:00:00Z", now), true);
+  assert.equal(check.recentlyUndeliverable("unknown", "2026-11-18T10:00:00Z", now), false);
+  assert.equal(check.recentlyUndeliverable("disposable", "2026-09-01T10:00:00Z", now), false);
+  assert.equal(check.recentlyUndeliverable("valid", "2026-11-18T10:00:00Z", now), false);
+});
+
+test("transmission : seules les adresses vérifiées deviennent des brouillons", () => {
+  const handoff = src("lib/acquisition/handoff.ts");
+  assert.match(handoff, /checkAddressesWithDns\(selected\.map/);
+  assert.match(handoff, /deliverable\.map\(\(p\) => \{/);
+  assert.match(src("supabase/migrations/20261219000000_acquisition_email_checks.sql"), /email_check_status[\s\S]*'valid','invalid_syntax','disposable','typo','no_mx','unknown'/);
+});

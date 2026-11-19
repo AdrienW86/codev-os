@@ -25,6 +25,8 @@ export const PRESCRIBER_PROSPECT_COLUMNS = BASE_PROSPECT_COLUMNS +
 
 export const MULTISOURCE_PROSPECT_COLUMNS = PRESCRIBER_PROSPECT_COLUMNS +
   ",osm_website,osm_phone,bodacc_created_on,bodacc_url,contact_email,contact_email_source,website_status,legal_id_confirmed";
+/** Vérification des adresses (migration 20261219000000). */
+export const EMAIL_CHECK_PROSPECT_COLUMNS = MULTISOURCE_PROSPECT_COLUMNS + ",email_check_status,email_check_detail,email_checked_at";
 const RUN_COLUMNS = "id,workspace_id,trade_profile,place,radius_km,status,found_count,inserted_count,error,created_at";
 
 /** Masque les données Google Places au-delà de la durée de conservation autorisée. */
@@ -41,7 +43,8 @@ async function loadPrescriberData(db: SupabaseClient): Promise<{ ready: boolean;
   ]);
   // Migration multi-sources (20261204000000) d'abord, sinon colonnes Prescripteurs seules.
   let multisource = true;
-  let [p, r] = await query(MULTISOURCE_PROSPECT_COLUMNS, RUN_COLUMNS + ",mode,phase,progress,options");
+  let [p, r] = await query(EMAIL_CHECK_PROSPECT_COLUMNS, RUN_COLUMNS + ",mode,phase,progress,options");
+  if (p.error || r.error) [p, r] = await query(MULTISOURCE_PROSPECT_COLUMNS, RUN_COLUMNS + ",mode,phase,progress,options");
   if (p.error || r.error) { multisource = false; [p, r] = await query(PRESCRIBER_PROSPECT_COLUMNS, RUN_COLUMNS); }
   if (p.error || r.error) return { ready: false, multisource: false, prospects: [], runs: [] };
   const threshold = placesExpiryThreshold();

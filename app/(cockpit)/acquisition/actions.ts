@@ -186,7 +186,7 @@ export async function handoffToEmailAction(data: FormData) {
   });
   revalidatePath("/acquisition");
   if (!outcome.ok) deny(`handoff_${outcome.reason}`);
-  const skipped = outcome.skipped.suppressed + outcome.skipped.already_drafted + outcome.skipped.duplicate_email;
+  const skipped = outcome.skipped.suppressed + outcome.skipped.already_drafted + outcome.skipped.duplicate_email + outcome.skipped.undeliverable;
   redirect(`/acquisition?notice=handoff_done&found=${outcome.created}&inserted=${skipped}`);
 }
 

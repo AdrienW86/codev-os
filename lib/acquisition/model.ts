@@ -31,6 +31,7 @@ export type AcquisitionProspect = {
   places_website?: string | null; places_phone?: string | null; places_enriched_at?: string | null;
   osm_website?: string | null; osm_phone?: string | null; bodacc_created_on?: string | null; bodacc_url?: string | null;
   contact_email?: string | null; contact_email_source?: string | null; website_status?: string | null; legal_id_confirmed?: boolean | null;
+  email_check_status?: string | null; email_check_detail?: string | null; email_checked_at?: string | null;
 };
 export type AcquisitionDiscoveryRun = {
   id: string; workspace_id: string; trade_profile: string; place: string; radius_km: number;

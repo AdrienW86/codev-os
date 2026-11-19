@@ -18,7 +18,7 @@ test("transmission : seules les fiches contactables, par score, sans doublon ni 
     draftedProspectIds: new Set(["e"]), usedEmails: new Set(), isSuppressed: (e) => e === "info@stop.fr",
   });
   assert.deepEqual(json(selected.map((s) => s.id)), ["b", "a"]);
-  assert.deepEqual(json(skipped), { no_email: 1, stage: 1, filtered: 2, already_drafted: 1, suppressed: 1, duplicate_email: 1, limit: 0 });
+  assert.deepEqual(json(skipped), { no_email: 1, stage: 1, filtered: 2, already_drafted: 1, suppressed: 1, duplicate_email: 1, limit: 0, undeliverable: 0 });
   const capped = outreach.selectHandoffProspects([p("x"), p("y"), p("z")], {}, { draftedProspectIds: new Set(), usedEmails: new Set(["contact@z.fr"]), isSuppressed: () => false, limit: 1 });
   assert.equal(capped.selected.length, 1); assert.equal(capped.skipped.duplicate_email, 1); assert.equal(capped.skipped.limit, 1);
   assert.equal(outreach.selectHandoffProspects([p("x")], {}, { draftedProspectIds: new Set(), usedEmails: new Set(), isSuppressed: () => false, limit: 10_000 }).selected.length, 1);

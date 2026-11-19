@@ -86,7 +86,7 @@ export type HandoffProspect = {
   segment?: string | null; city?: string | null; contact_email?: string | null;
 };
 export type HandoffFilter = { category?: string; segment?: string; minScore?: number };
-export type HandoffSkip = "no_email" | "stage" | "filtered" | "already_drafted" | "suppressed" | "duplicate_email" | "limit";
+export type HandoffSkip = "no_email" | "stage" | "filtered" | "already_drafted" | "suppressed" | "duplicate_email" | "limit" | "undeliverable";
 
 /**
  * Retient les fiches à transmettre, par score décroissant. Une adresse déjà exclue,
@@ -95,7 +95,7 @@ export type HandoffSkip = "no_email" | "stage" | "filtered" | "already_drafted" 
 export function selectHandoffProspects(prospects: HandoffProspect[], filter: HandoffFilter, context: {
   draftedProspectIds: Set<string>; usedEmails: Set<string>; isSuppressed: (email: string) => boolean; limit?: number;
 }): { selected: (HandoffProspect & { email: string })[]; skipped: Record<HandoffSkip, number> } {
-  const skipped: Record<HandoffSkip, number> = { no_email: 0, stage: 0, filtered: 0, already_drafted: 0, suppressed: 0, duplicate_email: 0, limit: 0 };
+  const skipped: Record<HandoffSkip, number> = { no_email: 0, stage: 0, filtered: 0, already_drafted: 0, suppressed: 0, duplicate_email: 0, limit: 0, undeliverable: 0 };
   const limit = Math.min(context.limit ?? HANDOFF_MAX, HANDOFF_MAX);
   const seen = new Set(context.usedEmails);
   const selected: (HandoffProspect & { email: string })[] = [];

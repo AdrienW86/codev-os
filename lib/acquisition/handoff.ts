@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { isBlockedBy, normalizeEmail, type SuppressionScope } from "@/lib/emailing/policy";
+import { checkAddressesWithDns } from "@/lib/emailing/address-check-dns";
+import { recentlyUndeliverable } from "@/lib/emailing/address-check";
 import { DEFAULT_OUTREACH_TEMPLATE, HANDOFF_STAGES, draftMessage, selectHandoffProspects, templateVars, type HandoffFilter, type HandoffProspect, type HandoffSkip } from "./outreach";
 
 function db(): SupabaseClient { return getSupabaseServerClient() as unknown as SupabaseClient; }
@@ -33,11 +35,18 @@ export async function handoffToEmailProspecting(input: { workspaceId: string; fi
     if (c) sender = { name: c.company_name || c.name || sender.name, activity: c.activity ?? null };
   }
 
-  const { data: prospects, error: prospectsError } = await client.from("acquisition_prospects")
-    .select("id,company_name,category,stage,score,segment,city,contact_email").eq("workspace_id", workspace.id)
+  const readProspects = (columns: string) => client.from("acquisition_prospects")
+    .select(columns).eq("workspace_id", workspace.id)
     .in("stage", [...HANDOFF_STAGES]).not("contact_email", "is", null).limit(5000);
-  if (prospectsError) return { ok: false, reason: "schema_missing" };
-  const list = (prospects ?? []) as HandoffProspect[];
+  const BASE = "id,company_name,category,stage,score,segment,city,contact_email";
+  // Colonnes de vérification (migration 20261219000000) si présentes, sinon colonnes de base.
+  let read = await readProspects(`${BASE},email_check_status,email_checked_at`);
+  if (read.error) read = await readProspects(BASE);
+  if (read.error) return { ok: false, reason: "schema_missing" };
+  const rawList = (read.data ?? []) as unknown as (HandoffProspect & { email_check_status?: string | null; email_checked_at?: string | null })[];
+  // Adresse déjà jugée non distribuable il y a moins de 30 jours : écartée sans nouvelle requête DNS.
+  const knownBad = new Set(rawList.filter((p) => recentlyUndeliverable(p.email_check_status, p.email_checked_at)).map((p) => p.id));
+  const list: HandoffProspect[] = rawList.filter((p) => !knownBad.has(p.id));
 
   const { data: messages, error: messagesError } = await client.from("acquisition_messages").select("prospect_id,recipient_email").eq("workspace_id", workspace.id).limit(10000);
   if (messagesError) return { ok: false, reason: "schema_missing" };
@@ -62,13 +71,26 @@ export async function handoffToEmailProspecting(input: { workspaceId: string; fi
   });
   if (!selected.length) return { ok: false, reason: "nothing_to_send" };
 
-  const rows = selected.map((p) => {
+  // Vérification des adresses (syntaxe, domaine jetable, faute de frappe, serveur MX) : seules les adresses valides
+  // deviennent des brouillons. Le résultat est conservé sur la fiche (migration 20261219000000, sinon ignoré).
+  const checks = await checkAddressesWithDns(selected.map((p) => p.email));
+  const checkedAt = new Date().toISOString();
+  for (const status of new Set([...checks.values()].map((c) => c.status))) {
+    const ids = selected.filter((p) => checks.get(p.email)?.status === status).map((p) => p.id);
+    const detail = status === "valid" ? null : status;
+    await client.from("acquisition_prospects").update({ email_check_status: status, email_check_detail: detail, email_checked_at: checkedAt }).eq("workspace_id", workspace.id).in("id", ids);
+  }
+  const deliverable = selected.filter((p) => checks.get(p.email)?.status === "valid");
+  skipped.undeliverable = selected.length - deliverable.length + knownBad.size;
+  if (!deliverable.length) return { ok: false, reason: "nothing_to_send" };
+
+  const rows = deliverable.map((p) => {
     const draft = draftMessage(template, templateVars(p, sender));
     return { workspace_id: workspace.id, prospect_id: p.id, recipient_email: p.email, subject: draft.subject, body_text: draft.body, state: "draft" };
   });
   const { error: insertError } = await client.from("acquisition_messages").insert(rows);
   if (insertError) return { ok: false, reason: "storage" };
   await client.from("acquisition_prospects").update({ stage: "draft_ready", updated_at: new Date().toISOString() })
-    .eq("workspace_id", workspace.id).in("id", selected.map((p) => p.id));
+    .eq("workspace_id", workspace.id).in("id", deliverable.map((p) => p.id));
   return { ok: true, created: rows.length, skipped };
 }

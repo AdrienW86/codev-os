@@ -13,6 +13,7 @@ import { runVideoAgentTick } from "@/lib/video-agent/service";
 import { runBlogAgentTick } from "@/lib/blog-agent/service";
 import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
 import { runProspectingSendTick } from "@/lib/acquisition/send-service";
+import { runProspectingWriterTick } from "@/lib/acquisition/writer-service";
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/publications/automation/scheduled";
 import { runAutoApproval } from "@/lib/publications/automation/auto-approval";
@@ -36,7 +37,7 @@ export const maxDuration = 300;
 // moins, elle est sautée (« skipped ») plutôt que coupée par la plateforme. Marge pour répondre et écrire le battement.
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
-  whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000, auto_decisions: 15_000, acquisition_send: 20_000,
+  whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000, auto_decisions: 15_000, acquisition_send: 20_000, acquisition_writer: 55_000,
   search_console: 60_000, google_analytics: 60_000, local_seo: 50_000, local_competition: 40_000, local_geogrid: 60_000, lighthouse: 70_000, site_health: 110_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, publication_stats: 45_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
@@ -92,6 +93,8 @@ async function handle(request: Request) {
   // Agent Envoi prospection : quelques e-mails approuvés par passage, en heures de bureau, au rythme du préchauffage du
   // domaine dédié ; arrêt automatique sur plainte ou rebonds. Rien ne part tant que l'espace n'est pas activé.
   const acquisitionSend = await step("acquisition_send", () => runProspectingSendTick(new Date()), "Envoi de prospection différé.");
+  // Agent Rédacteur prospection : quelques brouillons personnalisés par passage (faits vérifiés), budget borné.
+  const acquisitionWriter = await step("acquisition_writer", () => runProspectingWriterTick({ deadline: Math.min(deadline, Date.now() + 60_000) }), "Rédaction de prospection différée.");
   // Synchro quotidienne Search Console : une exécution par client et par jour (verrou en base), budget borné.
   const searchConsole = await step("search_console", () => syncDueSearchConsole(new Date()), "Synchro Search Console différée.");
   // Synchro quotidienne Google Analytics 4 (30 jours terminés la veille) : lue par l'Agent SEO et l'Agent Google Ads.
@@ -129,7 +132,7 @@ async function handle(request: Request) {
   const siteHealth = await step("site_health", () => runSiteHealthTick(new Date()), "Contrôle de santé technique différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, localSeo, localCompetition, localGeogrid, lighthouse, siteHealth, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, acquisitionSend, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, autoDecisions, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, localSeo, localCompetition, localGeogrid, lighthouse, siteHealth, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, acquisitionSend, acquisitionWriter, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, autoDecisions, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

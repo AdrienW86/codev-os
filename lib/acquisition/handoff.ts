@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { isBlockedBy, normalizeEmail, type SuppressionScope } from "@/lib/emailing/policy";
 import { checkAddressesWithDns } from "@/lib/emailing/address-check-dns";
 import { recentlyUndeliverable } from "@/lib/emailing/address-check";
+import { agentsAiConfigured } from "@/lib/ai/models";
 import { DEFAULT_OUTREACH_TEMPLATE, HANDOFF_STAGES, draftMessage, selectHandoffProspects, templateVars, type HandoffFilter, type HandoffProspect, type HandoffSkip } from "./outreach";
 
 function db(): SupabaseClient { return getSupabaseServerClient() as unknown as SupabaseClient; }
@@ -17,7 +18,7 @@ export type HandoffOutcome =
  * d'une adresse générique, hors exclusions (désabonnements, rebonds, plaintes). Aucun envoi :
  * chaque brouillon reste soumis à approbation et aux verrous de l'espace.
  */
-export async function handoffToEmailProspecting(input: { workspaceId: string; filter: HandoffFilter; templateId?: string; limit?: number }): Promise<HandoffOutcome> {
+export async function handoffToEmailProspecting(input: { workspaceId: string; filter: HandoffFilter; templateId?: string; limit?: number; personalize?: boolean }): Promise<HandoffOutcome> {
   const client = db();
   const { data: workspace, error } = await client.from("acquisition_workspaces").select("id,client_id,label").eq("id", input.workspaceId).maybeSingle();
   if (error || !workspace) return { ok: false, reason: "workspace_missing" };
@@ -88,7 +89,12 @@ export async function handoffToEmailProspecting(input: { workspaceId: string; fi
     const draft = draftMessage(template, templateVars(p, sender));
     return { workspace_id: workspace.id, prospect_id: p.id, recipient_email: p.email, subject: draft.subject, body_text: draft.body, state: "draft" };
   });
-  const { error: insertError } = await client.from("acquisition_messages").insert(rows);
+  // Rédaction personnalisée demandée : le brouillon du modèle sert de repli, l'Agent Rédacteur prospection le réécrit
+  // en tâche de fond à partir des faits vérifiés (migration 20261220000000 ; sinon brouillons du modèle seuls).
+  let { error: insertError } = input.personalize && agentsAiConfigured()
+    ? await client.from("acquisition_messages").insert(rows.map((row) => ({ ...row, draft_source: "ai_pending" })))
+    : await client.from("acquisition_messages").insert(rows);
+  if (insertError && input.personalize) ({ error: insertError } = await client.from("acquisition_messages").insert(rows));
   if (insertError) return { ok: false, reason: "storage" };
   await client.from("acquisition_prospects").update({ stage: "draft_ready", updated_at: new Date().toISOString() })
     .eq("workspace_id", workspace.id).in("id", deliverable.map((p) => p.id));

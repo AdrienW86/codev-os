@@ -32,7 +32,7 @@ export const EMAIL_CHECK_PROSPECT_COLUMNS = MULTISOURCE_PROSPECT_COLUMNS + ",ema
 const WORKSPACE_COLUMNS = "id,client_id,label,is_internal,discovery_enabled,sending_enabled,emergency_stop,daily_send_limit,timezone";
 const SENDING_WORKSPACE_COLUMNS = ",send_paused_reason,send_paused_at";
 const MESSAGE_COLUMNS = "id,workspace_id,prospect_id,recipient_email,subject,body_text,state,created_at,scheduled_for,sent_at";
-const SENDING_MESSAGE_COLUMNS = ",approved_at,last_error,cancelled_reason,step,parent_message_id,replied_at,reply_kind,reply_excerpt,facts";
+const SENDING_MESSAGE_COLUMNS = ",approved_at,last_error,cancelled_reason,step,parent_message_id,replied_at,reply_kind,reply_excerpt,facts,draft_source";
 const RUN_COLUMNS = "id,workspace_id,trade_profile,place,radius_km,status,found_count,inserted_count,error,created_at";
 
 /** Masque les données Google Places au-delà de la durée de conservation autorisée. */

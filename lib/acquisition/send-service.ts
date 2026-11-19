@@ -76,9 +76,10 @@ export async function approveMessages(actor: Admin, workspaceId: string, ids: st
   const workspace = await readWorkspace(workspaceId);
   const unique = [...new Set(ids.filter((id) => UUID.test(id)))].slice(0, APPROVE_MAX);
   if (!workspace || !unique.length) return { ok: false, message: "Aucun brouillon sélectionné." };
-  const { data, error } = await db().from("acquisition_messages").select("id,prospect_id,recipient_email,subject,body_text,state").eq("workspace_id", workspace.id).in("id", unique);
-  if (error) return { ok: false, message: "Lecture des brouillons impossible." };
-  const drafts = ((data ?? []) as { id: string; prospect_id: string; recipient_email: string; subject: string; body_text: string; state: string }[]).filter((m) => m.state === "draft");
+  const { data, error } = await db().from("acquisition_messages").select("id,prospect_id,recipient_email,subject,body_text,state,draft_source").eq("workspace_id", workspace.id).in("id", unique);
+  if (error) return { ok: false, message: "Migration 20261220000000_acquisition_sending à appliquer." };
+  // Un brouillon en cours de rédaction personnalisée n'est pas approuvable (il va changer).
+  const drafts = ((data ?? []) as { id: string; prospect_id: string; recipient_email: string; subject: string; body_text: string; state: string; draft_source: string }[]).filter((m) => m.state === "draft" && m.draft_source !== "ai_pending");
   if (!drafts.length) return { ok: false, message: "Aucun brouillon à approuver." };
   const prospects = await db().from("acquisition_prospects").select("id,stage,company_name,email_check_status,email_checked_at").eq("workspace_id", workspace.id).in("id", drafts.map((m) => m.prospect_id));
   if (prospects.error) return { ok: false, message: "Migration 20261219000000_acquisition_email_checks à appliquer (vérification des adresses)." };
@@ -107,7 +108,7 @@ export async function approveMessages(actor: Admin, workspaceId: string, ids: st
   }
   if (approved.length) {
     const { error: updateError } = await db().from("acquisition_messages").update({ state: "approved", approved_at: now, approved_by: actor.userId.slice(0, 120), scheduled_for: now })
-      .eq("workspace_id", workspace.id).eq("state", "draft").in("id", approved);
+      .eq("workspace_id", workspace.id).eq("state", "draft").neq("draft_source", "ai_pending").in("id", approved);
     if (updateError) return { ok: false, message: "Migration 20261220000000_acquisition_sending à appliquer." };
     for (const id of approved) await db().from("acquisition_messages").update({ idempotency_key: `acq:${id}` }).eq("id", id).is("idempotency_key", null);
     await db().from("acquisition_prospects").update({ stage: "approved", updated_at: now }).eq("workspace_id", workspace.id).in("id", drafts.filter((m) => approved.includes(m.id)).map((m) => m.prospect_id));

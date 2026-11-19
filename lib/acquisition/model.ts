@@ -44,7 +44,7 @@ export type AcquisitionMessage = {
   id: string; workspace_id: string; prospect_id: string; recipient_email: string;
   subject: string; body_text: string; state: string; created_at: string;
   scheduled_for?: string | null; sent_at?: string | null; approved_at?: string | null; last_error?: string | null; cancelled_reason?: string | null;
-  step?: number; parent_message_id?: string | null; replied_at?: string | null; reply_kind?: string | null; reply_excerpt?: string | null;
+  step?: number; parent_message_id?: string | null; replied_at?: string | null; reply_kind?: string | null; reply_excerpt?: string | null; draft_source?: string;
   facts?: { label: string; statement: string; sourceUrl: string }[];
 };
 export type AcquisitionSender = {

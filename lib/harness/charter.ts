@@ -24,7 +24,7 @@ export type HarnessAgentId =
   | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
-  | "prospection" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
+  | "prospection" | "prospection-writer" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
   | "veille";
 
 export type HarnessCharter = {
@@ -149,6 +149,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Balayage de zone multi-sources légales", "Score et preuve par entreprise", "Brouillons de premier contact"],
     never: ["N’envoie aucun e-mail sans validation", "Ne collecte aucune donnée personnelle (nom de dirigeant, e-mail nominatif)"],
     triggers: [{ kind: "step", step: "acquisition_discovery" }, { kind: "manual" }], clientSettings: "Acquisition → client",
+  },
+  {
+    id: "prospection-writer", name: "Agent Rédacteur prospection", team: "prospection", expertise: "Copywriter B2B spécialiste du premier contact",
+    mission: "Écrire pour chaque entreprise ciblée un premier e-mail court et personnalisé, à partir des seuls faits vérifiés et sourcés.",
+    does: ["Lecture de la page publique de l’entreprise (robots.txt respecté)", "Premier message de 60 à 110 mots, une seule question", "Faits utilisés affichés avec leur source"],
+    never: ["N’invente aucun chiffre, délai, prix, référence ou nom de personne", "N’envoie rien : chaque message reste un brouillon à approuver", "N’écrit pas sans au moins un fait vérifié propre au destinataire"],
+    triggers: [{ kind: "step", step: "acquisition_writer" }], clientSettings: "Acquisition → Prospects → Préparer les e-mails (rédaction personnalisée)",
   },
   {
     id: "prospection-email", name: "Agent Envoi prospection", team: "prospection", expertise: "Spécialiste délivrabilité et conformité de la prospection B2B",

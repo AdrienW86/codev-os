@@ -13,10 +13,12 @@ import { parseNafList } from "@/lib/acquisition/naf";
 import { resolveZoneScope } from "@/lib/acquisition/zone-scan";
 import { handoffToEmailProspecting } from "@/lib/acquisition/handoff";
 import { HANDOFF_MAX } from "@/lib/acquisition/outreach";
+import { requireAdminWriter } from "@/lib/core/guards";
+import { checkProspectingSenderDomain, saveProspectingSender } from "@/lib/acquisition/sender-service";
 
 const sourcesFrom = (data: FormData) => data.getAll("sources").filter((v): v is EnrichmentSource => typeof v === "string" && (ENRICHMENT_SOURCES as string[]).includes(v));
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = new Set<string>(ACQUISITION_CATEGORIES.map(c => c.id));
 const text = (data: FormData, name: string, max: number) => {
   const v = data.get(name);
@@ -186,4 +188,26 @@ export async function handoffToEmailAction(data: FormData) {
   if (!outcome.ok) deny(`handoff_${outcome.reason}`);
   const skipped = outcome.skipped.suppressed + outcome.skipped.already_drafted + outcome.skipped.duplicate_email;
   redirect(`/acquisition?notice=handoff_done&found=${outcome.created}&inserted=${skipped}`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Expéditeur de prospection (domaine dédié, vérifié chez Resend). Aucun envoi.
+async function senderOutcome(workspaceId: string, run: (actor: Awaited<ReturnType<typeof requireAdminWriter>>) => Promise<{ ok: boolean; message: string }>): Promise<never> {
+  if (!uuid.test(workspaceId)) deny("validation");
+  let result: { ok: boolean; message: string };
+  try { result = await run(await requireAdminWriter()); }
+  catch { result = { ok: false, message: "Action impossible (droits, mode simulation ou service indisponible)." }; }
+  revalidatePath("/acquisition");
+  redirect(`/acquisition?${new URLSearchParams({ workspace: workspaceId, tab: "senders", msg: result.message.slice(0, 300), ok: result.ok ? "1" : "0" })}`);
+}
+
+export async function saveProspectingSenderAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36);
+  const input = Object.fromEntries(["sending_domain", "from_name", "from_local_part", "reply_to", "legal_name", "legal_address", "privacy_url"].map((name) => [name, text(data, name, 300)]));
+  await senderOutcome(workspaceId, (actor) => saveProspectingSender(actor, workspaceId, input));
+}
+
+export async function checkProspectingSenderAction(data: FormData) {
+  const workspaceId = text(data, "workspace_id", 36);
+  await senderOutcome(workspaceId, (actor) => checkProspectingSenderDomain(actor, workspaceId));
 }

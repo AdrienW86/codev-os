@@ -9,6 +9,7 @@ import { AcquisitionCreateForms } from "@/components/acquisition/create-forms";
 import { PrescriberDiscovery } from "@/components/acquisition/prescriber-discovery";
 import { placesConfigured } from "@/lib/acquisition/discovery";
 import { listClients } from "@/lib/clients/data";
+import { listProspectingSenders } from "@/lib/acquisition/sender-service";
 
 const NOTICES: Record<string, string> = {
   workspace_created: "Espace créé, envois verrouillés.",
@@ -44,10 +45,13 @@ export const maxDuration = 60;
 
 export default async function AcquisitionPage({ searchParams }: PageProps<"/acquisition">) {
   await requireAdmin();
-  const [snapshot, connectors, clients, params] = await Promise.all([
+  const [snapshot, connectors, clients, params, prospectingSenders] = await Promise.all([
     getAcquisitionSnapshot(), Promise.resolve(getAcquisitionConnectorReadiness()),
-    listClients().catch(() => []), searchParams,
+    listClients().catch(() => []), searchParams, listProspectingSenders().catch(() => null),
   ]);
+  const workspaceParam = typeof params.workspace === "string" && /^[0-9a-f-]{36}$/i.test(params.workspace) ? params.workspace : undefined;
+  const tabParam = params.tab === "senders" || params.tab === "emails" || params.tab === "templates" ? params.tab : undefined;
+  const actionMessage = typeof params.msg === "string" ? params.msg.slice(0, 300) : "";
   const focusClientId = typeof params.client === "string" && /^[0-9a-f-]{36}$/i.test(params.client) ? params.client : undefined;
   const noticeKey = typeof params.notice === "string" ? params.notice : "";
   const notice = NOTICES[noticeKey]?.replace("{found}", count(params.found)).replace("{inserted}", count(params.inserted));
@@ -66,9 +70,10 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
       {!snapshot.schemaReady && <p className="mt-2 text-muted">Base Acquisition : {snapshot.unavailableReason ?? "migration non encore appliquée"} Aucune opération n&apos;a été lancée.</p>}
     </div>
     {notice && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm">{notice}</p>}
+    {actionMessage && <p role="status" className={`rounded-xl border border-border bg-surface p-4 text-sm ${params.ok === "1" ? "" : "text-warning"}`}>{actionMessage}</p>}
     {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} multisourceReady={snapshot.multisourceReady} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
-    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates}/>
+    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates} prospectingSenders={prospectingSenders} initialWorkspace={workspaceParam} initialTab={tabParam}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>
         <div className="p-5"><h2 className="text-lg font-semibold">Connecteurs — branchements à réaliser</h2>

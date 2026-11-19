@@ -232,3 +232,45 @@ test("webhook : réponse traitée avant l'enregistrement (rejouable), STOP exclu
   assert.match(service, /email_suppressions"\)\.insert\(\{ scope: clientId \? "client" : "codev"/);
   assert.match(service, /acquisition_suppressions"\)\.insert/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// PR 5 : rédaction personnalisée par entreprise, à partir des seuls faits vérifiés.
+const writer = load("lib/acquisition/writer.ts");
+const outreachMod = load("lib/acquisition/outreach.ts");
+
+test("faits de la page publique : titre, description, titre principal, avec la page source", () => {
+  const html = `<html><head><title>Atelier Archi &amp; Co | Architectes à Strasbourg</title><meta name="description" content="Rénovation et extension de maisons alsaciennes depuis 2009."></head><body><h1>Architecture <em>durable</em> en Alsace</h1></body></html>`;
+  const facts = writer.extractPageFacts(html, "https://atelier-archi.fr/", "2026-11-19T10:00:00Z");
+  assert.deepEqual(json(facts.map((f) => [f.id, f.statement])), [
+    ["site_title", "Atelier Archi & Co | Architectes à Strasbourg"], ["site_description", "Rénovation et extension de maisons alsaciennes depuis 2009."], ["site_heading", "Architecture durable en Alsace"]]);
+  assert.ok(facts.every((f) => f.sourceUrl === "https://atelier-archi.fr/"));
+  assert.deepEqual(json(writer.extractPageFacts("<title>Accueil</title>", "https://x.fr/", "2026-11-19T10:00:00Z")), [], "texte trop court");
+});
+
+test("sortie du Rédacteur : faits cités, nombres connus, sans lien, personnalisée, sinon repli sur le modèle", () => {
+  const ctx = { sender: { name: "Toitures Martin", activity: "Couverture", zone: "Strasbourg" }, recipient: { company: "Atelier Archi", city: "Strasbourg", segment: "Architectes" },
+    benefit: "Sur vos projets, disposer d'une entreprise identifiée pour ce lot vous évite de relancer plusieurs consultations.",
+    facts: [{ id: "site_description", label: "Présentation", statement: "Rénovation et extension de maisons alsaciennes depuis 2009.", sourceUrl: "https://atelier-archi.fr/", verifiedAt: "2026-11-19T10:00:00Z" }] };
+  const body = "Bonjour,\n\nJ'ai vu qu'Atelier Archi accompagne la rénovation et l'extension de maisons alsaciennes depuis 2009. Toitures Martin intervient en couverture autour de Strasbourg, souvent sur ce type de chantier.\n\nSur vos projets, disposer d'une entreprise identifiée pour ce lot vous évite de relancer plusieurs consultations, et nous orientons volontiers nos clients vers des architectes.\n\nAuriez-vous 10 minutes la semaine prochaine pour en parler ?\n\nBien cordialement,\nToitures Martin";
+  const good = { refused: false, refusal_reason: "", subject: "Atelier Archi et la couverture", body, fact_ids_used: ["site_description"] };
+  const ok = writer.validateWriterOutput(good, ctx);
+  assert.equal(ok.ok, true, JSON.stringify(ok)); assert.ok(ok.body.endsWith(outreachMod.OPT_OUT_FOOTER)); assert.equal(ok.facts.length, 1);
+  const bad = (change) => writer.validateWriterOutput({ ...good, ...change }, ctx);
+  assert.equal(bad({ refused: true }).reason, "refused");
+  assert.equal(bad({ fact_ids_used: [] }).reason, "facts");
+  assert.equal(bad({ fact_ids_used: ["site_description", "invente"] }).reason, "facts");
+  assert.equal(bad({ body: body.replace("depuis 2009", "depuis 2009 et livrons en 48 h") }).reason, "invented_number");
+  assert.equal(bad({ body: body.replace("Bonjour,", "Bonjour, voir www.toitures.fr.") }).reason, "links");
+  assert.equal(bad({ body: body.replaceAll("Atelier Archi", "votre cabinet"), subject: "La couverture à Strasbourg" }).reason, "not_personal");
+  assert.equal(bad({ body: "Bonjour, court." }).reason, "length");
+  assert.equal(bad({ body: body.replace("Auriez-vous", "Offre gratuite et urgente : auriez-vous") }).reason, "quality");
+});
+
+test("Rédacteur : cadre de mission, contrôle avant remplacement, brouillon en cours non approuvable", () => {
+  const service = src("lib/acquisition/writer-service.ts");
+  assert.match(service, /withCharter\("prospection-writer"/);
+  assert.match(service, /validateWriterOutput\(/);
+  assert.match(service, /robotsAllows\(/);
+  assert.match(service, /\.eq\("state", "draft"\)\.eq\("draft_source", "ai_pending"\)/);
+  assert.match(src("lib/acquisition/send-service.ts"), /neq\("draft_source", "ai_pending"\)/);
+});

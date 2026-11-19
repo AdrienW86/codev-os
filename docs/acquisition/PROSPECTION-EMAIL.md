@@ -82,3 +82,18 @@ Migration : `20261220000000_acquisition_sending.sql` (additive ; prévoit aussi 
 Hypothèse à confirmer au premier essai réel : format de l'événement `email.received` (`data.email_id`, `data.from`,
 `data.to`, `data.subject`) et route de lecture du contenu, la documentation Resend n'étant pas joignable depuis
 l'environnement de développement.
+
+## 5. Rédaction personnalisée par entreprise
+
+`lib/acquisition/writer.ts` (pur), `writer-service.ts` ; Agent Rédacteur prospection (étape `acquisition_writer`,
+famille IA « rédaction »).
+
+- Case « Rédaction personnalisée » (cochée par défaut) à la transmission : le brouillon du modèle est créé tout de suite
+  (`draft_source = 'ai_pending'`) puis réécrit en tâche de fond, quelques brouillons par passage.
+- Faits utilisés : activité au registre (fiche Sirene, lien de preuve) et page publique de l'entreprise (titre,
+  description, titre principal ; robots.txt respecté, adresses publiques uniquement). Chaque fait garde sa source,
+  affichée sous le brouillon.
+- Contrôle avant remplacement : au moins un fait cité et existant, 40 à 130 mots, objet de 60 caractères au plus,
+  nom du destinataire présent, aucun lien ni adresse, aucun nombre absent des données, note qualité ≥ 70 sans terme
+  anti-spam. Échec ou IA indisponible : le brouillon du modèle reste (`last_error = writer_<raison>`).
+- Un brouillon en cours de réécriture n'est pas approuvable. Coût IA compté sur le budget du client (espaces clients).

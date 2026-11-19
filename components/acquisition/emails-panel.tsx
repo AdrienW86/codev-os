@@ -49,7 +49,7 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
       {[...selected].map((id) => <input key={id} type="hidden" name="ids" value={id} />)}
       <div className="flex flex-wrap items-center gap-3">
         <p className="font-medium">{drafts.length} brouillon(s) à relire</p>
-        <button type="button" className="text-xs text-accent hover:underline" onClick={() => setSelected(new Set(drafts.slice(0, 100).map((m) => m.id)))}>Tout sélectionner</button>
+        <button type="button" className="text-xs text-accent hover:underline" onClick={() => setSelected(new Set(drafts.filter((m) => m.draft_source !== "ai_pending").slice(0, 100).map((m) => m.id)))}>Tout sélectionner</button>
         <button type="button" className="text-xs text-accent hover:underline" onClick={() => setSelected(new Set())}>Aucun</button>
       </div>
       <div className="mt-2 flex flex-wrap items-end gap-3">
@@ -63,8 +63,8 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
       <div className="divide-y divide-border">{messages.map((m) => <article key={m.id} className="py-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <label className="flex items-start gap-2">
-            {m.state === "draft" && <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggle(m.id)} aria-label={`Sélectionner ${m.subject}`} className="mt-1" />}
-            <span><span className="font-medium">{m.subject}</span>{m.step === 2 && <span className="ml-2 text-xs text-muted">(relance)</span>}<br /><span className="text-xs text-muted">{companyOf.get(m.prospect_id) ?? ""} · {m.recipient_email}</span></span>
+            {m.state === "draft" && m.draft_source !== "ai_pending" && <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggle(m.id)} aria-label={`Sélectionner ${m.subject}`} className="mt-1" />}
+            <span><span className="font-medium">{m.subject}</span>{m.step === 2 && <span className="ml-2 text-xs text-muted">(relance)</span>}{m.draft_source === "ai_pending" && <span className="ml-2 text-xs text-warning">rédaction personnalisée en cours</span>}{m.draft_source === "ai" && <span className="ml-2 text-xs text-success">personnalisé</span>}<br /><span className="text-xs text-muted">{companyOf.get(m.prospect_id) ?? ""} · {m.recipient_email}</span></span>
           </label>
           <span className="text-xs text-muted">{STATE_LABELS[m.state] ?? m.state}
             {m.state === "sent" && m.sent_at ? ` le ${date(m.sent_at)}` : ""}

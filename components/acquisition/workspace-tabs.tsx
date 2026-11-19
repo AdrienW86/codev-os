@@ -97,6 +97,7 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
             <option value="">Modèle par défaut (recommandation mutuelle)</option>
             {templates.filter(t=>t.workspace_id===workspace).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
           </select></label>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="personalize" defaultChecked /> Rédaction personnalisée par entreprise (faits vérifiés de son site)</label>
           <button type="submit" className="rounded-lg bg-accent-strong px-3 py-2 text-sm font-semibold text-accent-foreground">Préparer les e-mails</button>
         </div>
         <p className="mt-2 text-xs text-muted">Variables des modèles : {TEMPLATE_PLACEHOLDERS.map(v=>`{{${v}}}`).join(", ")}.</p>

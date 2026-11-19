@@ -324,6 +324,15 @@ export function prospectingEmailSignals(rows: readonly ProspectingMessageRow[] |
   return { facts: [{ statement: `${plural(sent.length, "e-mail envoyé", "e-mails envoyés")} sur 30 jours, ${plural(replies, "réponse", "réponses")}${queued ? `, ${queued} en file` : ""}.`, at: latest(sent.map((row) => row.sent_at)), href: "/acquisition" }], gaps: [] };
 }
 
+/** Agent Rédacteur prospection : brouillons personnalisés écrits ou repliés sur le modèle (30 jours). */
+export function prospectingWriterSignals(rows: readonly { draft_source: string; created_at: string }[] | null, now: Date): BriefingSignals {
+  if (rows === null) return { facts: [], gaps: ["Rédaction personnalisée non installée (migration 20261220000000)."] };
+  const recent = rows.filter((row) => withinDays(row.created_at, now, 30));
+  const written = recent.filter((row) => row.draft_source === "ai").length, pending = recent.filter((row) => row.draft_source === "ai_pending").length;
+  if (!written && !pending) return { facts: [], gaps: ["Aucun brouillon personnalisé sur 30 jours."] };
+  return { facts: [{ statement: `${plural(written, "brouillon personnalisé", "brouillons personnalisés")} sur 30 jours${pending ? `, ${pending} en cours` : ""}.`, at: latest(recent.map((row) => row.created_at)), href: "/acquisition" }], gaps: [] };
+}
+
 export type IncidentRow = { status: string; detected_at: string };
 export function directorSignals(rows: readonly IncidentRow[]): BriefingSignals {
   const open = rows.filter((row) => row.status !== "resolved");

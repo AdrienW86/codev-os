@@ -183,7 +183,7 @@ export async function handoffToEmailAction(data: FormData) {
     !Number.isInteger(limit) || limit<1 || limit>HANDOFF_MAX) deny("invalid_handoff");
   const outcome = await handoffToEmailProspecting({
     workspaceId, filter: { category: category || undefined, segment: segment || undefined, minScore: minScore || undefined },
-    templateId: templateId || undefined, limit,
+    templateId: templateId || undefined, limit, personalize: data.get("personalize") === "on",
   });
   revalidatePath("/acquisition");
   if (!outcome.ok) deny(`handoff_${outcome.reason}`);

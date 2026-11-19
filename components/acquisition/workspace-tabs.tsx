@@ -6,14 +6,19 @@ import { ACQUISITION_CATEGORIES, ACQUISITION_STAGES } from "@/lib/acquisition/mo
 import { PRESCRIBER_SEGMENTS, type PrescriberSegmentId } from "@/lib/acquisition/prescribers";
 import { enrichProspectsAction, handoffToEmailAction } from "@/app/(cockpit)/acquisition/actions";
 import { HANDOFF_MAX, TEMPLATE_PLACEHOLDERS, auditOutreachDraft } from "@/lib/acquisition/outreach";
+import type { ProspectingSender } from "@/lib/acquisition/prospecting-sender";
+import { ProspectingSenderPanel } from "./prospecting-sender-panel";
 
-export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false }: {
+type Tab = "prospects"|"emails"|"senders"|"templates";
+export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, senders, templates, placesReady = false, prescribersReady = false, prospectingSenders = null, initialWorkspace, initialTab }: {
   placesReady?: boolean; prescribersReady?: boolean;
+  /** Expéditeurs de prospection (null : migration 20261218000000 non appliquée). */
+  prospectingSenders?: ProspectingSender[] | null; initialWorkspace?: string; initialTab?: Tab;
   workspaces: AcquisitionWorkspace[]; prospects: AcquisitionProspect[];
   messages: AcquisitionMessage[]; senders: AcquisitionSender[]; templates: AcquisitionTemplate[];
 }) {
-  const [workspace, setWorkspace] = useState(workspaces[0]?.id ?? "");
-  const [tab, setTab] = useState<"prospects"|"emails"|"senders"|"templates">("prospects");
+  const [workspace, setWorkspace] = useState(workspaces.find(w=>w.id===initialWorkspace)?.id ?? workspaces[0]?.id ?? "");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "prospects");
   const [query, setQuery] = useState("");
   const [segment, setSegment] = useState("");
   const [category, setCategory] = useState("");
@@ -44,7 +49,7 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
       <span>Quota : {active.daily_send_limit}/jour</span>
     </div>}
     <div className="flex flex-wrap gap-2 p-4" role="tablist" aria-label="Vues Acquisition">
-      {([["prospects","Prospects"],["emails","E-mails"],["senders","Expéditeurs"],["templates","Modèles"]] as const).map(([id,label])=>
+      {([["prospects","Prospects"],["emails","E-mails"],["senders","Expéditeur"],["templates","Modèles"]] as const).map(([id,label])=>
         <button type="button" key={id} role="tab" aria-selected={tab===id} onClick={()=>setTab(id)}
           className={`rounded-lg px-3 py-2 text-sm ${tab===id?"bg-accent/15 font-semibold text-foreground":"text-muted hover:bg-surface-raised"}`}>{label}</button>)}
     </div>
@@ -100,8 +105,10 @@ export function AcquisitionWorkspaceTabs({ workspaces, prospects, messages, send
           <p className="text-xs text-muted">{m.recipient_email}</p><p className="mt-2 whitespace-pre-wrap text-sm">{m.body_text}</p>
           {m.state==="draft" && <DraftQuality subject={m.subject} body={m.body_text} company={companyOf.get(m.prospect_id)} />}
         </article>)}</div>)}
-      {tab==="senders" && (senders.filter(s=>s.workspace_id===workspace).length===0?<p className="py-8 text-sm text-muted">Aucun expéditeur connecté. Préparer contact@code-v.net après validation du fournisseur.</p>:
-        <div className="space-y-2">{senders.filter(s=>s.workspace_id===workspace).map(s=><p key={s.id} className="rounded-lg border border-border p-3 text-sm">{s.address} · {s.provider} · {s.status} · {s.daily_limit}/jour</p>)}</div>)}
+      {tab==="senders" && active && <>
+        <ProspectingSenderPanel workspaceId={active.id} label={active.label} ready={prospectingSenders!==null} sender={prospectingSenders?.find(s=>s.workspace_id===active.id) ?? null} />
+        {senders.filter(s=>s.workspace_id===workspace&&s.provider!=="resend").map(s=><p key={s.id} className="mt-2 rounded-lg border border-border p-3 text-sm text-muted">Ancien connecteur : {s.address} · {s.provider} · {s.status} (non utilisé pour la prospection)</p>)}
+      </>}
       {tab==="templates" && (templates.filter(t=>t.workspace_id===workspace).length===0?<p className="py-8 text-sm text-muted">Aucun modèle enregistré. Cinq catégories sont prévues et chaque texte devra être contrôlé avant utilisation.</p>:
         <div className="space-y-3">{templates.filter(t=>t.workspace_id===workspace).map(t=><article key={t.id} className="rounded-lg border border-border p-3">
           <h3 className="font-medium">{t.name} · {t.enabled?"actif":"inactif"}</h3><p className="mt-2 text-sm font-medium">{t.subject_template}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted">{t.body_template}</p>

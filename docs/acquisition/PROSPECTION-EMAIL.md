@@ -97,3 +97,26 @@ famille IA « rédaction »).
   nom du destinataire présent, aucun lien ni adresse, aucun nombre absent des données, note qualité ≥ 70 sans terme
   anti-spam. Échec ou IA indisponible : le brouillon du modèle reste (`last_error = writer_<raison>`).
 - Un brouillon en cours de réécriture n'est pas approuvable. Coût IA compté sur le budget du client (espaces clients).
+
+## 6. Relance unique et résultats
+
+`outreach-mail.ts` (`followUpMessage`), `stats.ts` (pur), `stats-service.ts`, onglet **E-mails**.
+
+- Case « Une seule relance à J+5 ouvrés » (cochée par défaut) lors de l'approbation : la relance est approuvée en même
+  temps, mais programmée seulement quand le premier message est parti (5 jours ouvrés plus tard, mêmes créneaux et
+  mêmes verrous). Texte court, sans nouvelle affirmation, qui annonce l'absence d'autre relance.
+- Annulée automatiquement en cas de réponse, de « STOP », de désinscription, d'exclusion, d'échec ou d'annulation du
+  premier message. Jamais plus d'une relance par message (index unique).
+- Résultats sur 90 jours par espace : premiers contacts, relances, en file, réponses (taux), désinscriptions, rebonds
+  définitifs (taux), plaintes, remises confirmées. Pas de pixel de suivi des ouvertures (meilleure délivrabilité).
+
+## Mise en service (actions manuelles)
+
+1. Appliquer les migrations `20261218000000`, `20261219000000`, `20261220000000` (SQL Editor Supabase).
+2. Acheter le domaine dédié (ex. `code-v-pro.fr`), le saisir dans l'onglet Expéditeur, cliquer « Vérifier le domaine »,
+   créer les enregistrements DNS affichés + DMARC chez le registrar, relancer la vérification.
+3. Resend : activer la réception (inbound) sur ce domaine et ajouter l'événement `email.received` au webhook existant
+   (`/api/webhooks/resend`, secret `RESEND_WEBHOOK_SECRET`).
+4. Vercel (Production) : `RESEND_ADMIN_API_KEY` (clé « Full access », gestion des domaines et lecture des réponses),
+   `EMAIL_SENDING_ENABLED=true`, `PUBLICATIONS_OAUTH_BASE_URL` (déjà utilisé), `RESEND_WEBHOOK_SECRET`.
+5. Transmettre une première liste, relire, approuver (relance incluse), activer les envois avec un quota de 10/jour.

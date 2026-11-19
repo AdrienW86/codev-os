@@ -235,7 +235,7 @@ export async function approveMessagesAction(data: FormData) {
   const ids = data.getAll("ids").filter((v): v is string => typeof v === "string" && uuid.test(v)).slice(0, APPROVE_MAX);
   if (data.get("confirm") !== "on" || text(data, "confirm_count", 4) !== String(ids.length))
     await emailsOutcome(workspaceId, async () => ({ ok: false, message: "Confirmation requise : cochez la case et indiquez le nombre exact d'e-mails sélectionnés." }));
-  await emailsOutcome(workspaceId, (actor) => approveMessages(actor, workspaceId, ids));
+  await emailsOutcome(workspaceId, (actor) => approveMessages(actor, workspaceId, ids, { followUp: data.get("follow_up") === "on" }));
 }
 
 export async function cancelMessageAction(data: FormData) {

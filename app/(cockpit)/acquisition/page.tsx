@@ -10,6 +10,7 @@ import { PrescriberDiscovery } from "@/components/acquisition/prescriber-discove
 import { placesConfigured } from "@/lib/acquisition/discovery";
 import { listClients } from "@/lib/clients/data";
 import { listProspectingSenders } from "@/lib/acquisition/sender-service";
+import { getProspectingStats } from "@/lib/acquisition/stats-service";
 
 const NOTICES: Record<string, string> = {
   workspace_created: "Espace créé, envois verrouillés.",
@@ -45,9 +46,9 @@ export const maxDuration = 60;
 
 export default async function AcquisitionPage({ searchParams }: PageProps<"/acquisition">) {
   await requireAdmin();
-  const [snapshot, connectors, clients, params, prospectingSenders] = await Promise.all([
+  const [snapshot, connectors, clients, params, prospectingSenders, stats] = await Promise.all([
     getAcquisitionSnapshot(), Promise.resolve(getAcquisitionConnectorReadiness()),
-    listClients().catch(() => []), searchParams, listProspectingSenders().catch(() => null),
+    listClients().catch(() => []), searchParams, listProspectingSenders().catch(() => null), getProspectingStats().catch(() => null),
   ]);
   const workspaceParam = typeof params.workspace === "string" && /^[0-9a-f-]{36}$/i.test(params.workspace) ? params.workspace : undefined;
   const tabParam = params.tab === "senders" || params.tab === "emails" || params.tab === "templates" ? params.tab : undefined;
@@ -73,7 +74,7 @@ export default async function AcquisitionPage({ searchParams }: PageProps<"/acqu
     {actionMessage && <p role="status" className={`rounded-xl border border-border bg-surface p-4 text-sm ${params.ok === "1" ? "" : "text-warning"}`}>{actionMessage}</p>}
     {snapshot.schemaReady && <PrescriberDiscovery workspaces={snapshot.workspaces} clients={clients} runs={snapshot.discoveryRuns} prescribersReady={snapshot.prescribersReady} placesReady={placesConfigured()} focusClientId={focusClientId} multisourceReady={snapshot.multisourceReady} />}
     {snapshot.schemaReady && <AcquisitionCreateForms workspaces={snapshot.workspaces} />}
-    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates} prospectingSenders={prospectingSenders} initialWorkspace={workspaceParam} initialTab={tabParam} sendingReady={Boolean(snapshot.sendingReady)}/>
+    <AcquisitionWorkspaceTabs placesReady={placesConfigured()} prescribersReady={snapshot.prescribersReady} workspaces={snapshot.workspaces} prospects={snapshot.prospects} messages={snapshot.messages} senders={snapshot.senders} templates={snapshot.templates} prospectingSenders={prospectingSenders} initialWorkspace={workspaceParam} initialTab={tabParam} sendingReady={Boolean(snapshot.sendingReady)} stats={stats}/>
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel>
         <div className="p-5"><h2 className="text-lg font-semibold">Connecteurs — branchements à réaliser</h2>

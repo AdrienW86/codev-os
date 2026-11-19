@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AcquisitionMessage, AcquisitionWorkspace } from "@/lib/acquisition/model";
+import type { ProspectingStats } from "@/lib/acquisition/stats";
 import { auditOutreachDraft } from "@/lib/acquisition/outreach";
 import { approveMessagesAction, cancelMessageAction, saveSendingSettingsAction, updateDraftAction } from "@/app/(cockpit)/acquisition/actions";
 
@@ -11,7 +12,7 @@ const STATE_LABELS: Record<string, string> = {
 };
 const CANCEL_REASONS: Record<string, string> = {
   admin: "annulé à la main", suppressed: "adresse exclue", undeliverable: "adresse non distribuable", prospect_stage: "entreprise déjà en réponse ou exclue",
-  invalid_address: "adresse invalide", replied: "réponse reçue", stop: "demande de désinscription",
+  invalid_address: "adresse invalide", replied: "réponse reçue", stop: "demande de désinscription", parent_failed: "premier message en échec",
 };
 const input = "mt-1 w-full rounded-lg border border-border bg-surface-raised p-2 text-sm";
 const button = "rounded-lg px-3 py-2 text-sm font-semibold";
@@ -19,8 +20,8 @@ const date = (value: string | null | undefined) => value ? new Date(value).toLoc
 
 // Onglet E-mails : réglages d'envoi de l'espace (activation = confirmation cruciale), brouillons à relire, corriger et
 // approuver (confirmation cruciale : nombre retapé), file d'envoi et historique.
-export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendingReady }: {
-  workspace: AcquisitionWorkspace; messages: AcquisitionMessage[]; companyOf: Map<string, string>; senderReady: boolean; sendingReady: boolean;
+export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendingReady, stats }: {
+  workspace: AcquisitionWorkspace; messages: AcquisitionMessage[]; companyOf: Map<string, string>; senderReady: boolean; sendingReady: boolean; stats?: ProspectingStats | null;
 }) {
   const drafts = messages.filter((m) => m.state === "draft");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -44,6 +45,16 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
         </form>}
     </section>
 
+    {stats && stats.sent > 0 && <section className="rounded-lg border border-border p-3">
+      <h3 className="font-medium">Résultats sur 90 jours</h3>
+      <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+        {([["Premiers contacts", stats.firstContacts], ["Relances", stats.followUps], ["En file", stats.queued], ["Réponses", `${stats.replies}${stats.replyRate !== null ? ` (${stats.replyRate} %)` : ""}`],
+          ["Désinscriptions", stats.stops], ["Rebonds définitifs", `${stats.hardBounces}${stats.bounceRate !== null ? ` (${stats.bounceRate} %)` : ""}`], ["Plaintes", stats.complaints], ["Remis (confirmés)", stats.delivered]] as const)
+          .map(([label, value]) => <div key={label} className="rounded-lg bg-surface-raised p-2"><dt className="text-muted">{label}</dt><dd className="text-base font-semibold">{value}</dd></div>)}
+      </dl>
+      <p className="mt-1 text-xs text-muted">Seuils sains : rebonds sous 2 %, aucune plainte. Ouvertures non mesurées (pas de pixel de suivi, meilleure délivrabilité).</p>
+    </section>}
+
     {drafts.length > 0 && <form action={approveMessagesAction} className="rounded-lg border border-border p-3">
       <input type="hidden" name="workspace_id" value={workspace.id} />
       {[...selected].map((id) => <input key={id} type="hidden" name="ids" value={id} />)}
@@ -54,6 +65,7 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
       </div>
       <div className="mt-2 flex flex-wrap items-end gap-3">
         <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="confirm" required /> J&apos;ai relu ces messages et j&apos;autorise leur envoi.</label>
+        <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="follow_up" defaultChecked /> Une seule relance courte à J+5 ouvrés si pas de réponse</label>
         <label className="text-xs">Nombre d&apos;e-mails sélectionnés (à retaper)<input name="confirm_count" inputMode="numeric" required className="mt-1 block w-24 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm" /></label>
         <button disabled={!selected.size} className={`${button} bg-accent-strong text-accent-foreground disabled:opacity-50`}>Approuver {selected.size} e-mail(s)</button>
       </div>
@@ -69,6 +81,7 @@ export function EmailsPanel({ workspace, messages, companyOf, senderReady, sendi
           <span className="text-xs text-muted">{STATE_LABELS[m.state] ?? m.state}
             {m.state === "sent" && m.sent_at ? ` le ${date(m.sent_at)}` : ""}
             {m.state === "approved" && m.scheduled_for ? ` · dès le ${date(m.scheduled_for)}` : ""}
+            {m.state === "approved" && !m.scheduled_for && m.step === 2 ? " · 5 jours ouvrés après le premier message" : ""}
             {m.replied_at ? ` · ${m.reply_kind === "stop" ? "désinscription" : "réponse"} le ${date(m.replied_at)}` : ""}
             {m.cancelled_reason ? ` · ${CANCEL_REASONS[m.cancelled_reason] ?? m.cancelled_reason}` : ""}
             {m.last_error && m.state !== "sent" ? ` · erreur ${m.last_error}` : ""}</span>

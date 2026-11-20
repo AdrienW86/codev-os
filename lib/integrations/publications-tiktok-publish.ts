@@ -8,7 +8,7 @@ import {publicationRetryAfterSeconds} from './publications-retry-after';
 // l'URL d'envoi donnée par TikTok (hôte *.tiktokapis.com uniquement). Jeton dans l'en-tête Authorization, délai, aucune redirection, corps JSON borné, JAMAIS de
 // nouvelle tentative ici (une initialisation peut avoir créé un post). Ne journalise rien.
 export class TikTokPublishTransportError extends Error{constructor(readonly kind:'network'|'timeout'|'too_large'|'invalid_path'|'invalid_media'){super(`TikTok publish transport: ${kind}`);}}
-export const TIKTOK_PUBLISH_PATHS=['post/publish/creator_info/query','post/publish/content/init','post/publish/video/init','post/publish/status/fetch'] as const;
+export const TIKTOK_PUBLISH_PATHS=['post/publish/creator_info/query','post/publish/content/init','post/publish/video/init','post/publish/inbox/video/init','post/publish/status/fetch'] as const;
 export type TikTokPublishPath=typeof TIKTOK_PUBLISH_PATHS[number];
 export type TikTokPublishRequest={path:TikTokPublishPath;body:Record<string,unknown>;token:string};
 export interface TikTokPublishTransport{request(request:TikTokPublishRequest):Promise<{status:number;body:unknown;retryAfterSeconds?:number}>;

@@ -129,8 +129,10 @@ test("Snapchat : refus avant toute écriture visible, incertitude après l'envoi
   assert.equal((await p(fakeTransport()).publish(input({ credential: credential({ provider: "tiktok" }) }))).errorCode, "credential_invalid");
   assert.equal((await p(fakeTransport()).publish(input({ credential: credential({ expiresAt: new Date(Date.now() - 1000).toISOString(), refreshToken: null }) }))).errorCode, "token_expired");
   const denied = fakeTransport({ media: { status: 403, body: {} } });
-  assert.deepEqual(json(await p(denied).publish(input())), { ok: false, errorClass: "auth", errorCode: "permission_missing", retryAfterSeconds: null });
+  assert.deepEqual(json(await p(denied).publish(input())), { ok: false, errorClass: "auth", errorCode: "permission_missing_media", retryAfterSeconds: null });
   assert.deepEqual(denied.calls, ["read", "media"], "rien n'est publié");
+  const deniedCode = fakeTransport({ media: { status: 403, body: { error_code: "E1008", debug_message: "Profile not allowlisted <x>" } } });
+  assert.equal((await p(deniedCode).publish(input())).errorCode, "permission_missing_media_e1008", "étape et code Snap, jamais le texte libre");
   const uploadDown = fakeTransport({ media: mediaCreated, part: Object.assign(new Error("t"), { kind: "timeout" }) });
   assert.equal((await p(uploadDown).publish(input())).errorClass, "provider_unavailable", "un envoi de média interrompu est sans effet public");
   const badPath = fakeTransport({ media: { status: 200, body: { media_id: "m-1" } } });

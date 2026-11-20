@@ -14,6 +14,8 @@ export const INTRO_FIX:Record<string,string>={constat:'commence au moins un text
  conseil:'n’ouvre pas sur un impératif : commence par une question ou par « Voici… »',
  presentation:'ne commence pas par « Voici / Zoom / Focus » : ouvre sur une question ou un conseil',
  exclamation:'évite l’exclamation d’ouverture : commence par une question ou un conseil à l’impératif'};
+// Consigne concrète jointe au refus d'une accroche déjà employée (le modèle reprenait « <Entreprise> réalise à… »).
+export const OPENING_FIX='commence par une question au lecteur ou un conseil à l’impératif, jamais par le nom de l’entreprise';
 export type EditorialRefusal={reason:'place_not_allowed'|'repetition'|'intro_repetition'|'cta_repetition'|'phrase_repetition'|'photo_mismatch'|'document_photo';detail:string};
 export const SUBJECT_SIMILARITY_THRESHOLD=.6;
 const WORDING_THRESHOLD=.5;
@@ -84,7 +86,7 @@ export function historyRefusal(value:AgentV2GeneratorOutput,ctx:EditorialContext
  const texts=value.publications.map(p=>p.text);
  for(const t of texts)for(const h of history)if(h.texts.some(old=>textSimilarity(t,old)>=WORDING_THRESHOLD))return {reason:'repetition',detail:`formulation trop proche de « ${h.subject.slice(0,120)} »`};
  const openings=new Set(history.flatMap(h=>h.openings).filter(o=>o.split(' ').length>=6));
- for(const t of texts){const o=openingOf(t);if(o.split(' ').length>=6&&openings.has(o))return {reason:'intro_repetition',detail:`accroche déjà employée : « ${o} »`};}
+ for(const t of texts){const o=openingOf(t);if(o.split(' ').length>=6&&openings.has(o))return {reason:'intro_repetition',detail:`accroche déjà employée : « ${o} » ; ${OPENING_FIX}`};}
  const styles=texts.map(introStyleOf),recentIntros=history.slice(0,3).map(mainIntroStyle);
  if(recentIntros.length===3&&styles.every(s=>s===styles[0])&&recentIntros.every(s=>s===styles[0]))return {reason:'intro_repetition',detail:`même style d’accroche (${styles[0]}) que les 3 dernières publications ; ${INTRO_FIX[styles[0]]??'change le style de la première phrase'}`};
  const ctas=value.publications.map(p=>p.cta).filter((c):c is string=>Boolean(c));

@@ -68,6 +68,16 @@ test("auto approval SQL: opt-in per client, agent revisions only, never TikTok, 
   assert.doesNotMatch(sql, /grant execute[^;]*to (anon|authenticated)/);
 });
 
+test("auto approval SQL (TikTok): eligible again, same guards, service role only", () => {
+  const sql = readFileSync("supabase/migrations/20261221000000_publications_tiktok_auto_approval.sql", "utf8");
+  assert.doesNotMatch(sql, /<>'tiktok'/);
+  assert.match(sql, /s\.auto_approve_enabled/);
+  assert.match(sql, /r\.origin='generated'/);
+  assert.match(sql, /o\.scheduled_for>p_now and o\.scheduled_for<=p_now\+make_interval\(hours=>s\.auto_approve_hours_before\)/);
+  assert.match(sql, /grant execute on function publications_private\.auto_approval_eligible\(uuid,timestamptz\) to service_role/);
+  assert.doesNotMatch(sql, /grant execute[^;]*to (anon|authenticated)/);
+});
+
 test("auto approval: the Agent Contrôle blocks an incoherent or unchecked revision and notifies once per revision", async () => {
   const h = harness({
     candidates: [{ publication_id: P(1), revision_id: R(1), client_id: C1 }, { publication_id: P(2), revision_id: R(2), client_id: C1 }, { publication_id: P(3), revision_id: R(3), client_id: C1 }, { publication_id: P(4), revision_id: R(4), client_id: C1 }],

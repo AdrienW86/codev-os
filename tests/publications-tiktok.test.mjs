@@ -39,9 +39,12 @@ test("TikTok : post photo public, statut suivi jusqu'à la publication", async (
 });
 
 test("TikTok : application non auditée, domaine non vérifié, absence d'image et traitement long", async () => {
-  const privateOnly = fakeTransport({ "post/publish/creator_info/query": ok({ privacy_level_options: ["SELF_ONLY"] }) });
-  assert.equal((await publisher.createTikTokPublisher(privateOnly, opts()).publish(input())).errorCode, "app_not_audited");
-  assert.deepEqual(privateOnly.calls, ["post/publish/creator_info/query"], "rien n'est publié");
+  // Application non auditée : jamais de publication directe, le post part dans l'application TikTok du créateur.
+  const privateOnly = fakeTransport({ "post/publish/creator_info/query": ok({ privacy_level_options: ["SELF_ONLY"] }),
+    "post/publish/content/init": (r) => { assert.equal(r.body.post_mode, "MEDIA_UPLOAD"); assert.equal(r.body.post_info.privacy_level, undefined); assert.ok(r.body.post_info.description); return ok({ publish_id: "p_inbox~1" }); },
+    "post/publish/status/fetch": ok({ status: "SEND_TO_USER_INBOX" }) });
+  assert.deepEqual(JSON.parse(JSON.stringify(await publisher.createTikTokPublisher(privateOnly, opts()).publish(input()))), { ok: true, remoteId: "p_inbox~1", simulated: false });
+  assert.deepEqual(privateOnly.calls, ["post/publish/creator_info/query", "post/publish/content/init", "post/publish/status/fetch"]);
   const unverified = fakeTransport({ "post/publish/creator_info/query": ok({ privacy_level_options: ["PUBLIC_TO_EVERYONE"] }), "post/publish/content/init": { status: 403, body: { error: { code: "url_ownership_unverified" } } } });
   assert.equal((await publisher.createTikTokPublisher(unverified, opts()).publish(input())).errorCode, "media_domain_unverified");
   assert.equal((await publisher.createTikTokPublisher(fakeTransport({}), opts()).publish(input({ media: [] }))).errorCode, "media_required");
@@ -51,6 +54,14 @@ test("TikTok : application non auditée, domaine non vérifié, absence d'image 
   assert.equal(r.uncertain, true, "jamais renvoyé automatiquement");
   const lost = fakeTransport({ "post/publish/creator_info/query": ok({ privacy_level_options: ["PUBLIC_TO_EVERYONE"] }), "post/publish/content/init": Object.assign(new Error("t"), { kind: "timeout" }) });
   assert.equal((await publisher.createTikTokPublisher(lost, opts()).publish(input())).uncertain, true);
+});
+
+test("TikTok : sans réglages humains (validation automatique), envoi dans l'application, jamais en direct", async () => {
+  const t = fakeTransport({ "post/publish/content/init": (r) => { assert.equal(r.body.post_mode, "MEDIA_UPLOAD"); assert.equal(r.body.media_type, "PHOTO"); assert.equal(r.body.post_info.privacy_level, undefined); return ok({ publish_id: "p_inbox~2" }); },
+    "post/publish/status/fetch": ok({ status: "SEND_TO_USER_INBOX" }) });
+  const r = await publisher.createTikTokPublisher(t, opts()).publish(input({ tiktok: undefined }));
+  assert.equal(r.ok, true); assert.equal(r.remoteId, "p_inbox~2");
+  assert.deepEqual(t.calls, ["post/publish/content/init", "post/publish/status/fetch"], "aucune lecture creator_info, aucun post direct");
 });
 
 test("TikTok : jeton expiré rafraîchi en mémoire avant toute écriture", async () => {
@@ -83,8 +94,6 @@ test("Réglages TikTok : confidentialité choisie, divulgation commerciale cohé
   const ok = settingsModule.parseTikTokSettings(f({ tiktok_privacy__x: "MUTUAL_FOLLOW_FRIENDS", tiktok_allow_comment__x: "on", tiktok_consent__x: "on" }), "__x");
   assert.deepEqual(JSON.parse(JSON.stringify(ok)), { ok: true, settings: { privacyLevel: "MUTUAL_FOLLOW_FRIENDS", allowComment: true, brandOrganic: false, brandContent: false } });
   assert.equal(settingsModule.tiktokDisclosure(true, true).consent, "branded");
-  const missing = await publisher.createTikTokPublisher(fakeTransport({}), opts()).publish(input({ tiktok: undefined }));
-  assert.equal(missing.errorCode, "tiktok_settings_missing");
   const chosen = fakeTransport({ "post/publish/creator_info/query": ok2({ privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] }),
     "post/publish/content/init": (r) => { assert.equal(r.body.post_info.privacy_level, "SELF_ONLY"); assert.equal(r.body.post_info.disable_comment, false); assert.equal(r.body.post_info.brand_organic_toggle, true); return ok2({ publish_id: "p2~x" }); },
     "post/publish/status/fetch": ok2({ status: "PUBLISH_COMPLETE" }) });

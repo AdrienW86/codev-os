@@ -21,7 +21,8 @@ export const GOOGLE_AUTHORIZE='https://accounts.google.com/o/oauth2/v2/auth';
 export const TIKTOK_AUTHORIZE='https://www.tiktok.com/v2/auth/authorize/';
 const TIKTOK_API='https://open.tiktokapis.com/v2/';
 // Scopes minimum : identité du compte (nom affiché) et publication directe. Rien d'autre (ni vidéos, ni statistiques).
-export const TIKTOK_SCOPES=['user.info.basic','video.publish'] as const;
+// video.upload : envoi d'un post dans l'application TikTok du créateur (validation automatique, application non auditée).
+export const TIKTOK_SCOPES=['user.info.basic','video.publish','video.upload'] as const;
 // Snap OAuth 2.0 (comptes Snapchat / Business Manager) : jeton d'accès court (environ 1 h), jeton de rafraîchissement.
 export const SNAPCHAT_AUTHORIZE='https://accounts.snapchat.com/login/oauth2/authorize';
 const SNAPCHAT_TOKEN='https://accounts.snapchat.com/login/oauth2/access_token';

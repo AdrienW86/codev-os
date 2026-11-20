@@ -56,7 +56,7 @@ export function autoApprovalPayload(form:{get(name:string):unknown}):{enabled:bo
 // Résumé lisible de l'état de la préparation automatique pour la fiche client.
 export function automationSummary(s:ClientPublicationSettings,globalStop:boolean):string{
  if(!s.autoPrepareEnabled)return 'Préparation automatique suspendue : l’agent ne prépare rien seul pour ce client.';
- const base=`L’agent prépare un mois à l’avance toutes les publications des ${PREPARATION_HORIZON_DAYS} prochains jours, puis les soumet à votre validation.`+
+ const base='Le 1er de chaque mois, l’agent prépare les publications du 16 au 15 du mois suivant, puis vous les soumet en un seul lot, à valider avant le premier lundi.'+
   (s.autoApproveEnabled?` Sans action de votre part, elles sont validées automatiquement ${s.autoApproveHoursBefore} h avant leur publication (sauf TikTok et les publications que vous avez modifiées).`:'');
  return globalStop?`${base} L’arrêt général est actif : aucune diffusion n’aura lieu tant qu’il n’est pas levé.`:base;
 }

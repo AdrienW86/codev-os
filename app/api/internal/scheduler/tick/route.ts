@@ -17,6 +17,7 @@ import { runProspectingWriterTick } from "@/lib/acquisition/writer-service";
 import { runMediaIntelligenceTick } from "@/lib/media-intelligence/service";
 import { prepareApprovedDeliveries, runScheduledPreparation } from "@/lib/publications/automation/scheduled";
 import { runAutoApproval } from "@/lib/publications/automation/auto-approval";
+import { runMonthlyBatch } from "@/lib/publications/automation/monthly-batch";
 import { processScheduledDuePublications } from "@/lib/publications/delivery/registry";
 import { purgeExportImports } from "@/lib/whatsapp/export-import";
 import { runHarnessControl } from "@/lib/harness/control-service";
@@ -81,7 +82,8 @@ async function handle(request: Request) {
   // approuvées par un humain, puis un envoi dû au plus. Désactivé tant que PUBLICATIONS_SCHEDULED_DELIVERY ≠ « enabled ».
   // Validation automatique des clients qui l'ont activée (défaut d'accord N heures avant le créneau), juste avant la
   // préparation des diffusions pour qu'une publication validée ainsi parte dans le même passage si son heure est venue.
-  const autoApproval = await step("publication_auto_approval", () => runAutoApproval(new Date()), "Validation automatique des publications différée.");
+  // Cycle mensuel : avis mensuel (une notification le 1er au soir) et images IA validées avec le lot après la date limite.
+  const autoApproval = await step("publication_auto_approval", async () => ({ ...await runAutoApproval(new Date()), monthly: await runMonthlyBatch(new Date()).catch(() => null) }), "Validation automatique des publications différée.");
   const delivery = await step("publication_delivery_prepare", () => prepareApprovedDeliveries(process.env), "Diffusion des publications différée.");
   // Envois dus bornés par l'échéance du passage (#47) : premier envoi libre, suivants seulement s'ils tiennent dans le temps restant.
   const due = await step("publication_delivery_send", () => processScheduledDuePublications(process.env, undefined, { deadline }), "Envoi des publications différé.");

@@ -1,7 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { isNotifiable, subscriptionSchema } from "./schema";
+import { MONTHLY_REVIEW_PREFIX, isNotifiable, subscriptionSchema } from "./schema";
 import { deliveryIdOf } from "./resolution";
 type Env = Record<string, string | undefined>;
 export function pushConfiguration(env: Env = process.env) {
@@ -27,7 +27,7 @@ export async function flushPushNotifications(env: Env = process.env, transport =
         const subscription = subscriptionSchema.safeParse({ deviceId: device.device_id, endpoint: device.endpoint, keys: device.keys });
         if (subscription.success) {
           try {
-            await transport({ endpoint: subscription.data.endpoint, keys: subscription.data.keys }, JSON.stringify({ title: "CODE-V OS", body: "Une nouvelle notification est disponible.", url: `/notifications?focus=${delivery.notification_id}` }), { TTL: 3600, timeout: 5000, urgency: "normal", vapidDetails: { subject: env.VAPID_SUBJECT!, publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY! } });
+            await transport({ endpoint: subscription.data.endpoint, keys: subscription.data.keys }, JSON.stringify({ title: "CODE-V OS", body: pushBody(notification), url: `/notifications?focus=${delivery.notification_id}` }), { TTL: 3600, timeout: 5000, urgency: "normal", vapidDetails: { subject: env.VAPID_SUBJECT!, publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY! } });
             state = "accepted"; accepted++;
           } catch (error) {
             const code = (error as { statusCode?: number }).statusCode;
@@ -71,4 +71,8 @@ async function repeatedFailure(db: Db, eventKey: string | null | undefined, noti
   if (others.error) return false;
   const group = failureGroup(current.data as DeliveryRow);
   return (others.data as DeliveryRow[] ?? []).some((row) => failureGroup(row) === group);
+}
+/** Texte discret (aucun contenu client) : l'avis mensuel ou une publication en échec. */
+export function pushBody(notification: { event_key?: string | null }) {
+  return notification.event_key?.startsWith(MONTHLY_REVIEW_PREFIX) ? "Les publications du mois sont prêtes : validez-les par lot." : "Une publication ou un envoi a échoué.";
 }

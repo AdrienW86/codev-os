@@ -6,11 +6,11 @@ import type {Actor} from '@/lib/core/actor';
 import {NO_OPEN_OCCURRENCE,prepareNextPublicationsAs,retryAgentV2MediaAs,type AgentV2Result,type PrepareOptions} from '../agent-v2/service';
 import {addDays,parisToday} from '../calendar';
 import {SCHEDULED_LATE_TOLERANCE_SECONDS,scheduledDeliveryEnabled} from '../delivery/registry';
-import {PREPARATION_HORIZON_DAYS} from '../client-setup-model';
+import {preparationHorizonDays} from '../monthly-cycle';
 
 // Socle Publications, lot 6 : préparation planifiée par le planificateur (/api/internal/scheduler/tick).
 // - Préparation : pour chaque client dont la préparation automatique est activée, l'Agent v2 (seul moteur) prépare les
-//   occurrences du mois à venir (PREPARATION_HORIZON_DAYS ; fréquences = créneaux des canaux), au nom de l'administrateur qui a activé la
+//   occurrences jusqu'au 15 du mois suivant (cycle mensuel, lib/publications/monthly-cycle.ts ; fréquences = créneaux des canaux), au nom de l'administrateur qui a activé la
 //   préparation automatique (délégation journalisée). Les brouillons complets (photo attachée) passent « À valider »
 //   (pending_review) et l'administrateur est notifié. Jamais d'approbation ici.
 // - Diffusion : une publication approuvée par un humain reçoit sa diffusion à l'heure de son créneau, au nom de cet
@@ -260,7 +260,8 @@ async function prepareClient(client:{client_id:string},now:Date,deps:ScheduledPr
  if(!actor){skip('no_delegated_admin');return;}
  const projects=await db().from('publication_agent_projects').select('project_id').eq('client_id',client.client_id).eq('enabled',true).eq('rights_confirmed',true).order('project_id');
  if(projects.error||!projects.data?.length){skip('no_agent_project');return;}
- const leadDays=PREPARATION_HORIZON_DAYS,today=parisToday(now);
+ // Cycle mensuel : jusqu'au 15 du mois suivant (le 1er, tout le lot du mois ; ensuite, rattrapage seulement).
+ const today=parisToday(now),leadDays=preparationHorizonDays(today);
  for(const {project_id:projectId} of projects.data as {project_id:string}[]){
   if(summary.preparations>=MAX_PREPARATIONS_PER_TICK)break;
   if(left()<PREPARATION_BUDGET_MS){skip('deadline');summary.deadline=true;break;}

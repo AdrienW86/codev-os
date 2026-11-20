@@ -182,7 +182,7 @@ test("tick route wires the steps in isolated steps (own try each); notifications
   assert.equal((route.match(/await step\("/g) ?? []).length, 26, "every step (automatic decisions, Agent Photo, post statistics, site health, local SEO, local competition, Maps geogrid, harness control, Google Analytics, Lighthouse audit, visual, blog, prospection and video agents, export purge and runTick included) goes through step(): own try/catch, deadline, heartbeat");
   const schema = load("lib/notifications/schema.ts", { zod: { z: { object: () => ({ strict: () => ({}) }), array: () => ({ max: () => ({}) }), enum: () => ({}), boolean: () => ({}), uuid: () => ({}), url: () => ({ max: () => ({ refine: () => ({}) }) }), string: () => ({ regex: () => ({}) }) } } });
   assert.ok(schema.categories.includes("publication_review"));
-  assert.equal(schema.notificationLabels.publication_review, "Publication à valider");
+  assert.equal(schema.notificationLabels.publication_review, "Publications du mois à valider");
   assert.equal(schema.safeNotificationHref("/publications/review"), "/publications/review");
   assert.equal(schema.safeNotificationHref(`/publications/${PUB(1)}`), `/publications/${PUB(1)}`);
   assert.equal(schema.safeNotificationHref("/publications/../settings"), "/notifications");

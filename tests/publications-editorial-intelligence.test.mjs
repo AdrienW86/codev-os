@@ -106,7 +106,7 @@ test("anti-répétition au-delà des 3 dernières idées : sujet, formulation, a
   const wording = check({ idea, publications: variants([zinc[0], zinc[1], "Une toiture rénovée protège la maison pour longtemps et valorise le bâti ancien."]) });
   assert.deepEqual([wording.reason, wording.detail], ["repetition", "formulation trop proche de « Rénovation de toiture en tuiles »"]);
   const opening = check({ idea, publications: variants([zinc[0], zinc[1], "Le faîtage maintient les tuiles du sommet : ici, une gouttière en zinc."]) });
-  assert.deepEqual([opening.reason, opening.detail], ["intro_repetition", "accroche déjà employée : « le faitage maintient les tuiles du »"]);
+  assert.deepEqual([opening.reason, opening.detail], ["intro_repetition", "accroche déjà employée : « le faitage maintient les tuiles du » ; commence par une question au lecteur ou un conseil à l’impératif, jamais par le nom de l’entreprise"]);
   // CTA déjà employé : le garde le refuse, mais la validation le retire (champ facultatif) et garde la publication.
   const reusedCta = variants(zinc, A(2), ["Écrivez-nous en message privé.", null, null]);
   { const g = guards.historyRefusal({ idea, publications: reusedCta }, input().editorial); assert.equal(g.reason, "cta_repetition"); assert.match(g.detail, /déjà employé/); }

@@ -36,6 +36,8 @@ export const AGENT_V2_INSTRUCTIONS=[
  'Chaque plateforme a son propre texte (accroche, structure et longueur adaptées) : jamais la même phrase reprise ou à peine retouchée d’une plateforme à l’autre. Seuls les faits sont communs.',
  'Prestations : ne cite que des prestations présentes dans services. Si les previous_publications portent toutes sur la même prestation, choisis une autre prestation de services illustrée par une photo disponible.',
  'previous_publications : les 3 dernières publications (sujet, textes, photo). Ne reprends ni leur sujet, ni leurs formulations, ni leur accroche, ni une photo de même description.',
+ // Accroche « <Entreprise> réalise à <ville>… » : refusée en série (6 premiers mots déjà employés) pour France Toiture.
+ 'Ne commence jamais un texte par le nom de l’entreprise (client.name) ni par « Nous » : la première phrase parle au lecteur ou de son besoin (question, conseil, constat sur sa maison). Le nom peut venir plus loin.',
  'Choisis le sujet ET la photo ensemble : le sujet doit être illustré par la photo choisie, de préférence parmi les priority_topics. Si aucune photo ne convient, media_id=null : une « Photo manquante » sera signalée, n’invente jamais une photo.',
  ...Object.values(PLATFORM_GUIDELINES),
  'Une publication par occurrence fournie, avec exactement son occurrence_id ; aucune autre.',

@@ -24,10 +24,18 @@ export const SNAPCHAT_LOCALE='fr_FR';
 const REMOTE_ID=/^[A-Za-z0-9_.~:-]{1,200}$/;
 const PROFILE=/^[A-Za-z0-9_-]{1,100}$/;
 
-export function classifySnapchatError(status:number,body:unknown,phase:Phase):Failure{
+// Refus 403 : l'étape (création du média, envoi, finalisation, Story, Spotlight) et le code d'erreur Snap sont joints au
+// code (ex. permission_missing_media_e1008) pour distinguer une autorisation manquante de l'application (liste d'accès
+// Public Profile API) d'un compte Snapchat qui n'est pas propriétaire du profil. Aucun texte libre de Snap n'est conservé.
+export type SnapchatStep='media'|'add'|'finalize'|'stories'|'spotlights';
+export function snapchatPermissionCode(body:unknown,step?:SnapchatStep):string{
+ const code=String(record(body).error_code??'').toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,30);
+ return ['permission_missing',step,code].filter(Boolean).join('_');
+}
+export function classifySnapchatError(status:number,body:unknown,phase:Phase,step?:SnapchatStep):Failure{
  const b=record(body),reason=String(b.debug_message??b.display_message??b.error??'').toLowerCase();
  if(status===401)return fail('auth','token_invalid');
- if(status===403)return fail('auth','permission_missing');
+ if(status===403)return fail('auth',snapchatPermissionCode(body,step));
  if(status===429)return fail('rate_limit','rate_limited');
  if(status===404)return fail('auth','profile_unavailable');
  if(status===400||status===413||status===415||status===422)return fail('invalid_payload',/size|large/.test(reason)?'media_too_large':/format|codec|type|duration|aspect/.test(reason)?'media_rejected':'invalid_parameter');
@@ -94,7 +102,7 @@ export function createSnapchatPublisher(transport:SnapchatPublishTransport,optio
   let created:SnapchatResponse;
   try{created=await transport.request({profileId,action:'media',body:{type:video?'VIDEO':'IMAGE',name,key:sealed.key,iv:sealed.iv},token:token.token});}
   catch{return fail('provider_unavailable','network_before_dispatch');}
-  if(!ok200(created))return withRetry(classifySnapchatError(created.status,created.body,'read'),created);
+  if(!ok200(created))return withRetry(classifySnapchatError(created.status,created.body,'read','media'),created);
   const mediaId=field(created.body,['media_id','id'],[['media','media']]);
   // Réponse documentée : { media_id, add_path, finalize_path } (chemins relatifs, préfixe régional possible, ex. /us/v1/…).
   const addPath=field(created.body,['add_path'],[['media','media']]),finalizePath=field(created.body,['finalize_path'],[['media','media']])??addPath;
@@ -105,12 +113,12 @@ export function createSnapchatPublisher(transport:SnapchatPublishTransport,optio
    try{up=await transport.uploadPart(addPath,token.token,{bytes:sealed.bytes.subarray(offset,offset+PART),partNumber:part,fileName:name});}
    catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
     return kind==='invalid_path'?fail('provider_unavailable','upload_path_invalid'):fail('provider_unavailable','media_upload_failed');}
-   if(!ok200(up))return withRetry(classifySnapchatError(up.status,up.body,'read'),up);
+   if(!ok200(up))return withRetry(classifySnapchatError(up.status,up.body,'read','add'),up);
   }
   let done:SnapchatResponse;
   try{done=await transport.finalizeUpload(finalizePath,token.token);}
   catch{return fail('provider_unavailable','media_upload_failed');}
-  if(!ok200(done))return withRetry(classifySnapchatError(done.status,done.body,'read'),done);
+  if(!ok200(done))return withRetry(classifySnapchatError(done.status,done.body,'read','finalize'),done);
   // 3. Publication (écriture visible, au plus une fois).
   const action=video?'spotlights':'stories';
   const body:Record<string,unknown>=video?{media_id:mediaId,description,locale:SNAPCHAT_LOCALE}:{media_id:mediaId};
@@ -122,7 +130,7 @@ export function createSnapchatPublisher(transport:SnapchatPublishTransport,optio
   if(!ok200(r)){
    // Une publication de ce même média est déjà en cours chez Snap : ne jamais renvoyer, l'original aboutira seul.
    if(String(record(r.body).error_code??'').toUpperCase()==='MEDIA_POSTING_ALREADY_IN_PROGRESS')return uncertain('posting_in_progress');
-   return withRetry(classifySnapchatError(r.status,r.body,'write'),r);}
+   return withRetry(classifySnapchatError(r.status,r.body,'write',action),r);}
   // Spotlight : { spotlight_id }. Story : Snap ne renvoie que { request_id, request_status } ; l'identifiant retenu est
   // alors celui du média publié (propre à cet envoi).
   const remoteId=video?field(r.body,['spotlight_id','id'],[['spotlights','spotlight']]):field(r.body,['story_id','id'],[['stories','story']])??mediaId;

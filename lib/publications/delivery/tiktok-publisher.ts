@@ -13,6 +13,11 @@ import type {DeliveryErrorClass} from './model';
 // 3. content/init (écriture, au plus une fois : marqueur d'envoi posé par le moteur) → publish_id.
 // 4. status/fetch, quelques lectures bornées : PUBLISH_COMPLETE → publié ; FAILED → refusé ; sinon incertain
 //    (jamais renvoyé automatiquement). Les images sont servies par CODE-V OS (domaine vérifié chez TikTok).
+// Envoi dans l'application TikTok (mode « Upload », scope video.upload) au lieu de la publication directe quand :
+//  - aucun réglage TikTok n'a été choisi par un humain (validation automatique) : TikTok exige que le créateur choisisse
+//    lui-même la confidentialité et consente à chaque post direct, il le fait alors dans son application ;
+//  - l'application n'est pas encore auditée par TikTok (seul SELF_ONLY permis en publication directe).
+// Le post arrive dans la boîte de réception TikTok du compte (notification) ; le créateur le publie en un geste.
 type Phase='read'|'write';
 type Failure={ok:false;errorClass:DeliveryErrorClass;errorCode:string|null;retryAfterSeconds?:number|null}|{ok:false;uncertain:true;errorCode:string|null};
 const record=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
@@ -74,14 +79,15 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
   if(input.media.some(m=>m.mimeType==='video/mp4'))return publishVideo(input,description);
   if(input.media.length>TIKTOK_MAX_PHOTOS)return fail('invalid_payload','too_many_media');
   if(input.media.some(m=>!['image/jpeg','image/webp'].includes(m.mimeType)||!/^https:\/\//.test(m.url)))return fail('invalid_payload','invalid_media');
-  const settings=input.tiktok;if(!settings)return fail('invalid_payload','tiktok_settings_missing');
+  const settings=input.tiktok;
   const photos=input.media.map(m=>options.mediaLink(m.url));
   if(photos.some(p=>!p))return fail('auth','media_link_not_configured');
   const token=await accessTokenOf(input.credential,refresh,now);if(!token.ok)return token;
-  const allowed=await creatorAllows(token.token,settings);if(allowed)return allowed;
-  const body={media_type:'PHOTO',post_mode:'DIRECT_POST',
+  const direct=await directPostAllowed(token.token,settings);if(direct!==true&&direct!==false)return direct;
+  const source_info={source:'PULL_FROM_URL',photo_images:photos,photo_cover_index:0};
+  const body=direct&&settings?{media_type:'PHOTO',post_mode:'DIRECT_POST',
    post_info:{title:tiktokTitle(description),description,privacy_level:settings.privacyLevel,disable_comment:!settings.allowComment,auto_add_music:true,brand_content_toggle:settings.brandContent,brand_organic_toggle:settings.brandOrganic},
-   source_info:{source:'PULL_FROM_URL',photo_images:photos,photo_cover_index:0}};
+   source_info}:{media_type:'PHOTO',post_mode:'MEDIA_UPLOAD',post_info:{title:tiktokTitle(description),description},source_info};
   let r;
   try{r=await transport.request({path:'post/publish/content/init',body,token:token.token});}
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
@@ -94,6 +100,14 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
   // Statut : TikTok télécharge les images puis publie (quelques secondes en général).
   return followStatus(publishId,token.token,checks);
  }};
+ // Publication directe permise ? true : réglages humains présents et acceptés par le compte ; false : envoi dans
+ // l'application (pas de réglage humain, ou application non auditée) ; sinon refus explicite avant toute écriture.
+ async function directPostAllowed(token:string,settings:PublishInput['tiktok']):Promise<boolean|Failure>{
+  if(!settings)return false;
+  const allowed=await creatorAllows(token,settings);
+  if(!allowed)return true;
+  return 'errorClass' in allowed&&allowed.errorCode==='app_not_audited'?false:allowed;
+ }
  // Lecture : niveaux de confidentialité autorisés (aucun effet de bord). null = réglages compatibles avec le compte.
  async function creatorAllows(token:string,settings:NonNullable<PublishInput['tiktok']>):Promise<Failure|null>{
   let info;
@@ -111,6 +125,8 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
    let s;try{s=await transport.request({path:'post/publish/status/fetch',body:{publish_id:publishId},token});}catch{continue;}
    if(s.status!==200)continue;
    const data=record(record(s.body).data),status=data.status;
+   // Mode « Upload » : le post est dans la boîte de réception TikTok du créateur, qui le publie depuis l'application.
+   if(status==='SEND_TO_USER_INBOX')return {ok:true,remoteId:publishId,simulated:false};
    if(status==='PUBLISH_COMPLETE'){const ids=Array.isArray(data.publicaly_available_post_id)?data.publicaly_available_post_id:[];
     const postId=ids.map(String).find(id=>/^[0-9]{1,30}$/.test(id));return {ok:true,remoteId:postId??publishId,simulated:false};}
    if(status==='FAILED')return fail('invalid_payload',/^[a-z_]{1,60}$/.test(String(data.fail_reason??''))?`post_failed_${String(data.fail_reason)}`.slice(0,80):'post_failed');
@@ -122,21 +138,22 @@ export function createTikTokPublisher(transport:TikTokPublishTransport,options:T
  async function publishVideo(input:PublishInput,caption:string):Promise<PublishResult>{
   if(input.media.length!==1||input.media[0].mimeType!=='video/mp4'||!/^https:\/\//.test(input.media[0].url))return fail('invalid_payload','invalid_media');
   if(caption.length>TIKTOK_VIDEO_CAPTION_MAX)return fail('invalid_payload','text_too_long');
-  const settings=input.tiktok;if(!settings)return fail('invalid_payload','tiktok_settings_missing');
+  const settings=input.tiktok;
   if(!transport.readMedia||!transport.uploadVideo)return fail('auth','media_link_not_configured');
   const token=await accessTokenOf(input.credential,refresh,now);if(!token.ok)return token;
-  const allowed=await creatorAllows(token.token,settings);if(allowed)return allowed;
+  const direct=await directPostAllowed(token.token,settings);if(direct!==true&&direct!==false)return direct;
   // Lecture du fichier AVANT toute écriture chez TikTok : un échec ici n'a aucun effet de bord.
   let bytes:Uint8Array;
   try{bytes=await transport.readMedia(input.media[0].url);}
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
    return kind==='too_large'?fail('invalid_payload','video_too_large'):kind==='invalid_media'?fail('invalid_payload','invalid_media'):fail('provider_unavailable','media_unavailable');}
   if(bytes.length<2048||new TextDecoder('latin1').decode(bytes.subarray(4,8))!=='ftyp')return fail('invalid_payload','invalid_media');
-  const body={post_info:{title:caption,privacy_level:settings.privacyLevel,disable_comment:!settings.allowComment,disable_duet:true,disable_stitch:true,
-    video_cover_timestamp_ms:1000,brand_content_toggle:settings.brandContent,brand_organic_toggle:settings.brandOrganic},
-   source_info:{source:'FILE_UPLOAD',video_size:bytes.length,chunk_size:bytes.length,total_chunk_count:1}};
+  const source_info={source:'FILE_UPLOAD',video_size:bytes.length,chunk_size:bytes.length,total_chunk_count:1};
+  // Mode « Upload » : aucune option de publication (le créateur les choisit dans l'application) ; légende non transmise.
+  const body=direct&&settings?{post_info:{title:caption,privacy_level:settings.privacyLevel,disable_comment:!settings.allowComment,disable_duet:true,disable_stitch:true,
+    video_cover_timestamp_ms:1000,brand_content_toggle:settings.brandContent,brand_organic_toggle:settings.brandOrganic},source_info}:{source_info};
   let r;
-  try{r=await transport.request({path:'post/publish/video/init',body,token:token.token});}
+  try{r=await transport.request({path:direct?'post/publish/video/init':'post/publish/inbox/video/init',body,token:token.token});}
   catch(error){const kind=error&&typeof error==='object'&&'kind' in error?String((error as {kind:unknown}).kind):'network';
    if(kind==='invalid_path')return fail('permanent','invalid_request');
    return uncertain(kind==='timeout'?'timeout_after_dispatch':'network_after_dispatch');}

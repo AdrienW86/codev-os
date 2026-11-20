@@ -6,6 +6,8 @@ import {workflowSucceeded} from "@/lib/publications/workflow-result";
 import {isPublicationUuid} from "@/lib/publications/validation";
 import {MAX_GROUP_APPROVALS} from "@/lib/publications/review-groups";
 import {copyTikTokFields} from "@/lib/publications/tiktok-settings";
+import {approveMonthlyBatch} from "@/lib/publications/monthly-review";
+import {requireAdminWriter} from "@/lib/core/guards";
 export type ReviewCardState={message?:string;ok?:boolean};
 const MIN_REASON=10;
 // Thin wrappers around the existing manual workflow: the review card never writes revisions or decisions itself.
@@ -52,4 +54,12 @@ export async function approveGroupFromCardAction(_state:ReviewCardState,form:For
  const done=items.length-failed.length;
  if(!failed.length)return {message:`${done>1?`${done} publications approuvées`:"Publication approuvée"}.`,ok:true};
  return {message:`${done} approuvée(s) sur ${items.length}. ${failed.join(" ")}`,ok:false};
+}
+// Cycle mensuel : « Tout valider » pour un client ou pour tous (lib/publications/monthly-review.ts).
+export async function approveMonthlyBatchAction(_state:ReviewCardState,form:FormData):Promise<ReviewCardState>{
+ await requireAdmin();
+ try{await requireAdminWriter();}catch{return {message:"Validation impossible en simulation.",ok:false};}
+ const client=form.get("client_id");
+ const result=await approveMonthlyBatch(typeof client==="string"&&client?client:null);
+ refresh(form);return result;
 }

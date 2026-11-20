@@ -1,15 +1,16 @@
 import "server-only";
 import { requireAdmin } from "@/lib/require-admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { categories, preferencesSchema, subscriptionSchema } from "./schema";
+import { alertCategories, isAlertCategory, isNotifiable, preferencesSchema, subscriptionSchema } from "./schema";
 import { deliveryIdOf, resolvedDeliveryNotifications } from "./resolution";
 const db = () => getSupabaseServerClient();
-const defaults = { categories: [...categories], push_enabled: false, push_categories: categories.filter((value) => value !== "analysis_completed") };
+const defaults = { categories: [...alertCategories], push_enabled: false, push_categories: [...alertCategories] };
 export async function notificationPreferences() {
   const { userId } = await requireAdmin();
   const { data, error } = await db().from("admin_notification_preferences").select("categories,push_enabled,push_categories").eq("user_id", userId).maybeSingle();
   if (error) throw new Error("Préférences indisponibles : vérifiez la migration notifications.");
-  return data ? preferencesSchema.parse(data) : defaults;
+  // Préférences enregistrées avant le passage aux seuls échecs + avis mensuel : les autres catégories sont ignorées.
+  return data ? preferencesSchema.parse({ push_enabled: data.push_enabled, categories: data.categories.filter(isAlertCategory), push_categories: data.push_categories.filter(isAlertCategory) }) : defaults;
 }
 export async function listNotifications() {
   const { userId } = await requireAdmin(); const prefs = await notificationPreferences();
@@ -20,7 +21,7 @@ export async function listNotifications() {
   const seen = new Set(reads.data?.map((row) => row.notification_id));
   const dismissed = new Set(reads.data?.filter((row) => row.dismissed_at).map((row) => row.notification_id));
   const resolved = await resolvedDeliveryAlerts(events.data ?? [], seen);
-  return (events.data ?? []).filter((row) => !dismissed.has(row.id)).filter((row) => !resolved.has(row.id)).slice(0, 100)
+  return (events.data ?? []).filter(isNotifiable).filter((row) => !dismissed.has(row.id)).filter((row) => !resolved.has(row.id)).slice(0, 100)
     .map(({ event_key: _key, ...row }) => { void _key; return { ...row, read: seen.has(row.id) }; });
 }
 /**
@@ -41,10 +42,9 @@ async function resolvedDeliveryAlerts(events: { id: string; event_key: string | 
   }
   return resolved;
 }
+/** Pastille de la cloche : notifications non lues de la liste (mêmes règles : échecs et avis mensuel seulement). */
 export async function unreadNotificationCount() {
-  const { userId } = await requireAdmin();
-  const { data, error } = await db().rpc("codev_unread_notifications", { p_user_id: userId });
-  if (error) throw new Error("Compteur indisponible."); return data;
+  return (await listNotifications()).filter((row) => !row.read).length;
 }
 export async function markNotificationRead(id: unknown) {
   const { userId } = await requireAdmin();

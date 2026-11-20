@@ -38,6 +38,7 @@ function routeWith(fake, { env = { CRON_SECRET: SECRET }, slow } = {}) {
       prepareApprovedDeliveries: mark("publication_delivery_prepare", e => ({ disabled: e.PUBLICATIONS_SCHEDULED_DELIVERY === "enabled" ? "global" : "flag", prepared: 0 })),
       runScheduledPreparation: mark("publication_preparation", { disabled: "global", clients: 0 }) },
     "@/lib/publications/automation/auto-approval": { runAutoApproval: mark("publication_auto_approval", { disabled: "global", approved: 0, blocked: 0, noActor: 0 }) },
+    "@/lib/publications/automation/monthly-batch": { runMonthlyBatch: async () => ({ notice: "not_due", images: { approved: 0, failed: 0, noActor: 0 } }) },
     "@/lib/publications/delivery/registry": { processScheduledDuePublications: mark("publication_delivery_send", { disabled: true }) },
     "@/lib/whatsapp/export-import": { purgeExportImports: mark("whatsapp_exports", { purged: 0, failed: 0, orphans: 0 }) },
     "@/lib/local-seo/service": { runLocalSeoTick: mark("local_seo", { disabled: "migration", collected: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 }) },

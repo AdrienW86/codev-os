@@ -146,7 +146,26 @@ export async function decideGeneratedImage(id:string,decision:ImageDecision,reas
  return {ok:true,message:decision==='approve_publish'?'Image attachée et publication approuvée : elle partira à son créneau.':'Image attachée : la publication est maintenant « À valider ».'};
 }
 
-async function attachToPublications(row:{client_id:string;publication_ids:string[];storage_path:string;model:string},userId:string,approve:boolean):Promise<true|null>{
+/**
+ * Cycle mensuel (choix de l'utilisateur, 2026-11-20) : une image encore « en attente » après la date limite du lot (ou
+ * à IMAGE_LAST_CALL_DAYS jours de son créneau) est validée automatiquement au nom de l'administrateur délégué, puis la
+ * publication est approuvée pour partir à son créneau. Même attache que « Valider et approuver ». Jamais une image refusée.
+ */
+export async function autoValidateGeneratedImage(id:string,actorId:string):Promise<'approved'|'attach_failed'|'skipped'>{
+ if(!isUuid(id))return 'skipped';
+ const found=await db().from(TABLE).select('id,client_id,run_id,publication_ids,storage_path,model,status').eq('id',id).maybeSingle();
+ const row=found.data as {id:string;client_id:string;run_id:string;publication_ids:string[];storage_path:string;model:string;status:string}|null;
+ if(found.error||!row||row.status!=='pending_review')return 'skipped';
+ const decide=(status:string)=>db().from(TABLE).update({status,decided_by:actorId,decided_at:new Date().toISOString()}).eq('id',id).eq('status','pending_review').select('id');
+ const attached=await attachToPublications(row,actorId,true,'validée automatiquement avec le lot du mois').catch(()=>null);
+ if(!attached){await decide('attach_failed');return 'attach_failed';}
+ const r=await decide('approved');
+ if(r.error)log('auto_decide','not_recorded');
+ await writeAudit({kind:'system',worker:'monthly-batch'},{action:'publication_image.auto_approved',resource_type:'publication_agent_v2_run',resource_id:row.run_id,metadata:{image_id:id,publications:row.publication_ids,delegated_actor:actorId}}).catch(()=>undefined);
+ return 'approved';
+}
+
+async function attachToPublications(row:{client_id:string;publication_ids:string[];storage_path:string;model:string},userId:string,approve:boolean,how='validée par l’administrateur'):Promise<true|null>{
  const original=await db().storage.from(GENERATED_BUCKET).download(row.storage_path);
  if(original.error||!original.data)return null;
  const bytes=new Uint8Array(await original.data.arrayBuffer());
@@ -165,7 +184,7 @@ async function attachToPublications(row:{client_id:string;publication_ids:string
    const up=await db().storage.from(IMAGE_BUCKET).upload(path,d.bytes,{contentType:d.mime_type,upsert:false});if(up.error)return null;
    const reg=await db().rpc('publication_register_image',{p_publication_id:pub.id,p_revision_id:pub.current_revision_id,p_asset_id:assetId,p_path:path,
     p_hash:createHash('sha256').update(d.bytes).digest('hex'),p_mime:d.mime_type,
-    p_provenance:`Image d’illustration générée par IA (Agent Photo, ${row.model}), validée par l’administrateur le ${day}. Ce n’est pas une photo d’un chantier du client.`,p_actor_id:userId});
+    p_provenance:`Image d’illustration générée par IA (Agent Photo, ${row.model}), ${how} le ${day}. Ce n’est pas une photo d’un chantier du client.`,p_actor_id:userId});
    if(reg.error){await db().storage.from(IMAGE_BUCKET).remove([path]);return null;}
    assets.set(variant.platform,assetId);
   }

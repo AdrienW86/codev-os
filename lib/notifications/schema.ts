@@ -1,7 +1,20 @@
 import { z } from "zod";
 export const categories = ["report_ready", "analysis_completed", "analysis_failed", "incident", "delivery_failed", "media_received", "media_missing", "publication_review", "blog_scheduled"] as const;
-export const notificationLabels: Record<(typeof categories)[number], string> = { report_ready: "Rapport prêt à relire", analysis_completed: "Analyse terminée", analysis_failed: "Analyse en échec", incident: "Incident important", delivery_failed: "Échec ou incertitude d’envoi", media_received: "Nouveaux médias WhatsApp", media_missing: "Photo manquante pour une publication", publication_review: "Publication à valider", blog_scheduled: "Article de blog prévu demain" };
-export const preferencesSchema = z.object({ categories: z.array(z.enum(categories)).max(categories.length), push_enabled: z.boolean(), push_categories: z.array(z.enum(categories)).max(categories.length) }).strict();
+export const notificationLabels: Record<(typeof categories)[number], string> = { report_ready: "Rapport prêt à relire", analysis_completed: "Analyse terminée", analysis_failed: "Analyse en échec", incident: "Incident important", delivery_failed: "Publication ou envoi en échec", media_received: "Nouveaux médias WhatsApp", media_missing: "Photo manquante pour une publication", publication_review: "Publications du mois à valider", blog_scheduled: "Article de blog prévu demain" };
+// Règle de l'utilisateur (2026-11-20) : on ne notifie (cloche, liste, push) que deux choses.
+// 1. Une publication (ou un envoi à un client) en échec, ou un créneau qui n'a pas pu être préparé.
+// 2. L'avis mensuel « publications du mois à valider par lot » (clé monthly-review:<AAAA-MM>).
+// Tout le reste (publication à valider au fil de l'eau, photo manquante, médias reçus, article prévu, rapport prêt,
+// analyse terminée ou en échec, incidents) reste visible dans l'application, sans notification.
+export const alertCategories = ["delivery_failed", "publication_review"] as const satisfies readonly (typeof categories)[number][];
+export const isAlertCategory = (value: unknown): value is (typeof alertCategories)[number] => (alertCategories as readonly unknown[]).includes(value);
+export const MONTHLY_REVIEW_PREFIX = "monthly-review:";
+/** Une ligne admin_notifications mérite-t-elle une notification ? « À valider » : seulement l'avis mensuel. */
+export function isNotifiable(row: { category?: string | null; event_key?: string | null }) {
+  if (row.category === "delivery_failed") return true;
+  return row.category === "publication_review" && typeof row.event_key === "string" && row.event_key.startsWith(MONTHLY_REVIEW_PREFIX);
+}
+export const preferencesSchema = z.object({ categories: z.array(z.enum(alertCategories)).max(alertCategories.length), push_enabled: z.boolean(), push_categories: z.array(z.enum(alertCategories)).max(alertCategories.length) }).strict();
 export const subscriptionSchema = z.object({ deviceId: z.uuid(), endpoint: z.url().max(2048).refine((value) => {
   const url = new URL(value);
   return url.protocol === "https:" && !url.username && !url.password && !url.port && ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com"].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));

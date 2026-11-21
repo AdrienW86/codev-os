@@ -409,6 +409,24 @@ class Drive {
 function cryptoRandom() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+export function webpDimensions(buffer) {
+  if (buffer.length < 30 || buffer.toString("ascii", 0, 4) !== "RIFF" ||
+      buffer.toString("ascii", 8, 12) !== "WEBP") return null;
+  const kind = buffer.toString("ascii", 12, 16);
+  if (kind === "VP8X") return {
+    width: 1 + buffer.readUIntLE(24, 3),
+    height: 1 + buffer.readUIntLE(27, 3)
+  };
+  if (kind === "VP8 ") return {
+    width: buffer.readUInt16LE(26) & 0x3fff,
+    height: buffer.readUInt16LE(28) & 0x3fff
+  };
+  if (kind === "VP8L" && buffer[20] === 0x2f) return {
+    width: 1 + buffer[21] + ((buffer[22] & 0x3f) << 8),
+    height: 1 + ((buffer[22] >>> 6) | (buffer[23] << 2) | ((buffer[24] & 0x0f) << 10))
+  };
+  return null;
+}
 async function generateImage(prompt) {
   requireEnv(["OPENAI_API_KEY"]);
   const payload = {
@@ -424,9 +442,10 @@ async function generateImage(prompt) {
   const b64 = response.data?.[0]?.b64_json;
   if (!b64) throw Error("Image API : aucune image renvoyée.");
   const buffer = Buffer.from(b64, "base64");
-  if (buffer.length < 20000 || buffer.toString("ascii", 0, 4) !== "RIFF" ||
-      buffer.toString("ascii", 8, 12) !== "WEBP") {
-    throw Error("Fichier généré non WebP ou anormalement petit.");
+  const dimensions = webpDimensions(buffer);
+  if (buffer.length < 20000 || !dimensions ||
+      dimensions.width !== 1536 || dimensions.height !== 1024) {
+    throw Error("Image générée invalide : WebP 1536x1024 attendu.");
   }
   return buffer;
 }

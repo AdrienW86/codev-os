@@ -496,25 +496,37 @@ export async function run(argv = process.argv.slice(2)) {
         s.driveFolderId = dest;
         s.driveFolderUrl = "https://drive.google.com/drive/folders/" + dest;
       }
+      const planned = [];
       for (let i = 0; i < 30; i++) {
         const filename = imageFilename(site, i);
         if (existing.has(filename)) { s.alreadyPresent++; report.alreadyPresent++; continue; }
         if (allowance <= 0) { report.limited = true; break; }
         allowance--;
         s.scheduled++;
-        if (dryRun) continue;
-        try {
-          const bytes = await generateImage(promptFor(site, i, week));
-          await drive.uploadImage(dest, filename, bytes);
-          s.generated++; report.generated++;
-          console.log(site.name + ": " + (i + 1) + "/30 confirmé (" + bytes.length + " octets)");
-        } catch (error) {
-          s.failed.push({ filename, reason: String(error.message || error).slice(0, 300) });
-          report.failures.push({ project: site.projectName, filename, error: String(error.message || error).slice(0, 300) });
-          console.error(site.name + ":", filename, String(error.message || error).slice(0, 220));
-          if (/HTTP (401|403)|Configuration absente|quota|billing/i.test(error.message || "")) throw error;
-        }
+        planned.push({ index: i, filename });
       }
+      if (dryRun) continue;
+      const concurrency = Math.max(1, Math.min(3, Number(process.env.VISUAL_CONCURRENCY || 2)));
+      let cursor = 0;
+      let fatalError = null;
+      await Promise.all(Array.from({ length: Math.min(concurrency, planned.length) }, async () => {
+        while (!fatalError) {
+          const job = planned[cursor++];
+          if (!job) return;
+          try {
+            const bytes = await generateImage(promptFor(site, job.index, week));
+            await drive.uploadImage(dest, job.filename, bytes);
+            s.generated++; report.generated++;
+            console.log(site.name + ": " + (job.index + 1) + "/30 confirmé (" + bytes.length + " octets)");
+          } catch (error) {
+            s.failed.push({ filename: job.filename, reason: String(error.message || error).slice(0, 300) });
+            report.failures.push({ project: site.projectName, filename: job.filename, error: String(error.message || error).slice(0, 300) });
+            console.error(site.name + ":", job.filename, String(error.message || error).slice(0, 220));
+            if (/HTTP (401|403)|Configuration absente|quota|billing/i.test(error.message || "")) fatalError = error;
+          }
+        }
+      }));
+      if (fatalError) throw fatalError;
     }
     report.discoveredSites = sites.length;
   } catch (error) {

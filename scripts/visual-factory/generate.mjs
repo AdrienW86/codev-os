@@ -471,7 +471,7 @@ export async function run(argv = process.argv.slice(2)) {
   const limit = Math.min(hardLimit, Math.floor(budgetLimit / EXPECTED_OUTPUT_COST), override ? Math.max(0, Number(override)) : hardLimit);
   const report = { date: datedParis(), dryRun, model: process.env.VISUAL_IMAGE_MODEL || "gpt-image-2",
     plannedOutputPricePerImageUSD: EXPECTED_OUTPUT_COST, estimatedOutputBudgetUSD: estimateBatchCost(limit),
-    sites: [], generated: 0, alreadyPresent: 0, failures: [], limited: false };
+    sites: [], generated: 0, alreadyPresent: 0, failures: [], limited: false, unprocessedSites: [] };
   try {
     const sites = (await discoverPublicSites()).filter(s => !siteFilter || s.projectName === siteFilter);
     if (!dryRun) requireEnv(["OPENAI_API_KEY", "GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_DRIVE_CLIENT_SECRET", "GOOGLE_DRIVE_REFRESH_TOKEN"]);
@@ -479,7 +479,11 @@ export async function run(argv = process.argv.slice(2)) {
     const week = Math.floor(Date.now() / (7 * 86400000));
     let allowance = limit;
     for (const site of sites) {
-      if (allowance <= 0) { report.limited = true; break; }
+      if (allowance <= 0) {
+        report.limited = true;
+        report.unprocessedSites.push({ project: site.projectName, domain: site.domain, reason: "plafond de production atteint" });
+        continue;
+      }
       const s = { project: site.projectName, domain: site.domain, name: site.name, category: site.category,
         generated: 0, alreadyPresent: 0, failed: [], scheduled: 0 };
       report.sites.push(s);
@@ -490,6 +494,7 @@ export async function run(argv = process.argv.slice(2)) {
         dest = await drive.ensureFolder(parent, report.date);
         existing = await drive.existingImages(dest);
         s.driveFolderId = dest;
+        s.driveFolderUrl = "https://drive.google.com/drive/folders/" + dest;
       }
       for (let i = 0; i < 30; i++) {
         const filename = imageFilename(site, i);

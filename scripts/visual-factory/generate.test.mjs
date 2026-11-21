@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   safeFolder, slug, chooseDomain, detectCategory, sceneAt,
-  promptFor, imageFilename, estimateBatchCost, datedParis
+  promptFor, imageFilename, estimateBatchCost, datedParis, webpDimensions
 } from "./generate.mjs";
 
 test("priorise le domaine personnalisé et ignore previews", () => {
@@ -40,4 +40,17 @@ test("sanitisation et limites tarifaires", () => {
   assert.equal(slug("Éco-Toît Charpente"), "eco-toit-charpente");
   assert.equal(estimateBatchCost(480), 19.68);
   assert.equal(datedParis(new Date("2026-11-21T08:00:00Z")), "2026-11-21");
+});
+
+test("valide les dimensions réelles du WebP généré", () => {
+  const fake = Buffer.alloc(30);
+  fake.write("RIFF", 0, "ascii");
+  fake.write("WEBP", 8, "ascii");
+  fake.write("VP8X", 12, "ascii");
+  fake.writeUIntLE(1535, 24, 3);
+  fake.writeUIntLE(1023, 27, 3);
+  assert.deepEqual(webpDimensions(fake), { width: 1536, height: 1024 });
+  fake.writeUIntLE(511, 24, 3);
+  assert.equal(webpDimensions(fake).width, 512);
+  assert.equal(webpDimensions(Buffer.from("not a webp")), null);
 });

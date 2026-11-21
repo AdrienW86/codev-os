@@ -184,17 +184,19 @@ export function slug(value) {
   return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70) || "photo";
 }
-export function chooseDomain(domains = []) {
+export function domainCandidates(domains = []) {
   const choices = domains.map(d => typeof d === "string" ? d : d.name)
     .filter(Boolean).map(d => d.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
     .filter(d => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d) && !PREVIEW_DOMAIN.test(d));
   const unique = [...new Set(choices)];
-  const own = unique.filter(d => !d.endsWith(".vercel.app"));
-  const pool = own.length ? own : unique.filter(d => d.endsWith(".vercel.app"));
-  return pool.sort((a,b) => Number(b.startsWith("www.")) - Number(a.startsWith("www.")) || a.length-b.length)[0] || null;
+  return unique.sort((a,b) => Number(a.endsWith(".vercel.app")) - Number(b.endsWith(".vercel.app")) ||
+    Number(b.startsWith("www.")) - Number(a.startsWith("www.")) || a.length-b.length);
+}
+export function chooseDomain(domains = []) {
+  return domainCandidates(domains)[0] || null;
 }
 export function detectCategory(value) {
-  const s = String(value).toLowerCase();
+  const s = String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/nuisible|deratis|desinsect|frelon|punaise|cafard|rongeur|anti.?parasite|pest/.test(s)) return "nuisibles";
   if (/toiture|couvreur|couverture|zinguer|charpente|etancheite|roof|reno.?toit|gouttiere/.test(s)) return "couverture";
   if (/restaurant|snack|bistrot|traiteur|delice|cuisine|brunch|gastronom/.test(s)) return "restauration";
@@ -313,10 +315,14 @@ export async function discoverPublicSites() {
     let details;
     try { details = await getVercelJson("/v9/projects/" + encodeURIComponent(project.id || project.name)); }
     catch (e) { console.warn("Projet inaccessible:", project.name, e.message); continue; }
-    const domain = chooseDomain(details.domains || []);
-    if (!domain || domainsSeen.has(domain.replace(/^www\./, ""))) continue;
-    const meta = await inspectPublicSite(domain);
-    if (!meta) continue;
+    let domain = null;
+    let meta = null;
+    for (const candidate of domainCandidates(details.domains || [])) {
+      if (domainsSeen.has(candidate.replace(/^www\./, ""))) continue;
+      const inspected = await inspectPublicSite(candidate);
+      if (inspected) { domain = candidate; meta = inspected; break; }
+    }
+    if (!domain || !meta) continue;
     domainsSeen.add(domain.replace(/^www\./, ""));
     const category = detectCategory(project.name + " " + meta.title + " " + meta.description);
     sites.push({

@@ -286,7 +286,20 @@ async function inspectPublicSite(host) {
     const meta = collectHtml(html);
     if (meta.noindex || TITLE_EXCLUSION.test(meta.title) || /vercel authentication|deployment protection|<form[^>]*password/i.test(html.slice(0, 80000))) return null;
     if (!meta.title && !meta.headings) return null;
-    return { ...meta, description: (meta.desc + " " + meta.headings).slice(0, 900) };
+    const links = [...html.matchAll(/href=["'](\/(?:services?|prestations?|traitements?|nos-services|realisations|interventions|deratisation|desinsectisation|couverture|toiture)[^"'?# ]*)["']/gi)]
+      .map(match => match[1]).filter(link => /^\/[a-z0-9/_%-]+$/i.test(link));
+    const relevant = [...new Set(links)].slice(0, 3);
+    const extracts = [];
+    for (const path of relevant) {
+      try {
+        const r = await fetchWithRetries("https://" + host + path,
+          { headers: { "user-agent": "CODE-V-VisualFactory/1.0" } }, 0, 12000);
+        if (!(r.headers.get("content-type") || "").includes("text/html")) continue;
+        const sub = collectHtml((await r.text()).slice(0, 250000));
+        if (!sub.noindex) extracts.push((sub.desc + " " + sub.headings).slice(0, 260));
+      } catch { /* on poursuit sans les pages optionnelles */ }
+    }
+    return { ...meta, description: (meta.desc + " " + meta.headings + " " + extracts.join(" ")).slice(0, 1200) };
   } catch {
     return null;
   }

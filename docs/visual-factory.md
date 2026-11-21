@@ -30,9 +30,15 @@ Dans AdrienW86/codev-os → Settings → Secrets and variables → Actions, ajou
 | VISUAL_GOOGLE_DRIVE_CLIENT_SECRET | Secret du client OAuth Google |
 | VISUAL_GOOGLE_DRIVE_REFRESH_TOKEN | Token de renouvellement du compte Google avec droits d'écriture |
 
+Pour les projets actuellement inventoriés, l'ID de l'équipe Vercel est team_a1JJ8gyiExipc1TWCv0jgJjw. Vérifier qu'il correspond toujours au bon compte avant de l'utiliser.
+
 Les variables Vercel CODE-V OS ne sont pas automatiquement transmises aux GitHub Actions. Un accès OAuth Google Drive avec permission suffisante sur le dossier principal est nécessaire ; un token limité au scope drive.file pour une autre application peut ne pas y accéder. Ne coller aucune clé dans un chat.
 
-## 2. Test en lecture seule
+## 2. Fusion et test en lecture seule
+
+Après une CI verte, fusionner la PR sans activer la variable VISUAL_FACTORY_ENABLED. Les déclenchements manuels GitHub Actions nécessitent que ce workflow existe sur la branche principale ; la planification reste désactivée par défaut tant que VISUAL_FACTORY_ENABLED n'est pas true.
+
+## 2.1 Test en lecture seule
 
 Dans GitHub Actions, lancer CODE-V Visual Factory - images vers Google Drive → Run workflow en laissant dry_run à true. Le workflow interroge Vercel et analyse les sites mais ne produit aucune image et n'écrit rien dans Drive.
 

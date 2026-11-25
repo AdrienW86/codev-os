@@ -21,7 +21,7 @@ import {reviewContent} from '@/lib/editorial-review/service';
 import {COPY_STYLE_RULES,STYLE_GOOD_SCORE,addressFromGuidelines,auditStyle,styleFeedback,type StyleAudit} from '@/lib/copywriter/style';
 import {ALT_MAX,BLOG_IMAGE,EXCERPT_MAX,META_MAX,META_MIN,RELAY_LABELS,RELAY_PLATFORMS,SUMMARY_MAX,TITLE_MAX,WORDS_MAX,WORDS_MIN,
  ARTICLE_ANGLES,articleUrl,blogDue,blogSettingsFromRow,checkArticle,forbiddenTerms,nextAngle,nextBlogService,normalizeMarkdown,normalizeSiteUrl,parseBlogSettingsForm,
- publishAtFrom,relayText,slugify,toPublicArticle,uniqueSlug,type ArticleDraft,type ArticleRow,type BlogAgentSettings,type PublicArticle,type RelayPlatform} from './model';
+ publishAtFrom,relayText,retryPending,slugify,toPublicArticle,uniqueSlug,type ArticleDraft,type ArticleRow,type BlogAgentSettings,type PublicArticle,type RelayPlatform} from './model';
 
 // Agent Blog : pour les clients qui l'ont activé, un article (photo publiable du client, texte contrôlé : aucune
 // affirmation absente de ses faits) est rédigé une ou deux fois par semaine, programmé 24 h plus tard et signalé par
@@ -39,7 +39,9 @@ type Db={from:(t:string)=>Query;storage:{from:(b:string)=>Bucket};rpc:(f:string,
 const db=()=>getSupabaseServerClient() as unknown as Db;
 export const BLOG_BUCKET='blog-images';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const log=(step:string,code?:string)=>console.error('[blog-agent]',{step,...(code?{code}:{})});
+const log=(step:string,code?:string,detail?:Record<string,unknown>)=>console.error('[blog-agent]',{step,...(code?{code}:{}),...(detail??{})});
+/** Étape normale de la boucle de rédaction (nouvel essai demandé) : journalisée en avertissement, pas en erreur. */
+const note=(step:string,code:string,detail?:Record<string,unknown>)=>console.warn('[blog-agent]',{step,code,...(detail??{})});
 const COLUMNS='id,client_id,slug,title,meta_description,excerpt,body_markdown,service,image_path,image_alt,library_asset_id,social,status,publish_at,notified_at,published_at,cancelled_at,social_status,social_publication_ids,created_by,created_at,updated_at';
 export type BlogArticle={id:string;client_id:string;slug:string;title:string;meta_description:string;excerpt:string;body_markdown:string;service:string|null;
  image_path:string|null;image_alt:string|null;library_asset_id:string|null;social:Partial<Record<RelayPlatform,string>>;status:'scheduled'|'published'|'cancelled';
@@ -109,24 +111,26 @@ const articleProse=(a:ArticleDraft)=>[a.excerpt,a.bodyMarkdown,...Object.values(
  * le motif ; un brouillon accepté mais dont la note SEO est sous 80 ou la note de naturel (Copywriter) sous 75 est
  * réécrit avec les remarques, et le meilleur brouillon accepté (somme des deux notes) est retenu.
  */
-async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null,register:ReturnType<typeof registerBrief>=[]):Promise<Written|{error:string}>{
- let feedback:string|null=null,best:Written|null=null;
+async function writeArticle(ctx:ClientBrandContext,service:string,angle:string,photo:string,used:string[],target:TargetQuery|null,register:ReturnType<typeof registerBrief>=[],
+ retry:{feedback?:string;attempts?:number}={}):Promise<Written|{error:string}>{
+ let feedback:string|null=retry.feedback??null,best:Written|null=null;
  const keyword=target?.query??service,address=addressFromGuidelines(ctx.guidelines);
- for(let attempt=0;attempt<3;attempt++){
+ for(let attempt=0;attempt<(retry.attempts??3);attempt++){
   try{
    const {value}=await structuredResponse(withCharter('blog',INSTRUCTIONS(forbiddenTerms(ctx.facts))),JSON.stringify({client:ctx.client.name,...(ctx.exclusions.length?{client_exclusions_never_write:ctx.exclusions}:{}),activity:ctx.client.activity,zone:ctx.client.zone,
     service,angle,...(target?{target_query_untrusted:target.query}:{}),photo_description_untrusted:photo.slice(0,400),facts_untrusted:ctx.facts.slice(0,4000),already_published_titles:used.slice(0,40),...(register.length?{editorial_register:register}:{}),
     ...(feedback?{previous_attempt_refused:feedback}:{})}),SCHEMA,{maxOutputTokens:6000,timeoutMs:110000});
    const checked=checkArticle(value,ctx.facts,used);
-   if(!checked.ok){feedback=checked.reason;log('article','refused');continue;}
+   if(!checked.ok){feedback=checked.reason;note('article','refused',{check:checked.code,attempt:attempt+1,...(checked.code==='claims'?{detail:checked.reason.slice(0,160)}:{})});continue;}
    const audit=auditBlogArticle(checked.article,{keyword,zone:ctx.client.zone}),style=auditStyle(articleProse(checked.article),{address});
    if(!best||audit.score+style.score>best.audit.score+best.style.score)best={article:checked.article,audit,style};
    if(audit.score>=SEO_GOOD_SCORE&&style.score>=STYLE_GOOD_SCORE)break;
    feedback=[audit.score<SEO_GOOD_SCORE?seoFeedback(audit):'',style.score<STYLE_GOOD_SCORE?styleFeedback(style):''].filter(Boolean).join(' ; ');
-   log('article',audit.score<SEO_GOOD_SCORE?'seo_retry':'style_retry');
+   note('article',audit.score<SEO_GOOD_SCORE?'seo_retry':'style_retry',{seo:audit.score,style:style.score,attempt:attempt+1});
   }catch(e){if(best)break;if(isBudgetExceeded(e)){log('article','budget');return {error:'Plafond IA du mois atteint pour ce client : aucun article rédigé (réglage sur la fiche client → Agents).'};}log('article','generation_failed');return {error:'Rédaction impossible pour le moment (service IA). Réessayez plus tard.'};}
  }
- return best??{error:`Article refusé par les contrôles après 3 essais (${feedback}).`};
+ if(!best)log('article','refused_all',{attempts:retry.attempts??3});
+ return best??{error:`Article refusé par les contrôles après ${retry.attempts??3} essais (${feedback}).`};
 }
 /** Photo de l'article : publiable, sur la prestation si possible, jamais déjà utilisée par un article ; la plus récente. */
 async function choosePhoto(clientId:string,service:string,usedIds:Set<string>){
@@ -182,15 +186,30 @@ async function generateBlogArticleUnscoped(clientId:string,options:{trigger:'sch
 }
 async function writeReservedArticle(clientId:string,settings:BlogAgentSettings,articles:Awaited<ReturnType<typeof readAgent>>['articles'],ctx:ClientBrandContext,service:string,angle:string,
  photo:{id:string;text:string;bytes:Uint8Array},target:TargetQuery|null,register:RegisterEntry[],now:Date,options:{trigger:'scheduled'|'manual';actorId?:string|null}):Promise<BlogResult>{
- const written=await writeArticle(ctx,service,angle,photo.text,articles.map(a=>a.title),target,registerBrief(register,now));
+ const used=articles.map(a=>a.title),brief=registerBrief(register,now);
+ let written=await writeArticle(ctx,service,angle,photo.text,used,target,brief);
  if('error' in written)return {ok:false,message:written.error};
- const draft=written.article;
  // Titre final : même contrôle que le sujet réservé (le modèle a pu revenir vers un sujet déjà traité).
- const repeated=findDuplicate({channel:'blog',topic:draft.title,service},register,now);
- if(repeated&&repeated.reason==='same_topic'){log('register','duplicate_title');return {ok:false,message:`Article non enregistré : ${duplicateMessage(repeated)}`};}
+ const repeatedTitle=(title:string)=>{const r=findDuplicate({channel:'blog',topic:title,service},register,now);return r&&r.reason==='same_topic'?r:null;};
+ const repeated=repeatedTitle(written.article.title);
+ if(repeated){log('register','duplicate_title');return {ok:false,message:`Article non enregistré : ${duplicateMessage(repeated)}`};}
  // Contrôles indépendants (lot 4) : vérification des faits et anti-doublon par deux agents distincts du rédacteur.
- const review=await reviewContent({clientId,channel:'blog',title:draft.title,text:articleProse(draft),facts:ctx.facts,exclusions:ctx.exclusions,register});
- if(!review.ok){log('review',review.reason);return {ok:false,message:`Article non enregistré. ${review.message}`};}
+ const review=(draft:ArticleDraft)=>reviewContent({clientId,channel:'blog',title:draft.title,text:articleProse(draft),facts:ctx.facts,exclusions:ctx.exclusions,register});
+ let verdict=await review(written.article);
+ // Refus de la seule vérification des faits : une correction (2 essais au plus) avec les affirmations relevées, puis
+ // nouvelle vérification complète. Un doublon ou un contrôle indisponible n'est jamais « corrigé » : refus direct.
+ if(!verdict.ok&&verdict.reason==='rejected'&&verdict.fact&&!verdict.fact.passed&&(!verdict.duplicate||verdict.duplicate.passed)){
+  note('review','fact_retry',{problems:verdict.fact.problems.length});
+  const fixed=await writeArticle(ctx,service,angle,photo.text,used,target,brief,{attempts:2,
+   feedback:`la vérification des faits a refusé l’article : ${verdict.fact.problems.slice(0,6).join(' ; ')}. Supprime ces affirmations ou reformule-les en conseils généraux du métier, sans rien affirmer sur l’entreprise qui ne figure pas dans les faits`});
+  if(!('error' in fixed)&&!repeatedTitle(fixed.article.title)){
+   const second=await review(fixed.article);
+   if(second.ok)written=fixed;
+   verdict=second;
+  }
+ }
+ if(!verdict.ok){log('review',verdict.reason,verdict.reason==='rejected'?{fact:verdict.fact?.passed??null,duplicate:verdict.duplicate?verdict.duplicate.passed:null}:undefined);return {ok:false,message:`Article non enregistré. ${verdict.message}`};}
+ const draft=written.article;
  const id=randomUUID(),path=`${clientId}/${id}.jpg`;
  const up=await db().storage.from(BLOG_BUCKET).upload(path,photo.bytes,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
  if(up.error){log('image','upload_failed');return {ok:false,message:'Image de l’article non enregistrée. Réessayez.'};}
@@ -351,9 +370,11 @@ export async function runBlogAgentTick(now=new Date()):Promise<{published:number
  const {data,error}=await db().from('client_blog_agents').select('client_id,enabled,per_week,site_url,last_planned_at').eq('enabled',true)
   .order('last_planned_at',{ascending:true,nullsFirst:true}).limit(50);
  if(error||!data)return result;
- for(const row of data as {client_id:string;enabled:boolean;per_week:number;site_url:string|null}[]){
+ for(const row of data as {client_id:string;enabled:boolean;per_week:number;site_url:string|null;last_planned_at:string|null}[]){
   const items=await readAgent(row.client_id).then(r=>r.articles).catch(()=>null);
   if(!items||!blogDue({enabled:row.enabled,perWeek:row.per_week===2?2:1,siteUrl:row.site_url},items,now))continue;
+  // Dernier essai planifié récent sans article : on attend avant de retenter (évite de relancer l'IA tous les quarts d'heure).
+  if(retryPending(row.last_planned_at,items,now))continue;
   try{const r=await generateBlogArticle(row.client_id,{trigger:'scheduled',now});if(r.ok)result.generated++;else{result.failed++;
    // Échec (photo, prestations, contrôles) : le client passe en fin de file pour ne pas bloquer les autres.
    await db().from('client_blog_agents').update({last_planned_at:now.toISOString()}).eq('client_id',row.client_id);}}

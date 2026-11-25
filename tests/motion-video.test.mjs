@@ -65,6 +65,21 @@ test("rendu réel : MP4 9:16 lisible à partir de photos et d'un texte", { skip:
 });
 
 // --- Publication TikTok d'une vidéo ---
+test("disque temporaire : seuls les dossiers motion-* abandonnés depuis plus de 10 min sont purgés", async () => {
+  const fs = require("node:fs/promises"), os = require("node:os"), path = require("node:path");
+  const render = loadTs("lib/motion/video/render.ts", { "./filtergraph": graph, "./storyboard": story, sharp: { default: () => { throw new Error("unused"); } }, "node:child_process": {}, "node:fs/promises": fs, "node:os": os, "node:path": path });
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "purge-test-"));
+  try {
+    const old = new Date(Date.now() - 30 * 60_000);
+    for (const name of ["motion-abandoned", "motion-recent", "other-old"]) await fs.mkdir(path.join(root, name));
+    await fs.writeFile(path.join(root, "motion-abandoned", "bg0.png"), "x");
+    await fs.utimes(path.join(root, "motion-abandoned"), old, old);
+    await fs.utimes(path.join(root, "other-old"), old, old);
+    assert.equal(await render.purgeStaleMotionDirs(root), 1);
+    assert.deepEqual((await fs.readdir(root)).sort(), ["motion-recent", "other-old"]);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 const publisher = loadTs("lib/publications/delivery/tiktok-publisher.ts");
 const VIDEO = new Uint8Array([0, 0, 0, 32, ...Buffer.from("ftypisom"), ...new Array(4096).fill(1)]);
 const credential = { accessToken: "act.valid-token-123", refreshToken: "rft.refresh-123", expiresAt: new Date(Date.now() + 3600_000).toISOString(), scopes: ["video.publish"], provider: "tiktok", subject: "open-1" };

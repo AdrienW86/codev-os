@@ -14,6 +14,28 @@ function safeRequestId(value: string | null) { return value && /^[\w-]{1,128}$/.
 function failure(response: Response) {
   return new GoogleAdsError(response.status === 401 ? "authentication" : response.status === 403 ? "access" : response.status === 429 ? "quota" : "unavailable", safeRequestId(response.headers.get("request-id")));
 }
+// Lectures idempotentes uniquement : un refus passager de Google (surcharge, panne, coupure réseau) est
+// réessayé deux fois avec un délai croissant (Retry-After respecté, plafonné) avant d'être signalé.
+const RETRY_DELAYS_MS = [1000, 3000];
+const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+function wait(ms: number) { return typeof setTimeout === "function" ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : Promise.resolve(); }
+export function retryDelayMs(retryAfter: string | null, attempt: number): number {
+  const seconds = Number(retryAfter);
+  const base = retryAfter !== null && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)];
+  return Math.min(base, 5000);
+}
+
+// Planificateur de mots-clés : quota Google très bas (accès de base). Les idées changent peu, elles sont gardées
+// 24 h par instance ; après un refus pour quota, la source est mise en pause une heure au lieu d'insister.
+const KEYWORD_IDEAS_TTL_MS = 24 * 60 * 60 * 1000, GEO_TTL_MS = 7 * 24 * 60 * 60 * 1000, KEYWORD_QUOTA_PAUSE_MS = 60 * 60 * 1000, CACHE_MAX = 200;
+const keywordIdeasCache = new Map<string, { at: number; ideas: AdsKeywordIdea[] }>();
+const geoCache = new Map<string, { at: number; geo: string }>();
+let keywordQuotaPausedUntil = 0;
+function remember<T>(cache: Map<string, T>, key: string, value: T) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+}
 function numeric(value: unknown): number | null {
   if ((typeof value !== "number" && typeof value !== "string") || value === "") return null;
   const number = Number(value);
@@ -54,6 +76,21 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
     return data.access_token;
   }
 
+  /** Une requête de lecture, garde vérifiée avant chaque tentative ; 5xx et coupures réseau réessayés, 429 seulement si demandé. */
+  async #request(url: string, init: () => RequestInit, retryQuota: boolean): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      await this.authorize();
+      const last = attempt >= RETRY_DELAYS_MS.length;
+      let response: Response | null = null;
+      try { response = await fetch(url, init()); } catch (error) {
+        // Délai de 20 s dépassé : pas de nouvelle tentative (elle risquerait de dépasser la durée de la fonction).
+        if (last || error instanceof Error && error.name === "TimeoutError") throw error;
+      }
+      if (response && (response.ok || last || !(RETRYABLE_STATUS.has(response.status) || retryQuota && response.status === 429))) return response;
+      await wait(retryDelayMs(response?.headers.get("retry-after") ?? null, attempt));
+    }
+  }
+
   async #search(customerId: string, query: string, managerId?: string): Promise<Row[]> {
     await this.authorize();
     if (normalizeCustomerId(customerId) !== customerId || managerId && normalizeCustomerId(managerId) !== managerId) throw new GoogleAdsError("configuration");
@@ -63,13 +100,13 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
       let pageToken: string | undefined;
       const seen = new Set<string>();
       do {
-        // OAuth/pagination can outlive the lease; recheck before each actual Ads request.
-        await this.authorize();
-        const response = await fetch(`https://googleads.googleapis.com/v25/customers/${customerId}/googleAds:search`, {
+        // OAuth/pagination can outlive the lease; #request rechecks before each actual Ads request (retries included).
+        const page = pageToken;
+        const response = await this.#request(`https://googleads.googleapis.com/v25/customers/${customerId}/googleAds:search`, () => ({
           method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(managerId ? { "login-customer-id": managerId } : {}) },
-          body: JSON.stringify({ query, ...(pageToken ? { pageToken } : {}) }),
-        });
+          body: JSON.stringify({ query, ...(page ? { pageToken: page } : {}) }),
+        }), true);
         if (!response.ok) throw failure(response);
         const body = await response.json();
         if (body.results !== undefined && !Array.isArray(body.results)) throw new GoogleAdsError("response");
@@ -96,14 +133,14 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
     if (normalizeCustomerId(customerId) !== customerId || managerId && normalizeCustomerId(managerId) !== managerId) throw new GoogleAdsError("configuration");
     try {
       const token = await this.#accessToken();
-      await this.authorize();
       // Deux services de lecture seule, et eux seuls : idées de mots-clés et suggestion de zones géographiques.
       const url = endpoint === "keywordIdeas" ? `https://googleads.googleapis.com/v25/customers/${customerId}:generateKeywordIdeas` : `https://googleads.googleapis.com/v25/geoTargetConstants:suggest`;
-      const response = await fetch(url, {
+      // Quota du Planificateur (429) : jamais réessayé immédiatement, la pause est gérée par getKeywordIdeas.
+      const response = await this.#request(url, () => ({
         method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(managerId ? { "login-customer-id": managerId } : {}) },
         body: JSON.stringify(body),
-      });
+      }), false);
       if (!response.ok) throw failure(response);
       const data = await response.json();
       if (!data || typeof data !== "object" || Array.isArray(data)) throw new GoogleAdsError("response");
@@ -231,15 +268,33 @@ class RestGoogleAdsReadClient implements GoogleAdsReadClient {
   async getKeywordIdeas(account: AdsAccount, request: KeywordIdeaRequest, managerId?: string): Promise<AdsKeywordIdea[] | null> {
     const seeds = [...new Set(request.seeds.map((seed) => seed.trim().toLowerCase()).filter((seed) => seed.length >= 3 && seed.length <= 80))].slice(0, 20);
     if (!seeds.length) return null;
+    const now = Date.now();
+    // Quota épuisé récemment : source « indisponible » sans nouvel appel (évite d'enchaîner les refus Google).
+    if (now < keywordQuotaPausedUntil) return null;
     let geo = FRANCE_GEO;
     const place = request.zone?.split(/[,;(]|\s+et\s+|\s+-\s+/i)[0]?.trim();
     if (place && place.length >= 2 && place.length <= 80) {
-      try { geo = pickGeoTarget(await this.#post("geoSuggest", { locale: "fr", countryCode: "FR", locationNames: { names: [place] } }, account.id, managerId)) ?? FRANCE_GEO; } catch { geo = FRANCE_GEO; }
+      const geoKey = place.toLowerCase(), knownGeo = geoCache.get(geoKey);
+      if (knownGeo && now - knownGeo.at < GEO_TTL_MS) geo = knownGeo.geo;
+      else {
+        try {
+          const picked = pickGeoTarget(await this.#post("geoSuggest", { locale: "fr", countryCode: "FR", locationNames: { names: [place] } }, account.id, managerId));
+          geo = picked ?? FRANCE_GEO;
+          if (picked) remember(geoCache, geoKey, { at: now, geo: picked });
+        } catch { geo = FRANCE_GEO; }
+      }
     }
+    const key = [account.id, geo, ...[...seeds].sort()].join("|"), cached = keywordIdeasCache.get(key);
+    if (cached && now - cached.at < KEYWORD_IDEAS_TTL_MS) return cached.ideas;
     try {
       const body = await this.#post("keywordIdeas", { language: FRENCH, geoTargetConstants: [geo], keywordPlanNetwork: "GOOGLE_SEARCH", includeAdultKeywords: false, pageSize: 200, keywordSeed: { keywords: seeds } }, account.id, managerId);
-      return parseKeywordIdeas(body);
-    } catch { return null; }
+      const ideas = parseKeywordIdeas(body);
+      remember(keywordIdeasCache, key, { at: now, ideas });
+      return ideas;
+    } catch (error) {
+      if (error instanceof GoogleAdsError && error.kind === "quota") keywordQuotaPausedUntil = Date.now() + KEYWORD_QUOTA_PAUSE_MS;
+      return null;
+    }
   }
 }
 

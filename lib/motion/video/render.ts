@@ -1,6 +1,6 @@
 import 'server-only';
 import {spawn} from 'node:child_process';
-import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,readdir,readFile,rm,stat,statfs,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp,{type OverlayOptions} from 'sharp';
@@ -88,12 +88,41 @@ async function run(ffmpegPath:string,args:string[],timeoutMs:number):Promise<voi
    if(code===0)resolve();else{console.error('[motion-video]',{step:'ffmpeg',code,detail:stderr.slice(0,600)});reject(new MotionRenderError('engine'));}});
  });
 }
-export async function renderMotionVideo(input:MotionRenderInput):Promise<MotionRenderResult>{
+// Disque temporaire limité (environ 500 Mo sur Vercel, partagé par les appels d'une même instance) :
+// - un seul rendu à la fois par instance ;
+// - les dossiers motion-* laissés par un rendu interrompu (fonction arrêtée avant le finally) sont purgés ;
+// - rendu refusé proprement ('engine') s'il reste trop peu d'espace, au lieu d'un ENOSPC au milieu de ffmpeg.
+const STALE_DIR_MS=10*60_000,MIN_FREE_BYTES=200*1024*1024;
+const activeDirs=new Set<string>();
+let renderQueue:Promise<unknown>=Promise.resolve();
+export async function purgeStaleMotionDirs(root=tmpdir(),now=Date.now()):Promise<number>{
+ let removed=0;
+ let entries:string[];try{entries=await readdir(root);}catch{return 0;}
+ for(const name of entries){
+  if(!/^motion-[\w-]+$/.test(name))continue;
+  const dir=join(root,name);if(activeDirs.has(dir))continue;
+  try{const info=await stat(dir);if(info.isDirectory()&&now-info.mtimeMs>STALE_DIR_MS){await rm(dir,{recursive:true,force:true});removed++;}}catch{}
+ }
+ return removed;
+}
+async function freeBytes(root:string):Promise<number|null>{try{const s=await statfs(root);return Number(s.bavail)*Number(s.bsize);}catch{return null;}}
+export function renderMotionVideo(input:MotionRenderInput):Promise<MotionRenderResult>{
+ const next=renderQueue.then(()=>renderMotionVideoNow(input),()=>renderMotionVideoNow(input));
+ renderQueue=next.catch(()=>{});
+ return next;
+}
+async function renderMotionVideoNow(input:MotionRenderInput):Promise<MotionRenderResult>{
  const started=Date.now();
  let board:MotionStoryboard;
  try{board='script' in input?buildScriptStoryboard(input.script,input.photos.length,input.seed):buildMotionStoryboard({text:input.text,photoCount:input.photos.length,clientName:input.clientName,seed:input.seed});}
  catch(error){throw new MotionRenderError(error instanceof Error&&error.message==='motion_text_required'?'text':'photos');}
- const dir=await mkdtemp(join(tmpdir(),'motion-'));
+ const root=tmpdir();
+ const purged=await purgeStaleMotionDirs(root);
+ if(purged)console.error('[motion-video]',{step:'tmp_cleanup',removed:purged});
+ const free=await freeBytes(root);
+ if(free!==null&&free<MIN_FREE_BYTES){console.error('[motion-video]',{step:'tmp_full',freeMb:Math.round(free/1048576)});throw new MotionRenderError('engine');}
+ const dir=await mkdtemp(join(root,'motion-'));
+ activeDirs.add(dir);
  try{
   // Photos normalisées (orientation EXIF, JPEG) : ffmpeg ne lit que des fichiers sûrs produits ici.
   const photos:Buffer[]=[];
@@ -119,5 +148,5 @@ export async function renderMotionVideo(input:MotionRenderInput):Promise<MotionR
   let bytes:Buffer;try{bytes=await readFile(output);}catch{throw new MotionRenderError('output');}
   if(bytes.length<2048||bytes.length>MOTION_MAX_OUTPUT_BYTES||bytes.subarray(4,8).toString('latin1')!=='ftyp')throw new MotionRenderError('output');
   return {bytes:new Uint8Array(bytes),storyboard:board,durationMs:Date.now()-started,width:board.width,height:board.height};
- }finally{await rm(dir,{recursive:true,force:true}).catch(()=>{});}
+ }finally{activeDirs.delete(dir);await rm(dir,{recursive:true,force:true}).catch(()=>{});}
 }

@@ -160,6 +160,51 @@ test("Google errors do not expose response bodies or credentials", async () => {
   assert.doesNotMatch(JSON.stringify(context.logs), /unit-secret|unit-refresh|unit-access|private error/);
 });
 
+test("transient Google failures (5xx, network) are retried with the guard rechecked; access errors are not", async () => {
+  let attempts = 0;
+  const context = transport({ env: fakeEnv, respond: async (url) => {
+    if (url.includes("oauth2")) return response({ access_token: "unit-access" });
+    attempts++;
+    if (attempts === 1) return response({}, 503);
+    if (attempts === 2) throw new TypeError("network");
+    return response({ results: [{ customer: { id: account.id, descriptiveName: account.name, currencyCode: account.currency, timeZone: account.timezone } }] });
+  } });
+  assert.equal((await context.client.getAccountSummary(account.id)).id, account.id);
+  assert.equal(attempts, 3);
+  const adsCalls = context.calls.map((call, index) => [call, index]).filter(([call]) => call?.url?.includes("googleads"));
+  assert.ok(adsCalls.every(([, index]) => context.calls[index - 1] === "auth"), "guard before every attempt");
+  let denied = 0;
+  const refused = transport({ env: fakeEnv, respond: async (url) => url.includes("oauth2") ? response({ access_token: "unit-access" }) : (denied++, response({}, 403)) });
+  await assert.rejects(() => refused.client.getAccountSummary(account.id), (error) => error.kind === "access");
+  assert.equal(denied, 1);
+  let down = 0;
+  const unavailable = transport({ env: fakeEnv, respond: async (url) => url.includes("oauth2") ? response({ access_token: "unit-access" }) : (down++, response({}, 500)) });
+  await assert.rejects(() => unavailable.client.getAccountSummary(account.id), (error) => error.kind === "unavailable");
+  assert.equal(down, 3, "two retries at most");
+  assert.equal(context.retryDelayMs("2", 0), 2000);
+  assert.equal(context.retryDelayMs("120", 0), 5000);
+  assert.equal(context.retryDelayMs(null, 1), 3000);
+});
+
+test("Keyword Planner: ideas are cached, a quota refusal pauses the source instead of retrying", async () => {
+  let ideasCalls = 0, quota = false;
+  const context = transport({ env: fakeEnv, respond: async (url) => {
+    if (url.includes("oauth2")) return response({ access_token: "unit-access" });
+    assert.ok(url.endsWith(":generateKeywordIdeas"));
+    ideasCalls++;
+    return quota ? response({}, 429) : response({ results: [{ text: "Couvreur", keywordIdeaMetrics: { avgMonthlySearches: "500", competition: "HIGH" } }] });
+  } });
+  const first = await context.client.getKeywordIdeas(account, { seeds: ["couvreur", "toiture"] });
+  assert.equal(first[0].text, "couvreur");
+  assert.deepEqual(await context.client.getKeywordIdeas(account, { seeds: ["toiture", "couvreur"] }), first);
+  assert.equal(ideasCalls, 1, "same seeds served from cache");
+  quota = true;
+  assert.equal(await context.client.getKeywordIdeas(account, { seeds: ["charpente"] }), null);
+  assert.equal(ideasCalls, 2, "429 is not retried");
+  assert.equal(await context.client.getKeywordIdeas(account, { seeds: ["zinguerie"] }), null);
+  assert.equal(ideasCalls, 2, "source paused after a quota refusal");
+});
+
 test("connection saves only non-sensitive metadata and tests the accessible account", async () => {
   const context = serviceSetup({ connectionExists: false });
   assert.equal((await context.service.saveGoogleAdsConnection(clientId, "bad")).ok, undefined);

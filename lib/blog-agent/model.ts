@@ -45,6 +45,15 @@ export function blogDue(settings:Pick<BlogAgentSettings,'enabled'|'perWeek'|'sit
  const last=Math.max(0,...items.map(i=>Date.parse(i.created_at)).filter(Number.isFinite));
  return now.getTime()-last>=Math.floor(7*86400000/settings.perWeek*0.8);
 }
+/** Après un échec planifié, le client n'est retenté qu'au bout de ce délai (au lieu de chaque passage de 15 min). */
+export const BLOG_RETRY_AFTER_MS=6*60*60*1000;
+/** Essai planifié dans les BLOG_RETRY_AFTER_MS sans article créé depuis : il a échoué, on attend avant de retenter. */
+export function retryPending(lastPlannedAt:string|null,items:readonly {created_at:string}[],now:Date):boolean{
+ const last=lastPlannedAt?Date.parse(lastPlannedAt):NaN;
+ if(!Number.isFinite(last)||now.getTime()-last>=BLOG_RETRY_AFTER_MS)return false;
+ // Un article créé à l'occasion de cet essai (à quelques secondes près) signifie un succès, pas un échec.
+ return !items.some(i=>Date.parse(i.created_at)>=last-60_000);
+}
 /** Mise en ligne : 24 h après la rédaction, arrondie au quart d'heure suivant. */
 export function publishAtFrom(now:Date):Date{
  const q=15*60000;return new Date(Math.ceil((now.getTime()+NOTICE_HOURS*3600000)/q)*q);
@@ -73,7 +82,9 @@ export function uniqueSlug(base:string,taken:ReadonlySet<string>):string{
 export function forbiddenTerms(facts:string):string[]{const f=` ${norm(facts)} `;return SERVICE_TERMS.filter(t=>!f.includes(` ${norm(t)} `));}
 
 export type ArticleDraft={title:string;metaDescription:string;excerpt:string;imageAlt:string;bodyMarkdown:string;social:Record<RelayPlatform,string>};
-type Check={ok:true;article:ArticleDraft}|{ok:false;reason:string};
+/** code : catégorie du refus, journalisée sans le texte (diagnostic des refus en série). */
+export type CheckCode='title'|'meta'|'excerpt'|'alt'|'words'|'h1'|'sections'|'heading_depth'|'summary'|'link'|'email'|'phone'|'claims'|'title_used';
+type Check={ok:true;article:ArticleDraft}|{ok:false;reason:string;code:CheckCode};
 const clean=(v:unknown)=>typeof v==='string'?v.replace(/\s+/g,' ').trim():'';
 const LINK=/https?:|www\.|\]\(|<[a-z!/]/i;
 export const wordCount=(md:string)=>md.replace(/[#*_>-]/g,' ').split(/\s+/).filter(w=>/[\p{L}\p{N}]/u.test(w)).length;
@@ -89,29 +100,29 @@ export function checkArticle(value:unknown,facts:string,usedTitles:readonly stri
  const title=clean(v?.title),metaDescription=clean(v?.meta_description),excerpt=clean(v?.excerpt),imageAlt=clean(v?.image_alt);
  const bodyMarkdown=normalizeMarkdown(typeof v?.body_markdown==='string'?v.body_markdown:'');
  const rawSocial=(v?.social&&typeof v.social==='object'?v.social:{}) as Record<string,unknown>;
- if(title.length<TITLE_MIN||title.length>TITLE_MAX)return {ok:false,reason:`titre de ${TITLE_MIN} à ${TITLE_MAX} caractères (actuellement ${title.length})`};
- if(metaDescription.length<META_MIN||metaDescription.length>META_MAX)return {ok:false,reason:`meta description de ${META_MIN} à ${META_MAX} caractères (actuellement ${metaDescription.length})`};
- if(excerpt.length<EXCERPT_MIN||excerpt.length>EXCERPT_MAX)return {ok:false,reason:`chapô de ${EXCERPT_MIN} à ${EXCERPT_MAX} caractères`};
- if(imageAlt.length<5||imageAlt.length>ALT_MAX)return {ok:false,reason:`texte alternatif de l’image de 5 à ${ALT_MAX} caractères`};
+ if(title.length<TITLE_MIN||title.length>TITLE_MAX)return {ok:false,reason:`titre de ${TITLE_MIN} à ${TITLE_MAX} caractères (actuellement ${title.length})`,code:'title'};
+ if(metaDescription.length<META_MIN||metaDescription.length>META_MAX)return {ok:false,reason:`meta description de ${META_MIN} à ${META_MAX} caractères (actuellement ${metaDescription.length})`,code:'meta'};
+ if(excerpt.length<EXCERPT_MIN||excerpt.length>EXCERPT_MAX)return {ok:false,reason:`chapô de ${EXCERPT_MIN} à ${EXCERPT_MAX} caractères`,code:'excerpt'};
+ if(imageAlt.length<5||imageAlt.length>ALT_MAX)return {ok:false,reason:`texte alternatif de l’image de 5 à ${ALT_MAX} caractères`,code:'alt'};
  const words=wordCount(bodyMarkdown);
- if(words<WORDS_MIN||words>WORDS_MAX)return {ok:false,reason:`corps de ${WORDS_MIN} à ${WORDS_MAX} mots (actuellement ${words})`};
+ if(words<WORDS_MIN||words>WORDS_MAX)return {ok:false,reason:`corps de ${WORDS_MIN} à ${WORDS_MAX} mots (actuellement ${words})`,code:'words'};
  const lines=bodyMarkdown.split('\n');
- if(lines.some(l=>/^#(?!#)/.test(l)))return {ok:false,reason:'pas de titre de niveau 1 dans le corps (le titre est à part) : utilise ## pour les intertitres'};
- if(lines.filter(l=>/^## \S/.test(l)).length<SECTIONS_MIN)return {ok:false,reason:`au moins ${SECTIONS_MIN} intertitres « ## »`};
- if(lines.some(l=>/^#{4,}/.test(l)))return {ok:false,reason:'intertitres de niveau 2 ou 3 seulement'};
+ if(lines.some(l=>/^#(?!#)/.test(l)))return {ok:false,reason:'pas de titre de niveau 1 dans le corps (le titre est à part) : utilise ## pour les intertitres',code:'h1'};
+ if(lines.filter(l=>/^## \S/.test(l)).length<SECTIONS_MIN)return {ok:false,reason:`au moins ${SECTIONS_MIN} intertitres « ## »`,code:'sections'};
+ if(lines.some(l=>/^#{4,}/.test(l)))return {ok:false,reason:'intertitres de niveau 2 ou 3 seulement',code:'heading_depth'};
  const social={} as Record<RelayPlatform,string>;
  for(const p of RELAY_PLATFORMS){
   const text=trimExtraHashtags(p,typeof rawSocial[p]==='string'?(rawSocial[p] as string).trim():'');
-  if(text.length<SUMMARY_MIN||text.length>SUMMARY_MAX)return {ok:false,reason:`résumé ${RELAY_LABELS[p]} de ${SUMMARY_MIN} à ${SUMMARY_MAX} caractères`};
+  if(text.length<SUMMARY_MIN||text.length>SUMMARY_MAX)return {ok:false,reason:`résumé ${RELAY_LABELS[p]} de ${SUMMARY_MIN} à ${SUMMARY_MAX} caractères`,code:'summary'};
   social[p]=text;
  }
  const all=[title,metaDescription,excerpt,imageAlt,bodyMarkdown,...Object.values(social)];
- if(all.some(t=>LINK.test(t)))return {ok:false,reason:'ni lien, ni adresse web, ni HTML, ni image dans le texte'};
- if(/[@]/.test(all.join(' ')))return {ok:false,reason:'ni adresse e-mail ni mention'};
- if(/(?:\+33|\b0)[1-9](?:[ .-]?\d{2}){4}\b/.test(all.join(' ')))return {ok:false,reason:'aucun numéro de téléphone'};
+ if(all.some(t=>LINK.test(t)))return {ok:false,reason:'ni lien, ni adresse web, ni HTML, ni image dans le texte',code:'link'};
+ if(/[@]/.test(all.join(' ')))return {ok:false,reason:'ni adresse e-mail ni mention',code:'email'};
+ if(/(?:\+33|\b0)[1-9](?:[ .-]?\d{2}){4}\b/.test(all.join(' ')))return {ok:false,reason:'aucun numéro de téléphone',code:'phone'};
  const claims=[...new Set(all.flatMap(t=>unsupportedClaims(neutralizeDurations(t),facts)).map(c=>c.split(':').slice(1).join(':').trim()))];
- if(claims.length)return {ok:false,reason:`affirmation non confirmée par les faits du client : ${claims.slice(0,6).join(', ')} ; reformule sans ces mots`};
- if(usedTitles.some(u=>norm(u)===norm(title)))return {ok:false,reason:'titre déjà employé pour un autre article'};
+ if(claims.length)return {ok:false,reason:`affirmation non confirmée par les faits du client : ${claims.slice(0,6).join(', ')} ; reformule sans ces mots`,code:'claims'};
+ if(usedTitles.some(u=>norm(u)===norm(title)))return {ok:false,reason:'titre déjà employé pour un autre article',code:'title_used'};
  return {ok:true,article:{title,metaDescription,excerpt,imageAlt,bodyMarkdown,social}};
 }
 

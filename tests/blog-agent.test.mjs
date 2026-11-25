@@ -59,6 +59,25 @@ test("service rotation, angles, slug without accents and unique per client", () 
   assert.ok(m.slugify("a".repeat(200)).length <= 84);
 });
 
+test("scheduler back-off: a failed scheduled run is retried after 6 h, never every 15 min; a success is not a failure", () => {
+  const tried = new Date(now.getTime() - 30 * 60000).toISOString();
+  assert.equal(m.retryPending(tried, [{ created_at: daysAgo(7) }], now), true, "recent attempt without article: wait");
+  assert.equal(m.retryPending(new Date(now.getTime() - m.BLOG_RETRY_AFTER_MS).toISOString(), [], now), false, "6 h later: retry");
+  assert.equal(m.retryPending(tried, [{ created_at: new Date(Date.parse(tried) + 20000).toISOString() }], now), false, "article written by that attempt");
+  assert.equal(m.retryPending(null, [], now), false);
+  assert.equal(m.retryPending("not a date", [], now), false);
+  const service = src("lib/blog-agent/service.ts");
+  assert.ok(service.indexOf("if(retryPending(row.last_planned_at,items,now))continue;") < service.indexOf("generateBlogArticle(row.client_id,{trigger:'scheduled'"));
+});
+
+test("fact-check refusal: one correction pass, then a full second review; duplicates are never corrected", () => {
+  const service = src("lib/blog-agent/service.ts");
+  assert.match(service, /verdict\.fact&&!verdict\.fact\.passed&&\(!verdict\.duplicate\|\|verdict\.duplicate\.passed\)/);
+  assert.match(service, /\{attempts:2,\n   feedback:`la vérification des faits a refusé l’article/);
+  assert.match(service, /const second=await review\(fixed\.article\);\n   if\(second\.ok\)written=fixed;\n   verdict=second;/);
+  assert.ok(service.indexOf("if(!verdict.ok){log('review'") < service.indexOf(".upload(path,photo.bytes"), "nothing stored unless the final review passed");
+});
+
 test("article check: a sound article passes; maintenance intervals are not seniority claims; hashtags trimmed per network", () => {
   const r = m.checkArticle(good, FACTS, ["Autre titre"]);
   assert.equal(r.ok, true, r.reason);
@@ -78,6 +97,9 @@ test("article check: refusals name the reason (claims, links, phone, structure, 
   assert.match(variant({ body_markdown: "## A\n## B\n## C\nCourt." }).reason, /mots/);
   assert.match(variant({ title: "Court" }).reason, /titre/);
   assert.match(variant({ social: { ...good.social, instagram: "" } }).reason, /Instagram/);
+  assert.equal(variant({ body_markdown: body + "\n\nProfitez de notre garantie décennale." }).code, "claims");
+  assert.equal(m.checkArticle(good, FACTS, [good.title]).code, "title_used");
+  assert.equal(variant({ title: "Court" }).code, "title");
   assert.match(variant({ body_markdown: body + "\n\nNous proposons aussi la plomberie." }).reason, /plomberie/);
 });
 

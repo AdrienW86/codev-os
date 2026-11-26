@@ -81,12 +81,14 @@ values ('ffffffff-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-0000000
 select pg_temp.fails($$insert into public.reports(client_id, kind, period_start, period_end) values ('aaaaaaaa-0000-4000-8000-000000000001', 'weekly', '2026-10-05', '2026-10-11')$$, '23505', 'one report per client, kind and period');
 select pg_temp.fails($$update public.reports set status = 'sent' where id = 'ffffffff-0000-4000-8000-000000000001'$$, '55000', 'unapproved report cannot be sent');
 update public.reports set status = 'approved', approved_version = version, approved_by = 'admin', approved_at = now() where id = 'ffffffff-0000-4000-8000-000000000001';
-update public.reports set client_content = '{"summary":"v1 modifié"}' where id = 'ffffffff-0000-4000-8000-000000000001';
+select pg_temp.fails($$update public.reports set client_content = '{"summary":"édition sans version"}' where id = 'ffffffff-0000-4000-8000-000000000001'$$, '55000', 'content change requires a new version');
+update public.reports set version = version + 1, client_content = '{"summary":"v2 modifié"}' where id = 'ffffffff-0000-4000-8000-000000000001';
 select pg_temp.ok((select status = 'ready_for_review' and approved_at is null from public.reports where id = 'ffffffff-0000-4000-8000-000000000001'), 'edit after approval invalidates it');
 update public.reports set status = 'approved', approved_version = version, approved_at = now() where id = 'ffffffff-0000-4000-8000-000000000001';
 update public.reports set status = 'sent', sent_at = now() where id = 'ffffffff-0000-4000-8000-000000000001';
 select pg_temp.fails($$update public.reports set client_content = '{"summary":"après envoi"}' where id = 'ffffffff-0000-4000-8000-000000000001'$$, '55000', 'sent report frozen');
-insert into public.report_versions(report_id, version, client_content) values ('ffffffff-0000-4000-8000-000000000001', 1, '{"summary":"v1"}');
+select pg_temp.ok((select count(*) = 2 from public.report_versions where report_id = 'ffffffff-0000-4000-8000-000000000001'), 'version snapshots are stored transactionally');
+select pg_temp.ok((select client_content = '{"summary":"v1"}'::jsonb from public.report_versions where report_id = 'ffffffff-0000-4000-8000-000000000001' and version = 1), 'original client version is preserved');
 select pg_temp.fails($$update public.report_versions set summary = 'x'$$, '55000', 'report versions append-only');
 select pg_temp.fails($$delete from public.reports where id = 'ffffffff-0000-4000-8000-000000000001'$$, '55000', 'report history retained');
 

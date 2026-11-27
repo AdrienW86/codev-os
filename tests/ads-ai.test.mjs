@@ -99,3 +99,28 @@ test("failed or missing AI provider is an explicit deterministic fallback, never
     assert.doesNotMatch(JSON.stringify(state.metadata), /provider_secret/);
   }
 });
+test("an over-long but valid AI answer is trimmed instead of rejected (weekly report regression: factIds too_big)", async () => {
+  const evidence = ai.analysisEvidence(rows, scope);
+  const ids = evidence.map((item) => item.id);
+  const many = { ...valid(), factIds: [...ids, ...ids, "invented:1"], recommendations: [
+    ...Array.from({ length: 7 }, () => valid().recommendations[0]),
+    { action: "verify_tracking", priority: "low", campaignIds: ["123"], evidenceIds: ["campaign:456:cost"], rationale: "Preuve d’une autre campagne." },
+    { action: "verify_tracking", priority: "low", campaignIds: ["123", "456"], evidenceIds: ["scope"], rationale: "Périmètre mélangé." },
+  ] };
+  const fitted = ai.fitAdsAIOutput(many, rows, evidence);
+  assert.ok(fitted.factIds.length <= 10 && fitted.factIds.every((id) => ids.includes(id)));
+  assert.equal(fitted.recommendations.length, 5);
+  assert.ok(fitted.recommendations.every((item) => item.campaignIds.length === 1));
+  assert.equal(ai.validateAdsAIOutput(fitted, rows, evidence).recommendations.length, 5);
+  let calls = 0;
+  const provider = { id: "openai", model: "simulated", complete: async () => { calls++; return { text: "", toolCalls: [{ name: "ads_analysis_result", arguments: many }] }; } };
+  const result = await ai.analyzeAdsWithAI(provider, rows, scope, snapshot);
+  assert.equal(calls, 1, "no corrective retry needed");
+  assert.equal(result.validation.retryUsed, false);
+});
+test("trimming never invents: unknown facts only fall back to the scope fact, proof-less recommendations are dropped", () => {
+  const evidence = ai.analysisEvidence(rows, scope);
+  const fitted = ai.fitAdsAIOutput({ factIds: ["keywords:invented"], hypotheses: [], recommendations: [{ ...valid().recommendations[0], evidenceIds: ["invented"] }] }, rows, evidence);
+  assert.deepEqual(Array.from(fitted.factIds), ["scope"]);
+  assert.equal(fitted.recommendations.length, 0);
+});

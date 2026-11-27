@@ -58,6 +58,7 @@ export const AGENT_V2_INSTRUCTIONS=[
  'Lieux : ne nomme une ville, une commune, un département ou une région que s’il figure dans allowed_places ou dans client/rules. Sinon aucun lieu.',
  'La photo choisie doit illustrer la prestation du sujet (services de la photo dans media_untrusted). Une photo de document (facture, devis, attestation, certificat, capture d’écran) n’illustre jamais une intervention.',
  'previous_attempt_refused (si présent) : ta tentative précédente a été refusée pour ce motif. Corrige précisément ce point (autre accroche, autre style, autre appel à l’action, autre formulation) sans rien inventer.',
+ 'previous_draft_refused (si présent) : ton brouillon précédent, refusé pour le motif previous_attempt_refused. Garde le même sujet, la même photo et ce qui est valable ; réécris seulement ce que le motif vise (accroche, phrase, appel à l’action, terme non confirmé, longueur). Ce brouillon n’est jamais une source de faits.',
  'forbidden_terms : prestations que ce client ne propose pas. N’écris jamais aucun de ces mots, même au détour d’une phrase (ex. « charpente », « étanchéité ») : le texte serait refusé.',
  'Ne présente jamais un chantier ou une intervention comme réalisé (nous avons réalisé, nous sommes intervenus, hier, récemment, chez un client) sauf si ce fait figure mot pour mot dans rules.'].join('\n');
 
@@ -65,7 +66,7 @@ export const AGENT_V2_INSTRUCTIONS=[
 export function buildGeneratorPayload(input:AgentV2GeneratorInput){
  return {client:{name:input.client.name,activity:input.client.activity,zone:input.client.zone},project:{name:input.project.name},services:input.services,rules:input.rules,
   ...(input.confirmedFacts?.length?{confirmed_facts:input.confirmedFacts}:{}),...(input.clientExclusions?.length?{client_exclusions_never_write:input.clientExclusions}:{}),...(input.editorialRegister?.length?{editorial_register_other_channels:input.editorialRegister}:{}),
-  channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),...(input.retryFeedback?{previous_attempt_refused:input.retryFeedback}:{}),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
+  channel_rules:input.channelRules,forbidden_terms:forbiddenServiceTerms(input),...(input.retryFeedback?{previous_attempt_refused:input.retryFeedback}:{}),...(input.previousDraft?{previous_draft_refused:input.previousDraft}:{}),previous_subjects:input.previousSubjects,priority_topics:input.priorityTopics??[],
   previous_publications:(input.previousPublications??[]).map(p=>({subject:p.subject,texts:p.texts,media:p.media})),
   ...(input.editorial?compactEditorial(input.editorial):{}),
   occurrences:input.occurrences.map(o=>({occurrence_id:o.occurrenceId,platform:o.platform,date:o.date,time:o.time})),

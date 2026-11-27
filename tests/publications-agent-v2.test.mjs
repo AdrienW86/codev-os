@@ -129,9 +129,9 @@ test('service: fail closed at every step, failures recorded, no AI without expli
  const thrown=serviceWith({generator:{generate:async()=>{throw Error('down');}}});const t=await thrown.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async()=>{throw Error('down');}},now});
  assert.equal(t.ok,false);assert.deepEqual(fails(thrown),[['generation_failed',.1]],'unknown usage: conservative reservation (same as the run reservation, valid before and after migration 20261208000000)');
  const invalid=serviceWith();await invalid.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async()=>({output:good({publications:good().publications.slice(0,2)}),usage:{input_tokens:5,output_tokens:5,estimated_cost_eur:.001,model:'m'}})},now});
- assert.deepEqual(fails(invalid),[['invalid_output',.001]]);assert.ok(!invalid.log.some(x=>x[0]==='publication_agent_v2_finish'),'invalid output never persisted');
+ assert.deepEqual(fails(invalid),[['invalid_output',.002]],'refused, revised once in the same run, refused again: both calls counted');assert.ok(!invalid.log.some(x=>x[0]==='publication_agent_v2_finish'),'invalid output never persisted');
  const claim=serviceWith();await claim.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async()=>({output:good({publications:good().publications.map((p,i)=>i===1?{...p,text:'Devis gratuit !'}:p)}),usage:{input_tokens:5,output_tokens:5,estimated_cost_eur:.001,model:'m'}})},now});
- assert.deepEqual(fails(claim),[['unsupported_claim',.001]]);
+ assert.deepEqual(fails(claim),[['unsupported_claim',.002]]);
  const race=serviceWith({rpc:{publication_agent_v2_finish:()=>({data:null,error:{code:'23505'}})}});const rr=await race.m.prepareNextPublications(P,{allowRealAI:true,generator:race.generator,now});
  assert.match(rr.message,/Une occurrence a changé/);assert.deepEqual(fails(race),[['occurrence_unavailable',.0012]]);
  const single=serviceWith({open:[batch[2]],rpc:{publication_agent_v2_finish:()=>({data:{publication_ids:[uid(4,3)],editorial_group_id:null},error:null})}});
@@ -258,4 +258,15 @@ test('scheduled path: prepareNextPublicationsAs reads channels without a session
  const loader=channels.slice(channels.indexOf('export async function loadPublicationProjectChannels'));
  assert.doesNotMatch(loader.slice(0,loader.indexOf('\n}')),/requireAdmin/,'the session-free loader never calls requireAdmin');
  assert.match(channels,/export async function getPublicationProjectChannels[^{]*\{\n await requireAdmin\(\);/,'the public variant stays admin-guarded');
+});
+test('service: a draft refused by the guards is revised once in the same run, with the refused draft and the precise reason',async()=>{
+ const inputs=[];const bad=good({publications:good().publications.map((p,i)=>i===1?{...p,text:'Devis gratuit !'}:p)});
+ const s=serviceWith();
+ const r=await s.m.prepareNextPublications(P,{allowRealAI:true,generator:{generate:async i=>{inputs.push(i);return {output:inputs.length===1?bad:good(),usage:{input_tokens:5,output_tokens:5,estimated_cost_eur:.001,model:'m'}};}},now});
+ assert.equal(inputs.length,2);assert.equal(inputs[0].previousDraft,undefined);
+ assert.match(inputs[1].retryFeedback,/unsupported_claim : termes non confirmés : « gratuit »/);
+ assert.equal(inputs[1].previousDraft.texts.length,bad.publications.length);assert.ok(inputs[1].previousDraft.texts.some(t=>t.text==='Devis gratuit !'));
+ assert.ok(!s.log.some(x=>x[0]==='publication_agent_v2_fail'),'revised draft accepted: no failed run');
+ const finish=s.log.find(x=>x[0]==='publication_agent_v2_finish');assert.equal(finish[1].p_usage.estimated_cost_eur,.002,'both calls billed to the run');
+ assert.equal(r.refused,undefined);
 });

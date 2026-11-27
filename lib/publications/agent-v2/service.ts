@@ -9,7 +9,7 @@ import {loadOpenOccurrences} from './open-occurrences';
 import {selectIdeaBatch,validateGeneratorOutput} from './selection';
 import {AgentV2ContextError,loadAgentV2Context} from './context';
 import {openaiAgentV2Generator} from './openai-generator';
-import {AGENT_V2_LIMITS,type AgentV2Usage,type PublicationsAgentV2Generator} from './contract';
+import {AGENT_V2_LIMITS,type AgentV2GeneratorInput,type AgentV2Usage,type PublicationsAgentV2Generator} from './contract';
 import {attachAgentV2Media,type AgentV2MediaDb,type ImageAdapter} from './media';
 import {getAgentV2RunMedia} from './media-runs';
 import {agentV2ResultMessage,mediaCategoryLabel,mediaStateOf,retryMessage,type AgentV2MediaOutcome,type AgentV2MediaView} from './media-view';
@@ -85,6 +85,20 @@ function safeUsage(u:AgentV2Usage|null):AgentV2Usage{
  if(!u||!Number.isInteger(u.input_tokens)||!Number.isInteger(u.output_tokens)||u.input_tokens<0||u.output_tokens<0||!Number.isFinite(u.estimated_cost_eur)||u.estimated_cost_eur<0)return {...zeroUsage,estimated_cost_eur:AGENT_V2_LIMITS.unknownCost};
  return {...u,estimated_cost_eur:Math.min(u.estimated_cost_eur,AGENT_V2_LIMITS.maxCost)};
 }
+/** Coût des deux appels d'une préparation révisée : jetons additionnés, inconnu compté au tarif prudent. */
+function addUsage(a:AgentV2Usage|null,b:AgentV2Usage|null):AgentV2Usage{
+ const x=safeUsage(a),y=safeUsage(b);
+ return {input_tokens:x.input_tokens+y.input_tokens,output_tokens:x.output_tokens+y.output_tokens,model:y.model,
+  estimated_cost_eur:Math.min(Math.round((x.estimated_cost_eur+y.estimated_cost_eur)*1e6)/1e6,AGENT_V2_LIMITS.maxCost)};
+}
+/** Brouillon refusé, réduit à ce que le modèle doit corriger (sujet, angle, textes). null si la sortie n'en est pas un. */
+function draftOf(raw:unknown):AgentV2GeneratorInput['previousDraft']|null{
+ const o=raw as {idea?:{subject?:unknown;angle?:unknown};publications?:unknown}|null;
+ if(!o||typeof o!=='object'||!Array.isArray(o.publications)||typeof o.idea?.subject!=='string')return null;
+ const texts=o.publications.flatMap(p=>{const x=(p??{}) as {platform?:unknown;text?:unknown;cta?:unknown};
+  return typeof x.text==='string'&&typeof x.platform==='string'?[{platform:x.platform,text:x.text.slice(0,2500),cta:typeof x.cta==='string'?x.cta.slice(0,200):null}]:[];});
+ return texts.length?{subject:o.idea.subject.slice(0,200),angle:typeof o.idea.angle==='string'?o.idea.angle.slice(0,300):'',texts}:null;
+}
 export const NO_OPEN_OCCURRENCE='Aucune occurrence ouverte. Préparez d’abord les prochaines semaines.';
 // excludeOccurrenceIds (planificateur) : occurrences dont la préparation a trop échoué, laissées à un humain.
 // onlyOccurrenceIds (« Rédiger et publier maintenant ») : seules ces occurrences sont candidates.
@@ -128,9 +142,20 @@ export async function prepareNextPublicationsAs(userId:string,projectId:unknown,
   return result(false,f.error?'Échec non confirmé : vérifiez le run avant toute reprise.':message);};
  let raw:unknown;
  const genInput=options.retryFeedback?{...context.input,retryFeedback:options.retryFeedback.slice(0,400)}:context.input;
- try{const generated=await (options.generator??openaiAgentV2Generator()).generate(genInput);raw=generated.output;usage=generated.usage;}
+ const generator=options.generator??openaiAgentV2Generator();
+ try{const generated=await generator.generate(genInput);raw=generated.output;usage=generated.usage;}
  catch{console.error('[publications-agent-v2] generation failed',{run_id:run});return fail('generation_failed','Génération indisponible. Aucun brouillon créé.');}
- const checked=validateGeneratorOutput(context.input,raw);
+ let checked=validateGeneratorOutput(context.input,raw);
+ // Refus des contrôles (accroche ou formulation répétée, terme non confirmé, longueur…) : une révision dans la même
+ // préparation, avec le brouillon refusé et le motif précis, plutôt qu'une nouvelle préparation repartie de zéro
+ // (avant : 360 préparations sur 510 refusées en 30 jours, chacune payée). Les mêmes contrôles s'appliquent ensuite.
+ const draft=checked.ok?null:draftOf(raw);
+ if(!checked.ok&&draft){
+  const reason=`${checked.reason}${checked.detail?` : ${checked.detail}`:''}`;
+  const feedback=[genInput.retryFeedback,reason].filter(Boolean).join(' ; ').slice(-400);
+  try{const revised=await generator.generate({...genInput,retryFeedback:feedback,previousDraft:draft});usage=addUsage(usage,revised.usage);raw=revised.output;checked=validateGeneratorOutput(context.input,raw);}
+  catch{console.error('[publications-agent-v2] revision failed',{run_id:run});/* le premier refus fait foi */}
+ }
  if(!checked.ok){
   await recordJustification(db,run,userId,buildEditorialJustification(context.input,{refusal:{reason:checked.reason,detail:checked.detail??null}},now));
   const message=refusals[checked.reason]??'Contenu généré invalide. Aucun brouillon créé.';

@@ -17,8 +17,11 @@ import {IMAGE_BUCKET} from '../editor';
 import {adaptImage} from '../media/transform';
 import {parisToday} from '../calendar';
 import {publicationPlatforms,type PublicationPlatform} from '../types';
+import {clientVisualBrief} from '@/lib/visual-agent/service';
+import {briefForPrompt,imageStyleSuffix,type VisualBrief} from '@/lib/visual-brief/model';
+import {visionPreview} from '../media/transform';
 import {
- IMAGE_COST_EUR,MAX_IMAGES_PER_TICK,PHOTO_PROMPT_INSTRUCTIONS,PHOTO_PROMPT_SCHEMA,isUuid,photoCandidates,readPhotoPrompt,
+ IMAGE_ATTEMPTS,IMAGE_COST_EUR,IMAGE_QA_INSTRUCTIONS,IMAGE_QA_SCHEMA,MAX_IMAGES_PER_TICK,PHOTO_PROMPT_INSTRUCTIONS,PHOTO_PROMPT_SCHEMA,isUuid,photoCandidates,readImageQa,readPhotoPrompt,type ImageQa,
  type PhotoCandidatePublication,type PhotoCandidateRun,type ProposalRow,
 } from './model';
 
@@ -71,31 +74,61 @@ async function proposeImage(candidate:{runId:string;clientId:string;publicationI
  const budget=await clientAiBudget(candidate.clientId).catch(()=>undefined);
  if(budget===undefined)return 'failed';
  if(budget&&(!budget.allowed||budget.remaining<IMAGE_COST_EUR+0.05))return 'budget';
- const [{rows,variants},client]=await Promise.all([publicationsWithTexts(candidate.publicationIds),db().from('clients').select('name,activity').eq('id',candidate.clientId).maybeSingle()]);
+ const [{rows,variants},client,briefed]=await Promise.all([publicationsWithTexts(candidate.publicationIds),db().from('clients').select('name,activity').eq('id',candidate.clientId).maybeSingle(),
+  // Brief visuel du client (métier, zone, style de ses vraies photos, charte) ; indisponible : consigne d'avant.
+  clientVisualBrief(candidate.clientId,'publication-photo').catch(()=>null)]);
  const texts=variants.map(v=>({platform:v.platform,text:v.text_content.slice(0,1500)}));
  if(!texts.length)return 'failed';
  const activity=(client.data as {activity?:string|null}|null)?.activity??null;
- const response=await withAiScope({agent:'publication-photo',clientId:candidate.clientId},()=>structuredResponse(withCharter('publication-photo',PHOTO_PROMPT_INSTRUCTIONS),
-  JSON.stringify({activity_untrusted:activity,subject_untrusted:rows[0]?.subject??null,texts_untrusted:texts}),PHOTO_PROMPT_SCHEMA,{maxOutputTokens:800,timeoutMs:60000}));
- const prompt=readPhotoPrompt(response.value);
+ const brief=briefed?.brief??null;
  const id=randomUUID();
- if(!prompt.ok){
-  const r=await db().from(TABLE).insert({id,client_id:candidate.clientId,run_id:candidate.runId,publication_ids:candidate.publicationIds,status:'skipped',prompt:prompt.reason,storage_path:null,model:'none'});
+ const skip=async(reason:string)=>{
+  const r=await db().from(TABLE).insert({id,client_id:candidate.clientId,run_id:candidate.runId,publication_ids:candidate.publicationIds,status:'skipped',prompt:reason.slice(0,500),storage_path:null,model:'none'});
   if(r.error)log('skip','not_recorded');
-  return 'skipped';
+  return 'skipped' as const;
+ };
+ let refused:string|null=null,image:{bytes:Uint8Array;model:string}|null=null,prompt:{ok:true;prompt:string;reason:string}|null=null,qa:ImageQa|null=null,spent=0;
+ for(let attempt=0;attempt<IMAGE_ATTEMPTS;attempt++){
+  if(attempt>0&&budget&&budget.remaining<spent+IMAGE_COST_EUR+0.05)break;
+  const response=await withAiScope({agent:'publication-photo',clientId:candidate.clientId},()=>structuredResponse(withCharter('publication-photo',PHOTO_PROMPT_INSTRUCTIONS),
+   JSON.stringify({activity_untrusted:activity,subject_untrusted:rows[0]?.subject??null,texts_untrusted:texts,...(brief?{brief_untrusted:briefForPrompt(brief)}:{}),...(refused?{previous_image_refused:refused}:{})}),PHOTO_PROMPT_SCHEMA,{maxOutputTokens:900,timeoutMs:60000}));
+  const read=readPhotoPrompt(response.value);
+  if(!read.ok){if(image)break;return skip(read.reason);}
+  const generated=await generate(`${read.prompt}${brief?imageStyleSuffix(brief):''}`);
+  spent+=IMAGE_COST_EUR;await recordImageCost(candidate.clientId,generated.model);
+  image=generated;prompt=read;
+  qa=await withAiScope({agent:'publication-photo',clientId:candidate.clientId},()=>reviewImage(generated.bytes,brief,texts));
+  // Contrôle impossible (IA indisponible) : l'image est proposée, l'administrateur reste le juge.
+  if(!qa||qa.pass)break;
+  refused=`Note ${qa.score}/100 : ${qa.issues.join(' ; ')||'image peu crédible'}`;
+  log('qa','refused');
  }
- const image=await generate(prompt.prompt);
+ if(!image||!prompt)return 'failed';
+ if(qa&&!qa.pass)return skip(`Images écartées par l’auto-contrôle (${qa.score}/100) : ${qa.issues.join(' ; ')||'image peu crédible'}`);
  const path=`${candidate.clientId}/${id}.png`;
  const upload=await db().storage.from(GENERATED_BUCKET).upload(path,image.bytes,{contentType:'image/png',upsert:false});
  if(upload.error){log('upload','failed');return 'failed';}
- const inserted=await db().from(TABLE).insert({id,client_id:candidate.clientId,run_id:candidate.runId,publication_ids:candidate.publicationIds,status:'pending_review',prompt:prompt.prompt,storage_path:path,model:image.model,estimated_cost_eur:IMAGE_COST_EUR});
+ const inserted=await db().from(TABLE).insert({id,client_id:candidate.clientId,run_id:candidate.runId,publication_ids:candidate.publicationIds,status:'pending_review',prompt:prompt.prompt,storage_path:path,model:image.model,estimated_cost_eur:spent});
  if(inserted.error){await db().storage.from(GENERATED_BUCKET).remove([path]);log('insert',inserted.error.code);return 'failed';}
- // Coût de l'image compté dans le budget IA du client (journal ai_usage, absent = non mesuré).
- const usage=await db().from('ai_usage').insert({agent:'publication-photo',client_id:candidate.clientId,input_tokens:0,output_tokens:0,estimated_cost_eur:IMAGE_COST_EUR,model:image.model});
- if(usage.error&&!missingTable(usage.error))log('usage','not_recorded');
  await db().from('admin_notifications').upsert({event_key:`generated-image:${id}`,category:'media_missing',href:'/publications/images'},{onConflict:'event_key',ignoreDuplicates:true}).then(r=>{if(r.error)log('notify','failed');});
- await writeAudit({kind:'system',worker:'photo-agent'},{action:'publication_image.generated',resource_type:'publication_agent_v2_run',resource_id:candidate.runId,metadata:{client_id:candidate.clientId,image_id:id,model:image.model}}).catch(()=>undefined);
+ await writeAudit({kind:'system',worker:'photo-agent'},{action:'publication_image.generated',resource_type:'publication_agent_v2_run',resource_id:candidate.runId,metadata:{client_id:candidate.clientId,image_id:id,model:image.model,quality_score:qa?.score??null,attempts:Math.round(spent/IMAGE_COST_EUR),brief:brief?brief.trade.key:null}}).catch(()=>undefined);
  return 'generated';
+}
+
+/** Coût de chaque image générée compté dans le budget IA du client (journal ai_usage, absent = non mesuré). */
+async function recordImageCost(clientId:string,model:string){
+ const usage=await db().from('ai_usage').insert({agent:'publication-photo',client_id:clientId,input_tokens:0,output_tokens:0,estimated_cost_eur:IMAGE_COST_EUR,model});
+ if(usage.error&&!missingTable(usage.error))log('usage','not_recorded');
+}
+/** Auto-contrôle (vision) de l'image générée. null : contrôle impossible, l'image reste soumise à l'administrateur. */
+async function reviewImage(bytes:Uint8Array,brief:VisualBrief|null,texts:{platform:string;text:string}[]):Promise<ImageQa|null>{
+ try{
+  const preview=await visionPreview(bytes);
+  const response=await structuredResponse(withCharter('publication-photo',IMAGE_QA_INSTRUCTIONS),[{role:'user',content:[
+   {type:'input_text',text:JSON.stringify({brief_untrusted:brief?briefForPrompt(brief):null,texts_untrusted:texts.map(t=>t.text.slice(0,600))})},
+   {type:'input_image',image_url:`data:image/jpeg;base64,${Buffer.from(preview).toString('base64')}`,detail:'high'}]}],IMAGE_QA_SCHEMA,{maxOutputTokens:600,timeoutMs:60000});
+  return readImageQa(response.value);
+ }catch{log('qa','unavailable');return null;}
 }
 
 // ---------------------------------------------------------------------------------------------

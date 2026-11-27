@@ -3,7 +3,7 @@ import "server-only";
 // blanche de providerJson. Les clés restent côté serveur ; aucune n'est journalisée ni renvoyée.
 import { providerJson, type FetchLike } from "@/lib/providers/api";
 import { ProviderError } from "@/lib/providers/errors";
-import { ANTHROPIC_AGENT_MODEL, rejectsForcedToolUse } from "@/lib/ai/models";
+import { ANTHROPIC_AGENT_MODEL, acceptsServerFallbacks, anthropicBilledInput, rejectsForcedToolUse, type AiEffort } from "@/lib/ai/models";
 import type { AIProvider, AIResponse, AIUsage, ChatMessage, ToolCall, ToolResultMessage, ToolSpec } from "@/lib/ai/types";
 
 type Env = Record<string, string | undefined>;
@@ -62,8 +62,14 @@ export function createOpenAIProvider(apiKey: string, model: string, fetchImpl?: 
  */
 const anthropicTurns = new WeakMap<ToolCall, unknown[]>();
 
-export function createAnthropicProvider(apiKey: string, model: string, fetchImpl?: FetchLike): AIProvider {
+/**
+ * Claude (Messages API). effort : niveau de réflexion de la famille de l'agent (lib/ai/models.ts) ; absent, celui du
+ * modèle. Repli serveur en cas de refus de sécurité (modèles qui l'acceptent), cache du préfixe (consignes + outils)
+ * pour les appels répétés, refus et sortie tronquée signalés comme des erreurs du fournisseur (jamais une analyse vide).
+ */
+export function createAnthropicProvider(apiKey: string, model: string, fetchImpl?: FetchLike, options: { effort?: AiEffort } = {}): AIProvider {
   const forcedToolRejected = rejectsForcedToolUse(model);
+  const fallbacks = acceptsServerFallbacks(model);
   return {
     id: "anthropic", model,
     async ping(signal) {
@@ -78,12 +84,16 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
       ]);
       // Réflexion adaptative toujours active sur les modèles récents : la sortie couvre réflexion + réponse.
       const maxOutput = Math.min(budget * 4, 32000);
-      const data = await providerJson<{ usage?: { input_tokens?: unknown; output_tokens?: unknown }; content?: { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }[] }>("anthropic", "https://api.anthropic.com/v1/messages", {
+      const data = await providerJson<{ stop_reason?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown; cache_read_input_tokens?: unknown; cache_creation_input_tokens?: unknown }; content?: { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }[] }>("anthropic", "https://api.anthropic.com/v1/messages", {
         method: "POST", fetchImpl, signal, timeoutMs: Math.min(180_000, timeoutFor(maxOutput)),
-        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", ...(fallbacks ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}), "Content-Type": "application/json" },
         body: JSON.stringify({
           // Pas de température : refusée (400) par les modèles Claude actuels.
           model, max_tokens: maxOutput, system,
+          // Préfixe stable (outils + consignes) mis en cache : une relance corrective ou un tour d'outil le relit à 10 % du prix.
+          cache_control: { type: "ephemeral" },
+          ...(options.effort ? { output_config: { effort: options.effort } } : {}),
+          ...(fallbacks ? { fallbacks: "default" } : {}),
           messages: [...messages, ...pending],
           ...(tools.length ? {
             tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters, ...(tool.strict ? { strict: true } : {}) })),
@@ -93,10 +103,13 @@ export function createAnthropicProvider(apiKey: string, model: string, fetchImpl
         }),
       });
       if (!Array.isArray(data.content)) throw new ProviderError("anthropic", "malformed");
+      // Refus de sécurité final (après repli) ou sortie coupée : un appel d'outil tronqué ne doit jamais être lu.
+      if (data.stop_reason === "refusal") throw new ProviderError("anthropic", "rejected", 200, "refusal");
+      if (data.stop_reason === "max_tokens") throw new ProviderError("anthropic", "malformed", 200, "max_tokens");
       const text = data.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text as string).join("\n");
       const toolCalls: ToolCall[] = data.content.flatMap((block) => block.type === "tool_use" && typeof block.name === "string" ? [{ id: String(block.id ?? block.name), name: block.name, arguments: block.input ?? {} }] : []);
       for (const call of toolCalls) anthropicTurns.set(call, data.content);
-      return { text, toolCalls, ...usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
+      return { text, toolCalls, ...usageOf(anthropicBilledInput(data.usage), data.usage?.output_tokens) };
     },
   };
 }

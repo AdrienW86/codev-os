@@ -66,3 +66,13 @@ test("activation par client : la passerelle et l'assistant mesuré ne passent su
   assert.match(migration, /claude_enabled boolean not null default false/);
   assert.match(migration, /revoke all on public\.client_ai_settings from public, anon, authenticated/);
 });
+
+test("budget : cache lu à 10 %, écrit à 125 % ; réponse sans jetons → aucune mesure inventée", () => {
+  assert.equal(models.anthropicBilledInput({ input_tokens: 100, cache_read_input_tokens: 1000, cache_creation_input_tokens: 800 }), 100 + 1000 + 100);
+  assert.equal(models.anthropicBilledInput({ input_tokens: 5 }), 5);
+  assert.equal(models.anthropicBilledInput(undefined), null);
+  assert.equal(models.acceptsServerFallbacks("claude-opus-5-5"), true);
+  assert.equal(models.acceptsServerFallbacks("claude-haiku-5-5"), false);
+  const gateway = readFileSync("lib/integrations/publications-openai.ts", "utf8");
+  assert.match(gateway, /cache_control:\{type:'ephemeral'\}/);
+});

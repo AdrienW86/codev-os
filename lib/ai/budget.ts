@@ -2,7 +2,7 @@
 import { zonedToUtc } from "@/lib/scheduler/recurrence";
 
 /** Plafond appliqué tant qu'aucun plafond n'est réglé pour le client (filet de sécurité, en euros par mois). */
-export const DEFAULT_MONTHLY_CAP_EUR = 5;
+export const DEFAULT_MONTHLY_CAP_EUR = 15;
 /** Marge réservée avant chaque appel : un appel n'est lancé que s'il ne peut pas faire dépasser le plafond. */
 export const CALL_GUARD_EUR = 0.02;
 

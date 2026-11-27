@@ -5,7 +5,7 @@ import 'server-only';
 import type {Usage} from '@/lib/publications/ai/provider';
 import {estimateCallCostEur} from '@/lib/ai/budget';
 import {claudeEnabledFor} from '@/lib/ai/client-routing';
-import {anthropicMessages,anthropicSchema,modelForAgent,OPENAI_AGENT_MODEL,type ModelChoice} from '@/lib/ai/models';
+import {anthropicBilledInput,anthropicMessages,anthropicSchema,modelForAgent,OPENAI_AGENT_MODEL,type ModelChoice} from '@/lib/ai/models';
 export const PUBLICATIONS_MODEL=OPENAI_AGENT_MODEL;
 export type StructuredOptions={maxOutputTokens?:number;timeoutMs?:number;/** Agent du harness : choisit la famille de modèle. Absent : parcours OpenAI historique. */agent?:string;
  /** Client concerné : Claude seulement s'il est activé pour lui (fiche client → Agents). */clientId?:string};
@@ -35,7 +35,7 @@ async function anthropicStructured(choice:Extract<ModelChoice,{provider:'anthrop
  const maxTokens=Math.min(Math.max((options.maxOutputTokens??3000)*4,8000),32000);
  const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
   headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-beta':'server-side-fallback-2026-07-01','Content-Type':'application/json'},
-  body:JSON.stringify({model:choice.model,max_tokens:maxTokens,system:instructions,messages:anthropicMessages(input),fallbacks:'default',
+  body:JSON.stringify({model:choice.model,max_tokens:maxTokens,system:instructions,messages:anthropicMessages(input),fallbacks:'default',cache_control:{type:'ephemeral'},
    output_config:{effort:choice.effort,format:{type:'json_schema',schema:anthropicSchema(schema)}}}),
   signal:AbortSignal.timeout(Math.min(Math.max((options.timeoutMs??60000)*2,30000),180000)),redirect:'error'});
  if(!response.ok)throw Error('AI request failed');
@@ -43,7 +43,8 @@ async function anthropicStructured(choice:Extract<ModelChoice,{provider:'anthrop
  const int=(n:unknown)=>Number.isInteger(n)&&(n as number)>=0?n as number:null;
  const inputTokens=int(r.usage?.input_tokens),outputTokens=int(r.usage?.output_tokens);
  if(inputTokens===null||outputTokens===null||!Array.isArray(r.content))throw Error('AI incomplete');
- const billedInput=inputTokens+(int(r.usage?.cache_read_input_tokens)??0)+(int(r.usage?.cache_creation_input_tokens)??0);
+ // Équivalent plein tarif (cache lu à 10 %, écrit à 125 %) : le budget suit la facture réelle, sans la sous-estimer.
+ const billedInput=anthropicBilledInput(r.usage)??inputTokens;
  // Modèle réellement servi (un repli peut en avoir changé) : c'est lui qui est facturé et journalisé.
  const model=typeof r.model==='string'&&r.model.length>0&&r.model.length<=100?r.model:choice.model;
  const usage:Usage={input_tokens:billedInput,output_tokens:outputTokens,estimated_cost_eur:Math.min(1,estimateCallCostEur(model,billedInput,outputTokens)),model};

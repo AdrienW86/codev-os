@@ -10,6 +10,7 @@ import { reportEmailPreview, recipientSchema } from "@/lib/reports/email-preview
 import { clientReportPdfFilename, renderClientReportPdf } from "@/lib/reports/pdf";
 import { ProviderError } from "@/lib/providers/errors";
 import { requireReportVersionStorage } from "./version-storage";
+import { synthesizeReport } from "./synthesis-service";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import { EMAIL_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "@/lib/reports/email-logo";
 import type { Json } from "@/lib/supabase/database.types";
@@ -97,6 +98,15 @@ export async function generateReport(actor: Actor, input: { clientId: string; ki
     built.client.empty = false;
     built.internal.empty = false;
     built.client.summary = documentsSummary(gathered.documents).slice(0, 4000);
+  }
+  // Rapport mensuel : synthèse rédigée par l'Agent Rapport à partir des seules lignes du rapport client (chiffres
+  // vérifiés). Refusée ou indisponible : le résumé calculé reste. Le rapport reste « à valider » avant tout envoi.
+  if (input.kind === "monthly" && !built.client.empty) {
+    const computed = built.client.summary;
+    const synthesis = await synthesizeReport(input.clientId, { clientName: data.client?.name ?? "", kind: input.kind, period, highlights: built.client.highlights,
+      sections: built.client.sections, documents: gathered.documents.map((document) => ({ title: document.title, summary: document.summary })) });
+    if (synthesis.summary) { built.client.summary = synthesis.summary; built.internal.sections.push({ title: "Synthèse rédigée par l’IA (à relire)", lines: [synthesis.summary, `Résumé calculé remplacé : ${computed}`] }); }
+    else built.internal.sections.push({ title: "Synthèse IA", lines: [`Non utilisée : ${synthesis.reason}. Résumé calculé conservé.`] });
   }
   built.internal.sections.push({ title: "Documents joints (un PDF par agent)", lines: [
     ...(gathered.documents.length ? gathered.documents.map((document) => `${reportDocumentLabels[document.key]} : ${document.summary}`) : ["Aucune source branchée pour ce client : rapport sans document joint."]),

@@ -82,6 +82,42 @@ export function recoverAdsAINarratives(input: unknown): {
   };
 }
 
+/**
+ * Mise au gabarit, sans rien inventer : retire seulement ce qui dépasse (doublons, preuves inconnues ou d'une autre
+ * campagne, éléments hors périmètre, au-delà des plafonds). Un modèle qui cite 12 faits au lieu de 10 ne fait plus
+ * échouer toute l'analyse. Le résultat passe toujours par validateAdsAIOutput.
+ */
+export function fitAdsAIOutput(input: unknown, rows: CampaignRow[], evidence: Evidence[]): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const raw = input as Record<string, unknown>;
+  const ledger = new Map(evidence.map((item) => [item.id, item]));
+  const campaigns = new Map(rows.map((row) => [row.id, row]));
+  const unique = (values: unknown) => Array.isArray(values) ? [...new Set(values.filter((value): value is string => typeof value === "string"))] : values;
+  const inScope = (ids: unknown) => {
+    if (!Array.isArray(ids)) return false;
+    const list = ids as unknown[];
+    if (new Set(list).size !== list.length || list.some((id) => typeof id !== "string" || !campaigns.has(id))) return false;
+    const types = new Set(list.map((id) => campaigns.get(id as string)!.type));
+    return !(types.has("LOCAL_SERVICES") && types.size > 1);
+  };
+  const objects = (value: unknown) => Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : value;
+  const facts = Array.isArray(raw.factIds) ? (unique(raw.factIds) as string[]).filter((id) => ledger.has(id)).slice(0, 10) : raw.factIds;
+  const hypotheses = objects(raw.hypotheses);
+  const recommendations = objects(raw.recommendations);
+  return {
+    ...raw,
+    factIds: Array.isArray(facts) && !facts.length ? ["scope"] : facts,
+    hypotheses: Array.isArray(hypotheses) ? hypotheses.filter((item) => inScope(item.campaignIds)).slice(0, 4) : hypotheses,
+    recommendations: Array.isArray(recommendations) ? recommendations.flatMap((item) => {
+      if (!inScope(item.campaignIds)) return [];
+      const ids = item.campaignIds as string[];
+      // Seules les preuves existantes et du même périmètre restent ; sans preuve, la recommandation est écartée.
+      const proofs = Array.isArray(item.evidenceIds) ? (unique(item.evidenceIds) as string[]).filter((id) => { const proof = ledger.get(id); return proof && (proof.campaignId === null || ids.includes(proof.campaignId)); }).slice(0, 6) : item.evidenceIds;
+      return Array.isArray(proofs) && !proofs.length ? [] : [{ ...item, evidenceIds: proofs }];
+    }).slice(0, 5) : recommendations,
+  };
+}
+
 export type Evidence = { id: string; campaignId: string | null; type: string | null; metric: string; value: number | null; text: string; kind?: ExpertKind };
 
 const metricLabels: Record<string, string> = { cost: "dépenses", clicks: "clics", impressions: "impressions", conversions: "conversions enregistrées", costPerConversion: "coût par conversion", conversionValue: "valeur des conversions déclarée, distincte du chiffre d’affaires" };
@@ -168,7 +204,7 @@ export const ADS_EXPERT_SYSTEM = [
   "Méthode, dans cet ordre de priorité : 1) mesure fiable (sans conversions fiables, la priorité est le suivi) ; 2) couper le gaspillage (termes hors cible ou exclus par le client → mots-clés négatifs) ; 3) accélérer ce qui est rentable (budget limitant une campagne sous le coût cible, termes qui convertissent → mots-clés exacts) ; 4) regagner du classement (Quality Score, part d’impressions perdue au classement) ; 5) affiner (appareils, rythme de dépense face au budget mensuel, coût par conversion face à la cible).",
   "Les preuves dont l’identifiant commence par expert: sont des diagnostics calculés côté serveur à partir des termes de recherche, de la part d’impressions, du Quality Score et des appareils réellement lus dans Google Ads. Appuie chaque action experte sur la preuve experte correspondante : add_negative_keywords ← wasted_terms ou excluded_terms ; add_exact_keywords ← converting_terms, organic_gap (requêtes Search Console non couvertes, à cibler en expression) ou keyword_ideas (Planificateur de mots-clés et recommandations Google : volumes et enchères estimés par Google) ; increase_budget ou scale_volume ← budget_limited ou cpa_below_target ; improve_ad_rank ou improve_quality_score ← rank_limited ou low_quality ; review_landing_page ← low_quality, device_gap ou analytics_landing (pages d’arrivée où Google Analytics 4 mesure peu d’engagement ou aucun événement clé) ; verify_tracking est prioritaire si analytics_tracking_gap est présent (écart entre les événements clés GA4 et les conversions Google Ads) ; adjust_device_bids ← device_gap ; lower_cpa_target ← cpa_above_target ; review_budget ou align_budget_pacing ← pacing_over, pacing_under ou budget_limited_unproven. Une action sans sa preuve sera écartée.",
   "N’augmente jamais le budget d’une campagne sans conversion ou au-dessus du coût cible : nettoie d’abord. Une campagne bridée par le budget mais non rentable relève de review_budget, pas de increase_budget.",
-  "Les faits sont exclusivement des identifiants de preuves existantes. Sépare Search et Local Services. Chaque recommandation cite des preuves du même périmètre et explique, en une ou deux phrases concrètes, le gain attendu et le lien avec les objectifs, zones et contraintes du client.",
+  "Les faits sont exclusivement des identifiants de preuves existantes (dix au plus : les plus utiles). Sépare Search et Local Services. Chaque recommandation cite des preuves du même périmètre et explique, en une ou deux phrases concrètes, le gain attendu et le lien avec les objectifs, zones et contraintes du client.",
   "Les hypothèses sont incertaines et doivent rester vérifiables. N’invente ni chiffre, ni terme de recherche, ni mot-clé, ni chiffre d’affaires. Dans les explications libres, écris sans chiffre ni code : les valeurs et listes seront ajoutées côté serveur depuis les preuves.",
   "Aucune écriture Google Ads, SQL, HTML ou envoi : ce sont des propositions soumises à validation humaine.",
   "Donne au plus cinq recommandations, classées par gain attendu, et au plus trois hypothèses. Pas de recommandation artificielle : si seule une vérification du suivi est étayée, renvoie-la seule. Les zones, horaires, services et la capacité commerciale restent hors de portée sans données vérifiées. Réponds en français.",
@@ -186,9 +222,9 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
   const stringArray = (values: readonly string[]) => ({ type: "array", items: { type: "string", enum: values } });
   const item = (properties: Record<string, unknown>) => ({ type: "object", additionalProperties: false, properties, required: Object.keys(properties) });
   const parameters = item({
-    factIds: stringArray(proofIds),
-    hypotheses: { type: "array", items: item({ kind: { type: "string", enum: hypotheses }, campaignIds: stringArray(campaignIds), explanation: { type: "string" } }) },
-    recommendations: { type: "array", items: item({ action: { type: "string", enum: actions }, priority: { type: "string", enum: ["high", "medium", "low"] }, campaignIds: stringArray(campaignIds), evidenceIds: stringArray(proofIds), rationale: { type: "string" } }) },
+    factIds: { ...stringArray(proofIds), description: "Entre 1 et 10 identifiants de preuves, les plus utiles d’abord." },
+    hypotheses: { type: "array", description: "Au plus 3 hypothèses.", items: item({ kind: { type: "string", enum: hypotheses }, campaignIds: stringArray(campaignIds), explanation: { type: "string", description: "Une ou deux phrases, sans chiffre ni code." } }) },
+    recommendations: { type: "array", description: "Au plus 5 recommandations, classées par gain attendu.", items: item({ action: { type: "string", enum: actions }, priority: { type: "string", enum: ["high", "medium", "low"] }, campaignIds: stringArray(campaignIds), evidenceIds: { ...stringArray(proofIds), description: "Entre 1 et 6 preuves du même périmètre que campaignIds." }, rationale: { type: "string", description: "Une ou deux phrases, sans chiffre ni code." } }) },
   });
   // Un appel, aucun outil métier exécutable, délai global. Le fournisseur est celui de l'assistant serveur.
   const response = await provider.complete({
@@ -204,7 +240,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
   let recovery = firstRecovery;
   let retryUsed = false;
   try {
-    output = validateAdsAIOutput(firstRecovery.candidate, rows, evidence);
+    output = validateAdsAIOutput(fitAdsAIOutput(firstRecovery.candidate, rows, evidence), rows, evidence);
   } catch (error) {
     // OpenAI strict mode guarantees the JSON shape, not domain rules (IDs, cited evidence,
     // numeric claims in free text). Retry once with bounded, non-sensitive validation hints.
@@ -222,7 +258,7 @@ export async function analyzeAdsWithAI(provider: AIProvider, rows: CampaignRow[]
     if (corrected.toolCalls.length !== 1 || corrected.toolCalls[0].name !== "ads_analysis_result") throw new Error("Sortie IA structurée absente.");
     retryUsed = true;
     recovery = recoverAdsAINarratives(corrected.toolCalls[0].arguments);
-    output = validateAdsAIOutput(recovery.candidate, rows, evidence);
+    output = validateAdsAIOutput(fitAdsAIOutput(recovery.candidate, rows, evidence), rows, evidence);
   }
   return { output, evidence, expert, text: formatAdsAIOutput(output, evidence), validation: { repairedNarratives: recovery.repairs, scopeFactAdded: recovery.addedScopeFact, retryUsed } };
 }

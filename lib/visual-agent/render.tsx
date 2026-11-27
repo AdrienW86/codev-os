@@ -7,7 +7,8 @@ import {VISUAL_HEIGHT,VISUAL_WIDTH,fitLogo,readableOn,type VisualTemplate} from 
 // Mise en page simple et lisible : logo exact du client, couleurs de la charte, prestation, accroche, ligne de contact.
 // Aucun texte n'est inventé ici : tout vient des réglages du client et de l'accroche déjà contrôlée.
 export type VisualContent={template:VisualTemplate;service:string;headline:string;subline:string|null;contactLine:string|null;clientName:string;
- primaryColor:string;secondaryColor:string;textColor:string;logo:Uint8Array|null};
+ primaryColor:string;secondaryColor:string;textColor:string;logo:Uint8Array|null;
+ /** Vraie photo de la photothèque du client (fond), ou null : visuel purement graphique. */photo?:Uint8Array|null};
 
 /** Logo normalisé en PNG (fond transparent conservé), 480 px au plus, pour l'insérer dans le rendu. */
 export type LogoImage={src:string;width:number;height:number};
@@ -35,6 +36,54 @@ export async function logoColors(bytes:Uint8Array):Promise<{primary:string;secon
 function Logo({src,size,clientName,color}:{src:LogoImage|null;size:number;clientName:string;color:string}){
  if(src){const {width,height}=fitLogo(src,size);return <img src={src.src} alt="" width={width} height={height} style={{width,height}}/>;}
  return <div style={{display:'flex',fontSize:44,fontWeight:700,color,letterSpacing:1}}>{clientName}</div>;
+}
+/** Photo recadrée exactement au cadre (cover, centrée sur la zone la plus riche) : le moteur de rendu ne recadre pas. */
+export async function photoBox(bytes:Uint8Array|null|undefined,width:number,height:number):Promise<string|null>{
+ if(!bytes?.length)return null;
+ try{const out=await sharp(bytes,{limitInputPixels:40000000,animated:false}).rotate().resize(width,height,{fit:'cover',position:'attention'}).modulate({saturation:1.05}).jpeg({quality:86}).toBuffer();
+  return `data:image/jpeg;base64,${out.toString('base64')}`;}catch{return null;}
+}
+/** Cadres photo de chaque mise en page (largeur × hauteur en px, rendu 1080 × 1350). */
+export const PHOTO_FRAMES:Record<VisualTemplate,{width:number;height:number}>={bandeau:{width:1080,height:760},diagonale:{width:1080,height:1350},encadre:{width:968,height:640},minimal:{width:920,height:600}};
+const hexA=(hex:string,alpha:number)=>`rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${alpha})`;
+
+/**
+ * Mises en page avec une vraie photo du client : la photo porte le sujet, la charte (couleurs, logo) encadre le message.
+ * Une seule accroche dominante, contraste garanti par un aplat ou un dégradé de la couleur principale.
+ */
+function photoLayout(c:VisualContent,logo:LogoImage|null,photo:string,fontFamily:string){
+ const onPrimary=c.textColor,onSecondary=readableOn(c.secondaryColor),title={fontSize:c.headline.length>40?66:78,fontWeight:700,lineHeight:1.08,letterSpacing:-1};
+ const tag=<div style={{display:'flex',alignSelf:'flex-start',padding:'12px 24px',borderRadius:999,background:c.secondaryColor,color:onSecondary,fontSize:28,fontWeight:700}}>{c.service}</div>;
+ const badge=(size:number)=><div style={{display:'flex',padding:18,borderRadius:22,background:'#ffffff',boxShadow:'0 8px 24px rgba(0,0,0,.25)'}}><Logo src={logo} size={size} clientName={c.clientName} color={c.primaryColor}/></div>;
+ const footer=c.contactLine??c.clientName;
+ const f=PHOTO_FRAMES[c.template];
+ if(c.template==='bandeau')return <div style={{display:'flex',flexDirection:'column',width:'100%',height:'100%',background:c.primaryColor,color:onPrimary,fontFamily}}>
+  <div style={{display:'flex',position:'relative',width:f.width,height:f.height}}><img src={photo} alt="" width={f.width} height={f.height} style={{width:f.width,height:f.height}}/>
+   <div style={{display:'flex',position:'absolute',top:40,left:40}}>{badge(120)}</div></div>
+  <div style={{display:'flex',flexDirection:'column',justifyContent:'center',flexGrow:1,padding:'0 70px',gap:22}}>{tag}<div style={{display:'flex',...title}}>{c.headline}</div>
+   {c.subline&&<div style={{display:'flex',fontSize:34,lineHeight:1.3,opacity:.92}}>{c.subline}</div>}</div>
+  <div style={{display:'flex',justifyContent:'center',padding:'22px 0',background:c.secondaryColor,color:onSecondary,fontSize:30,fontWeight:600}}>{footer}</div></div>;
+ if(c.template==='diagonale')return <div style={{display:'flex',width:'100%',height:'100%',position:'relative',fontFamily,color:onPrimary}}>
+  <img src={photo} alt="" width={f.width} height={f.height} style={{position:'absolute',top:0,left:0,width:f.width,height:f.height}}/>
+  <div style={{display:'flex',position:'absolute',top:0,left:0,width:1080,height:1350,backgroundImage:`linear-gradient(180deg, ${hexA(c.primaryColor,0)} 36%, ${hexA(c.primaryColor,.8)} 62%, ${hexA(c.primaryColor,.97)} 100%)`}}/>
+  <div style={{display:'flex',flexDirection:'column',position:'absolute',top:0,left:0,width:1080,height:1350,padding:'56px 70px 70px'}}>
+   <div style={{display:'flex'}}>{badge(130)}</div>
+   <div style={{display:'flex',flexDirection:'column',justifyContent:'flex-end',flexGrow:1,gap:24}}>{tag}<div style={{display:'flex',...title,fontSize:title.fontSize+6}}>{c.headline}</div>
+    {c.subline&&<div style={{display:'flex',fontSize:36,lineHeight:1.3,opacity:.95}}>{c.subline}</div>}
+    <div style={{display:'flex',marginTop:16,paddingTop:22,borderTop:`4px solid ${c.secondaryColor}`,fontSize:30,fontWeight:600}}>{footer}</div></div></div></div>;
+ if(c.template==='encadre')return <div style={{display:'flex',flexDirection:'column',width:'100%',height:'100%',background:c.secondaryColor,padding:56,fontFamily}}>
+  <div style={{display:'flex',position:'relative',width:f.width,height:f.height,borderRadius:'32px 32px 0 0',overflow:'hidden'}}><img src={photo} alt="" width={f.width} height={f.height} style={{width:f.width,height:f.height}}/>
+   <div style={{display:'flex',position:'absolute',top:28,left:28}}>{badge(110)}</div></div>
+  <div style={{display:'flex',flexDirection:'column',flexGrow:1,background:c.primaryColor,color:onPrimary,borderRadius:'0 0 32px 32px',padding:'40px 60px',gap:20,justifyContent:'center'}}>
+   <div style={{display:'flex',...title}}>{c.headline}</div>{c.subline&&<div style={{display:'flex',fontSize:32,lineHeight:1.3,opacity:.92}}>{c.subline}</div>}
+   <div style={{display:'flex',fontSize:28,fontWeight:600,opacity:.9}}>{footer}</div></div></div>;
+ return <div style={{display:'flex',flexDirection:'column',width:'100%',height:'100%',background:'#ffffff',color:'#111827',fontFamily,padding:'60px 80px 0'}}>
+  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',height:120}}><Logo src={logo} size={110} clientName={c.clientName} color={c.primaryColor}/>
+   <div style={{display:'flex',padding:'10px 22px',borderRadius:999,background:c.primaryColor,color:c.textColor,fontSize:26,fontWeight:700}}>{c.service}</div></div>
+  <div style={{display:'flex',width:f.width,height:f.height,borderRadius:28,overflow:'hidden',marginTop:24}}><img src={photo} alt="" width={f.width} height={f.height} style={{width:f.width,height:f.height}}/></div>
+  <div style={{display:'flex',flexDirection:'column',justifyContent:'center',flexGrow:1,gap:16}}>
+   <div style={{display:'flex',...title,fontSize:title.fontSize-6,color:c.primaryColor}}>{c.headline}</div>{c.subline&&<div style={{display:'flex',fontSize:32,lineHeight:1.3,color:'#374151'}}>{c.subline}</div>}</div>
+  <div style={{display:'flex',margin:'0 -80px',padding:'26px 80px',background:c.primaryColor,color:c.textColor,fontSize:30,fontWeight:600}}>{footer}</div></div>;
 }
 function layout(c:VisualContent,logo:LogoImage|null,fontFamily:string){
  const onPrimary=c.textColor,onSecondary=readableOn(c.secondaryColor),title={fontSize:c.headline.length>40?78:92,fontWeight:700,lineHeight:1.08,letterSpacing:-1};
@@ -78,8 +127,10 @@ function loadFonts():Promise<Font[]>{
 }
 /** PNG 1080 × 1350 du visuel. */
 export async function renderVisual(c:VisualContent):Promise<Uint8Array>{
- const [logo,loaded]=await Promise.all([logoDataUrl(c.logo),loadFonts()]);
- const response=new ImageResponse(layout(c,logo,loaded.length?'Inter':'sans-serif'),{width:VISUAL_WIDTH,height:VISUAL_HEIGHT,...(loaded.length?{fonts:loaded}:{})});
+ const frame=PHOTO_FRAMES[c.template];
+ const [logo,loaded,photo]=await Promise.all([logoDataUrl(c.logo),loadFonts(),photoBox(c.photo,frame.width,frame.height)]);
+ const family=loaded.length?'Inter':'sans-serif';
+ const response=new ImageResponse(photo?photoLayout(c,logo,photo,family):layout(c,logo,family),{width:VISUAL_WIDTH,height:VISUAL_HEIGHT,...(loaded.length?{fonts:loaded}:{})});
  const bytes=new Uint8Array(await response.arrayBuffer());
  if(bytes.length<1000)throw Error('Visual render failed');
  return bytes;

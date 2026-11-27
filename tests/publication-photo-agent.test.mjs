@@ -143,3 +143,32 @@ test("photo agent service: never attaches without an administrator, generated bu
   assert.match(sql, /'publication-generated',false/);
   assert.match(sql, /\(status in \('approved','rejected','attach_failed'\)\) = \(decided_by is not null\)/);
 });
+
+test("photo prompt filter: no false positives on brand-new, roof face, surface; still refuses positive requests", () => {
+  const base = "Close-up of terracotta canal tiles on a pitched roof in bright Mediterranean light, roofer's gloved hands fitting a tile, scaffold rail in the foreground";
+  for (const ok of [`${base}, a brand-new zinc gutter.`, `${base}. The south roof face catches the sun.`, `${base}, smooth surface.`,
+    `${base}. There are no visible faces, people, text or logos in the scene.`, `${base}. Avoid any signage; logo-free and text-free.`, `${base}. Without lettering or watermark.`])
+    assert.equal(m.readPhotoPrompt({ feasible: true, prompt: ok, reason: "" }).ok, true, ok);
+  for (const bad of [`${base}. The van shows the company logo.`, `${base}. A sign reading "Toiture" on the wall.`, `${base}. Portrait of the smiling owner.`, `${base}. Brand names on the tool box.`])
+    assert.equal(m.readPhotoPrompt({ feasible: true, prompt: bad, reason: "" }).ok, false, bad);
+});
+
+test("image self-check: below 70 or refused never passes; unreadable output is null", () => {
+  assert.deepEqual(plain(m.readImageQa({ pass: true, score: 86, issues: [] })), { pass: true, score: 86, issues: [] });
+  assert.equal(m.readImageQa({ pass: true, score: 60, issues: [] }).pass, false, "score under the threshold");
+  assert.equal(m.readImageQa({ pass: false, score: 90, issues: ["mains déformées"] }).pass, false);
+  assert.equal(m.readImageQa({ pass: true, issues: [] }), null);
+  assert.equal(m.readImageQa(null), null);
+  assert.equal(m.IMAGE_ATTEMPTS, 2, "one regeneration at most");
+});
+
+test("photo agent: brief-guided prompt, portrait high quality, self-check before proposing, never attached without validation", () => {
+  const service = readFileSync("lib/publications/photo-agent/service.ts", "utf8");
+  assert.match(service, /clientVisualBrief\(candidate\.clientId,'publication-photo'\)/);
+  assert.match(service, /imageStyleSuffix\(brief\)/);
+  assert.match(service, /reviewImage\(generated\.bytes,brief,texts\)/);
+  assert.match(service, /status:'pending_review'/);
+  const transport = readFileSync("lib/integrations/publications-openai-images.ts", "utf8");
+  assert.match(transport, /size:'1024x1536'/);
+  assert.match(transport, /AI_IMAGE_QUALITY/);
+});

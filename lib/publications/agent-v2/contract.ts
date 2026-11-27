@@ -25,7 +25,9 @@ export type AgentV2GeneratorInput={/** Client (routage du modèle, jamais transm
  // Intelligence éditoriale (PR #42) : historique du client (30 idées au plus) et plan déterministe (rotation, styles, lieux).
  editorial?:EditorialContext;
  // Relance après un refus du contrôle éditorial : motif du refus précédent, à corriger (jamais un fait).
- retryFeedback?:string};
+ retryFeedback?:string;
+ // Révision dans la même préparation : brouillon refusé par les contrôles, à corriger plutôt qu'à réécrire (jamais un fait).
+ previousDraft?:{subject:string;angle:string;texts:{platform:string;text:string;cta:string|null}[]}};
 export type AgentV2GeneratedPublication={occurrenceId:string;platform:PublicationPlatform;text:string;cta:string|null;mediaId:string|null};
 export type AgentV2GeneratorOutput={idea:{subject:string;angle:string};publications:AgentV2GeneratedPublication[]};
 export type AgentV2Usage={input_tokens:number;output_tokens:number;estimated_cost_eur:number;model:string};

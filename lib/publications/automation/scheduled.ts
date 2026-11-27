@@ -19,8 +19,8 @@ import {preparationHorizonDays} from '../monthly-cycle';
 //   abandon signalé d'une occurrence qui échoue trop souvent, reprise sans IA de l'étape média des préparations.
 export const SCHEDULER_ACTOR:Actor={kind:'system',worker:'publications-scheduler'};
 export const MAX_CLIENTS_PER_TICK=10;
-/** Régénérations après un refus des gardes (motifs cumulés). */
-export const REFUSAL_RETRIES=2;
+/** Régénérations après un refus des gardes (motifs cumulés). Chaque préparation révise déjà une fois son brouillon refusé. */
+export const REFUSAL_RETRIES=1;
 export const MAX_PREPARATIONS_PER_TICK=2;
 /** Plafond absolu d'appels IA par passage, régénérations comprises (un client refusé peut aller jusqu'à 3). */
 export const MAX_AI_CALLS_PER_TICK=3;

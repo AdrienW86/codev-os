@@ -10,6 +10,8 @@ import {assetOriginal} from '@/lib/whatsapp/originals';
 import {visionPreview} from '@/lib/publications/media/transform';
 import {logoColors,renderVisual} from './render';
 import {withCharter} from '@/lib/harness/charter';
+import {requireAdmin} from '@/lib/require-admin';
+import {writeAudit} from '@/lib/core/audit';
 
 // Agent Visuels : pour les clients qui l'ont activé, un visuel à la charte est généré à la fréquence choisie et déposé
 // dans le dossier Drive de leur photothèque. L'import Drive, l'analyse et la photothèque font le reste : l'agent
@@ -19,7 +21,7 @@ import {withCharter} from '@/lib/harness/charter';
 type Res={data:unknown;error:unknown};
 interface Query extends PromiseLike<Res>{select(c:string):Query;eq(c:string,v:unknown):Query;in(c:string,v:readonly unknown[]):Query;is(c:string,v:null):Query;order(c:string,o?:Record<string,unknown>):Query;limit(n:number):Query;
  maybeSingle():PromiseLike<Res>;insert(r:unknown):PromiseLike<Res>;update(r:unknown):Query;upsert(r:unknown,o?:Record<string,unknown>):PromiseLike<Res>}
-interface Bucket{download(p:string):PromiseLike<{data:Blob|null;error:unknown}>;upload(p:string,b:Uint8Array|Buffer,o:Record<string,unknown>):PromiseLike<{error:unknown}>;
+interface Bucket{download(p:string):PromiseLike<{data:Blob|null;error:unknown}>;remove(p:string[]):PromiseLike<{error:unknown}>;upload(p:string,b:Uint8Array|Buffer,o:Record<string,unknown>):PromiseLike<{error:unknown}>;
  createSignedUrl(p:string,ttl:number):PromiseLike<{data:{signedUrl:string}|null;error:unknown}>}
 const db=()=>getSupabaseServerClient() as unknown as {from:(t:string)=>Query;storage:{from:(b:string)=>Bucket}};
 type Row=Record<string,unknown>;
@@ -184,7 +186,7 @@ async function writeCopy(ctx:Context,service:string,used:string[],extra:{brief?:
  return fallbackCopy(service,ctx.client.zone);
 }
 
-export type GenerateResult={ok:true;png:Uint8Array;service:string;headline:string;template:VisualTemplate;driveFileId:string|null;review?:VisualReview|null;photo?:boolean}|{ok:false;message:string};
+export type GenerateResult={ok:true;png:Uint8Array;service:string;headline:string;template:VisualTemplate;driveFileId:string|null;review?:VisualReview|null;photo?:boolean;pending?:boolean}|{ok:false;message:string};
 /**
  * Génère un visuel. preview=true : rendu seulement (aucun dépôt, aucun journal). Sinon dépôt dans le dossier Drive
  * de la photothèque du client puis journalisation (rotation des prestations, fréquence, accroches employées).
@@ -223,17 +225,89 @@ async function generateVisualUnscoped(clientId:string,options:{trigger:'schedule
  if(!png)return {ok:false,message:'Rendu du visuel impossible. Réessayez.'};
  if(review&&!review.pass&&!options.preview)return {ok:false,message:`Visuel écarté par le contrôle qualité (${review.score}/100) : ${review.issues.join(' ; ')||'qualité insuffisante'}.`};
  if(options.preview)return {ok:true,png,service,headline:copy.headline,template,driveFileId:null,review,photo:Boolean(background)};
- const sha256=createHash('sha256').update(png).digest('hex'),md5=createHash('md5').update(png).digest('hex');
- let driveFileId:string;
- try{const token=await importDriveToken();driveFileId=await generateDriveId(token);
-  await uploadDrive(token,driveFileId,ctx.folder as string,{bytes:png,mime:'image/png',sha256,md5},`visuel-${randomUUID().slice(0,8)}.png`);}
- catch{log('drive','upload_failed');return {ok:false,message:'Dépôt du visuel dans le Drive impossible. Réessayez.'};}
- const row={client_id:clientId,service,headline:copy.headline,subline:copy.subline,template,drive_folder_id:ctx.folder,drive_file_id:driveFileId,sha256,trigger:options.trigger,
-  actor_id:options.actorId??null};
- const [saved,stamp]=await Promise.all([db().from('client_visual_items').insert(row),
+ const sha256=createHash('sha256').update(png).digest('hex');
+ const base={client_id:clientId,service,headline:copy.headline,subline:copy.subline,template,drive_folder_id:ctx.folder,sha256,trigger:options.trigger,actor_id:options.actorId??null};
+ // Visuel planifié : rangé « à valider » (stockage privé) ; il ne rejoint le Drive et la photothèque qu'après la
+ // validation de l'administrateur (règle : toute image générée est validée à la main). Un visuel demandé à la main
+ // par l'administrateur (« Générer maintenant ») est déposé directement : il le voit et l'a voulu.
+ if(options.trigger==='scheduled'&&await reviewQueueInstalled()){
+  const id=randomUUID(),path=`${clientId}/pending/${id}.png`;
+  const up=await db().storage.from(BUCKET).upload(path,png,{contentType:'image/png',upsert:false});
+  if(up.error){log('pending','upload_failed');return {ok:false,message:'Visuel non enregistré. Réessayez.'};}
+  const [saved,stamp]=await Promise.all([db().from('client_visual_items').insert({...base,id,status:'pending_review',storage_path:path,drive_file_id:null,
+    review_score:review?.score??null,review_issues:review?.issues??[],photo_asset_id:background?.id??null}),
+   db().from('client_visual_agents').update({last_generated_at:new Date().toISOString()}).eq('client_id',clientId)]);
+  if(saved.error){await db().storage.from(BUCKET).remove([path]);log('pending','not_recorded');return {ok:false,message:'Visuel non enregistré. Réessayez.'};}
+  if(stamp.error)log('journal','not_recorded');
+  const n=await db().from('admin_notifications').upsert({event_key:`visual-pending:${id}`,category:'media_missing',href:'/publications/images'},{onConflict:'event_key',ignoreDuplicates:true});
+  if(n.error)log('notify','failed');
+  return {ok:true,png,service,headline:copy.headline,template,driveFileId:null,review,photo:Boolean(background),pending:true};
+ }
+ const deposited=await depositToDrive(ctx.folder as string,png);
+ if(!deposited)return {ok:false,message:'Dépôt du visuel dans le Drive impossible. Réessayez.'};
+ const [saved,stamp]=await Promise.all([db().from('client_visual_items').insert({...base,drive_file_id:deposited}),
   db().from('client_visual_agents').update({last_generated_at:new Date().toISOString()}).eq('client_id',clientId)]);
  if(saved.error||stamp.error)log('journal','not_recorded');
- return {ok:true,png,service,headline:copy.headline,template,driveFileId,review,photo:Boolean(background)};
+ return {ok:true,png,service,headline:copy.headline,template,driveFileId:deposited,review,photo:Boolean(background)};
+}
+
+async function depositToDrive(folder:string,png:Uint8Array):Promise<string|null>{
+ const sha256=createHash('sha256').update(png).digest('hex'),md5=createHash('md5').update(png).digest('hex');
+ try{const token=await importDriveToken();const id=await generateDriveId(token);
+  await uploadDrive(token,id,folder,{bytes:png,mime:'image/png',sha256,md5},`visuel-${randomUUID().slice(0,8)}.png`);return id;}
+ catch{log('drive','upload_failed');return null;}
+}
+/** File de validation installée (migration 20261223000000) ? Sinon : dépôt direct, comportement d'avant. */
+async function reviewQueueInstalled():Promise<boolean>{
+ const r=await db().from('client_visual_items').select('status').limit(1);
+ return !r.error;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Validation par l'administrateur (Publications → Images à valider).
+// ---------------------------------------------------------------------------------------------
+export type PendingVisual={id:string;clientId:string;clientName:string;createdAt:string;preview:string|null;service:string;headline:string;subline:string|null;
+ reviewScore:number|null;reviewIssues:string[];withPhoto:boolean};
+export async function listPendingVisuals():Promise<PendingVisual[]>{
+ await requireAdmin();
+ const rows=await db().from('client_visual_items').select('id,client_id,service,headline,subline,storage_path,review_score,review_issues,photo_asset_id,created_at').eq('status','pending_review').order('created_at',{ascending:true}).limit(40);
+ if(rows.error)return [];
+ const data=(rows.data??[]) as {id:string;client_id:string;service:string;headline:string;subline:string|null;storage_path:string;review_score:number|null;review_issues:unknown;photo_asset_id:string|null;created_at:string}[];
+ const ids=[...new Set(data.map(r=>r.client_id))];
+ const clients=ids.length?await db().from('clients').select('id,name').in('id',ids):{data:[],error:null};
+ const names=new Map(((clients.data??[]) as {id:string;name:string}[]).map(c=>[c.id,c.name]));
+ return Promise.all(data.map(async r=>{const signed=await db().storage.from(BUCKET).createSignedUrl(r.storage_path,900);
+  return {id:r.id,clientId:r.client_id,clientName:names.get(r.client_id)??'Client',createdAt:r.created_at,preview:signed.error?null:signed.data?.signedUrl??null,service:r.service,headline:r.headline,subline:r.subline,
+   reviewScore:r.review_score,reviewIssues:Array.isArray(r.review_issues)?r.review_issues.filter((i):i is string=>typeof i==='string'):[],withPhoto:Boolean(r.photo_asset_id)};}));
+}
+/** « Valider » : dépôt dans le Drive du client (la photothèque l'importe, déjà validé) ; « Refuser » : fichier supprimé. */
+export async function decideVisual(id:string,decision:'approve'|'reject',reason?:string):Promise<{ok:boolean;message:string}>{
+ const {userId}=await requireAdmin();
+ if(!UUID.test(id)||!['approve','reject'].includes(decision))return {ok:false,message:'Demande invalide.'};
+ const found=await db().from('client_visual_items').select('id,client_id,status,storage_path,drive_folder_id').eq('id',id).maybeSingle();
+ const row=found.data as {id:string;client_id:string;status:string;storage_path:string|null;drive_folder_id:string}|null;
+ if(found.error||!row)return {ok:false,message:'Visuel introuvable.'};
+ if(row.status!=='pending_review'||!row.storage_path)return {ok:false,message:'Ce visuel a déjà été traité.'};
+ const now=new Date().toISOString();
+ if(decision==='reject'){
+  const r=await db().from('client_visual_items').update({status:'rejected',decided_by:userId,decided_at:now,rejection_reason:(reason??'').trim().slice(0,500)||null,storage_path:null}).eq('id',id).eq('status','pending_review');
+  if(r.error)return {ok:false,message:'Refus non enregistré. Rechargez la page.'};
+  await db().storage.from(BUCKET).remove([row.storage_path]);
+  await writeAudit({kind:'admin',userId},{action:'visual_agent.rejected',resource_type:'client',resource_id:row.client_id,metadata:{item_id:id}}).catch(()=>undefined);
+  return {ok:true,message:'Visuel refusé : il ne sera pas publié.'};
+ }
+ const file=await db().storage.from(BUCKET).download(row.storage_path);
+ if(file.error||!file.data)return {ok:false,message:'Fichier du visuel introuvable.'};
+ const png=new Uint8Array(await file.data.arrayBuffer());
+ const ctx=await context(row.client_id).catch(()=>null);
+ const folder=ctx?.folder??row.drive_folder_id;
+ const driveFileId=await depositToDrive(folder,png);
+ if(!driveFileId)return {ok:false,message:'Dépôt dans le Drive impossible. Réessayez.'};
+ const r=await db().from('client_visual_items').update({status:'deposited',drive_file_id:driveFileId,decided_by:userId,decided_at:now,storage_path:null}).eq('id',id).eq('status','pending_review');
+ if(r.error)log('decide','not_recorded');
+ await db().storage.from(BUCKET).remove([row.storage_path]);
+ await writeAudit({kind:'admin',userId},{action:'visual_agent.approved',resource_type:'client',resource_id:row.client_id,metadata:{item_id:id,drive_file_id:driveFileId}}).catch(()=>undefined);
+ return {ok:true,message:'Visuel validé et déposé dans le Drive : il rejoindra la photothèque au prochain import.'};
 }
 
 /** Passage planifié : au plus un visuel par client dû, pour quelques clients (le moins récemment servi d'abord). */

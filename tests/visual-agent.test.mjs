@@ -69,7 +69,7 @@ test("migration and wiring: private logos, journal, scheduled step, Drive deposi
   assert.match(sql, /create table public\.client_visual_agents/); assert.match(sql, /per_week smallint not null default 3 check\(per_week between 1 and 14\)/);
   assert.match(sql, /'brand-assets','brand-assets',false/); assert.match(sql, /revoke all on public\.client_visual_agents, public\.client_visual_items from public, anon, authenticated/);
   const service = readFileSync("lib/visual-agent/service.ts", "utf8");
-  assert.match(service, /uploadDrive\(token,driveFileId,ctx\.folder as string/);
+  assert.match(service, /uploadDrive\(token,id,folder,/);
   assert.match(service, /checkCopy\(value,ctx\.facts,used\)/);
   assert.doesNotMatch(service, /publication_(review|submit|schedule|prepare)/, "the agent never creates or approves a publication");
   assert.match(readFileSync("app/api/internal/scheduler/tick/route.ts", "utf8"), /step\("visual_agent", \(\) => runVisualAgentTick\(new Date\(\)\)/);
@@ -82,4 +82,19 @@ test("visuals made by the agent enter the photo library validated (both import o
   assert.match(sql, /status_changed_by !~ '\^user_'/);
   assert.match(sql, /library_status in \('received','to_review','quarantined'\)/);
   assert.match(sql, /status_changed_by='visual_agent'/);
+});
+
+test("scheduled visuals wait for the admin's validation before reaching Drive (migration 20261223000000)", () => {
+  const sql = readFileSync("supabase/migrations/20261223000000_visual_agent_review.sql", "utf8");
+  assert.match(sql, /status text not null default 'deposited' check\(status in\('pending_review','deposited','rejected'\)\)/);
+  assert.match(sql, /check\(status<>'pending_review' or storage_path is not null\)/);
+  const service = readFileSync("lib/visual-agent/service.ts", "utf8");
+  assert.match(service, /options\.trigger==='scheduled'&&await reviewQueueInstalled\(\)/);
+  assert.match(service, /status:'pending_review',storage_path:path,drive_file_id:null/);
+  const pendingBranch = service.slice(service.indexOf("options.trigger==='scheduled'&&"), service.indexOf("const deposited=await depositToDrive"));
+  assert.doesNotMatch(pendingBranch, /depositToDrive|uploadDrive/, "nothing reaches Drive before validation");
+  const decide = service.slice(service.indexOf("export async function decideVisual"));
+  assert.match(decide, /const \{userId\}=await requireAdmin\(\)/);
+  assert.match(decide, /\.eq\('status','pending_review'\)/);
+  assert.match(readFileSync("app/(cockpit)/publications/images/page.tsx", "utf8"), /PendingVisualCard/);
 });

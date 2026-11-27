@@ -2,6 +2,7 @@
 import {revalidatePath} from "next/cache";
 import {requireAdmin} from "@/lib/require-admin";
 import {decideGeneratedImage,type ImageDecision} from "@/lib/publications/photo-agent/service";
+import {decideVisual} from "@/lib/visual-agent/service";
 export type ImageDecisionState={message?:string;ok?:boolean};
 // Validation des images générées par l'Agent Photo : seule voie pour qu'une image générée rejoigne une publication.
 export async function decideGeneratedImageAction(_state:ImageDecisionState,form:FormData):Promise<ImageDecisionState>{
@@ -10,5 +11,15 @@ export async function decideGeneratedImageAction(_state:ImageDecisionState,form:
  if(typeof id!=="string"||typeof decision!=="string"||!["approve","approve_publish","reject"].includes(decision))return {message:"Demande invalide.",ok:false};
  const result=await decideGeneratedImage(id,decision as ImageDecision,typeof reason==="string"?reason:undefined);
  revalidatePath("/publications/images");revalidatePath("/publications");revalidatePath("/publications/review");
+ return {message:result.message,ok:result.ok};
+}
+
+// Visuels planifiés de l'Agent Visuels : seule voie pour qu'un visuel généré rejoigne le Drive et la photothèque.
+export async function decideVisualAction(_state:ImageDecisionState,form:FormData):Promise<ImageDecisionState>{
+ await requireAdmin();
+ const id=form.get("visual_id"),decision=form.get("decision"),reason=form.get("reason");
+ if(typeof id!=="string"||(decision!=="approve"&&decision!=="reject"))return {message:"Demande invalide.",ok:false};
+ const result=await decideVisual(id,decision,typeof reason==="string"?reason:undefined);
+ revalidatePath("/publications/images");
  return {message:result.message,ok:result.ok};
 }

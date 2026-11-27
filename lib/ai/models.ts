@@ -74,6 +74,19 @@ export const agentsAiConfigured = (env: Env = process.env) => Boolean(clean(env.
 /** Modèles Claude qui refusent l'appel d'outil forcé (tool_choice any/tool → erreur 400) : « auto » à la place. */
 export const rejectsForcedToolUse = (model: string) => /^claude-(opus-5-5|sonnet-5-5|fable-5-[12]|mythos-5-[12])/.test(model);
 
+/** Modèles qui acceptent le repli serveur en cas de refus de sécurité (fallbacks: "default", bêta server-side-fallback). */
+export const acceptsServerFallbacks = (model: string) => /^claude-(opus-5-5|opus-5|sonnet-5-5|fable-5-[12])$/.test(model);
+
+/**
+ * Jetons d'entrée en équivalent plein tarif, pour le budget : écriture du cache × 1,25, lecture du cache × 0,1 (tarifs
+ * publics Anthropic, arrondis au-dessus). null si la réponse n'en donne pas (aucune mesure inventée).
+ */
+export function anthropicBilledInput(usage: { input_tokens?: unknown; cache_read_input_tokens?: unknown; cache_creation_input_tokens?: unknown } | undefined): number | null {
+  const int = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 ? n as number : 0;
+  if (!usage || !Number.isInteger(usage.input_tokens) || (usage.input_tokens as number) < 0) return null;
+  return (usage.input_tokens as number) + Math.ceil(int(usage.cache_creation_input_tokens) * 1.25) + Math.ceil(int(usage.cache_read_input_tokens) * 0.1);
+}
+
 /**
  * Schéma JSON accepté par les sorties structurées Anthropic : les contraintes numériques, de longueur et de taille de
  * tableau n'y sont pas prises en charge. Elles sont retirées du schéma envoyé ; chaque appelant valide déjà la sortie.

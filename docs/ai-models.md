@@ -43,7 +43,14 @@ Une valeur invalide est ignorée.
 - Appel d'outil forcé refusé par Opus 5.5 : « auto », un seul appel par tour ; la réflexion est renvoyée telle quelle
   avec l'appel d'outil au tour suivant.
 - Coût estimé : tarifs publics (Opus 5.5 : 4 $ / 20 $ par million de jetons) × 1,25 ; modèle inconnu au tarif le plus
-  élevé.
+  élevé. Cache : lecture comptée à 10 %, écriture à 125 % du prix d'entrée.
+- Cache du préfixe (`cache_control` automatique) sur tous les appels Claude : une relance corrective, un tour d'outil ou
+  la préparation suivante relit consignes et outils à 10 % du prix.
+- Assistant serveur mesuré (Google Ads, SEO, WhatsApp) : même niveau de réflexion que la famille de l'agent, même repli
+  serveur sur refus ; un refus final ou une sortie tronquée est une erreur (repli déterministe explicite), jamais une
+  analyse vide.
+- Plafond mensuel IA par défaut d'un client : 15 € (5 € avant Claude), toutes sources comprises (Publications et
+  Photothèque incluses). Un plafond réglé dans la fiche client reste prioritaire.
 
 ## Ordre de mise en service
 

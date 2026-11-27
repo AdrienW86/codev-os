@@ -109,8 +109,8 @@ async function claudeProviderFor(scope: Scope, provider: AIProvider): Promise<AI
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key || process.env.AGENTS_AI_PROVIDER?.trim().toLowerCase() === "openai" || !(await claudeEnabledFor(scope.clientId))) return provider;
   const choice = modelForAgent(scope.agent, process.env, { claudeAllowed: true });
-  if (choice.provider !== "anthropic" || (provider.id === "anthropic" && provider.model === choice.model)) return provider;
-  return createAnthropicProvider(key, choice.model);
+  if (choice.provider !== "anthropic") return provider;
+  return createAnthropicProvider(key, choice.model, undefined, { effort: choice.effort });
 }
 
 /** Réglage du plafond mensuel du client (fiche client → Agents). */

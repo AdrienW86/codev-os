@@ -373,3 +373,25 @@ test("Directeur : show_screen met l'écran au premier plan (adresse du serveur, 
   assert.equal(proposal.proposal.tool, "launch_task");
   assert.equal(executed, 0, "jamais exécuté sans le bouton de confirmation");
 });
+
+test("Anthropic adapter: family effort, safety fallback, cached prefix; refusal and truncated output are errors, never an empty analysis", async () => {
+  const bodies = [], heads = [];
+  let reply = { stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }, content: [{ type: "tool_use", id: "t", name: "list_news", input: {} }] };
+  const fetchImpl = async (_url, init) => { bodies.push(JSON.parse(init.body)); heads.push(init.headers); return jsonResponse(200, reply); };
+  const opus = ai.createAnthropicProvider("ak", "claude-opus-5-5", fetchImpl, { effort: "high" });
+  const ok = await opus.complete({ system: "S", messages: [{ role: "user", content: "x" }], tools: tools.toolSpecs(), toolChoice: "required" });
+  assert.equal(bodies[0].output_config.effort, "high");
+  assert.equal(bodies[0].fallbacks, "default");
+  assert.equal(heads[0]["anthropic-beta"], "server-side-fallback-2026-07-01");
+  assert.deepEqual(plain(bodies[0].cache_control), { type: "ephemeral" });
+  assert.equal(ok.usage.inputTokens, 200, "cache lu compté à 10 % du plein tarif");
+  reply = { ...reply, stop_reason: "refusal" };
+  await assert.rejects(() => opus.complete({ system: "S", messages: [], tools: [] }), (error) => error.kind === "rejected" && error.code === "refusal");
+  reply = { ...reply, stop_reason: "max_tokens" };
+  await assert.rejects(() => opus.complete({ system: "S", messages: [], tools: [] }), (error) => error.kind === "malformed" && error.code === "max_tokens");
+  const older = ai.createAnthropicProvider("ak", "claude-x", async (_url, init) => { bodies.push(JSON.parse(init.body)); heads.push(init.headers); return jsonResponse(200, { content: [] }); });
+  await older.complete({ system: "S", messages: [], tools: [] });
+  assert.equal(bodies.at(-1).fallbacks, undefined, "repli serveur seulement pour les modèles qui l'acceptent");
+  assert.equal(bodies.at(-1).output_config, undefined);
+  assert.equal(heads.at(-1)["anthropic-beta"], undefined);
+});

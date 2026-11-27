@@ -22,6 +22,8 @@ import { addDays, detectOpportunities, pageSignals, pathOf, type DetectedOpportu
 import { buildBusinessContext } from "@/lib/seo/context";
 import { persistOpportunities, type StoreDeps } from "@/lib/seo/opportunity-store";
 import { measureInterventions } from "@/lib/seo/measure";
+import { weeklySeoPlan } from "@/lib/seo/weekly-plan-service";
+import { seoPlanReason } from "@/lib/seo/weekly-plan";
 import { siteUrl } from "@/lib/monitoring/evaluate";
 import { recordRecommendation } from "@/lib/agents/outputs";
 import { writeAudit } from "@/lib/core/audit";
@@ -182,6 +184,15 @@ export const analyzeSeoRun: RunHandler = async (args) => {
       notes.push(`${detected.length} opportunité(s) analysée(s), ${persisted.created} nouvelle(s), ${persisted.toReview} à examiner`);
       if (persisted.resurfaced) notes.push(`${persisted.resurfaced} changement(s) significatif(s) sur des opportunités closes`);
       if (measured.measured) notes.push(`${measured.measured} mesure(s) d’intervention`);
+      // Plan de la semaine : l'IA retient et explique au plus 3 opportunités détectées (recommandation à valider).
+      if (depth === "weekly") {
+        const planned = await weeklySeoPlan(client.id, client.name, detected);
+        if (planned.plan) {
+          await recordRecommendation(actor, { agentId: agent.id, clientId: client.id, title: "Plan SEO de la semaine", reason: seoPlanReason(planned.plan).slice(0, 4000), severity: "medium",
+            payload: { source: "seo_weekly_plan", analysis_id: analysisId, fingerprints: planned.plan.items.map((item) => item.fingerprint) } });
+          notes.push(`Plan de la semaine : ${planned.plan.items.length} priorité(s)`);
+        } else notes.push(`Plan de la semaine non rédigé (${planned.reason})`);
+      }
       if (depth === "weekly" && repository) notes.push(github.length ? `GitHub : ${github.length} page(s) lue(s)` : "GitHub : aucune page source rapprochée");
     } else {
       sources.searchConsole = { ok: false, error: property ? "not_connected" : "no_property" };

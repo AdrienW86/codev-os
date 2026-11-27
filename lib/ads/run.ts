@@ -5,7 +5,8 @@ import { recordSync } from "@/lib/connections/sync";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { campaignMetrics } from "@/lib/providers/google-ads";
 import { ProviderError } from "@/lib/providers/errors";
-import { detectAdsAnomalies, summarize } from "@/lib/ads/anomalies";
+import { detectAdsAnomalies, summarize, type AdsAnomaly } from "@/lib/ads/anomalies";
+import { readAdsAnomalies } from "@/lib/ads/daily-reading-service";
 import { openIncident, prepareAction, recordRecommendation } from "@/lib/agents/outputs";
 import { RunError, type RunHandler } from "@/lib/runs/types";
 import type { Json } from "@/lib/supabase/database.types";
@@ -42,22 +43,30 @@ export const monitorAdsRun: RunHandler = async ({ job, agent, actor, now, runId 
   const totals = summarize(thisWeek);
   await supabase.from("metric_snapshots").upsert({ client_id: job.client_id, provider: "google-ads", metric_key: "weekly_summary", period_start: current.start, period_end: current.end, data: totals as unknown as Json }, { onConflict: "client_id,provider,metric_key,period_start,period_end" });
   const anomalies = detectAdsAnomalies(thisWeek, lastWeek);
+  // Incidents d'abord : seules les anomalies nouvelles (incident créé) reçoivent une recommandation, et donc une lecture IA.
+  const opened: { anomaly: AdsAnomaly; incidentId: string }[] = [];
   for (const anomaly of anomalies) {
     const incident = await openIncident(actor, { clientId: job.client_id, agentId: agent.id, source: "ads", severity: anomaly.severity, title: `${anomaly.campaign} : ${anomaly.rule === "spend_without_conversions" ? "dépenses sans conversion" : anomaly.rule === "cpa_spike" ? "coût par conversion en hausse" : "dépenses en forte hausse"}`, fingerprint: `ads:${job.client_id}:${anomaly.campaignId}:${anomaly.rule}`, details: { detail: anomaly.detail, period: current } });
-    if (!incident.created) continue;
+    if (incident.created) opened.push({ anomaly, incidentId: incident.id });
+  }
+  const ai = opened.length ? await readAdsAnomalies(job.client_id, opened.map((item) => item.anomaly), thisWeek, lastWeek) : null;
+  for (const { anomaly, incidentId } of opened) {
     const proposed = anomaly.rule === "spend_without_conversions"
       ? { check: "Vérifier les conversions principales (appels/formulaires), le déclenchement des balises et les termes de recherche.", expected: "Fiabiliser le suivi avant une optimisation des mots-clés ou des enchères." }
       : anomaly.rule === "cpa_spike"
         ? { check: "Comparer les requêtes, appareils, zones, taux de conversion et changements récents avant d'ajuster les enchères.", expected: "Identifier la source de la hausse du coût par conversion sans couper les prospects qualifiés." }
         : { check: "Comparer le volume et les CPC, les requêtes non pertinentes et les changements de ciblage ou de budget.", expected: "Déterminer la cause des dépenses supplémentaires avant toute exclusion ou réduction." };
-    const recommendation = await recordRecommendation(actor, { agentId: agent.id, clientId: job.client_id, title: `Revoir la campagne « ${anomaly.campaign} »`, reason: `${anomaly.detail} ${proposed.check} Proposition sans exécution automatique ; vérifier la qualité réelle des leads.`, severity: anomaly.severity, payload: { campaign_id: anomaly.campaignId, rule: anomaly.rule, incident_id: incident.id } });
-    await supabase.from("incidents").update({ recommendation_id: recommendation.id }).eq("id", incident.id);
-    await prepareAction(actor, { recommendationId: recommendation.id, type: "ads.optimization", parameters: { campaign: anomaly.campaign, change: proposed.check, expected_effect: proposed.expected }, incidentId: incident.id });
+    const reading = ai?.readings?.get(anomaly.campaignId) ?? null;
+    const check = reading ? `Causes possibles (à vérifier) : ${reading.reading} À regarder en premier : ${reading.check}` : proposed.check;
+    const recommendation = await recordRecommendation(actor, { agentId: agent.id, clientId: job.client_id, title: `Revoir la campagne « ${anomaly.campaign} »`, reason: `${anomaly.detail} ${check} Proposition sans exécution automatique ; vérifier la qualité réelle des leads.`, severity: anomaly.severity, payload: { campaign_id: anomaly.campaignId, rule: anomaly.rule, incident_id: incidentId, ai_reading: reading ? true : false } });
+    await supabase.from("incidents").update({ recommendation_id: recommendation.id }).eq("id", incidentId);
+    await prepareAction(actor, { recommendationId: recommendation.id, type: "ads.optimization", parameters: { campaign: anomaly.campaign, change: reading ? reading.check : proposed.check, expected_effect: proposed.expected }, incidentId });
   }
+  const aiText = !ai ? "" : ai.readings ? ` Lecture IA ajoutée à ${ai.readings.size} anomalie(s).` : ` Lecture IA non ajoutée (${ai.reason}).`;
   // Diagnostic expert sur 30 jours + pilote automatique : une panne ici n'annule pas la veille (résultat partiel).
   let expert: Awaited<ReturnType<typeof runExpertAndAutopilot>> | null = null;
   try { expert = await runExpertAndAutopilot({ job, agent, actor, now }, { external_account_id: connection.external_account_id, metadata: connection.metadata }, tracking.ids); }
   catch { expert = null; }
   const expertText = expert ? ` Diagnostic expert : ${expert.findings} levier(s), ${expert.recommendations} nouvelle(s) recommandation(s).${expert.autopilot ? ` Pilote automatique : ${expert.autopilot.applied} mot(s)-clé(s) négatif(s) appliqué(s)${expert.autopilot.uncertain ? `, ${expert.autopilot.uncertain} incertain(s)` : ""}${expert.autopilot.skipped ? `, ${expert.autopilot.skipped} non appliqué(s) (écriture désactivée côté serveur ou doublon)` : ""}.` : ""}` : " Diagnostic expert indisponible pour cette exécution.";
-  return { status: "succeeded", summary: `${totals.campaigns} campagne(s) hors Local Services analysée(s) : ${totals.cost.toFixed(2)} € dépensés, ${totals.conversions} conversion(s), ${anomalies.length} anomalie(s).${expertText}`, data: { anomalies: anomalies.length, expert } };
+  return { status: "succeeded", summary: `${totals.campaigns} campagne(s) hors Local Services analysée(s) : ${totals.cost.toFixed(2)} € dépensés, ${totals.conversions} conversion(s), ${anomalies.length} anomalie(s).${aiText}${expertText}`, data: { anomalies: anomalies.length, expert } };
 };

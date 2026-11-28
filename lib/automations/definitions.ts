@@ -87,7 +87,7 @@ export const seoAutomationPresets = [
 /** Automatisations recommandées : créées en un clic, modifiables, jamais actives sans action de l'administrateur. */
 export const automationPresets: AutomationPreset[] = [
   { id: "weekly-reports", name: "Rapports hebdomadaires", runType: "report.generate", frequency: "weekly", schedule: { time: "08:00", weekdays: [1] }, config: { kind: "weekly" }, why: "Chaque lundi, un rapport à relire pour chaque client suivi." },
-  { id: "monthly-reports", name: "Rapports mensuels", runType: "report.generate", frequency: "monthly", schedule: { time: "08:00", monthDay: 1 }, config: { kind: "monthly" }, why: "Le 1er du mois, le bilan du mois écoulé." },
+  { id: "monthly-reports", name: "Rapports mensuels et bilans clients", runType: "report.generate", frequency: "monthly", schedule: { time: "08:00", monthDay: 3 }, config: { kind: "monthly" }, why: "Le 3 du mois (données Google du mois complètes), le rapport et le bilan client du mois écoulé, à relire puis envoyer." },
   { id: "site-checks", name: "Contrôle des sites", runType: "monitoring.check_sites", frequency: "daily", schedule: { time: "07:00" }, config: {}, why: "Chaque matin : disponibilité et temps de réponse des sites suivis." },
   { id: "tech-watch", name: "Veille tech & IA", runType: "news.fetch", frequency: "daily", schedule: { time: "06:30" }, config: {}, why: "Les actualités utiles, triées, avant de commencer la journée." },
 ];

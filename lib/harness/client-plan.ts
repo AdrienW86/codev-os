@@ -1,6 +1,7 @@
 // Chef de projet (harness) : pour un client, quel agent est attendu, lequel travaille, et ce qui attend l'administrateur.
 // Fonction pure, uniquement à partir de faits lus en base : aucune estimation, aucun chiffre inventé.
 import { harnessCharters, type HarnessAgentId } from "./charter";
+import { automationKind } from "@/lib/agents/coverage";
 
 export type ClientFacts = {
   clientId: string;
@@ -10,7 +11,9 @@ export type ClientFacts = {
   assignedTypes: ReadonlySet<string>;
   /** Types d'agents du registre actifs globalement. */
   activeTypes: ReadonlySet<string>;
-  automations: readonly { run_type: string; client_id: string | null; status: string }[];
+  automations: readonly { run_type: string; client_id: string | null; status: string; config?: unknown }[];
+  /** Adresse e-mail renseignée sur la fiche client (destinataire du bilan mensuel). */
+  hasEmail?: boolean;
   publication: { configured: boolean; autoApprove: boolean; pendingReview: number; scheduledNext7Days: number; failedDeliveries: number; generationEnabled?: boolean; publishingEnabled?: boolean; slotsPerWeek?: number } | null;
   blog: { enabled: boolean; perWeek?: number; socialRelay?: boolean; scheduledNext7Days?: number; publishedLast7Days?: number } | null;
   visual: { enabled: boolean; perWeek?: number } | null;
@@ -40,6 +43,12 @@ export function buildClientPlan(facts: ClientFacts): ClientPlan {
   // Pilotage
   seat("report", facts.activeTypes.has("report") && planned(facts, "report.generate", false) ? "working" : "needs_setup",
     planned(facts, "report.generate", false) ? "Rapports planifiés pour tous les clients actifs." : "Aucun rapport planifié.", "/agents#supervision");
+
+  // Agent Bilan client : suit les rapports mensuels (automatisation globale, config.kind = monthly) et l'Agent Rapport.
+  const monthly = facts.automations.some((a) => a.run_type === "report.generate" && a.status === "active" && automationKind(a) === "monthly");
+  if (!facts.activeTypes.has("report") || !monthly) { seat("client-bilan", "needs_setup", "Rapports mensuels non planifiés : aucun bilan préparé.", "/agents#supervision"); todo.push({ label: "Planifier les rapports mensuels (bilans clients)", href: "/agents#supervision" }); }
+  else if (facts.hasEmail === false) { seat("client-bilan", "needs_setup", "Bilan préparé chaque mois, mais aucun e-mail sur la fiche client pour l’envoyer.", `${base}?tab=information`); todo.push({ label: "Renseigner l’e-mail du client (envoi du bilan)", href: `${base}?tab=information` }); }
+  else seat("client-bilan", "working", "Bilan du mois préparé avec le rapport mensuel ; envoi après votre validation.", "/reports?kind=monthly");
 
   // Contenu
   const social = active(facts, "social");
@@ -113,6 +122,9 @@ export function settingsOf(facts: ClientFacts, agent: HarnessAgentId): string[] 
     case "seo": out.push(...schedulesOf(facts, "seo.analyze")); break;
     case "monitoring": out.push(...schedulesOf(facts, "monitoring.check_sites")); break;
     case "report": out.push(...schedulesOf(facts, "report.generate")); break;
+    case "client-bilan":
+      if (facts.hasEmail !== undefined) out.push(facts.hasEmail ? "Destinataire : e-mail de la fiche client" : "Aucun e-mail client renseigné");
+      break;
     default: break;
   }
   return out;

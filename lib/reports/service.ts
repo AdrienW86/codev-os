@@ -11,6 +11,7 @@ import { clientReportPdfFilename, renderClientReportPdf } from "@/lib/reports/pd
 import { ProviderError } from "@/lib/providers/errors";
 import { requireReportVersionStorage } from "./version-storage";
 import { synthesizeReport } from "./synthesis-service";
+import { buildClientBilan } from "@/lib/reports/bilan";
 import { emailSendingStatus, sendEmail } from "@/lib/providers/email";
 import { EMAIL_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "@/lib/reports/email-logo";
 import type { Json } from "@/lib/supabase/database.types";
@@ -107,6 +108,13 @@ export async function generateReport(actor: Actor, input: { clientId: string; ki
       sections: built.client.sections, documents: gathered.documents.map((document) => ({ title: document.title, summary: document.summary })) });
     if (synthesis.summary) { built.client.summary = synthesis.summary; built.internal.sections.push({ title: "Synthèse rédigée par l’IA (à relire)", lines: [synthesis.summary, `Résumé calculé remplacé : ${computed}`] }); }
     else built.internal.sections.push({ title: "Synthèse IA", lines: [`Non utilisée : ${synthesis.reason}. Résumé calculé conservé.`] });
+    // Agent Bilan client : le bilan du mois, premier document joint et corps de l'e-mail d'envoi. Il ne reprend que le
+    // travail enregistré et les chiffres déjà calculés ; il suit la même approbation et le même envoi confirmé.
+    const bilan = buildClientBilan({ clientName: data.client?.name ?? "", period, input: data, client: built.client, documents: gathered.documents });
+    if (bilan) {
+      (built.client as typeof built.client & { documents?: unknown }).documents = [bilan, ...gathered.documents];
+      built.internal.sections.push({ title: "Bilan client (à relire avant envoi)", lines: [bilan.summary, ...bilan.tables.flatMap((table) => table.rows.map((row) => row.join(" · "))), ...bilan.notes] });
+    } else built.internal.sections.push({ title: "Bilan client", lines: ["Non préparé : aucune activité ni résultat à présenter sur la période."] });
   }
   built.internal.sections.push({ title: "Documents joints (un PDF par agent)", lines: [
     ...(gathered.documents.length ? gathered.documents.map((document) => `${reportDocumentLabels[document.key]} : ${document.summary}`) : ["Aucune source branchée pour ce client : rapport sans document joint."]),

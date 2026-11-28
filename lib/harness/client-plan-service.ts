@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { describeSchedule, nextRun, scheduleSchema, type Frequency, type Schedule } from "@/lib/scheduler/recurrence";
 import { buildClientPlan, type ClientFacts, type ClientPlan } from "./client-plan";
+import { automationKind } from "@/lib/agents/coverage";
 import { buildWeekPlan, type WeekEvent, type WeekPlan } from "./week-plan";
 import type { HarnessAgentId } from "./charter";
 
@@ -17,7 +18,7 @@ type AutomationLite = { run_type: string; client_id: string | null; status: stri
 function automationAgent(row: AutomationLite): { agent: HarnessAgentId; text: string } | null {
   const depth = row.config && typeof row.config === "object" ? (row.config as Record<string, unknown>).depth : null;
   switch (row.run_type) {
-    case "report.generate": return { agent: "report", text: "Rapports de la semaine" };
+    case "report.generate": return automationKind(row) === "monthly" ? { agent: "client-bilan", text: "Rapport mensuel et bilan client" } : { agent: "report", text: "Rapports de la semaine" };
     case "monitoring.check_sites": return { agent: "monitoring", text: "Contrôle du site" };
     case "seo.analyze": return { agent: "seo", text: depth === "weekly" ? "Analyse SEO hebdomadaire" : "Analyse SEO quotidienne" };
     case "ads.monitor": return { agent: "google-ads", text: "Surveillance des campagnes" };
@@ -46,7 +47,7 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
   const soon = new Date(now.getTime() + 7 * DAY), recent = new Date(now.getTime() - 7 * DAY).toISOString();
   const optional = async <T,>(query: PromiseLike<{ data: T | null; error: unknown }>) => { try { const r = await query; return r.error ? null : r.data; } catch { return null; } };
   const [client, services, assignments, agents, automations, pubSettings, pending, scheduled, failed, blog, blogUpcoming, blogPublished, visual, video, media] = await Promise.all([
-    db.from("clients").select("id,website").eq("id", clientId).maybeSingle(),
+    db.from("clients").select("id,website,email").eq("id", clientId).maybeSingle(),
     optional(db.from("client_services").select("service_key,lifecycle").eq("client_id", clientId)),
     optional(db.from("agent_client_assignments").select("enabled,agent:agents(agent_type,enabled,status)").eq("client_id", clientId)),
     optional(db.from("agents").select("agent_type,enabled,status")),
@@ -89,11 +90,11 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
   };
   const slots = field(pubSettings, "weekly_slots");
   const facts: ClientFacts = {
-    clientId, website: client.data.website ?? null,
+    clientId, website: client.data.website ?? null, hasEmail: Boolean(client.data.email),
     services: (services ?? []).map((s) => ({ key: s.service_key ?? "", lifecycle: s.lifecycle ?? "" })),
     assignedTypes: assigned,
     activeTypes: new Set((agents ?? []).filter(runnable).map((a) => a.agent_type).filter((t): t is string => Boolean(t))),
-    automations: ((automations ?? []) as AutomationLite[]).map((row) => ({ run_type: row.run_type, client_id: row.client_id, status: row.status })),
+    automations: ((automations ?? []) as AutomationLite[]).map((row) => ({ run_type: row.run_type, client_id: row.client_id, status: row.status, config: row.config })),
     publication: pubSettings ? {
       configured: true, autoApprove: flag(pubSettings, "auto_approve_enabled"), pendingReview: pending?.length ?? 0, scheduledNext7Days: scheduled?.length ?? 0, failedDeliveries: failed?.length ?? 0,
       generationEnabled: flag(pubSettings, "generation_enabled"), publishingEnabled: flag(pubSettings, "publishing_enabled"), slotsPerWeek: Array.isArray(slots) ? slots.length : undefined,

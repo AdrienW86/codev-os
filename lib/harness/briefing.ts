@@ -270,6 +270,19 @@ export function reportSignals(rows: readonly ReportRow[], now: Date): BriefingSi
   return { facts, gaps: recent.length ? [] : ["Aucun rapport généré sur 35 jours."] };
 }
 
+/** Agent Bilan client : bilans mensuels préparés, envoyés et en attente d'envoi (rapports mensuels). */
+export type BilanRow = { status: string; kind: string; created_at: string; sent_at?: string | null };
+export function bilanSignals(rows: readonly BilanRow[], now: Date): BriefingSignals {
+  const monthly = rows.filter((row) => row.kind === "monthly" && withinDays(row.created_at, now, 40));
+  const sent = monthly.filter((row) => row.status === "sent");
+  const waiting = monthly.filter((row) => row.status === "approved" || row.status === "ready_for_review");
+  const facts: BriefingFact[] = [];
+  if (monthly.length) facts.push({ statement: `${plural(monthly.length, "bilan mensuel préparé", "bilans mensuels préparés")} sur 40 jours.`, at: latest(monthly.map((row) => row.created_at)), href: "/reports?kind=monthly" });
+  if (sent.length) facts.push({ statement: `${plural(sent.length, "bilan envoyé", "bilans envoyés")} au client.`, at: latest(sent.map((row) => row.sent_at ?? row.created_at)), href: "/reports?kind=monthly" });
+  if (waiting.length) facts.push({ statement: `${plural(waiting.length, "bilan attend", "bilans attendent")} votre envoi.`, at: latest(waiting.map((row) => row.created_at)), href: "/validation" });
+  return { facts, gaps: monthly.length ? [] : ["Aucun bilan mensuel préparé sur 40 jours : planifier les rapports mensuels (Agents → supervision)."] };
+}
+
 export type NewsletterRow = { status: string; created_at: string; sent_at: string | null; sent_count: number | null };
 export function newsletterSignals(rows: readonly NewsletterRow[], now: Date): BriefingSignals {
   const sent = rows.filter((row) => withinDays(row.sent_at, now, 60));

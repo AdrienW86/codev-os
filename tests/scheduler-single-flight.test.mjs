@@ -7,7 +7,7 @@ import { load, src, json } from "./helpers/ts-load.mjs";
 import { createFakeSupabase } from "./helpers/fake-supabase.mjs";
 
 const SECRET = "cron-secret-0123456789abcdef-XYZ";
-const STEPS = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "auto_decisions", "acquisition_send", "acquisition_writer", "search_console", "google_analytics", "local_seo", "local_competition", "local_geogrid", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"];
+const STEPS = ["whatsapp_exports", "automations", "publication_auto_approval", "publication_delivery_prepare", "publication_delivery_send", "push", "harness_control", "auto_decisions", "acquisition_send", "acquisition_writer", "search_console", "google_analytics", "local_seo", "local_competition", "local_geogrid", "google_reviews", "lighthouse", "whatsapp", "visual_agent", "media_intelligence", "publication_preparation", "publication_photo", "publication_stats", "blog_agent", "acquisition_discovery", "video_agent", "site_health"];
 const minutesAgo = m => new Date(Date.now() - m * 60_000).toISOString();
 
 function routeWith(fake, { env = { CRON_SECRET: SECRET }, slow } = {}) {
@@ -44,6 +44,7 @@ function routeWith(fake, { env = { CRON_SECRET: SECRET }, slow } = {}) {
     "@/lib/local-seo/service": { runLocalSeoTick: mark("local_seo", { disabled: "migration", collected: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 }) },
     "@/lib/local-competition/service": { runLocalCompetitionTick: mark("local_competition", { disabled: "provider", sources: 0, collected: 0, failed: 0, pending: 0, alerts: 0, resolved: 0, purged: 0 }) },
     "@/lib/local-geogrid/service": { runLocalGeogridTick: mark("local_geogrid", { disabled: "provider", collected: 0, failed: 0, pending: 0, points: 0 }) },
+    "@/lib/reviews/service": { runGoogleReviewsTick: mark("google_reviews", { disabled: "migration", synced: 0 }) },
     "@/lib/site-health/service": { runSiteHealthTick: mark("site_health", { disabled: "migration", checked: 0, failed: 0, pending: 0, alerts: 0, resolved: 0 }) },
     "@/lib/publications/stats/service": { collectPublicationStats: mark("publication_stats", { disabled: "migration", due: 0, ok: 0, unsupported: 0, failed: 0 }) },
     "@/lib/publications/photo-agent/service": { runPhotoAgentTick: mark("publication_photo", { disabled: "migration", candidates: 0, generated: 0, skipped: 0, failed: 0, budget: 0 }) },
@@ -74,7 +75,7 @@ test("tick: valid trigger runs every step once and writes a finished heartbeat; 
   assert.ok(row.finished_at); assert.equal(row.ok, true); assert.equal(row.last_success_at, row.finished_at);
   assert.deepEqual(json(Object.fromEntries(Object.entries(row.steps).map(([k, v]) => [k, v.status]))), {
     whatsapp_exports: "ok", automations: "ok", publication_auto_approval: "disabled", publication_delivery_prepare: "disabled", publication_delivery_send: "disabled", push: "disabled",
-    harness_control: "ok", auto_decisions: "ok", acquisition_send: "ok", acquisition_writer: "ok", search_console: "disabled", google_analytics: "disabled", local_seo: "disabled", local_competition: "disabled", local_geogrid: "disabled", lighthouse: "disabled", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "disabled", publication_photo: "disabled", publication_stats: "disabled", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok", site_health: "disabled" });
+    harness_control: "ok", auto_decisions: "ok", acquisition_send: "ok", acquisition_writer: "ok", search_console: "disabled", google_analytics: "disabled", local_seo: "disabled", local_competition: "disabled", local_geogrid: "disabled", google_reviews: "disabled", lighthouse: "disabled", whatsapp: "disabled", visual_agent: "ok", media_intelligence: "ok", publication_preparation: "disabled", publication_photo: "disabled", publication_stats: "disabled", blog_agent: "ok", acquisition_discovery: "ok", video_agent: "ok", site_health: "disabled" });
   assert.doesNotMatch(JSON.stringify([res, fake.tables, logs]), new RegExp(SECRET), "the secret never appears in the response, the heartbeat or the logs");
   // Le passage suivant (une minute plus tard) reprend la ligne terminée.
   const again = await route.GET(request(`Bearer ${SECRET}`));

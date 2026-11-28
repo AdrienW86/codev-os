@@ -26,6 +26,7 @@ import { runSiteHealthTick } from "@/lib/site-health/service";
 import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
 import { runProspectingSendTick } from "@/lib/acquisition/send-service";
 import { runProspectingWriterTick } from "@/lib/acquisition/writer-service";
+import { productionReviewsDeps, runGoogleReviewsTick } from "@/lib/reviews/service";
 import { runNow } from "@/lib/automations/service";
 import type { RunType } from "@/lib/agents/registry";
 
@@ -92,6 +93,7 @@ async function run(task: LaunchTask, clientId: string | null, actor: LaunchActor
     case "local-seo": return { ok: true, message: count(await runLocalSeoTick(now, productionLocalSeoDeps(), { clientId: need() }), ["collected", "failed", "alerts"]) };
     case "local-competition": return { ok: true, message: count(await runLocalCompetitionTick(now, productionLocalCompetitionDeps(), { clientId: need() }), ["collected", "failed", "alerts"]) };
     case "local-geogrid": return { ok: true, message: count(await runLocalGeogridTick(now, productionLocalGeogridDeps(), { clientId: need() }), ["collected", "points", "failed"]) };
+    case "google-reviews": return { ok: true, message: count(await runGoogleReviewsTick(now, productionReviewsDeps(), { clientId: need(), deadline: Date.now() + 100_000 }), ["newReviews", "negatives", "drafted", "published", "requestsSent", "failed"]), href: `/avis?client=${clientId}` };
     case "lighthouse": return { ok: true, message: count(await runLighthouseTick(now, { clientId: need() }), ["audited", "failed", "alerts"]), href: "/performance" };
     case "site-health": return { ok: true, message: count(await runSiteHealthTick(now, { clientId: need() }), ["checked", "failed", "alerts"]) };
     case "prospection-writer": return { ok: true, message: count(await runProspectingWriterTick({ deadline: Date.now() + 55_000 }), ["written", "template"]), href: "/acquisition" };

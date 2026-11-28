@@ -12,7 +12,7 @@ export type InboxSection = {
   /** Total en attente, et part qui attend vraiment une main humaine (0 pour une section automatique). */
   count: number; manual: number; note: string | null; href: string; items: InboxItem[];
 };
-export type InboxSourceId = "reports" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "newsletters" | "ai-budget" | "seo" | "photos" | "alerts";
+export type InboxSourceId = "reports" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "newsletters" | "google-reviews" | "ai-budget" | "seo" | "photos" | "alerts";
 export type Inbox = { sections: InboxSection[]; manualTotal: number; unavailable: number; superseded: string[] };
 
 type Named = { id: string; name: string | null };
@@ -29,6 +29,8 @@ export type InboxInput = {
   prospection: readonly { id: string; subject: string | null; created_at: string }[] | null;
   /** Newsletters en brouillon (envoi aux contacts du client). Absent : module non installé, aucune section. */
   newsletters?: readonly { id: string; client_id: string; subject: string | null; created_at: string }[] | null;
+  /** Réponses aux avis Google prêtes à publier. Absent : Agent Avis non installé, aucune section. */
+  googleReviews?: readonly { id: string; client_id: string; rating: number | null; created_at: string }[] | null;
   /** Clients dont le plafond IA mensuel est atteint. Absent : budget non installé, aucune section. */
   aiBudget?: readonly { client_id: string; spentEur: number; capEur: number }[] | null;
   seo: readonly { id: string; client_id: string | null; keyword: string | null; created_at: string; agent_id?: string | null }[] | null;
@@ -107,6 +109,9 @@ export function buildInbox(input: InboxInput): Inbox {
     items: () => (input.prospection ?? []).map((m) => ({ id: m.id, title: m.subject || "Premier contact", client: null, at: m.created_at, href: "/acquisition" })) });
   if (input.newsletters !== undefined) add({ id: "newsletters", label: "Newsletters à approuver", agent: "newsletter", crucial: "third-party-email", href: "/emailing", rows: input.newsletters,
     items: () => (input.newsletters ?? []).map((n) => ({ id: n.id, title: n.subject || "Newsletter", client: client(n.client_id), at: n.created_at, href: "/emailing" })) });
+  if (input.googleReviews !== undefined) add({ id: "google-reviews", label: "Réponses aux avis Google à publier", agent: "reviews", crucial: "public-reply", href: "/avis", rows: input.googleReviews,
+    items: () => perClient(input.googleReviews ?? [], client, (id) => `/avis?client=${id}`, "réponse(s)"),
+    note: () => { const negative = (input.googleReviews ?? []).filter((r) => r.rating !== null && r.rating <= 3).length; return negative ? `Dont ${negative} à un avis négatif (jamais publiée sans vous).` : null; } });
   if (input.aiBudget !== undefined) add({ id: "ai-budget", label: "Plafonds IA atteints", agent: null, crucial: "ai-budget", href: "/settings", rows: input.aiBudget,
     items: () => (input.aiBudget ?? []).map((b) => ({ id: b.client_id, title: `${b.spentEur.toFixed(2)} € dépensés sur ${b.capEur.toFixed(2)} € ce mois : relever le plafond ?`, client: client(b.client_id), at: "", href: `/clients/${b.client_id}?tab=agents` })) });
 

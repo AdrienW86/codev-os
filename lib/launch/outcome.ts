@@ -24,6 +24,11 @@ const phrases: Record<string, Phrase> = {
   stopped: ["espace arrêté (réputation)", "espaces arrêtés (réputation)"],
   written: ["brouillon personnalisé", "brouillons personnalisés"],
   template: ["brouillon resté sur le modèle", "brouillons restés sur le modèle"],
+  newReviews: ["nouvel avis", "nouveaux avis"],
+  negatives: ["avis négatif signalé", "avis négatifs signalés"],
+  drafted: ["réponse rédigée (à valider)", "réponses rédigées (à valider)"],
+  published: ["réponse publiée", "réponses publiées"],
+  requestsSent: ["demande d’avis envoyée", "demandes d’avis envoyées"],
   failed: ["échec", "échecs"],
 };
 
@@ -59,6 +64,7 @@ export function resultHref(taskId: string, clientId: string | null): string | nu
     case "local-competition": return q("/analytics?source=local", "#concurrence-locale");
     case "local-geogrid": return q("/analytics?source=local", "#carte-positions");
     case "lighthouse": return "/performance";
+    case "google-reviews": return clientId ? `/avis?client=${clientId}` : "/avis";
     case "site-health": return null;
     case "monitoring": return clientId ? `/clients/${clientId}?tab=health` : null;
     case "seo-analyze": return clientId ? `/recommendations?clientId=${clientId}` : "/recommendations";

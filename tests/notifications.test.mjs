@@ -62,8 +62,9 @@ const env = { VAPID_PUBLIC_KEY: "fake", VAPID_PRIVATE_KEY: "fake", VAPID_SUBJECT
 const sub = (id) => ({ id, device_id: id, user_id: "test_admin", endpoint: "https://fcm.googleapis.com/fake", keys: { p256dh: "a".repeat(87), auth: "b".repeat(22) } });
 const N = (n) => `aaaaaaaa-0000-4000-8000-00000000000${n}`, D = (n) => `dddddddd-0000-4000-8000-00000000000${n}`;
 
-test("Only publication failures and the monthly batch notice notify (bell, list, badge)", async () => {
-  assert.deepEqual([...schema.alertCategories], ["delivery_failed", "publication_review"]);
+test("Only publication failures, the monthly batch notice and negative Google reviews notify (bell, list, badge)", async () => {
+  assert.deepEqual([...schema.alertCategories], ["delivery_failed", "publication_review", "negative_review"]);
+  assert.equal(schema.isNotifiable({ category: "negative_review", event_key: "negative-review:abc" }), true);
   for (const row of [{ category: "publication_review", event_key: "publication-review:day:2026-11-20" }, { category: "media_missing", event_key: "media-missing:x:2026-11-20" }, { category: "incident", event_key: "incident:x" }, { category: "analysis_failed", event_key: "analysis:x:failed" }, { category: "analysis_completed", event_key: "analysis:x:completed" }, { category: "report_ready", event_key: "report:x" }, { category: "blog_scheduled", event_key: "blog-scheduled:x" }, { category: "media_received", event_key: "x" }])
     assert.equal(schema.isNotifiable(row), false, row.event_key);
   assert.equal(schema.isNotifiable({ category: "delivery_failed", event_key: `publication-delivery:${D(1)}:failed` }), true);

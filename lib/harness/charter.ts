@@ -2,12 +2,13 @@
 // Données statiques et fonctions pures. Source unique pour l'écran Agents, la supervision et le cadre injecté dans
 // chaque appel IA : un agent ne sort jamais de sa mission, n'invente rien et n'exécute rien qui n'a pas été demandé.
 
-export type HarnessTeam = "pilotage" | "contenu" | "site" | "publicite" | "prospection" | "veille";
+export type HarnessTeam = "pilotage" | "contenu" | "site" | "reputation" | "publicite" | "prospection" | "veille";
 
 export const harnessTeams: readonly { id: HarnessTeam; name: string; role: string }[] = [
   { id: "pilotage", name: "Pilotage", role: "Planifie, répartit, contrôle et rend compte pour chaque client." },
   { id: "contenu", name: "Contenu", role: "Réseaux sociaux, blog, visuels et vidéos, à partir des seuls faits du client." },
   { id: "site", name: "Site et SEO", role: "Référencement naturel, Search Console et santé technique du site." },
+  { id: "reputation", name: "Réputation", role: "Avis Google : réponse à chaque avis dans la voix du client, alerte immédiate sur les avis négatifs, demandes d’avis après chantier." },
   { id: "publicite", name: "Publicité", role: "Campagnes Google Ads : gaspillage coupé, rentabilité mesurée." },
   { id: "prospection", name: "Prospection", role: "Entreprises prescriptrices et premiers contacts, dans le cadre légal." },
   { id: "veille", name: "Veille", role: "Actualité tech, IA, SEO et Ads issue de sources publiques fiables." },
@@ -22,7 +23,7 @@ export type HarnessTrigger =
 export type HarnessAgentId =
   | "director" | "report"
   | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
-  | "seo" | "monitoring"
+  | "seo" | "monitoring" | "reviews"
   | "google-ads"
   | "prospection" | "prospection-writer" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
   | "veille";
@@ -135,6 +136,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Contrôles HTTP", "Audit technique et SEO de la page d’accueil", "Audit Lighthouse hebdomadaire (performance, accessibilité, bonnes pratiques, SEO)", "Santé technique hebdomadaire : certificat, nom de domaine, DNS, robots.txt, sitemap, pages en erreur, Core Web Vitals réels, indexation Google", "Incidents dédupliqués"],
     never: ["N’applique aucune correction", "N’alerte jamais sans preuve mesurée"],
     triggers: [{ kind: "run", runType: "monitoring.check_sites" }, { kind: "step", step: "lighthouse" }, { kind: "step", step: "site_health" }], clientSettings: "Fiche client → services Maintenance / Site web (audit Lighthouse et santé technique : tout client avec un site)",
+  },
+  {
+    id: "reviews", name: "Agent Avis Google", team: "reputation", expertise: "Responsable e-réputation et relation client senior",
+    mission: "Répondre à chaque avis Google du client dans sa voix, signaler tout de suite les avis négatifs et solliciter un avis après chaque chantier terminé.",
+    does: ["Relevé des avis des fiches Google toutes les 2 heures", "Brouillon de réponse personnalisé à chaque nouvel avis (ton, tutoiement ou vouvoiement et signature du client)", "Alerte immédiate (notification et incident) sur un avis de 3 étoiles ou moins", "Publication de la réponse sur la fiche après validation, ou automatiquement pour les avis positifs si le client l’a choisi", "Demande d’avis par e-mail après un chantier enregistré"],
+    never: ["Ne publie jamais la réponse à un avis de 3 étoiles ou moins sans validation explicite", "N’invente aucun fait, prix, délai, geste commercial ni coordonnée", "Ne promet ni remboursement ni réduction et ne conteste jamais publiquement un client", "Ne sollicite jamais deux fois la même personne en 180 jours ni une adresse désinscrite", "N’achète, ne filtre et ne conditionne jamais un avis"],
+    triggers: [{ kind: "step", step: "google_reviews" }, { kind: "manual" }], clientSettings: "Avis Google → réglages du client",
   },
   {
     id: "google-ads", name: "Agent Google Ads", team: "publicite", expertise: "Consultant SEA certifié Google Ads", registryType: "google-ads",

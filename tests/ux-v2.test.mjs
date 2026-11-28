@@ -104,8 +104,8 @@ test("buildWorkItems maps every source to a business section and an existing rou
 test("V2 navigation lists the daily-use entries and keeps legacy routes reachable", () => {
   const navigation = read("components/layout/navigation.tsx");
   const hrefs = [...navigation.matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
-  // 17 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
-  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/validation", "À valider"], ["/lancer", "Lancer une action"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/emailing", "Newsletters"], ["/analytics", "Données et performances"], ["/performance", "Audits de sites"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
+  // 18 entrées, regroupées par usage (Pilotage, Clients, Contenus, Performance, Système).
+  assert.deepEqual(hrefs, [["/dashboard", "Accueil"], ["/agenda", "Agenda"], ["/validation", "À valider"], ["/lancer", "Lancer une action"], ["/work", "Travail"], ["/clients", "Clients"], ["/acquisition", "Acquisition"], ["/finance", "Prestations & Finance"], ["/publications", "Publications"], ["/studio", "Studio vidéo"], ["/emailing", "Newsletters"], ["/avis", "Avis Google"], ["/analytics", "Données et performances"], ["/performance", "Audits de sites"], ["/advertising", "Campagnes publicitaires"], ["/reports", "Rapports"], ["/agents", "Agents"], ["/settings", "Paramètres"]]);
   assert.deepEqual([...navigation.matchAll(/group: "([^"]+)"/g)].map((m) => m[1]).filter((g, i, all) => all.indexOf(g) === i), ["Pilotage", "Clients", "Contenus", "Performance", "Système"]);
   // Téléphone : barre d'onglets fixe (Accueil, Clients, Calendrier, Lancer, Menu) au-dessus de laquelle restent le
   // Directeur IA et les messages ; le contenu garde une marge basse pour ne jamais passer dessous.

@@ -324,6 +324,20 @@ export function prospectingEmailSignals(rows: readonly ProspectingMessageRow[] |
   return { facts: [{ statement: `${plural(sent.length, "e-mail envoyé", "e-mails envoyés")} sur 30 jours, ${plural(replies, "réponse", "réponses")}${queued ? `, ${queued} en file` : ""}.`, at: latest(sent.map((row) => row.sent_at)), href: "/acquisition" }], gaps: [] };
 }
 
+export type GoogleReviewRow = { status: string; rating: number | null; first_seen_at: string; published_at: string | null };
+/** Agent Avis Google : nouveaux avis, réponses publiées, à valider et avis négatifs encore ouverts (30 jours). */
+export function googleReviewSignals(rows: readonly GoogleReviewRow[] | null, now: Date): BriefingSignals {
+  if (rows === null) return { facts: [], gaps: ["Agent Avis Google non installé (migration 20261224010000)."] };
+  const recent = rows.filter((row) => withinDays(row.first_seen_at, now, 30));
+  const published = rows.filter((row) => row.status === "published" && withinDays(row.published_at, now, 30)).length;
+  const toValidate = rows.filter((row) => row.status === "draft").length;
+  const negative = rows.filter((row) => ["to_draft", "draft", "failed", "publishing"].includes(row.status) && row.rating !== null && row.rating <= 3).length;
+  if (!recent.length && !published && !toValidate) return { facts: [], gaps: ["Aucun nouvel avis Google relevé sur 30 jours (fiche non connectée ou aucun avis)."] };
+  const facts: BriefingFact[] = [{ statement: `${plural(recent.length, "nouvel avis Google", "nouveaux avis Google")} sur 30 jours, ${plural(published, "réponse publiée", "réponses publiées")}${toValidate ? `, ${toValidate} à valider` : ""}.`, at: latest([...recent.map((row) => row.first_seen_at), ...rows.map((row) => row.published_at)]), href: "/avis" }];
+  if (negative) facts.push({ statement: `${plural(negative, "avis négatif", "avis négatifs")} sans réponse publiée.`, at: latest(rows.map((row) => row.first_seen_at)), href: "/avis" });
+  return { facts, gaps: [] };
+}
+
 /** Agent Rédacteur prospection : brouillons personnalisés écrits ou repliés sur le modèle (30 jours). */
 export function prospectingWriterSignals(rows: readonly { draft_source: string; created_at: string }[] | null, now: Date): BriefingSignals {
   if (rows === null) return { facts: [], gaps: ["Rédaction personnalisée non installée (migration 20261220000000)."] };

@@ -14,7 +14,7 @@ export type AgentCoverage = { gaps: CoverageGap[]; clientNames: Record<string, s
 export async function loadAgentCoverage(): Promise<AgentCoverage> {
   const [agents, automations, assignments, clients] = await Promise.all([
     db().from("agents").select("id,name,agent_type,enabled,status"),
-    db().from("automations").select("run_type,client_id,status").neq("status", "archived"),
+    db().from("automations").select("run_type,client_id,status,config").neq("status", "archived"),
     db().from("agent_client_assignments").select("agent_id,client_id,enabled"),
     db().from("clients").select("id,name"),
   ]);

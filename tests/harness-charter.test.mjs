@@ -146,7 +146,7 @@ test("contrôle quotidien : chaque écart nommé, empreinte stable par client, u
   };
   const findings = control.controlFindings(facts, plan.buildClientPlan(facts));
   const codes = [...findings.map((item) => item.code)].sort();
-  assert.deepEqual(codes, ["blog:idle", "publications:empty-week", "setup:monitoring"]);
+  assert.deepEqual(codes, ["blog:idle", "publications:empty-week", "setup:client-bilan", "setup:monitoring"]);
   assert.equal(findings.find((item) => item.code === "publications:empty-week").severity, "high");
   assert.equal(control.controlFingerprint(C, "blog:idle"), `harness:${C}:blog:idle`);
   assert.ok(control.controlFingerprint(C, "blog:idle").startsWith(control.controlPrefix(C)));

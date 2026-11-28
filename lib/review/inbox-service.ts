@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { archiveReport } from "@/lib/reports/service";
 import type { Actor } from "@/lib/core/actor";
 import type { MutationState } from "@/lib/core/mutation";
-import { buildInbox, supersededReports, type Inbox } from "./inbox";
+import { buildInbox, previousMonthStart, supersededReports, type Inbox } from "./inbox";
 import { clientAiBudget } from "@/lib/ai/metered";
 
 const LIMIT = 1000;
@@ -32,6 +32,10 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
   const generated = await db.from("publication_generated_images").select("id,client_id,created_at").eq("status", "pending_review").limit(LIMIT).then(
     (r) => r.error ? (/42P01|PGRST205/.test(String((r.error as { code?: string }).code)) || /could not find the table|does not exist/i.test(r.error.message ?? "") ? undefined : null) : r.data ?? [],
     () => null);
+  // Agent Bilan client : bilans du mois écoulé (rapports mensuels à envoyer). Lecture impossible → section illisible.
+  const bilans = await db.from("reports").select("id,client_id,period_start").eq("kind", "monthly").in("status", ["ready_for_review", "approved"])
+    .gte("period_start", previousMonthStart(now)).contains("client_content", { documents: [{ key: "bilan" }] }).limit(LIMIT)
+    .then((r) => r.error ? null : r.data ?? [], () => null);
   // Newsletters (migration e-mailing) : table absente → pas de section.
   const missing = (error: { code?: string; message?: string }) => /42P01|PGRST205/.test(String(error.code)) || /could not find the table|does not exist/i.test(error.message ?? "");
   const newsletters = await db.from("email_newsletters").select("id,client_id,subject,created_at").eq("status", "draft").limit(LIMIT).then(
@@ -47,7 +51,7 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
   const flagged = (settings as { client_id: string; auto_approve_enabled: boolean }[] | null);
   return buildInbox({
     clients: (clients ?? []) as { id: string; name: string | null }[],
-    reports: reports as never, recommendations: recommendations as never, actions: actions as never,
+    reports: reports as never, bilans, recommendations: recommendations as never, actions: actions as never,
     ads: ads ? (ads as Ads[]).map((a) => ({ id: a.id, client_id: a.client_id, created_at: a.created_at, summary: a.operation_kind ? `Modification à approuver (${a.operation_kind})` : null })) : null,
     publications: publications as never,
     generatedImages: generated as { id: string; client_id: string; created_at: string }[] | null | undefined,

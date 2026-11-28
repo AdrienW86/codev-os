@@ -62,6 +62,14 @@ Pour ajouter un agent : en plus des étapes ci-dessus, lui donner un lecteur dan
 - **Priorités** : baisse de visites ≥ 20 % (GA4), trafic sans conversion suivie, Lighthouse mobile performance < 50 ou SEO < 80 ; une même priorité client n'est affichée qu'une fois.
 - Manque connu : statistiques des posts (portée, interactions) et de la fiche Google Business, non récupérées à ce jour.
 
+## Agent Bilan client : le bilan du mois envoyé au client
+
+- **Rôle** (`client-bilan`, équipe Pilotage) : faire du rapport mensuel un bilan lisible par le dirigeant du client, qui montre le travail livré et les résultats. Il tourne avec `report.generate` (rapport mensuel) et réutilise la synthèse rédigée par l'IA de l'Agent Rapport (contrôle anti-invention de `lib/ai/grounded.ts`) : aucun appel IA de plus.
+- **Bilan** (`lib/reports/bilan.ts`, pur) : document `bilan` placé en premier dans `client_content.documents` (donc premier PDF joint). Tableau « Ce que nous avons fait pour vous » compté sur les lignes enregistrées de la période (publications diffusées par réseau, articles, newsletters, tâches terminées et actions exécutées, contrôles du site, incidents résolus) ; tableau « Vos chiffres clés » repris à l'identique des documents des agents (valeur et évolution) ; prochaines étapes reprises des priorités client. Le prévu et l'« à valider » ne sont jamais comptés.
+- **E-mail** (`lib/reports/email-preview.ts`) : un rapport mensuel qui porte un bilan s'envoie avec un corps lisible sans pièce jointe (synthèse, travail livré, chiffres clés, priorités), puis la liste des PDF.
+- **Envoi** : inchangé et manuel (aperçu, destinataire unique confirmé, version approuvée). Les bilans du mois écoulé non envoyés apparaissent dans « À valider » (section `client-bilans`, catégorie cruciale « E-mails à des contacts »).
+- **Supervision** : la couverture distingue désormais rapports hebdomadaires et mensuels (`config.kind`) ; sans automatisation mensuelle (modèle `monthly-reports`, le 3 du mois à 8 h), l'écran Agents la signale et « Créer les planifications manquantes » la crée. Réglages par client : Agent Rapport rattaché + e-mail de la fiche client (destinataire).
+
 ## Publications découpées : Rédacteur, Photo, Contrôle et diffusion
 
 Le pipeline qui fonctionne est conservé (préparation par lot un mois à l'avance, photothèque, validation, diffusion). Trois agents se partagent désormais les rôles :

@@ -8,9 +8,9 @@ import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
   blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, googleReviewSignals, type ProspectingMessageRow, type GoogleReviewRow,
-  publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
+  bilanSignals, publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
   type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type CompetitionRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
-  type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
+  type BilanRow, type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
 } from "./briefing";
 
 type Ctx = { db: SupabaseClient; clientId: string | null; now: Date; since: (days: number) => string };
@@ -54,6 +54,8 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
       .limit(500).abortSignal(AbortSignal.timeout(TIMEOUT)))),
   report: async ({ db, clientId, now, since }) => reportSignals(await rows<ReportRow>(
     scoped(db.from("reports").select("status,kind,created_at").gte("created_at", since(60)), clientId).order("created_at", { ascending: false }).limit(300).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
+  "client-bilan": async ({ db, clientId, now, since }) => bilanSignals(await rows<BilanRow>(
+    scoped(db.from("reports").select("status,kind,created_at,sent_at").eq("kind", "monthly").gte("created_at", since(40)), clientId).order("created_at", { ascending: false }).limit(300).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
   publications: async ({ db, clientId, now, since }) => {
     const [deliveries, stats] = await Promise.all([
       rows<DeliveryRow>(scoped(db.from("publication_deliveries").select("platform,status,scheduled_for,published_at").gte("scheduled_for", since(30)), clientId)

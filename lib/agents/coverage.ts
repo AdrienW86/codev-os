@@ -4,10 +4,16 @@
 export type CoverageRunType = "report.generate" | "news.fetch" | "monitoring.check_sites" | "seo.analyze" | "ads.monitor";
 
 /** Exécutions récurrentes attendues pour chaque type d'agent actif. */
-export type ExpectedSchedule = { runType: CoverageRunType; scope: "global" | "client"; presetId?: string; label: string };
+export type ExpectedSchedule = { runType: CoverageRunType; scope: "global" | "client"; presetId?: string; label: string;
+  /** Variante attendue (config.kind) : les rapports hebdomadaires ne couvrent pas les mensuels, et inversement. */
+  kind?: string };
 
 export const expectedSchedules: Readonly<Record<string, readonly ExpectedSchedule[]>> = {
-  report: [{ runType: "report.generate", scope: "global", presetId: "weekly-reports", label: "Rapports hebdomadaires" }],
+  report: [
+    { runType: "report.generate", scope: "global", presetId: "weekly-reports", label: "Rapports hebdomadaires", kind: "weekly" },
+    // Rapport mensuel = bilan du mois de l'Agent Bilan client (préparé le 1er, envoyé après validation).
+    { runType: "report.generate", scope: "global", presetId: "monthly-reports", label: "Rapports mensuels et bilans clients", kind: "monthly" },
+  ],
   veille: [{ runType: "news.fetch", scope: "global", presetId: "tech-watch", label: "Veille quotidienne" }],
   monitoring: [{ runType: "monitoring.check_sites", scope: "global", presetId: "site-checks", label: "Contrôle quotidien des sites" }],
   seo: [{ runType: "seo.analyze", scope: "client", label: "Analyses SEO du client" }],
@@ -15,7 +21,12 @@ export const expectedSchedules: Readonly<Record<string, readonly ExpectedSchedul
 };
 
 export type CoverageAgent = { id: string; name: string; agent_type?: string | null; enabled: boolean; status: string };
-export type CoverageAutomation = { run_type: string; client_id: string | null; status: string };
+export type CoverageAutomation = { run_type: string; client_id: string | null; status: string; config?: unknown };
+/** Variante d'une automatisation de rapports : sans config.kind, le handler produit un rapport hebdomadaire. */
+export const automationKind = (automation: Pick<CoverageAutomation, "config">) => {
+  const kind = automation.config && typeof automation.config === "object" ? (automation.config as Record<string, unknown>).kind : undefined;
+  return kind === "monthly" ? "monthly" : "weekly";
+};
 export type CoverageAssignment = { agent_id: string; client_id: string; enabled: boolean };
 
 export type CoverageGapKind =
@@ -42,7 +53,7 @@ export function computeAgentCoverage(input: { agents: readonly CoverageAgent[]; 
         ? [null]
         : [...new Set(input.assignments.filter((link) => link.agent_id === agent.id && link.enabled).map((link) => link.client_id))].sort();
       for (const clientId of targets) {
-        const planned = automations.filter((item) => item.run_type === schedule.runType && (schedule.scope === "global" || item.client_id === clientId));
+        const planned = automations.filter((item) => item.run_type === schedule.runType && (schedule.scope === "global" || item.client_id === clientId) && (!schedule.kind || automationKind(item) === schedule.kind));
         const base = { agentId: agent.id, agentName: agent.name, agentType: agent.agent_type as string, runType: schedule.runType, label: schedule.label, clientId, presetId: schedule.presetId };
         if (!runnable(agent)) {
           // Un agent mis en pause volontairement sans rien de planifié n'est pas une anomalie.

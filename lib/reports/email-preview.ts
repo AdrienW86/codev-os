@@ -1,18 +1,42 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { reportDocumentsSchema } from "./documents/model";
+import { BILAN_RESULTS_TABLE, BILAN_WORK_TABLE, reportDocumentsSchema, type ReportDocument } from "./documents/model";
 const line = z.string().max(10000);
 export const reportClientContentSchema = z.object({ summary: z.string().max(4000), highlights: z.array(line).max(100).optional(), sections: z.array(z.object({ title: line, lines: z.array(line).max(200) }).strict()).max(50), empty: z.boolean().optional(), documents: reportDocumentsSchema.optional() }).strict();
 export { recipientSchema } from "./recipient";
-const documentTitles: Record<string, string> = { google_ads: "Google Ads", search: "Référencement Google", site: "Site web", social: "Réseaux sociaux" };
+const documentTitles: Record<string, string> = { bilan: "Bilan du mois", google_ads: "Google Ads", search: "Référencement Google", site: "Site web", social: "Réseaux sociaux" };
 const day = /^\d{4}-\d{2}-\d{2}$/;
 function periodText(kind: string | undefined, start: string | undefined, end: string | undefined) {
   if (!start || !end || !day.test(start) || !day.test(end)) return "";
   const date = (value: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("fr-FR", { ...options, timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   return kind === "monthly" ? `de ${date(start, { month: "long", year: "numeric" })}` : `du ${date(start, { day: "numeric", month: "long" })} au ${date(end, { day: "numeric", month: "long", year: "numeric" })}`;
 }
-type EmailBody = { heading: string; subheading: string; paragraphs: string[]; listTitle?: string; items: string[]; sections: { title: string; lines: string[] }[]; closing: string[] };
-function genericParts(kind: string | undefined, documents: { key: string }[], period: { start?: string; end?: string } = {}): EmailBody {
+type EmailBody = { heading: string; subheading: string; paragraphs: string[]; listTitle?: string; items: string[]; sections: { title: string; lines: string[] }[]; closing: string[];
+  /** Bilan client : le contenu d'abord, la liste des pièces jointes ensuite. */
+  listAfter?: boolean };
+type EmailDocument = { key: string } & Partial<Pick<ReportDocument, "summary" | "tables" | "notes">>;
+/** Agent Bilan client : l'e-mail se lit sans ouvrir les pièces jointes (synthèse, travail livré, chiffres clés, suite). */
+function bilanParts(bilan: EmailDocument, titles: string[], when: string): EmailBody {
+  const table = (title: string) => bilan.tables?.find((item) => item.title === title);
+  const work = table(BILAN_WORK_TABLE)?.rows.map((row) => `${row[0]} : ${row[1]}`) ?? [];
+  const results = table(BILAN_RESULTS_TABLE)?.rows.map((row) => `${row[0]} · ${row[1]} : ${row[2]}${row[3] && row[3] !== "—" ? ` (${row[3]})` : ""}`) ?? [];
+  const next = (bilan.notes ?? []).flatMap((note) => note.startsWith("Prochaine étape : ") ? [note.slice("Prochaine étape : ".length)] : []);
+  const month = when.replace(/^de /, "");
+  return {
+    heading: "Votre bilan du mois", subheading: month ? month.replace(/^./, (c) => c.toUpperCase()) : "",
+    paragraphs: ["Bonjour,", ...(bilan.summary ? [bilan.summary] : [])],
+    listTitle: titles.length ? `Le détail en pièce${titles.length > 1 ? "s" : ""} jointe${titles.length > 1 ? "s" : ""}` : undefined, items: titles,
+    sections: [
+      ...(work.length ? [{ title: BILAN_WORK_TABLE, lines: work }] : []),
+      ...(results.length ? [{ title: BILAN_RESULTS_TABLE, lines: results.slice(0, 12) }] : []),
+      ...(next.length ? [{ title: "Nos priorités pour la suite", lines: next }] : []),
+    ],
+    closing: ["Nous restons à votre disposition pour en parler.", "Cordialement,", "L’équipe CODE-V"], listAfter: true,
+  };
+}
+function genericParts(kind: string | undefined, documents: EmailDocument[], period: { start?: string; end?: string } = {}): EmailBody {
+  const bilan = kind === "monthly" ? documents.find((document) => document.key === "bilan") : undefined;
+  if (bilan) return bilanParts(bilan, documents.map((document) => documentTitles[document.key] ?? document.key), periodText(kind, period.start, period.end));
   const label = kind === "monthly" ? "mensuel" : kind === "weekly" ? "hebdomadaire" : "";
   const titles = documents.map((document) => documentTitles[document.key] ?? document.key);
   const when = periodText(kind, period.start, period.end);
@@ -24,8 +48,13 @@ function genericParts(kind: string | undefined, documents: { key: string }[], pe
   };
 }
 /** Corps générique d'un rapport complet : le détail est dans les PDF joints (un par agent). */
-export function genericReportEmail(kind: string | undefined, documents: { key: string }[], period: { start?: string; end?: string } = {}) {
+export function genericReportEmail(kind: string | undefined, documents: EmailDocument[], period: { start?: string; end?: string } = {}) {
   const parts = genericParts(kind, documents, period);
+  if (kind === "monthly" && documents.some((document) => document.key === "bilan")) return [
+    ...parts.paragraphs.flatMap((text) => [text, ""]),
+    ...parts.sections.flatMap((section) => [section.title, ...section.lines.map((line) => `• ${line}`), ""]),
+    ...(parts.items.length ? [`${parts.listTitle} : ${parts.items.join(", ")}.`, ""] : []),
+    parts.closing[0], "", parts.closing[1], parts.closing[2]].join("\n");
   return [parts.paragraphs[0], "", parts.paragraphs[1],
     parts.items.length ? `Il comprend ${parts.items.length} document${parts.items.length > 1 ? "s" : ""} : ${parts.items.join(", ")}.` : "",
     "", parts.closing[0], "", parts.closing[1], parts.closing[2]].filter((line, index, all) => line || all[index - 1] !== "").join("\n");
@@ -57,7 +86,7 @@ export function reportEmailHtml(body: EmailBody, subject: string): string {
 <p style="margin:0;font-family:${font};font-size:24px;line-height:30px;font-weight:700;color:#ffffff">${esc(body.heading)}</p>
 ${body.subheading ? `<p style="margin:6px 0 0;font-family:${font};font-size:15px;line-height:22px;color:#50e3c2">${esc(body.subheading)}</p>` : ""}
 <div style="height:22px;line-height:22px">&nbsp;</div></td></tr>
-<tr><td style="padding:28px 32px 30px">${body.paragraphs.map((text) => p(text)).join("")}${list}${sections}${closing}</td></tr>
+<tr><td style="padding:28px 32px 30px">${body.paragraphs.map((text) => p(text)).join("")}${body.listAfter ? `${sections}<div style="height:10px;line-height:10px">&nbsp;</div>${list}` : `${list}${sections}`}${closing}</td></tr>
 <tr><td style="padding:18px 32px;background:#07111f;font-family:${font};font-size:12px;line-height:18px;color:#9fb0c8">
 <span style="color:#ffffff;font-weight:700">CODE-V</span> · Partenaire digital<br><a href="https://code-v.fr" style="color:#50e3c2;text-decoration:none">code-v.fr</a></td></tr>
 </table></td></tr></table></body></html>`;

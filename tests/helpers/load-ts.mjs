@@ -25,6 +25,9 @@ export function loadTs(path, mocks = {}, globals = {}) {
       if (name === "@/lib/launch/catalog") return loadTs("lib/launch/catalog.ts");
       // Lectures de l'Agent Rapport (audience, Lighthouse, contenus) : module pur sans import.
       if (name === "@/lib/reports/insights") return loadTs("lib/reports/insights.ts");
+      // Agent Bilan client (bilan du mois) et couverture des agents : modules purs.
+      if (name === "@/lib/reports/bilan") return loadTs("lib/reports/bilan.ts", { "./documents/model": loadTs("lib/reports/documents/model.ts") });
+      if (name === "@/lib/agents/coverage") return loadTs("lib/agents/coverage.ts");
       if (["zod", "react", "react/jsx-runtime", "node:crypto"].includes(name)) return require(name);
       throw new Error(`Unexpected import: ${name}`);
     },

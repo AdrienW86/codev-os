@@ -12,13 +12,15 @@ export type InboxSection = {
   /** Total en attente, et part qui attend vraiment une main humaine (0 pour une section automatique). */
   count: number; manual: number; note: string | null; href: string; items: InboxItem[];
 };
-export type InboxSourceId = "reports" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "newsletters" | "ai-budget" | "seo" | "photos" | "alerts";
+export type InboxSourceId = "reports" | "client-bilans" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "newsletters" | "ai-budget" | "seo" | "photos" | "alerts";
 export type Inbox = { sections: InboxSection[]; manualTotal: number; unavailable: number; superseded: string[] };
 
 type Named = { id: string; name: string | null };
 export type InboxInput = {
   clients: readonly Named[];
   reports: readonly { id: string; client_id: string | null; kind: string; period_start: string; title?: string | null }[] | null;
+  /** Rapports mensuels du mois écoulé portant un bilan client, non encore envoyés. Absent : aucune section. */
+  bilans?: readonly { id: string; client_id: string | null; period_start: string }[] | null;
   recommendations: readonly { id: string; client_id: string | null; title: string; created_at: string }[] | null;
   actions: readonly { id: string; client_id: string | null; action_type: string; created_at: string; requires_approval: boolean }[] | null;
   ads: readonly { id: string; client_id: string | null; created_at: string; summary?: string | null }[] | null;
@@ -38,6 +40,13 @@ export type InboxInput = {
 };
 
 const ITEMS = 8;
+const monthLabel = (day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`)) : day;
+/** Premier jour du mois précédent (heure de Paris) : seuls les bilans du mois écoulé attendent un envoi. */
+export function previousMonthStart(now: Date): string {
+  const [year, month] = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit" }).format(now).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return date.toISOString().slice(0, 10);
+}
 const kindLabels: Record<string, string> = { weekly: "Rapport hebdomadaire", monthly: "Rapport mensuel", google_ads: "Rapport Google Ads" };
 const SUPERSEDABLE = new Set(["weekly", "monthly"]);
 
@@ -91,6 +100,9 @@ export function buildInbox(input: InboxInput): Inbox {
   const adsReports = input.reports?.filter((r) => reportNeedsConfirmation(r.kind)) ?? null;
   add({ id: "ads-reports", label: "Rapports Google Ads à approuver avant envoi", agent: "report", crucial: "third-party-email", href: "/reports?status=ready_for_review", rows: adsReports,
     items: () => (adsReports ?? []).map((r) => ({ id: r.id, title: `${kindLabels[r.kind] ?? "Rapport"} du ${r.period_start}`, client: client(r.client_id), at: r.period_start, href: `/reports/${r.id}` })) });
+  // Agent Bilan client : l'envoi au client est une décision de l'administrateur (aperçu, destinataire confirmé).
+  if (input.bilans !== undefined) add({ id: "client-bilans", label: "Bilans mensuels à envoyer aux clients", agent: "client-bilan", crucial: "third-party-email", href: "/reports?kind=monthly", rows: input.bilans,
+    items: () => (input.bilans ?? []).map((r) => ({ id: r.id, title: `Bilan de ${monthLabel(r.period_start)}`, client: client(r.client_id), at: r.period_start, href: `/reports/${r.id}` })) });
   const actions = input.actions?.filter((a) => a.requires_approval && crucialCategoryOfAction(a.action_type)) ?? null;
   add({ id: "actions", label: "Actions à approuver (site, envoi)", agent: null, crucial: "client-site", href: "/work?view=review&kind=action", rows: actions,
     items: () => (actions ?? []).map((a) => ({ id: a.id, title: a.action_type, client: client(a.client_id), at: a.created_at, href: `/actions/${a.id}` })) });

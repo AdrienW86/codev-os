@@ -3,11 +3,14 @@
 // le PDF et l'e-mail ne rendent que ce schéma (jamais internal_content).
 import { z } from "zod";
 
-export const reportDocumentKeys = ["google_ads", "search", "site", "social"] as const;
+export const reportDocumentKeys = ["bilan", "google_ads", "search", "site", "social"] as const;
 export type ReportDocumentKey = (typeof reportDocumentKeys)[number];
 export const reportDocumentLabels: Record<ReportDocumentKey, string> = {
-  google_ads: "Google Ads", search: "Référencement Google", site: "Site web", social: "Réseaux sociaux",
+  bilan: "Bilan du mois", google_ads: "Google Ads", search: "Référencement Google", site: "Site web", social: "Réseaux sociaux",
 };
+/** Bilan client (Agent Bilan client, rapport mensuel) : titres fixes de ses tableaux, relus par l'e-mail d'envoi. */
+export const BILAN_WORK_TABLE = "Ce que nous avons fait pour vous";
+export const BILAN_RESULTS_TABLE = "Vos chiffres clés";
 
 const short = (max: number) => z.string().max(max);
 const kpiSchema = z.object({

@@ -20,7 +20,7 @@ export type HarnessTrigger =
   | { kind: "manual" };
 
 export type HarnessAgentId =
-  | "director" | "report"
+  | "director" | "report" | "client-bilan"
   | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
@@ -69,6 +69,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Rapports hebdomadaires et mensuels", "Rapports Google Ads récurrents", "Priorités du client", "Croisement des données de référencement (Search Console, Google Analytics 4, Lighthouse, Google Ads) avec les contenus diffusés par réseau, les articles et les newsletters"],
     never: ["N’envoie aucun rapport sans approbation", "Ne présente aucune donnée absente comme un résultat", "Ne présente jamais un rapprochement de chiffres comme une cause"],
     triggers: [{ kind: "run", runType: "report.generate" }, { kind: "run", runType: "ads.report.prepare" }], clientSettings: "Rapports → réglages du client",
+  },
+  {
+    id: "client-bilan", name: "Agent Bilan client", team: "pilotage", expertise: "Responsable de la relation client en agence (customer success)",
+    mission: "Faire du rapport mensuel de chaque client un bilan clair, lisible par un dirigeant non spécialiste, qui montre le travail livré et les résultats, prêt à envoyer après validation.",
+    does: ["Bilan du mois en tête du rapport mensuel (premier PDF joint)", "Travail livré au client compté à partir des données enregistrées (publications diffusées, articles, newsletters, interventions, surveillance du site)", "Chiffres clés repris des documents des agents, avec leur évolution", "E-mail d’envoi lisible sans ouvrir les pièces jointes", "Bilans du mois écoulé à envoyer, signalés dans « À valider »"],
+    never: ["N’envoie aucun bilan sans action de l’administrateur et confirmation du destinataire", "N’affiche aucun chiffre absent du rapport calculé", "Ne compte jamais comme réalisé ce qui est seulement prévu ou à valider"],
+    triggers: [{ kind: "run", runType: "report.generate" }], clientSettings: "Fiche client → e-mail du client (destinataire) ; Agent Rapport rattaché au client",
   },
   {
     id: "publications", name: "Agent Rédacteur Publications", team: "contenu", expertise: "Community manager senior", registryType: "publications",

@@ -14,7 +14,7 @@ Objectif : CODE-V OS fonctionne comme une agence autonome, chaque agent étant u
 
 ## Équipes
 
-Pilotage (Chef de projet, Rapport) · Contenu (Publications, Blog, Visuels, Vidéo, Photothèque) · Site et SEO (SEO, Monitoring) · Publicité (Google Ads) · Prospection · Veille.
+Pilotage (Chef de projet, Rapport) · Contenu (Publications, Blog, Visuels, Vidéo, Photothèque) · Site et SEO (SEO, Monitoring) · Publicité (Google Ads) · Commercial (Agent Leads, voir `docs/leads.md`) · Prospection · Veille.
 
 L’ancien « Agent Automatisation » n’a jamais eu d’exécution : il n’a pas de charte.
 

@@ -3,7 +3,10 @@ import { readResendEvent, validResendSignature } from "@/lib/emailing/policy";
 import { recordResendEvent } from "@/lib/emailing/service";
 import { readInboundEmail } from "@/lib/acquisition/replies";
 import { handleProspectingReply } from "@/lib/acquisition/reply-service";
+import { after } from "next/server";
+import { handleLeadInbound, processLead } from "@/lib/leads/service";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // Webhook Resend : rebonds, plaintes, statuts de remise et réponses reçues (prospection). La signature Svix est vérifiée sur le corps brut avant
 // toute lecture ou écriture ; un rebond définitif ou une plainte ajoute l'adresse à la liste d'exclusion globale.
@@ -20,10 +23,19 @@ export async function POST(request: Request) {
   if (!effect) return respond("Événement ignoré", 200); // format inconnu : on n'insiste pas, rien n'est modifié
   // Réception entrante : réponse à un e-mail de prospection (arrêt sur « STOP », fin de séquence sur réponse).
   // Traitée AVANT l'enregistrement de l'événement (idempotente) : en cas d'échec, Resend renvoie l'événement.
+  // Adresse devis-… du domaine entrant de l'Agent Leads : demande transférée ou réponse d'un prospect (traitée, puis rien d'autre).
   const inbound = readInboundEmail(payload);
   if (inbound) {
-    try { await handleProspectingReply(inbound); }
-    catch { console.error("[email] Réponse de prospection non traitée."); return respond("Réessayez", 503); }
+    let lead: Awaited<ReturnType<typeof handleLeadInbound>>;
+    try { lead = await handleLeadInbound(inbound); }
+    catch { console.error("[email] Demande de devis entrante non traitée."); return respond("Réessayez", 503); }
+    const leadId = lead.process;
+    // Qualification et réponse préparées juste après l'accusé de réception du webhook (le planificateur reprend un échec).
+    if (leadId) after(async () => { try { await processLead(leadId); } catch { console.error("[leads] Qualification différée au prochain passage."); } });
+    if (!lead.handled) {
+      try { await handleProspectingReply(inbound); }
+      catch { console.error("[email] Réponse de prospection non traitée."); return respond("Réessayez", 503); }
+    }
   }
   try { await recordResendEvent(id!, effect); }
   catch { console.error("[email] Événement Resend non enregistré."); return respond("Réessayez", 503); }

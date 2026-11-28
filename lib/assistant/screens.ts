@@ -38,6 +38,7 @@ export const screens = {
   recommendations: { label: "les recommandations des agents", client: "optional", href: withClient("/recommendations", "clientId") },
   agents: { label: "les agents et leur état", client: "none", href: () => "/agents" },
   acquisition: { label: "la prospection", client: "none", href: () => "/acquisition" },
+  leads: { label: "les demandes de devis (Agent Leads)", client: "optional", href: withClient("/leads") },
   finance: { label: "les prestations et la finance", client: "none", href: () => "/finance" },
   news: { label: "la veille", client: "none", href: () => "/news" },
   settings: { label: "les paramètres", client: "none", href: () => "/settings" },

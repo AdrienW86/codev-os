@@ -346,6 +346,24 @@ export function prospectingWriterSignals(rows: readonly { draft_source: string; 
   return { facts: [{ statement: `${plural(written, "brouillon personnalisé", "brouillons personnalisés")} sur 30 jours${pending ? `, ${pending} en cours` : ""}.`, at: latest(recent.map((row) => row.created_at)), href: "/acquisition" }], gaps: [] };
 }
 
+export type LeadRow = { state: string; received_at: string; first_reply_at: string | null };
+/** Agent Leads : demandes reçues, délai médian de première réponse, réponses en attente de validation (30 jours). */
+export function leadsSignals(rows: readonly LeadRow[] | null, now: Date): BriefingSignals {
+  if (rows === null) return { facts: [], gaps: ["Agent Leads non installé (migration 20261229000000)."] };
+  const recent = rows.filter((row) => withinDays(row.received_at, now, 30) && row.state !== "spam");
+  const waiting = rows.filter((row) => row.state === "new" || row.state === "ready");
+  const facts: BriefingFact[] = [];
+  if (recent.length) {
+    const delays = recent.flatMap((row) => validTime(row.first_reply_at) ? [(Date.parse(row.first_reply_at) - Date.parse(row.received_at)) / 60_000] : []).sort((a, b) => a - b);
+    const median = delays.length ? delays[Math.floor(delays.length / 2)] : null;
+    const won = recent.filter((row) => row.state === "won").length;
+    const delay = median === null ? "aucune réponse envoyée" : median < 60 ? `première réponse en ${Math.max(1, Math.round(median))} min (médiane)` : `première réponse en ${Math.round(median / 60)} h (médiane)`;
+    facts.push({ statement: `${plural(recent.length, "demande de devis reçue", "demandes de devis reçues")} sur 30 jours, ${delay}${won ? `, ${plural(won, "gagnée", "gagnées")}` : ""}.`, at: latest(recent.map((row) => row.received_at)), href: "/leads" });
+  }
+  if (waiting.length) facts.push({ statement: `${plural(waiting.length, "demande attend", "demandes attendent")} une réponse (à valider ou à traiter).`, at: latest(waiting.map((row) => row.received_at)), href: "/leads" });
+  return { facts, gaps: recent.length ? [] : ["Aucune demande de devis reçue sur 30 jours (formulaire relié ?)."] };
+}
+
 export type IncidentRow = { status: string; detected_at: string };
 export function directorSignals(rows: readonly IncidentRow[]): BriefingSignals {
   const open = rows.filter((row) => row.status !== "resolved");

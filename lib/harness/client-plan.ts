@@ -19,6 +19,8 @@ export type ClientFacts = {
   visual: { enabled: boolean; perWeek?: number } | null;
   video: { enabled: boolean; perWeek?: number; pace?: string } | null;
   mediaLibrary: { classification: boolean; monthlyBudgetEur?: number } | null;
+  /** Agent Leads du client (absent : agent non installé ou jamais réglé). */
+  leads?: { enabled: boolean; autoReply?: boolean; followups?: number; pendingDrafts?: number } | null;
   /** Automatisations planifiées pour ce client (ou globales) : libellé lisible de leur récurrence. */
   schedules?: readonly { runType: string; label: string }[];
   /** Search Console du client : dernière synchronisation réussie et cause du dernier échec quotidien. */
@@ -83,6 +85,11 @@ export function buildClientPlan(facts: ClientFacts): ClientPlan {
   else if (!facts.assignedTypes.has("google-ads")) { seat("google-ads", "needs_setup", "Agent Google Ads non rattaché à ce client.", `${base}?tab=agents`); todo.push({ label: "Rattacher l’Agent Google Ads", href: `${base}?tab=agents` }); }
   else seat("google-ads", "working", "Analyse des campagnes disponible.", `${base}?tab=ads`);
 
+  // Commercial : demandes de devis entrantes.
+  const leads = facts.leads;
+  seat("leads", leads?.enabled ? "working" : "off", leads?.enabled ? "Demandes de devis traitées dès leur arrivée." : "Formulaire de devis non relié pour ce client.", `/leads?client=${facts.clientId}`);
+  if (leads?.enabled && leads.pendingDrafts) todo.push({ label: `Valider ${leads.pendingDrafts} réponse(s) à des demandes de devis`, href: `/leads?client=${facts.clientId}` });
+
   // Prospection et veille : à la demande / global.
   seat("prospection", "on_demand", "Balayage de zone lancé à la demande.", `/acquisition?client=${facts.clientId}`);
   seat("veille", facts.activeTypes.has("veille") ? "working" : "off", "Veille commune à tous les clients.", "/news");
@@ -118,6 +125,11 @@ export function settingsOf(facts: ClientFacts, agent: HarnessAgentId): string[] 
       break;
     case "media-library":
       if (facts.mediaLibrary?.classification && facts.mediaLibrary.monthlyBudgetEur !== undefined) out.push(`Budget IA ${facts.mediaLibrary.monthlyBudgetEur.toLocaleString("fr-FR")} € par mois`);
+      break;
+    case "leads":
+      if (!facts.leads?.enabled) break;
+      out.push(facts.leads.autoReply ? "Réponse automatique" : "Réponses à valider");
+      if (facts.leads.followups !== undefined) out.push(facts.leads.followups ? `${facts.leads.followups} relance(s) au plus` : "Sans relance");
       break;
     case "seo": out.push(...schedulesOf(facts, "seo.analyze")); break;
     case "monitoring": out.push(...schedulesOf(facts, "monitoring.check_sites")); break;

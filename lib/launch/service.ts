@@ -27,6 +27,7 @@ import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
 import { runProspectingSendTick } from "@/lib/acquisition/send-service";
 import { runProspectingWriterTick } from "@/lib/acquisition/writer-service";
 import { runNow } from "@/lib/automations/service";
+import { runLeadsTick } from "@/lib/leads/service";
 import type { RunType } from "@/lib/agents/registry";
 
 export type LaunchOutcome = { ok: boolean; message: string; href?: string; details?: string[] };
@@ -96,6 +97,7 @@ async function run(task: LaunchTask, clientId: string | null, actor: LaunchActor
     case "site-health": return { ok: true, message: count(await runSiteHealthTick(now, { clientId: need() }), ["checked", "failed", "alerts"]) };
     case "prospection-writer": return { ok: true, message: count(await runProspectingWriterTick({ deadline: Date.now() + 55_000 }), ["written", "template"]), href: "/acquisition" };
     case "prospection-email": return { ok: true, message: count(await runProspectingSendTick(new Date()), ["sent", "failed", "stopped"]), href: "/acquisition" };
+    case "leads": return { ok: true, message: count(await runLeadsTick(new Date(), { deadline: Date.now() + 50_000 }), ["processed", "followups", "auto_sent", "closed", "failed"]), href: "/leads" };
     case "prospection": return { ok: true, message: count(await runAcquisitionDiscoveryTick({ deadline: Date.now() + 50_000 }), ["runs"]), href: "/acquisition" };
     case "seo-analyze": case "monitoring": case "ads-monitor": case "veille": {
       const runType = task.covers.runType!;

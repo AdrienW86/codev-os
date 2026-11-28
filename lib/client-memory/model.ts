@@ -31,7 +31,7 @@ export const agentFactKinds: Readonly<Record<string, readonly FactKind[]>> = {
   publications: WITHOUT_PRICING, blog: WITHOUT_PRICING, visual: WITHOUT_PRICING, video: WITHOUT_PRICING, newsletter: WITHOUT_PRICING,
   copywriter: WITHOUT_PRICING, "fact-check": ALL, "editorial-review": ALL, "editorial-planning": WITHOUT_PRICING,
   "media-library": ["company", "service", "zone", "exclusion"], seo: WITHOUT_PRICING,
-  "google-ads": ALL, prospection: ALL, report: ALL, director: ALL,
+  "google-ads": ALL, prospection: ALL, report: ALL, director: ALL, leads: ALL,
 };
 
 /** Empreinte de dédoublonnage : minuscules, sans accents ni ponctuation, espaces réduits. */

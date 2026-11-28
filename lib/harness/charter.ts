@@ -2,13 +2,14 @@
 // Données statiques et fonctions pures. Source unique pour l'écran Agents, la supervision et le cadre injecté dans
 // chaque appel IA : un agent ne sort jamais de sa mission, n'invente rien et n'exécute rien qui n'a pas été demandé.
 
-export type HarnessTeam = "pilotage" | "contenu" | "site" | "publicite" | "prospection" | "veille";
+export type HarnessTeam = "pilotage" | "contenu" | "site" | "publicite" | "commercial" | "prospection" | "veille";
 
 export const harnessTeams: readonly { id: HarnessTeam; name: string; role: string }[] = [
   { id: "pilotage", name: "Pilotage", role: "Planifie, répartit, contrôle et rend compte pour chaque client." },
   { id: "contenu", name: "Contenu", role: "Réseaux sociaux, blog, visuels et vidéos, à partir des seuls faits du client." },
   { id: "site", name: "Site et SEO", role: "Référencement naturel, Search Console et santé technique du site." },
   { id: "publicite", name: "Publicité", role: "Campagnes Google Ads : gaspillage coupé, rentabilité mesurée." },
+  { id: "commercial", name: "Commercial", role: "Demandes de devis entrantes : réponse en quelques minutes, qualification et relance." },
   { id: "prospection", name: "Prospection", role: "Entreprises prescriptrices et premiers contacts, dans le cadre légal." },
   { id: "veille", name: "Veille", role: "Actualité tech, IA, SEO et Ads issue de sources publiques fiables." },
 ];
@@ -24,6 +25,7 @@ export type HarnessAgentId =
   | "publications" | "publication-photo" | "publication-check" | "blog" | "visual" | "video" | "media-library"
   | "seo" | "monitoring"
   | "google-ads"
+  | "leads"
   | "prospection" | "prospection-writer" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
   | "veille";
 
@@ -149,6 +151,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Analyse coûts / conversions", "Termes de recherche et mots-clés négatifs", "Budget et part d’impressions", "Comportement des visiteurs payants (Google Analytics)"],
     never: ["Ne modifie aucune campagne sans validation explicite", "Ne propose aucune hausse de budget sans coût par lead mesuré"],
     triggers: [{ kind: "run", runType: "ads.monitor" }, { kind: "manual" }], clientSettings: "Campagnes publicitaires → contexte du client",
+  },
+  {
+    id: "leads", name: "Agent Leads", team: "commercial", expertise: "Commercial sédentaire senior du bâtiment (traitement des demandes de devis)",
+    mission: "Répondre en quelques minutes à chaque demande de devis du client (formulaire du site, e-mail), qualifier le besoin et relancer le prospect qui ne répond pas.",
+    does: ["Réception des demandes (formulaire du site, e-mail transféré ou reçu, saisie manuelle)", "Qualification : prestation du client concernée, urgence, lieu, informations manquantes, citations de la demande", "Première réponse au prospect avec les questions utiles au devis", "Alerte immédiate de l’artisan avec le résumé de la demande", "Au plus deux relances (2 puis 3 jours ouvrés), arrêtées dès que le prospect répond"],
+    never: ["Ne donne aucun prix, délai, date de passage ou garantie qui ne figure pas dans les faits confirmés du client", "N’envoie rien sans validation, sauf pour un client qui a choisi la réponse automatique", "Ne relance jamais un prospect qui a répondu, demandé l’arrêt ou dont l’adresse est exclue", "Ne promet jamais que le client réalise une prestation absente de ses faits confirmés"],
+    triggers: [{ kind: "step", step: "leads" }, { kind: "manual" }], clientSettings: "Demandes de devis → réglages du client",
   },
   {
     id: "prospection", name: "Agent Prospection", team: "prospection", expertise: "Business developer B2B",

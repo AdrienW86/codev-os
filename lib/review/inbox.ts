@@ -12,7 +12,7 @@ export type InboxSection = {
   /** Total en attente, et part qui attend vraiment une main humaine (0 pour une section automatique). */
   count: number; manual: number; note: string | null; href: string; items: InboxItem[];
 };
-export type InboxSourceId = "reports" | "client-bilans" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "newsletters" | "ai-budget" | "seo" | "photos" | "alerts";
+export type InboxSourceId = "reports" | "client-bilans" | "ads-reports" | "recommendations" | "actions" | "ads" | "publications" | "generated-images" | "prospection" | "leads" | "newsletters" | "ai-budget" | "seo" | "photos" | "alerts";
 export type Inbox = { sections: InboxSection[]; manualTotal: number; unavailable: number; superseded: string[] };
 
 type Named = { id: string; name: string | null };
@@ -29,6 +29,8 @@ export type InboxInput = {
   /** Images de l'Agent Photo en attente. Absent (undefined) : agent non installé, aucune section. */
   generatedImages?: readonly { id: string; client_id: string; created_at: string }[] | null;
   prospection: readonly { id: string; subject: string | null; created_at: string }[] | null;
+  /** Réponses et relances de l'Agent Leads à valider (envoi au demandeur). Absent : agent non installé, aucune section. */
+  leads?: readonly { id: string; client_id: string; subject: string | null; created_at: string }[] | null;
   /** Newsletters en brouillon (envoi aux contacts du client). Absent : module non installé, aucune section. */
   newsletters?: readonly { id: string; client_id: string; subject: string | null; created_at: string }[] | null;
   /** Clients dont le plafond IA mensuel est atteint. Absent : budget non installé, aucune section. */
@@ -117,6 +119,8 @@ export function buildInbox(input: InboxInput): Inbox {
     } });
   add({ id: "prospection", label: "E-mails de prospection à approuver", agent: "prospection", crucial: "third-party-email", href: "/acquisition", rows: input.prospection,
     items: () => (input.prospection ?? []).map((m) => ({ id: m.id, title: m.subject || "Premier contact", client: null, at: m.created_at, href: "/acquisition" })) });
+  if (input.leads !== undefined) add({ id: "leads", label: "Réponses aux demandes de devis", agent: "leads", crucial: "third-party-email", href: "/leads", rows: input.leads,
+    items: () => (input.leads ?? []).map((m) => ({ id: m.id, title: m.subject || "Réponse au prospect", client: client(m.client_id), at: m.created_at, href: `/leads?client=${m.client_id}` })) });
   if (input.newsletters !== undefined) add({ id: "newsletters", label: "Newsletters à approuver", agent: "newsletter", crucial: "third-party-email", href: "/emailing", rows: input.newsletters,
     items: () => (input.newsletters ?? []).map((n) => ({ id: n.id, title: n.subject || "Newsletter", client: client(n.client_id), at: n.created_at, href: "/emailing" })) });
   if (input.aiBudget !== undefined) add({ id: "ai-budget", label: "Plafonds IA atteints", agent: null, crucial: "ai-budget", href: "/settings", rows: input.aiBudget,

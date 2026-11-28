@@ -20,6 +20,9 @@ export default clerkMiddleware(async (auth, request) => {
   if (path.startsWith("/api/publications/media/") && ["GET", "HEAD"].includes(request.method)) return;
   // API publique du blog des clients : lecture seule des articles publiés (aucune donnée privée), lue par leurs sites.
   if (path.startsWith("/api/public/blog/") && ["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
+  // Formulaire de demande de devis des sites clients (Agent Leads) : clé du client, origine déclarée, limite de débit
+  // vérifiées par la route ; dépôt seulement, aucune lecture.
+  if (/^\/api\/public\/leads\/[0-9a-f-]{36}$/.test(path) && ["POST", "OPTIONS"].includes(request.method)) return;
   // Autre exemption : le déclencheur planifié s'authentifie lui-même par CRON_SECRET (voir la route).
   if (path === "/api/internal/scheduler/tick") return;
 

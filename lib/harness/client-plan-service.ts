@@ -67,6 +67,11 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
     optional(db.from("client_connections").select("metadata,last_sync_at").eq("client_id", clientId).eq("provider", "search-console").maybeSingle()),
     optional(db.from("search_console_sync_runs").select("status,error_kind").eq("client_id", clientId).eq("trigger", "daily").order("started_at", { ascending: false }).limit(1).maybeSingle()),
   ]);
+  // Agent Leads (migration 20261229000000 ; table absente : null, agent présenté « désactivé »).
+  const [leadSettingsRow, leadDraftRows] = await Promise.all([
+    optional(db.from("lead_settings" as never).select("enabled,auto_reply,followups").eq("client_id", clientId).maybeSingle()),
+    optional(db.from("lead_messages" as never).select("id").eq("client_id", clientId).eq("state", "draft").eq("direction", "out").limit(200)),
+  ]);
   const scConnection = scConnectionRow as { metadata: unknown; last_sync_at: string | null } | null;
   const scRun = scRunRow as { status: string; error_kind: string | null } | null;
   const scProperty = (scConnection?.metadata as { property?: unknown } | null)?.property;
@@ -102,6 +107,7 @@ export async function loadClientSnapshot(clientId: string, now = new Date()): Pr
     blog: blog ? { enabled: flag(blog, "enabled"), perWeek: num(blog, "per_week"), socialRelay: flag(blog, "social_relay"), scheduledNext7Days: blogUpcoming?.length ?? 0, publishedLast7Days: blogPublished?.length ?? 0 } : null,
     visual: visual ? { enabled: flag(visual, "enabled"), perWeek: num(visual, "per_week") } : null,
     video: video ? { enabled: flag(video, "enabled"), perWeek: num(video, "per_week"), pace: typeof field(video, "pace") === "string" ? String(field(video, "pace")) : undefined } : null,
+    leads: leadSettingsRow ? { enabled: flag(leadSettingsRow, "enabled"), autoReply: flag(leadSettingsRow, "auto_reply"), followups: num(leadSettingsRow, "followups"), pendingDrafts: Array.isArray(leadDraftRows) ? leadDraftRows.length : 0 } : null,
     mediaLibrary: media ? { classification: flag(media, "ai_classification_enabled"), monthlyBudgetEur: num(media, "ai_monthly_budget_eur") } : null,
     searchConsole: typeof scProperty === "string" && scProperty ? {
       property: scProperty, lastSyncAt: scConnection?.last_sync_at ?? null,

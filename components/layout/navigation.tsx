@@ -15,6 +15,7 @@ const navigation: { href: string; label: string; icon: IconName; group: NavGroup
   { href: "/lancer", label: "Lancer une action", icon: "send", group: "Pilotage" },
   { href: "/work", label: "Travail", icon: "work", group: "Pilotage", matches: ["/tasks", "/recommendations", "/actions"] },
   { href: "/clients", label: "Clients", icon: "clients", group: "Clients", matches: ["/projects"] },
+  { href: "/leads", label: "Demandes de devis", icon: "send", group: "Clients" },
   { href: "/acquisition", label: "Acquisition", icon: "clients", group: "Clients" },
   { href: "/finance", label: "Prestations & Finance", icon: "reports", group: "Clients" },
   { href: "/publications", label: "Publications", icon: "publications", group: "Contenus" },

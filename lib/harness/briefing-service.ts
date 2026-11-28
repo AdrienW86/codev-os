@@ -7,7 +7,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, type ProspectingMessageRow,
+  blogSignals, buildAgentBriefing, leadsSignals, type LeadRow, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, type ProspectingMessageRow,
   bilanSignals, publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
   type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type CompetitionRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type BilanRow, type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
@@ -103,6 +103,9 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
     return monitoringSignals(checks, audits, now, health);
   },
   "google-ads": snapshots(["google-ads"]),
+  leads: async ({ db, clientId, now, since }) => leadsSignals(await optionalRows<LeadRow>(
+    scoped(db.from("leads").select("state,received_at,first_reply_at").or(`received_at.gte.${since(30)},state.in.(new,ready)`), clientId)
+      .order("received_at", { ascending: false }).limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
   prospection: async ({ db, clientId, now, since }) => {
     let query = db.from("acquisition_discovery_runs").select("status,found_count,finished_at,created_at").gte("created_at", since(30));
     if (clientId) {

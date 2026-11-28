@@ -22,7 +22,7 @@ export const agentFamilies: Readonly<Record<string, AiFamily>> = {
   "media-library": "vision", "photo-observation": "vision",
   "fact-check": "review", "editorial-review": "review", "publication-check": "review",
   director: "strategy", report: "strategy", seo: "strategy", "google-ads": "strategy", monitoring: "strategy",
-  prospection: "strategy", "prospection-email": "review", "prospection-writer": "writing", veille: "strategy", "editorial-planning": "strategy",
+  leads: "writing", prospection: "strategy", "prospection-email": "review", "prospection-writer": "writing", veille: "strategy", "editorial-planning": "strategy",
 };
 
 /** Niveau de réflexion par famille : élevé pour écrire et observer, maximal pour contrôler (le contrôle doit être plus exigeant que la rédaction). */

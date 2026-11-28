@@ -25,6 +25,10 @@ const phrases: Record<string, Phrase> = {
   written: ["brouillon personnalisé", "brouillons personnalisés"],
   template: ["brouillon resté sur le modèle", "brouillons restés sur le modèle"],
   failed: ["échec", "échecs"],
+  processed: ["demande de devis qualifiée", "demandes de devis qualifiées"],
+  followups: ["relance préparée", "relances préparées"],
+  auto_sent: ["relance envoyée automatiquement", "relances envoyées automatiquement"],
+  closed: ["demande close sans réponse", "demandes closes sans réponse"],
 };
 
 const disabledLabels: Record<string, string> = { agent: "agent en pause", migration: "module non installé", provider: "fournisseur non configuré", google: "Google non connecté", vault: "coffre de jetons absent", credential: "clé API absente", global: "arrêt général actif", true: "désactivé" };
@@ -65,6 +69,7 @@ export function resultHref(taskId: string, clientId: string | null): string | nu
     case "ads-monitor": return q("/advertising");
     case "veille": return "/news";
     case "prospection": case "prospection-email": case "prospection-writer": return "/acquisition";
+    case "leads": return q("/leads");
     default: return null;
   }
 }

@@ -77,6 +77,7 @@ export function buildClientPlan(facts: ClientFacts): ClientPlan {
   // Prospection et veille : à la demande / global.
   seat("prospection", "on_demand", "Balayage de zone lancé à la demande.", `/acquisition?client=${facts.clientId}`);
   seat("veille", facts.activeTypes.has("veille") ? "working" : "off", "Veille commune à tous les clients.", "/news");
+  seat("competitor-watch", facts.activeTypes.has("seo") ? "working" : "off", facts.activeTypes.has("seo") ? "Rapport mensuel des concurrents (clients locaux : métier et ville renseignés)." : "En pause avec l’Agent SEO.", `/analytics?source=competition&client=${facts.clientId}`);
 
   return { seats, todo };
 }

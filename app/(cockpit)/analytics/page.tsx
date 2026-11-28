@@ -11,6 +11,8 @@ import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
 import { SeoDashboard } from "@/components/analytics/seo-dashboard";
 import { LocalDashboardView } from "@/components/analytics/local-dashboard";
 import { getLocalDashboard } from "@/lib/local-geogrid/dashboard";
+import { CompetitorWatchView } from "@/components/analytics/competitor-watch";
+import { getCompetitorWatchDashboard } from "@/lib/competitor-watch/dashboard";
 import { PageHeading } from "@/components/ui/primitives";
 import { EmptyState, InlineNotice } from "@/components/ui/states";
 import { ModuleUnavailable } from "@/components/ui/module-unavailable";
@@ -19,7 +21,7 @@ import { Tabs } from "@/components/ui/tabs";
 export const metadata: Metadata = { title: "Données et performances" };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Source = "audience" | "seo" | "local";
+type Source = "audience" | "seo" | "local" | "competition";
 
 // Deux sources distinctes, jamais additionnées : Vercel Web Analytics (visiteurs du site) et Google Search Console
 // (clics organiques depuis Google). Client, période et comparaison restent dans l'URL quand on change d'onglet.
@@ -34,6 +36,7 @@ function sourceTabs(params: Record<string, string | string[] | undefined>, curre
     { id: "audience", label: "Audience · Vercel Web Analytics", href: href("audience") },
     { id: "seo", label: "Référencement · Google Search Console", href: href("seo") },
     { id: "local", label: "Local · Google Maps", href: href("local") },
+    { id: "competition", label: "Concurrence · veille mensuelle", href: href("competition") },
   ]} />;
 }
 
@@ -44,7 +47,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
   if (await getActiveScenario()) return <>{heading}<InlineNotice tone="info" title="Mode simulation actif">Les données Analytics réelles ne sont pas affichées en simulation. Quittez la simulation depuis les paramètres pour consulter ce tableau de bord.</InlineNotice></>;
 
   const params = await searchParams;
-  const source: Source = params.source === "seo" || params.source === "local" ? params.source : "audience";
+  const source: Source = params.source === "seo" || params.source === "local" || params.source === "competition" ? params.source : "audience";
   const tabs = sourceTabs(params, source);
   const clients = await safeRead("analytics-clients", () => listAnalyticsClients(), []);
   if (clients.unavailable) return <>{heading}<ModuleUnavailable module="Données et performances" /></>;
@@ -66,6 +69,12 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
     const local = await safeRead("local-dashboard", () => getLocalDashboard(requested.id), null);
     if (local.unavailable || !local.data) return <>{tabs}<ModuleUnavailable module="Référencement local" /></>;
     return <>{tabs}<LocalDashboardView state={local.data} clients={clients.data.map(({ id, name }) => ({ id, name, href: `/analytics?source=local&client=${id}` }))} current={requested.id} /></>;
+  }
+
+  if (source === "competition") {
+    const watch = await safeRead("competitor-watch", () => getCompetitorWatchDashboard(requested.id), null);
+    if (watch.unavailable || !watch.data) return <>{tabs}<ModuleUnavailable module="Veille concurrence" /></>;
+    return <>{tabs}<CompetitorWatchView state={watch.data} clients={clients.data.map(({ id, name }) => ({ id, name, href: `/analytics?source=competition&client=${id}` }))} current={requested.id} /></>;
   }
 
   if (source === "seo") {

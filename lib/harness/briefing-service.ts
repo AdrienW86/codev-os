@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
+import { watchSignals, type WatchBriefingRow } from "@/lib/competitor-watch/model";
 import {
   blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, type ProspectingMessageRow,
   publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
@@ -152,6 +153,9 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
   veille: async ({ db, now, since }) => countSignals((await rows<{ fetched_at: string }>(
     db.from("news_items").select("fetched_at").gte("fetched_at", since(30)).limit(3000).abortSignal(AbortSignal.timeout(TIMEOUT)))).map((row) => ({ at: row.fetched_at })),
   now, { one: "actualité collectée", many: "actualités collectées", href: "/news", empty: "Aucune actualité collectée sur 30 jours." }),
+  "competitor-watch": async ({ db, clientId, now, since }) => watchSignals(await rows<WatchBriefingRow>(
+    scoped(db.from("metric_snapshots").select("fetched_at,data").eq("provider", "competitor-watch").gte("fetched_at", since(60)), clientId)
+      .order("fetched_at", { ascending: false }).limit(50).abortSignal(AbortSignal.timeout(TIMEOUT))).catch(() => null), now),
 };
 
 /**

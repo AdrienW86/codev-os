@@ -45,6 +45,7 @@ export const launchTasks: readonly LaunchTask[] = [
   { id: "prospection-writer", agent: "prospection-writer", label: "Rédiger les e-mails personnalisés", effect: "Réécrit maintenant quelques brouillons demandés en rédaction personnalisée (faits vérifiés). Rien n’est envoyé.", scope: "global", covers: { step: "acquisition_writer" } },
   { id: "prospection-email", agent: "prospection-email", label: "Envoyer la prospection approuvée", effect: "Envoie maintenant les e-mails approuvés dus, dans les créneaux de bureau et au rythme du préchauffage ; rien hors créneau ni au-delà du quota.", scope: "global", covers: { step: "acquisition_send" } },
   { id: "newsletter", agent: "newsletter", label: "Préparer une newsletter", effect: "Ouvre les newsletters pour en générer une. L’envoi reste à votre validation.", scope: "client-or-global", covers: {}, href: () => "/emailing" },
+  { id: "competitor-watch", agent: "competitor-watch", label: "Veille concurrence du mois", effect: "Prépare maintenant le rapport de veille des concurrents du client (3 recherches DataForSEO facturées si configuré).", scope: "client", covers: { step: "competitor_watch" }, paid: true },
   { id: "veille", agent: "veille", label: "Actualiser la veille", effect: "Récupère maintenant les dernières actualités tech, IA, SEO et Ads.", scope: "global", covers: { runType: "news.fetch" } },
 ];
 

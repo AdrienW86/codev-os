@@ -74,5 +74,6 @@ async function repeatedFailure(db: Db, eventKey: string | null | undefined, noti
 }
 /** Texte discret (aucun contenu client) : l'avis mensuel ou une publication en échec. */
 export function pushBody(notification: { event_key?: string | null }) {
+  if (notification.event_key?.startsWith("negative-review:")) return "Nouvel avis Google négatif : une réponse est prête à relire.";
   return notification.event_key?.startsWith(MONTHLY_REVIEW_PREFIX) ? "Les publications du mois sont prêtes : validez-les par lot." : "Une publication ou un envoi a échoué.";
 }

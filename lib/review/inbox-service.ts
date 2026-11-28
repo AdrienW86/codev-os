@@ -40,6 +40,9 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
   const missing = (error: { code?: string; message?: string }) => /42P01|PGRST205/.test(String(error.code)) || /could not find the table|does not exist/i.test(error.message ?? "");
   const newsletters = await db.from("email_newsletters").select("id,client_id,subject,created_at").eq("status", "draft").limit(LIMIT).then(
     (r) => r.error ? (missing(r.error) ? undefined : null) : r.data ?? [], () => null);
+  // Agent Avis Google (migration 20261224010000) : table absente → pas de section.
+  const googleReviews = await db.from("google_reviews" as never).select("id,client_id,rating,first_seen_at").eq("status", "draft").is("auto_publish_at", null).limit(LIMIT).then(
+    (r) => r.error ? (missing(r.error) ? undefined : null) : ((r.data ?? []) as { id: string; client_id: string; rating: number | null; first_seen_at: string }[]).map((x) => ({ id: x.id, client_id: x.client_id, rating: x.rating, created_at: x.first_seen_at })), () => null);
   // Plafonds IA atteints : un relevé par client ; suivi non installé (null partout) → pas de section.
   const budgets = await Promise.all(((clients ?? []) as { id: string }[]).map((c) => clientAiBudget(c.id, now).then((b) => b ? { client_id: c.id, b } : undefined, () => null)));
   const aiBudget = budgets.some((b) => b === null) ? null : budgets.every((b) => b === undefined) && budgets.length ? undefined
@@ -54,7 +57,7 @@ export async function loadInbox(now = new Date()): Promise<Inbox> {
     generatedImages: generated as { id: string; client_id: string; created_at: string }[] | null | undefined,
     autoApproveClients: flagged ? new Set(flagged.filter((s) => s.auto_approve_enabled).map((s) => s.client_id)) : null,
     prospection: prospection as never, seo: seo as never,
-    newsletters: newsletters as { id: string; client_id: string; subject: string | null; created_at: string }[] | null | undefined, aiBudget,
+    newsletters: newsletters as { id: string; client_id: string; subject: string | null; created_at: string }[] | null | undefined, googleReviews, aiBudget,
     seoAgentId: (seoAgent as { id: string }[] | null)?.[0]?.id ?? null,
     photos: photos as never, alerts: alerts as never,
   });

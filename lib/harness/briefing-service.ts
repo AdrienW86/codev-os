@@ -7,7 +7,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { harnessCharters, type HarnessAgentId } from "./charter";
 import { loadTeam } from "./team-service";
 import {
-  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, type ProspectingMessageRow,
+  blogSignals, buildAgentBriefing, coherenceSignals, competitionSignals, geogridSignals, localSignals, photoSignals, countSignals, directorSignals, monitoringSignals, newsletterSignals, prospectionSignals, prospectingEmailSignals, prospectingWriterSignals, googleReviewSignals, type ProspectingMessageRow, type GoogleReviewRow,
   bilanSignals, publicationsSignals, reportSignals, reviewSignals, scoreSignals, snapshotSignals, visualSignals,
   type AgentBriefing, type AuditRow, type BlogRow, type BriefingSignals, type CoherenceRow, type CompetitionRow, type GeneratedImageRow, type HealthRow, type LocalRow, type PostStatsRow, type DeliveryRow, type DiscoveryRow, type IncidentRow,
   type BilanRow, type NewsletterRow, type ReportRow, type ReviewLogRow, type ScoreLogRow, type SiteCheckRow, type SnapshotRow, type VisualRow,
@@ -112,6 +112,9 @@ export const briefingReaders: Record<HarnessAgentId, Reader> = {
     }
     return prospectionSignals(await rows<DiscoveryRow>(query.limit(200).abortSignal(AbortSignal.timeout(TIMEOUT))), now);
   },
+  reviews: async ({ db, clientId, now, since }) => googleReviewSignals(await optionalRows<GoogleReviewRow>(
+    scoped(db.from("google_reviews").select("status,rating,first_seen_at,published_at").or(`first_seen_at.gte.${since(60)},status.in.(to_draft,draft,failed,publishing)`), clientId)
+      .limit(2000).abortSignal(AbortSignal.timeout(TIMEOUT))), now),
   "prospection-writer": async ({ db, clientId, now, since }) => {
     let query = db.from("acquisition_messages").select("draft_source,created_at").gte("created_at", since(30));
     if (clientId) {

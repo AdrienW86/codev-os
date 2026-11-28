@@ -10,7 +10,7 @@ export const harnessTeams: readonly { id: HarnessTeam; name: string; role: strin
   { id: "site", name: "Site et SEO", role: "Référencement naturel, Search Console et santé technique du site." },
   { id: "publicite", name: "Publicité", role: "Campagnes Google Ads : gaspillage coupé, rentabilité mesurée." },
   { id: "prospection", name: "Prospection", role: "Entreprises prescriptrices et premiers contacts, dans le cadre légal." },
-  { id: "veille", name: "Veille", role: "Actualité tech, IA, SEO et Ads issue de sources publiques fiables." },
+  { id: "veille", name: "Veille", role: "Actualité tech, IA, SEO et Ads issue de sources publiques fiables, et veille mensuelle des concurrents de chaque client." },
 ];
 
 /** Comment l'agent est déclenché : étape du planificateur, type d'exécution du registre, ou action à la demande. */
@@ -25,7 +25,7 @@ export type HarnessAgentId =
   | "seo" | "monitoring"
   | "google-ads"
   | "prospection" | "prospection-writer" | "prospection-email" | "newsletter" | "copywriter" | "fact-check" | "editorial-review"
-  | "veille";
+  | "veille" | "competitor-watch";
 
 export type HarnessCharter = {
   id: HarnessAgentId;
@@ -199,6 +199,13 @@ export const harnessCharters: readonly HarnessCharter[] = [
     does: ["Collecte et déduplication", "Score d’impact"],
     never: ["Ne résume jamais au-delà de la source", "N’utilise aucune source non publique"],
     triggers: [{ kind: "run", runType: "news.fetch" }], clientSettings: "Global (aucun réglage client)",
+  },
+  {
+    id: "competitor-watch", name: "Agent Veille concurrence", team: "veille", expertise: "Analyste en intelligence concurrentielle du marketing local",
+    mission: "Chaque mois, mesurer ce que font les concurrents de chaque client local (positions Google Maps et Google, avis, annonces Google Ads, pages publiées) et proposer des actions à valider.",
+    does: ["Suivi de 5 concurrents au plus par client (saisis pour le client, sinon les premiers de Google Maps)", "Évolution sur le mois des positions Google Maps et des avis (relevés de l’Agent SEO)", "Positions Google et annonces Google Ads vues sur 3 recherches (DataForSEO, si configuré)", "Pages publiées ou mises à jour sur 30 jours (sitemaps publics)", "Constats chiffrés et actions proposées, en recommandations à valider"],
+    never: ["Ne contacte aucun concurrent et ne laisse aucun avis", "Ne lit aucune donnée non publique ni aucun réseau social", "Ne présente jamais une mesure absente comme un résultat, ni une intention prêtée à un concurrent", "N’exécute aucune action : chaque proposition attend la décision de l’administrateur"],
+    triggers: [{ kind: "step", step: "competitor_watch" }, { kind: "manual" }], clientSettings: "Données et performances → Concurrence",
   },
 ];
 

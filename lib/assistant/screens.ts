@@ -31,6 +31,7 @@ export const screens = {
   studio: { label: "le studio vidéo", client: "none", href: () => "/studio" },
   newsletters: { label: "les newsletters", client: "none", href: () => "/emailing" },
   analytics: { label: "les données et performances", client: "optional", href: withClient("/analytics") },
+  competitor_watch: { label: "la veille concurrence du client", client: "required", href: withClient("/analytics?source=competition") },
   site_audits: { label: "les audits de sites", client: "none", href: () => "/performance" },
   advertising: { label: "les campagnes publicitaires", client: "optional", href: withClient("/advertising") },
   reports: { label: "les rapports", client: "none", href: () => "/reports" },

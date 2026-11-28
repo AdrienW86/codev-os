@@ -24,6 +24,8 @@ const phrases: Record<string, Phrase> = {
   stopped: ["espace arrêté (réputation)", "espaces arrêtés (réputation)"],
   written: ["brouillon personnalisé", "brouillons personnalisés"],
   template: ["brouillon resté sur le modèle", "brouillons restés sur le modèle"],
+  reports: ["rapport de veille préparé", "rapports de veille préparés"],
+  recommendations: ["action proposée (à valider)", "actions proposées (à valider)"],
   failed: ["échec", "échecs"],
 };
 
@@ -58,6 +60,7 @@ export function resultHref(taskId: string, clientId: string | null): string | nu
     case "local-seo": return q("/analytics?source=local", "#fiche-google");
     case "local-competition": return q("/analytics?source=local", "#concurrence-locale");
     case "local-geogrid": return q("/analytics?source=local", "#carte-positions");
+    case "competitor-watch": return q("/analytics?source=competition");
     case "lighthouse": return "/performance";
     case "site-health": return null;
     case "monitoring": return clientId ? `/clients/${clientId}?tab=health` : null;

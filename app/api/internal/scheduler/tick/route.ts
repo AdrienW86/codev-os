@@ -29,6 +29,7 @@ import { runSiteHealthTick } from "@/lib/site-health/service";
 import { runLocalSeoTick } from "@/lib/local-seo/service";
 import { runLocalCompetitionTick } from "@/lib/local-competition/service";
 import { runLocalGeogridTick } from "@/lib/local-geogrid/service";
+import { runCompetitorWatchTick } from "@/lib/competitor-watch/service";
 
 // Déclencheur serveur-à-serveur : jamais de session navigateur, uniquement CRON_SECRET.
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export const maxDuration = 300;
 const MARGIN_MS = 15_000;
 const minimumMs: Record<SchedulerStepName, number> = {
   whatsapp_exports: 0, automations: 0, publication_auto_approval: 10_000, publication_delivery_prepare: 20_000, publication_delivery_send: 60_000, push: 10_000, harness_control: 30_000, auto_decisions: 15_000, acquisition_send: 20_000, acquisition_writer: 55_000,
-  search_console: 60_000, google_analytics: 60_000, local_seo: 50_000, local_competition: 40_000, local_geogrid: 60_000, lighthouse: 70_000, site_health: 110_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, publication_stats: 45_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
+  search_console: 60_000, google_analytics: 60_000, local_seo: 50_000, local_competition: 40_000, local_geogrid: 60_000, competitor_watch: 70_000, lighthouse: 70_000, site_health: 110_000, whatsapp: 75_000, visual_agent: 60_000, media_intelligence: 60_000, publication_preparation: 120_000, publication_photo: 130_000, publication_stats: 45_000, blog_agent: 60_000, acquisition_discovery: 40_000, video_agent: 90_000,
 };
 const AUTOMATIONS_BUDGET_MS = 120_000;
 const isDisabled = (value: unknown) => typeof value === "object" && value !== null && Boolean((value as { disabled?: unknown }).disabled);
@@ -107,6 +108,8 @@ async function handle(request: Request) {
   const localCompetition = await step("local_competition", () => runLocalCompetitionTick(new Date()), "Relevé de la concurrence locale différé.");
   // Agent SEO : carte de positions Google Maps (DataForSEO, 49 points), une recherche par passage.
   const localGeogrid = await step("local_geogrid", () => runLocalGeogridTick(new Date()), "Carte de positions différée.");
+  // Agent Veille concurrence : rapport mensuel d'un client local dû par passage (Maps, Google, annonces, sitemaps).
+  const competitorWatch = await step("competitor_watch", () => runCompetitorWatchTick(new Date()), "Veille concurrence différée.");
   // Agent Monitoring : audit Lighthouse hebdomadaire (4 catégories, mobile + ordinateur), un site dû par passage, la nuit.
   const lighthouse = await step("lighthouse", () => runLighthouseTick(new Date()), "Audit Lighthouse différé.");
   // Reprises WhatsApp → Drive : vide la file (médias disponibles 7 jours chez Meta) et applique la conservation.
@@ -134,7 +137,7 @@ async function handle(request: Request) {
   const siteHealth = await step("site_health", () => runSiteHealthTick(new Date()), "Contrôle de santé technique différé.");
   await finishSchedulerRun({ startedAt, finishedAt: new Date(), steps }).catch(() => false);
   const ok = !Object.values(steps).some((s) => s?.status === "failed");
-  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, localSeo, localCompetition, localGeogrid, lighthouse, siteHealth, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, acquisitionSend, acquisitionWriter, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, autoDecisions, steps },
+  return NextResponse.json({ ok, ...(summary && typeof summary === "object" ? summary : {}), push, searchConsole, googleAnalytics, localSeo, localCompetition, localGeogrid, competitorWatch, lighthouse, siteHealth, whatsapp, mediaIntelligence, publications: { autoApproval, delivery, due }, visualAgent, blogAgent, acquisitionDiscovery, acquisitionSend, acquisitionWriter, videoAgent, publicationPreparation, publicationPhoto, publicationStats, whatsappExports, harnessControl, autoDecisions, steps },
     { status: steps.automations?.status === "failed" ? 500 : 200, headers });
 }
 

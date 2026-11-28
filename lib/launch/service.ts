@@ -21,6 +21,8 @@ import { syncGoogleAnalytics } from "@/lib/integrations/google-analytics/sync";
 import { runLocalSeoTick, productionLocalSeoDeps } from "@/lib/local-seo/service";
 import { runLocalCompetitionTick, productionLocalCompetitionDeps } from "@/lib/local-competition/service";
 import { runLocalGeogridTick, productionLocalGeogridDeps } from "@/lib/local-geogrid/service";
+import { runCompetitorWatchTick, productionCompetitorWatchDeps } from "@/lib/competitor-watch/service";
+import { readWatchReport } from "@/lib/competitor-watch/model";
 import { runLighthouseTick } from "@/lib/performance/weekly";
 import { runSiteHealthTick } from "@/lib/site-health/service";
 import { runAcquisitionDiscoveryTick } from "@/lib/acquisition/background";
@@ -48,6 +50,7 @@ async function details(taskId: string, clientId: string | null, since: string): 
     case "local-seo": { const rows = await recent("local_seo_snapshots", "fetched_at", "location_title,metrics,reviews,fetched_at"); return rows.length ? localSignals(rows).facts.map((f) => f.statement) : ["Aucune statistique de fiche Google enregistrée par ce relevé (fiche non connectée ou Google sans réponse)."]; }
     case "local-competition": return competitionSignals(await recent("metric_snapshots", "fetched_at", "metric_key,fetched_at,data", (q) => q.eq("provider", "local-competition"))).facts.map((f) => f.statement);
     case "local-geogrid": return geogridSignals(await recent("metric_snapshots", "fetched_at", "metric_key,fetched_at,data", (q) => q.eq("provider", "local-geogrid"))).map((f) => f.statement);
+    case "competitor-watch": { const [row] = await recent("metric_snapshots", "fetched_at", "fetched_at,data", (q) => q.eq("provider", "competitor-watch")); const report = row ? readWatchReport((row as { data: unknown }).data) : null; return report ? [`${report.competitors.length} concurrent(s) suivi(s), ${report.findings.length} constat(s).`, ...report.findings.slice(0, 4).map((f) => `${f.title} : ${f.action}`)] : ["Aucun rapport enregistré (aucun concurrent relevé : lancez d’abord « Relever la concurrence locale »)."]; }
     case "lighthouse": { const rows = await recent("performance_audits", "analyzed_at", "strategy,scores,analyzed_at"); return lighthouseDetails(rows.filter((r: { strategy: string }, i, all: { strategy: string }[]) => all.findIndex((o) => o.strategy === r.strategy) === i)); }
     case "site-health": { const [row] = await recent("site_health_checks", "checked_at", "url,score,findings,checked_at"); return siteHealthDetails(row ?? null); }
     default: return [];
@@ -92,6 +95,7 @@ async function run(task: LaunchTask, clientId: string | null, actor: LaunchActor
     case "local-seo": return { ok: true, message: count(await runLocalSeoTick(now, productionLocalSeoDeps(), { clientId: need() }), ["collected", "failed", "alerts"]) };
     case "local-competition": return { ok: true, message: count(await runLocalCompetitionTick(now, productionLocalCompetitionDeps(), { clientId: need() }), ["collected", "failed", "alerts"]) };
     case "local-geogrid": return { ok: true, message: count(await runLocalGeogridTick(now, productionLocalGeogridDeps(), { clientId: need() }), ["collected", "points", "failed"]) };
+    case "competitor-watch": return { ok: true, message: count(await runCompetitorWatchTick(now, productionCompetitorWatchDeps(), { clientId: need() }), ["reports", "recommendations", "failed"]) };
     case "lighthouse": return { ok: true, message: count(await runLighthouseTick(now, { clientId: need() }), ["audited", "failed", "alerts"]), href: "/performance" };
     case "site-health": return { ok: true, message: count(await runSiteHealthTick(now, { clientId: need() }), ["checked", "failed", "alerts"]) };
     case "prospection-writer": return { ok: true, message: count(await runProspectingWriterTick({ deadline: Date.now() + 55_000 }), ["written", "template"]), href: "/acquisition" };
